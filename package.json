@@ -1,0 +1,17 @@
+{
+  "name": "tickslate-dev",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:lib": "vite build --config vite.lib.config.js",
+    "build:umd": "vite build --config vite.umd.config.js",
+    "pack:lib": "node scripts/pack-lib.mjs",
+    "test": "node --test test/*.test.mjs",
+    "release": "npm test && npm run build:lib && npm run build:umd && npm run pack:lib"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickslate playground</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; padding: 48px 16px; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  h1 { font-family: var(--ts-font-num); font-weight: 500; font-size: 40px; margin: 0; }
+  p { margin: 0; color: var(--ts-muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tickslate</h1>
+  <p>Playground. No widgets yet — this page will show each widget at every size, in light and dark.</p>
+  <p>Version <span id="version"></span></p>
+</main>
+<script type="module">
+  import { version } from '/src/elements/index.js'
+  document.getElementById('version').textContent = version
+</script>
+</body>
+</html>

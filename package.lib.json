@@ -1,0 +1,63 @@
+{
+  "name": "tickslate",
+  "version": "0.0.0",
+  "description": "Finance dashboard widgets for the web — a resizable grid of trading-aware widgets, framework-free, themed with CSS variables.",
+  "license": "MIT",
+  "author": "Shreeshyla Hanasoge <shreeshyla.hanasoge@gmail.com>",
+  "homepage": "https://github.com/shreeshyla-hanasoge/Tickslate#readme",
+  "bugs": {
+    "url": "https://github.com/shreeshyla-hanasoge/Tickslate/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shreeshyla-hanasoge/Tickslate.git"
+  },
+  "type": "module",
+  "sideEffects": [
+    "./elements.js",
+    "*.css"
+  ],
+  "main": "./index.js",
+  "module": "./index.js",
+  "types": "./index.d.ts",
+  "unpkg": "./umd/tickslate.umd.js",
+  "jsdelivr": "./umd/tickslate.umd.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./elements": {
+      "types": "./elements.d.ts",
+      "import": "./elements.js"
+    },
+    "./tokens.css": "./tokens.css",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "emberwick": ">=0.14.0"
+  },
+  "peerDependenciesMeta": {
+    "emberwick": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "dashboard",
+    "finance",
+    "trading",
+    "widgets",
+    "grid",
+    "web-components",
+    "custom-elements",
+    "pnl",
+    "portfolio",
+    "equity-curve"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

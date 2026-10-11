@@ -1,0 +1,68 @@
+/*
+ * Tickslate theme tokens.
+ *
+ * Paper is the light default. The dark default uses the Tailwind gray scale
+ * (gray-900/800/700) with emerald, rose, amber and indigo 400, which is also
+ * Traed's existing dark mode, so Traed needs no overrides for dark.
+ *
+ * Every rule is wrapped in :where() so it has zero specificity: a host app
+ * overrides any --ts-* variable with a plain selector, no !important.
+ *
+ * Dark applies when the host sets data-theme="dark" or a .dark class on an
+ * ancestor (Tailwind's class strategy), or when the OS prefers dark and the
+ * host has not pinned data-theme="light".
+ */
+:where(:root) {
+  --ts-bg: #F3EFE6;
+  --ts-surface: #FFFDF8;
+  --ts-surface-2: #F1EBDE;
+  --ts-line: #E2DACB;
+  --ts-ink: #1C1A16;
+  --ts-muted: #6A655B;
+  --ts-profit: #0E7A4E;
+  --ts-loss: #C0362C;
+  --ts-warn: #A85A06;
+  --ts-accent: #2C52C4;
+  --ts-radius: 10px;
+  --ts-radius-sm: 6px;
+  --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
+  --ts-fill: 12%;
+  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-num: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --ts-row: 150px;
+  --ts-gap: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme="light"])) {
+    --ts-bg: #111827;
+    --ts-surface: #1F2937;
+    --ts-surface-2: #374151;
+    --ts-line: #374151;
+    --ts-ink: #F3F4F6;
+    --ts-muted: #9CA3AF;
+    --ts-profit: #34D399;
+    --ts-loss: #FB7185;
+    --ts-warn: #FBBF24;
+    --ts-accent: #818CF8;
+    --ts-radius: 12px;
+    --ts-shadow: none;
+    --ts-fill: 16%;
+  }
+}
+
+:where([data-theme="dark"], .dark) {
+  --ts-bg: #111827;
+  --ts-surface: #1F2937;
+  --ts-surface-2: #374151;
+  --ts-line: #374151;
+  --ts-ink: #F3F4F6;
+  --ts-muted: #9CA3AF;
+  --ts-profit: #34D399;
+  --ts-loss: #FB7185;
+  --ts-warn: #FBBF24;
+  --ts-accent: #818CF8;
+  --ts-radius: 12px;
+  --ts-shadow: none;
+  --ts-fill: 16%;
+}
