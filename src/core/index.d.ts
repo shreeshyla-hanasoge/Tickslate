@@ -182,3 +182,125 @@ export declare function dropIndex(
 export declare function withProfile(layout: Layout, profile: string, items: LayoutItem[]): Layout
 /** Sets the top strip to at most 3 distinct ids that are in the layout. */
 export declare function setTopStrip(layout: Layout, ids: readonly string[]): Layout
+
+// ── Formatting ─────────────────────────────────────────────────────────
+
+export interface FormatOptions {
+  /** e.g. 'en-IN'. Defaults to configure(), then the runtime's locale. */
+  locale?: string
+  /** e.g. 'INR'. Without one, money formats as a plain signed number. */
+  currency?: string
+  /** For times, e.g. 'Asia/Kolkata'. */
+  timeZone?: string
+}
+
+/** Values may be numbers or numeric strings; anything else formats as '—'. */
+export type Numeric = number | string
+
+export interface Formatter {
+  readonly locale: string | undefined
+  readonly currency: string | undefined
+  readonly timeZone: string | undefined
+  /** '+₹1,523.85', '−₹141.00', '₹0.00'. sign defaults to 'always'. */
+  money(v: Numeric, o?: { sign?: 'always' | 'negative'; compact?: boolean; decimals?: number }): string
+  /** sign defaults to 'negative'. */
+  number(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number; compact?: boolean }): string
+  /** Grouped, no currency symbol; decimals default to 2. */
+  price(v: Numeric, o?: { decimals?: number }): string
+  /** Takes a ratio: 0.013 → '+1.30%'. sign defaults to 'always'. */
+  percent(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number }): string
+  /** 24-hour unless hour12: '11:42', '11:42:20'. */
+  time(t: number, o?: { seconds?: boolean; hour12?: boolean }): string
+  /** 'clock': '2:40', '1:02:05'. 'words': '3h 48m', '48m', '9s'. */
+  duration(ms: number, o?: { style?: 'clock' | 'words' }): string
+  /** The full money form if it fits in maxChars, else the compact one. */
+  fit(v: Numeric, maxChars: number, o?: { sign?: 'always' | 'negative' }): string
+}
+
+export declare function createFormatter(options?: FormatOptions): Formatter
+/** Sets defaults for formatters (and widgets) created without their own. */
+export declare function configure(options: FormatOptions): void
+export declare function currentConfig(): FormatOptions
+/** A number from a number or numeric string, else NaN. */
+export declare function toNumber(v: unknown): number
+
+// ── Session calendars ──────────────────────────────────────────────────
+
+export interface SessionSpec {
+  id: string
+  label: string
+  /** IANA zone, e.g. 'Asia/Kolkata'. */
+  timeZone: string
+  /** ISO weekdays it trades, 1 = Monday. */
+  days: readonly number[]
+  /** 'HH:MM' local. */
+  open: string
+  /** 'HH:MM' local, after `open`, or date ranges with their own close. */
+  close: string | { default: string; ranges: ReadonlyArray<{ from: string; to: string; close: string }> }
+  /** Extra sessions on given dates, e.g. a weekend session. They beat weekdays and holidays. */
+  specialSessions?: Record<string, { open: string; close: string }>
+}
+
+export interface CalendarInput {
+  sessions: readonly SessionSpec[]
+  /** Session id → 'YYYY-MM-DD' dates; '*' applies to every session. */
+  holidays?: Record<string, readonly string[]>
+}
+
+export interface SessionState {
+  open: boolean
+  /** Next open, when closed; null if none within a month. */
+  opensAt: number | null
+  /** When open. */
+  closesAt: number | null
+  /** When open. */
+  startedAt: number | null
+  /** 0..1 through the session, when open. */
+  progress: number | null
+}
+
+export interface Calendar {
+  readonly sessions: readonly string[]
+  session(id: string): SessionSpec
+  isTradingDay(id: string, date: string): boolean
+  /** The session's hours on a date as instants, or null if it doesn't trade. */
+  hours(id: string, date: string): { open: number; close: number } | null
+  state(id: string, now: number): SessionState
+  nextChange(id: string, now: number): { at: number; to: 'open' | 'closed' } | null
+  /** The next candle close, aligned to the session open; null while closed. */
+  candleClose(id: string, now: number, timeframeMinutes: number): number | null
+  /** Every session window overlapping [from, to). */
+  windows(id: string, from: number, to: number): Array<{ open: number; close: number }>
+}
+
+/** Throws TypeError on a malformed session or holiday list. */
+export declare function createCalendar(input: CalendarInput): Calendar
+
+/** Ready-made sessions, checked against exchange circulars on 13 Oct 2026. */
+export declare const presets: {
+  /** 'equity' → id 'nse', 09:15–15:30. 'derivatives' → id 'nse-fo', 09:15–15:40 (15:30 before 3 Aug 2026). */
+  nse(options?: { segment?: 'equity' | 'derivatives' }): SessionSpec
+  /**
+   * 'international' (metals, energy) → id 'mcx', 09:00–23:30 during US daylight
+   * saving, else 23:55, for the given years (default: last, this and next).
+   * 'cotton' → 'mcx-cotton', 09:00–21:00. 'agri' → 'mcx-agri', 09:00–17:00.
+   */
+  mcx(options?: { segment?: 'international' | 'cotton' | 'agri'; years?: number[] }): SessionSpec
+}
+
+/** The dates New York is on daylight saving in a year. */
+export declare function usDaylightSaving(year: number): { from: string; to: string }
+
+export interface ProfileSchedule {
+  market: { sessions: string[]; leadMinutes?: number; lagMinutes?: number }
+}
+
+/** 'market' while any listed session is open (widened by lead and lag), else 'closed'. */
+export declare function activeProfile(calendar: Calendar, schedule: ProfileSchedule, now: number): 'market' | 'closed'
+/** The next instant activeProfile changes, or null if not within a month. */
+export declare function nextProfileChange(calendar: Calendar, schedule: ProfileSchedule, now: number): number | null
+
+/** The instant the clock in `timeZone` reads `hhmm` on `date`. */
+export declare function zonedTime(date: string, hhmm: string, timeZone: string): number
+/** The local 'YYYY-MM-DD' of an instant in `timeZone`. */
+export declare function localDate(t: number, timeZone: string): string

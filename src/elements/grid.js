@@ -20,11 +20,13 @@
 
 import {
   WIDGETS,
+  activeProfile,
   columnsFor,
   dropIndex,
   emptyLayout,
   footprint,
   moveItem,
+  nextProfileChange,
   place,
   readLayout,
   removeItem,
@@ -49,6 +51,9 @@ const EDGE = 64
 const MAX_SCROLL = 900
 const LIFT_SCALE = 1.04
 const SLIDE = 'var(--ts-motion, 220ms) var(--ts-ease, cubic-bezier(.2, .8, .2, 1))'
+// The profile timer is re-armed at least this often, so a laptop waking
+// from sleep, whose timers were frozen, switches layouts within a minute.
+const MAX_WAIT = 60000
 
 // Built on first use, so importing this module where there is no DOM (Node,
 // server-side rendering) doesn't throw.
@@ -150,6 +155,14 @@ export class TsGrid extends Base {
     this._rendered = false
     this._editing = false
     this._suppressClick = false
+    this._schedule = null
+    this._scheduled = null // the profile the schedule calls for now
+    this._override = null // { profile, until }
+    this._profileTimer = 0
+    this._clock = () => Date.now()
+    this._onVisibility = () => {
+      if (document.visibilityState === 'visible') this._reschedule(true)
+    }
 
     this._motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
 
@@ -208,8 +221,9 @@ export class TsGrid extends Base {
     this.layout = this._layout
   }
 
+  /** The profile shown: the `profile` attribute, else an override, else the schedule, else 'market'. */
   get profile() {
-    return this.getAttribute('profile') || 'market'
+    return this.getAttribute('profile') || (this._override && this._override.profile) || this._scheduled || 'market'
   }
 
   set profile(value) {
@@ -229,6 +243,51 @@ export class TsGrid extends Base {
     return this._columns
   }
 
+  /** { calendar, market: { sessions, leadMinutes?, lagMinutes? } }; switches profiles on time. */
+  get schedule() {
+    return this._schedule
+  }
+
+  set schedule(value) {
+    const before = this.profile
+    this._schedule = value || null
+    if (!value) this._override = null
+    this._reschedule(false)
+    this._profileChanged(before, 'schedule')
+  }
+
+  /** What the grid takes the time to be. Tests and demos can replace it. */
+  get clock() {
+    return this._clock
+  }
+
+  set clock(fn) {
+    this._clock = typeof fn === 'function' ? fn : () => Date.now()
+    this._reschedule(true)
+  }
+
+  /**
+   * Show `profile` until the schedule next changes, then go back to it, the
+   * manual switch in the Traed spec. With no schedule it lasts until cleared
+   * with override(null). The `profile` attribute, if set, still wins.
+   */
+  override(profile) {
+    if (!profile) {
+      // Read the profile before clearing, or the change would go unnoticed.
+      const before = this.profile
+      this._override = null
+      this._reschedule(false)
+      this._profileChanged(before, 'override-ended')
+      return
+    }
+    const now = this._clock()
+    const until = this._schedule ? nextProfileChange(this._schedule.calendar, this._schedule, now) : null
+    const before = this.profile
+    this._override = { profile, until: until === null ? Infinity : until }
+    this._reschedule(false)
+    this._profileChanged(before, 'override')
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
@@ -243,6 +302,8 @@ export class TsGrid extends Base {
     this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item'] })
     this._measure(true)
     if (this._editing) this._startEditing()
+    document.addEventListener('visibilitychange', this._onVisibility)
+    this._reschedule(true)
   }
 
   disconnectedCallback() {
@@ -250,6 +311,8 @@ export class TsGrid extends Base {
     this._mutationObserver.disconnect()
     this._cancelGesture()
     this._stopEditing()
+    document.removeEventListener('visibilitychange', this._onVisibility)
+    clearTimeout(this._profileTimer)
   }
 
   attributeChangedCallback(name) {
@@ -264,6 +327,38 @@ export class TsGrid extends Base {
       this._cancelGesture()
       this._sync(false)
     }
+  }
+
+  // ── Profiles on a schedule ─────────────────────────────────────────────
+
+  /** Work out the scheduled profile now and arm a timer for the next change. */
+  _reschedule(emit, reason = 'schedule') {
+    clearTimeout(this._profileTimer)
+    const before = this.profile
+    const s = this._schedule
+    if (!s || !this.isConnected) {
+      this._scheduled = null
+    } else {
+      const now = this._clock()
+      if (this._override && now >= this._override.until) {
+        this._override = null
+        reason = 'override-ended'
+      }
+      this._scheduled = activeProfile(s.calendar, s, now)
+      const next = nextProfileChange(s.calendar, s, now)
+      const until = this._override ? Math.min(this._override.until, next === null ? Infinity : next) : next
+      const wait = until === null || until === Infinity ? MAX_WAIT : Math.min(MAX_WAIT, Math.max(0, until - now))
+      this._profileTimer = setTimeout(() => this._reschedule(true), wait)
+    }
+    if (emit) this._profileChanged(before, reason)
+  }
+
+  _profileChanged(before, reason) {
+    const profile = this.profile
+    if (profile === before) return
+    this._cancelGesture()
+    this._sync(false)
+    this._emit('ts-profile-change', { profile, reason })
   }
 
   // ── Measuring and rendering ────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import type { Layout, LayoutIssue, WidgetCatalog } from '../core/index.js'
+import type { Calendar, Layout, LayoutIssue, ProfileSchedule, WidgetCatalog } from '../core/index.js'
 
 export { version } from '../core/index.js'
 
@@ -27,6 +27,12 @@ export declare class TsGrid extends HTMLElement {
   editing: boolean
   /** 2, 3 or 4, from the grid's own width. 0 before it is first measured. */
   readonly columns: number
+  /** Switches between 'market' and 'closed' on time when `profile` isn't pinned. */
+  schedule: (ProfileSchedule & { calendar: Calendar }) | null
+  /** What the grid takes the time to be. Defaults to Date.now. */
+  clock: () => number
+  /** Show a profile until the schedule next changes (or until override(null) with no schedule). */
+  override(profile: string | null): void
 }
 
 declare global {
@@ -38,5 +44,6 @@ declare global {
     'ts-layout-issues': CustomEvent<{ issues: LayoutIssue[] }>
     'ts-edit-change': CustomEvent<{ editing: boolean }>
     'ts-columns-change': CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone' }>
+    'ts-profile-change': CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>
   }
 }

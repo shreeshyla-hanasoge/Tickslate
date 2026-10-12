@@ -22,3 +22,18 @@ All notable changes to Tickslate are recorded here. The format follows
 - `sizeForExtent` takes optional `columns` and `current`, so resizing on a
   phone or tablet snaps by what the user sees.
 - Playground: a demo dashboard to try it, in both themes and both profiles.
+- Banner is the always-full-width size: it keeps its own design on phones,
+  so the year heat map shows the whole year at every width. Widgets can give
+  it more height there with `phoneRows` (RFC amendment B).
+- Formatting (RFC 0001 §5): `createFormatter` with signed money and the true
+  minus sign, lakh grouping from Intl, compact forms, prices, percents,
+  24-hour times, durations and `fit`; `configure` for defaults.
+- Session calendars (RFC 0001 §7): `createCalendar` with holidays and special
+  sessions, `state`, `nextChange`, `candleClose` and `windows`; presets for NSE
+  (equity, and derivatives closing at 15:40 from 3 Aug 2026) and MCX (23:30 or
+  23:55 by US daylight saving, plus cotton and agri); `activeProfile` and
+  `nextProfileChange`.
+- `<ts-grid>` switches between market and closed layouts on a `schedule`, with
+  `override()` for the manual switch and a replaceable `clock`.
+- Playground: live session status, a pretend clock to try scheduled
+  switching, and formatting samples.
