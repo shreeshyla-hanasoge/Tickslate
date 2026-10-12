@@ -29,8 +29,17 @@ export interface Footprint {
   variant: SizeName
 }
 
-/** The cells a size occupies at a column count, and the design it renders there. */
-export declare function footprint(size: SizeName, columns: Columns, supported?: readonly SizeName[] | null): Footprint
+/**
+ * The cells a size occupies at a column count, and the design it renders there.
+ * Banner always spans the full width and keeps its design; `phoneRows` can
+ * give it more height on phones.
+ */
+export declare function footprint(
+  size: SizeName,
+  columns: Columns,
+  supported?: readonly SizeName[] | null,
+  phoneRows?: Partial<Record<SizeName, number>> | null,
+): Footprint
 
 // ── Widget catalog ─────────────────────────────────────────────────────
 
@@ -38,6 +47,8 @@ export interface WidgetSpec {
   tag: string
   label: string
   sizes: readonly SizeName[]
+  /** Rows a size takes on phones when the default doesn't suit, e.g. { Banner: 2 }. */
+  phoneRows?: Readonly<Partial<Record<SizeName, number>>>
 }
 export type WidgetCatalog = Readonly<Record<string, WidgetSpec>>
 

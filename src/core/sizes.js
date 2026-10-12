@@ -91,7 +91,11 @@ export function sizeOrder(supported) {
   )
 }
 
-export function footprint(size, columns, supported) {
+/**
+ * `phoneRows` lets a widget give a full-width size more height on phones,
+ * e.g. { Banner: 2 } so a year heat map can wrap into two half-year bands.
+ */
+export function footprint(size, columns, supported, phoneRows) {
   checkColumns(columns)
   const list = supportedList(supported, size)
   const variant = snapSize(size, list)
@@ -101,8 +105,12 @@ export function footprint(size, columns, supported) {
   // Phone. One-column sizes (S and Tall) stay half width, as on the design
   // sheet, so two of them can sit side by side (RFC 0001 §12, decision 1).
   if (cols === 1) return { cols, rows, variant }
-  if ((variant === 'L' || variant === 'XL' || variant === 'Banner') && list.includes('M')) {
-    return { cols: 2, rows: 2, variant: 'M' }
+  // Banner is the always-full-width size: it keeps its own design at every
+  // width, so a year heat map still shows the whole year (amendment B).
+  if (variant === 'Banner') {
+    const extra = phoneRows && Number.isInteger(phoneRows.Banner) && phoneRows.Banner > 0 ? phoneRows.Banner : rows
+    return { cols: 2, rows: extra, variant }
   }
+  if ((variant === 'L' || variant === 'XL') && list.includes('M')) return { cols: 2, rows: 2, variant: 'M' }
   return { cols: 2, rows, variant }
 }

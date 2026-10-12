@@ -74,7 +74,7 @@ export function sizeForExtent(spec, cols, rows, columns, current) {
   let best = null
   let bestDistance = Infinity
   for (const size of sizeOrder(spec.sizes)) {
-    const fp = footprint(size, columns, spec.sizes)
+    const fp = footprint(size, columns, spec.sizes, spec.phoneRows)
     const distance = Math.abs(fp.cols - cols) + Math.abs(fp.rows - rows)
     if (distance < bestDistance || (distance === bestDistance && size === current)) {
       best = size

@@ -581,7 +581,7 @@ export class TsGrid extends Base {
     g.pending = -1
     const item = this._item(g.id)
     const spec = this._spec(g.id)
-    g.cols = footprint(item.size, this._columns, spec ? spec.sizes : null).cols
+    g.cols = footprint(item.size, this._columns, spec ? spec.sizes : null, spec ? spec.phoneRows : null).cols
     this.setAttribute('dragging', '')
     if (g.pointerType !== 'keyboard') {
       try {
