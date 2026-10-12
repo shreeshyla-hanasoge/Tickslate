@@ -304,3 +304,41 @@ export declare function nextProfileChange(calendar: Calendar, schedule: ProfileS
 export declare function zonedTime(date: string, hhmm: string, timeZone: string): number
 /** The local 'YYYY-MM-DD' of an instant in `timeZone`. */
 export declare function localDate(t: number, timeZone: string): string
+
+// ── Stats ──────────────────────────────────────────────────────────────
+
+export interface DayResult {
+  /** 'YYYY-MM-DD'. Entries with any other form are skipped. */
+  date: string
+  /** The day's P&L in major units; a numeric string is accepted. Entries that aren't finite numbers are skipped. */
+  pnl: number | string
+  trades?: number
+}
+
+export interface EquityPoint {
+  date: string
+  /** Running sum of pnl, starting from 0. */
+  equity: number
+  /** Running maximum of equity, counting the starting 0, so never below 0. */
+  peak: number
+  /** equity − peak, never above 0. */
+  drawdown: number
+}
+
+/** The running equity curve of a daily P&L series, sorted by date. The input is not changed. */
+export declare function equitySeries(days: readonly DayResult[]): EquityPoint[]
+
+export interface EquityStats {
+  /** Equity at the end of the series. */
+  net: number
+  /** Highest equity reached, at least 0. */
+  peak: number
+  /** The largest fall below a running peak, as a positive number. */
+  maxDrawdown: number
+  /** Valid entries only. */
+  tradingDays: number
+  /** The sum of `trades` where it is a finite number. */
+  trades: number
+}
+
+export declare function equityStats(days: readonly DayResult[]): EquityStats
