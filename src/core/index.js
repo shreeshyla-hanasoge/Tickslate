@@ -1,10 +1,30 @@
 /**
  * Tickslate core — framework-free, zero runtime dependencies, no DOM side
- * effects on import.
- *
- * Planned contents (docs/BRIEF.md): the layout engine (sizes, gap-filling
- * placement, breakpoints, saved layouts as JSON, layouts that switch with
- * market hours), number and currency formatting, and exchange session
- * calendars. Nothing is implemented yet.
+ * effects on import. The API is specified in docs/rfc/0001-api.md.
  */
 export const version = '0.0.0'
+
+export {
+  SIZES,
+  SIZE_NAMES,
+  BREAKPOINTS,
+  isSize,
+  columnsFor,
+  deviceFor,
+  footprint,
+  snapSize,
+} from './sizes.js'
+export { WIDGETS, typeOf } from './catalog.js'
+export { place } from './place.js'
+export { LAYOUT_VERSION, BUILT_IN_PROFILES, TOP_STRIP_MAX, readLayout, emptyLayout } from './layout.js'
+export {
+  addItem,
+  removeItem,
+  moveItem,
+  resizeItem,
+  stepSize,
+  sizeForExtent,
+  dropIndex,
+  withProfile,
+  setTopStrip,
+} from './edit.js'
