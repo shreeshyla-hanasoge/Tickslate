@@ -140,8 +140,18 @@ export declare function moveItem(items: readonly LayoutItem[], id: string, toInd
 export declare function resizeItem(items: readonly LayoutItem[], id: string, size: SizeName, catalog?: WidgetCatalog): LayoutItem[]
 /** The next supported size up (1) or down (-1), stopping at the ends. */
 export declare function stepSize(spec: WidgetSpec, current: SizeName, dir: 1 | -1): SizeName
-/** The supported size nearest an extent of cols × rows cells, as a resize handle is dragged. */
-export declare function sizeForExtent(spec: WidgetSpec, cols: number, rows: number): SizeName
+/**
+ * The supported size nearest an extent of cols × rows cells, as a resize handle
+ * is dragged. With `columns`, sizes are compared by their footprint on that
+ * grid; ties keep `current`, then take the smaller size.
+ */
+export declare function sizeForExtent(
+  spec: WidgetSpec,
+  cols: number,
+  rows: number,
+  columns?: Columns,
+  current?: SizeName,
+): SizeName
 
 /**
  * The index to move `id` to so its top-left cell lands nearest `target`

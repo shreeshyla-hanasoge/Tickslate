@@ -31,6 +31,15 @@
   --ts-font-num: 'Newsreader', Georgia, 'Times New Roman', serif;
   --ts-row: 150px;
   --ts-gap: 16px;
+  /* At 2 columns (phones). Rows stay fixed so live numbers never resize a tile. */
+  --ts-row-compact: 150px;
+  --ts-gap-compact: 10px;
+  --ts-num-weight: 500;
+  --ts-num-weight-small: 500;
+  /* A tile picked up while editing the layout. */
+  --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
+  --ts-motion: 220ms;
+  --ts-ease: cubic-bezier(.2, .8, .2, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -48,6 +57,8 @@
     --ts-radius: 12px;
     --ts-shadow: none;
     --ts-fill: 16%;
+    --ts-num-weight-small: 600;
+    --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
   }
 }
 
@@ -65,4 +76,6 @@
   --ts-radius: 12px;
   --ts-shadow: none;
   --ts-fill: 16%;
+  --ts-num-weight-small: 600;
+  --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
 }
