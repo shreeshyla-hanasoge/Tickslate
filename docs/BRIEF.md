@@ -1,28 +1,35 @@
 # Tickslate — product brief
 
+> **Read the RFCs first.** This is the original handover brief, kept for its
+> history. The contract is [RFC 0001](rfc/0001-api.md) as amended by
+> [RFC 0002](rfc/0002-integration-and-ux.md) (proposed 13 Oct 2026), which
+> widens Tickslate to dashboard widgets for any data, with a finance set built
+> in. Where this brief and an RFC differ, the RFC wins.
+
 Handover brief for the session that builds Tickslate. Written 12 Oct 2026,
-from a design session that started as a redesign of Traed's dashboard.
+from a design session that started as a redesign of a trading app's dashboard.
 
 ## Where this came from
 
-The maintainer runs Traed, an algo-trading app (Vue 3, Laravel, Tailwind). Its
-dashboard was one long scrolling page. A design session replaced it with a
-widget grid, then decided to build the widgets as an open-source library
-instead of inside Traed. Traed will install Tickslate, the same way it uses
-Emberwick for its backtest chart.
+The maintainer runs an algo-trading app (Vue 3, Laravel, Tailwind), which is
+Tickslate's first consumer. Its dashboard was one long scrolling page. A design
+session replaced it with a widget grid, then decided to build the widgets as an
+open-source library instead of inside the app. The app will install Tickslate,
+the same way it uses Emberwick for its backtest chart.
 
-Reference material (designs, not code):
+Reference material (designs, not code) is private and not part of this
+repository:
 
-- **Design canvas:** https://claude.ai/artifact/AuLTryP9S4AhWfzdUNcrbh
+- **Design canvas**
   - *Final layouts*: desktop and phone, market hours and after close, light and dark.
-  - *Widget designs*: all 25 widgets at every size, with a style switch (Paper and Traed Dark are the chosen ones).
+  - *Widget designs*: all 25 widgets at every size, with a style switch (Paper and the dark theme, called Graphite here, are the chosen ones).
   - *Widget library*: the catalogue, the grid and reflow rules, and phone editing.
-- **Traed build spec:** https://claude.ai/artifact/4BEEAfW8xaDbLCYdbZMM8C.
-  It was written for building inside Traed, but its tokens, grid rules,
-  layout JSON and widget table carry over to the library.
+- **The first consumer's build spec.** It was written for building inside the
+  app, but its tokens, grid rules, layout JSON and widget table carry over to
+  the library.
 
-The designs use the maintainer's real figures in places and a made-up 11:42
-session elsewhere. Don't copy numbers into code or tests as if they were facts.
+Every figure in this repository is made up. Never copy numbers from the
+design references into code, tests or docs.
 
 ## Decisions already made
 
@@ -31,7 +38,7 @@ session elsewhere. Don't copy numbers into code or tests as if they were facts.
 | Standalone library | Its own repo and npm name (`tickslate`), separate from Emberwick |
 | Widget grid | Fixed sizes on a 4-column grid; widgets fill gaps automatically |
 | Light theme | Paper: warm off-white surfaces, ink text, serif numbers |
-| Dark theme | Tailwind gray-900/800/700 with emerald, rose, amber and indigo 400, which is Traed's existing dark mode |
+| Dark theme | Tailwind gray-900/800/700 with emerald, rose, amber and indigo 400, which is the first consumer's existing dark mode |
 | Type | Geist for text and Newsreader for numbers in both themes, both overridable |
 | Two layouts | Market hours and after close, switched by the session clock, with manual override |
 | Phone | 2 columns, a pinned top strip, and a list for editing instead of dragging tiles |
@@ -56,9 +63,9 @@ or move the grid; numbers change in place.
 ### Formatting
 
 Use `Intl.NumberFormat`. Locale and currency are configured once by the host
-(Traed: `en-IN`, `INR`, with lakh grouping). Money always shows its sign
-(`+₹1,523.85`, `−₹141.00`, using the true minus sign U+2212). Compact forms
-(`+₹1.8k`) are for tight sizes only.
+(the first consumer: `en-IN`, `INR`, with lakh grouping). Money always shows
+its sign (`+₹2,185.65`, `−₹263.00`, using the true minus sign U+2212).
+Compact forms (`+₹2.7k`) are for tight sizes only.
 
 ## Grid and sizes
 
@@ -108,9 +115,9 @@ Rules:
 ```
 
 Array order is placement order. The core validates and migrates this JSON. The
-host stores it (Traed: per user, per device type, on its server). Profile
-names are open-ended; `market` and `closed` are built-in names the session
-calendar can switch between.
+host stores it (the first consumer: per user, per device type, on its server).
+Profile names are open-ended; `market` and `closed` are built-in names the
+session calendar can switch between.
 
 ## Exchange sessions (v1)
 
@@ -175,4 +182,4 @@ inventory, trading journal.
 ## Out of scope
 
 Broker integrations, data fetching, authentication, server-side storage, and
-any change to Traed or Emberwick.
+any change to the first consumer or Emberwick.
