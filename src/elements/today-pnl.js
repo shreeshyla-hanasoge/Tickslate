@@ -298,6 +298,21 @@ const SKELETONS = {
 export class TsTodayPnl extends TsWidget {
   static catalogKey = 'todayPnl'
   static emptyText = STRINGS.empty
+  // The headline figures are required: a tile without them has nothing to say,
+  // and naming them is what lets a wrong-shape object be explained (RFC 0002 §2.7).
+  static dataShape = {
+    net: 'numeric',
+    realized: 'numeric',
+    unrealized: 'numeric',
+    fees: 'numeric',
+    closedCount: { kind: 'number', optional: true },
+    openCount: { kind: 'number', optional: true },
+    intraday: { kind: 'array', optional: true, of: { t: 'time', v: 'numeric' } },
+    marks: { kind: 'array', optional: true, of: { t: 'time', kind: 'string' } },
+    window: { kind: 'object', optional: true, of: { from: 'time', to: 'time' } },
+    asOf: { kind: 'time', optional: true },
+    live: { kind: 'boolean', optional: true },
+  }
 
   static styles = `
 [hidden] { display: none; }
