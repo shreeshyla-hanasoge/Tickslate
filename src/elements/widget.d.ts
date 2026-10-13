@@ -79,7 +79,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   requestRender(): void
   /** Re-render every `ms` while connected and the page is visible; 0 stops. */
   every(ms: number): void
-  /** Dispatch a bubbling, composed 'ts-action' event. Returns false if cancelled. */
+  /** Dispatch a bubbling, composed, cancelable 'ts-action' event. Returns false if a listener called preventDefault. */
   emit(action: string, detail?: Record<string, unknown>): boolean
   /** Re-apply properties set before the element was defined. */
   upgrade(...names: string[]): void

@@ -575,7 +575,8 @@ export class TsWidget extends Base {
   }
 
   emit(action, detail) {
-    return this.dispatchEvent(new CustomEvent('ts-action', { detail: { action, ...detail }, bubbles: true, composed: true }))
+    // Cancelable so a host can preventDefault a built-in action (the return value is false then).
+    return this.dispatchEvent(new CustomEvent('ts-action', { detail: { action, ...detail }, bubbles: true, composed: true, cancelable: true }))
   }
 
   /** Re-apply properties set on the element before it was defined, which would otherwise shadow the accessors. */

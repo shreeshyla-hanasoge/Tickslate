@@ -221,6 +221,7 @@ export function equityCurveModel(data, variant, ctx) {
     tradingDays: n,
     sub: `over ${tradingDays}`,
     daysLine: tradesText ? `${n} · ${tradesText}` : String(n),
+    netOfFees: fees !== '',
     third: fees
       ? { label: 'Fees', value: fees }
       : { label: 'Trades', value: trades === null ? DASH : fmt.number(trades, { decimals: 0 }) },
@@ -320,7 +321,7 @@ ${chartMarkup('XL')}
 </div>
 </div>`
     }
-    return `<div class="hd"><span class="lb" data-k="label"></span><span class="dot live" data-k="live" hidden></span><span class="f1"></span><span class="sm mut">net of fees</span></div>
+    return `<div class="hd"><span class="lb" data-k="label"></span><span class="dot live" data-k="live" hidden></span><span class="f1"></span><span class="sm mut" data-k="fees" hidden>net of fees</span></div>
 <div class="rowb"><span class="big" data-k="net"></span><span class="sm mut" data-k="sub"></span></div>
 ${chartMarkup('M')}
 <div class="row sm mut"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span></div>
@@ -362,8 +363,10 @@ ${chartMarkup('M')}
       if (!button) return
       const value = button.getAttribute('data-range')
       if (value === this.range) return
+      const previous = this.range
       this.range = value
-      this.emit('range', { value })
+      // A host that cancels the action keeps the range it had.
+      if (!this.emit('range', { value })) this.range = previous
     })
   }
 
@@ -396,6 +399,9 @@ ${chartMarkup('M')}
     }
     if (variant === 'M') {
       text('sub', vm.sub)
+      // Only when the host gave fees: otherwise the figure isn't net of anything.
+      const net = this.$(k('fees'))
+      if (net) net.toggleAttribute('hidden', !vm.netOfFees)
       text('thirdLabel', vm.third.label)
       text('thirdValue', vm.third.value)
       const live = this.$(k('live'))

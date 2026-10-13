@@ -194,7 +194,7 @@ export function sessionClockModel(data, variant, ctx) {
   const now = ctx.now
   const first = ids.length ? lookup(d.calendar, ids[0]) : { error: 'No sessions' }
   const env = zoneEnv(first.spec ? first.spec.timeZone : ctx.fmt.timeZone, ctx.fmt)
-  const vm = variant === 'Banner' ? banner(d, ids, first, env, now) : small(d, ids, first, env, now, ctx)
+  const vm = variant === 'Banner' ? banner(d, ids, first, env, now, ctx) : small(d, ids, first, env, now, ctx)
   // Entries that gave no session to show: ids that aren't strings, and (on
   // Banner) timeframes that aren't positive numbers. An id the calendar
   // doesn't know still shows as a lane with its error, so it isn't dropped.
@@ -220,7 +220,7 @@ function small(d, ids, first, env, now, ctx) {
       to: '',
       middle: first.error,
       middleShort: first.error,
-      ariaLabel: `Session clock: ${first.error}`,
+      ariaLabel: `${ctx.label}: ${first.error}`,
     }
   }
   const id = ids[0]
@@ -255,11 +255,11 @@ function small(d, ids, first, env, now, ctx) {
     to: st.win ? env.fmt.time(st.win.close) : '',
     middle,
     middleShort,
-    ariaLabel: `Session clock: ${ariaFor(spec.label, env, st)}`,
+    ariaLabel: `${ctx.label}: ${ariaFor(spec.label, env, st)}`,
   }
 }
 
-function banner(d, ids, first, env, now) {
+function banner(d, ids, first, env, now, ctx) {
   const tfs = sanitiseTimeframes(d.timeframes)
   const lanes = []
   const spoken = []
@@ -310,7 +310,7 @@ function banner(d, ids, first, env, now) {
     legend: tfs.map((tf, i) => ({ mark: GLYPHS[i], text: `${timeframeText(tf)} close${i === 0 ? ', next hour' : ''}` })),
     nextClose: nextAt === null ? '' : `next close in ${env.fmt.duration(nextAt - now)}`,
     lanes,
-    ariaLabel: `Session clock: ${spoken.length ? spoken.join('; ') : 'No sessions'}`,
+    ariaLabel: `${ctx.label}: ${spoken.length ? spoken.join('; ') : 'No sessions'}`,
   }
 }
 

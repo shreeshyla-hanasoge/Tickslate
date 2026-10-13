@@ -518,3 +518,19 @@ describe('dropped', () => {
     assert.equal(model(undefined, 'S', now).dropped, 0)
   })
 })
+
+describe('region name and banner errors', () => {
+  test('the region is named with the host label', () => {
+    const now = at('2026-10-12', '11:42')
+    const m = sessionClockModel(data, 'S', { fmt, now, label: 'Markets' })
+    assert.ok(m.ariaLabel.startsWith('Markets: '))
+    assert.ok(sessionClockModel(data, 'Banner', { fmt, now, label: 'Markets' }).ariaLabel.startsWith('Markets: '))
+    assert.equal(sessionClockModel({ sessions: ['x'] }, 'S', { fmt, now, label: 'Markets' }).ariaLabel, 'Markets: No calendar')
+  })
+
+  test('an unknown first session gives exactly one error lane', () => {
+    const m = model({ calendar, sessions: ['nse-x'] }, 'Banner', at('2026-10-12', '11:42'))
+    assert.equal(m.lanes.length, 1)
+    assert.equal(m.ariaLabel, 'Session clock: Unknown session nse-x')
+  })
+})

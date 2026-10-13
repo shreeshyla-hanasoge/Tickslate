@@ -190,6 +190,11 @@ describe('equityCurveModel', () => {
     assert.equal(vm.chart.peakLine, '')
   })
 
+  test('M says net of fees only when fees were given', () => {
+    assert.equal(equityCurveModel({ days: OCT, fees: '310.5' }, 'M', ctx()).netOfFees, true)
+    assert.equal(equityCurveModel({ days: OCT }, 'M', ctx()).netOfFees, false)
+  })
+
   test('M shows Trades when there are no fees, from the days when not given', () => {
     const vm = equityCurveModel({ days: OCT }, 'M', ctx())
     assert.deepEqual(vm.third, { label: 'Trades', value: '15' })
