@@ -34,20 +34,17 @@ const ALL_IN = 'tickslate/elements + core (bundled)'
  * can't block a release, yet every run still shows how far off it is.
  */
 const BUDGETS = {
-  // RFC 0002 §9 (Decision 16), set 2026-10-13: the budgets for development.
-  // They tighten to measured + 10 % at release (release-0-1-0).
-  // Core: a development ceiling (RFC 0002 §9), tightened at release prep.
-  'dist-lib/index.js': { maxKb: 10, mode: 'enforce', target: 'RFC 0002 §9, core', date: '2026-10-13' },
-  // The UMD is the core plus a ~150 B wrapper, so it needs headroom above the
-  // 10 kB core budget rather than sharing it.
-  'dist-lib/umd/tickslate.umd.js': { maxKb: 11, mode: 'enforce', target: 'RFC 0002 §9, UMD', date: '2026-10-13' },
+  // Re-baselined for 0.1.0 (release-0-1-0, RFC 0002 §9): each is the measured
+  // min+gz size plus 10 %, rounded up to the next 0.5 kB. They are ceilings
+  // against creep, not targets: when a change needs more room, say why in its
+  // changes/ fragment and raise the figure here with the new date.
+  // Measured 2026-10-13: core 8,484 B.
+  'dist-lib/index.js': { maxKb: 9.5, mode: 'enforce', target: 'RFC 0002 §9, core, measured + 10 %', date: '2026-10-13' },
+  // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-13: 8,639 B.
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 9.5, mode: 'enforce', target: 'RFC 0002 §9, UMD, measured + 10 %', date: '2026-10-13' },
   // What a host pays for `import 'tickslate/elements'`: the entry bundled with
-  // its core. It replaces the elements.js-alone budget, which counted the
-  // core's share nowhere. A virtual row, measured below.
-  // A development ceiling: the P0 set still adds metric, chart and two editing
-  // stories; per-widget entry points (P1 story entries-and-cdn) and release
-  // prep tighten it.
-  [ALL_IN]: { maxKb: 55, mode: 'enforce', target: 'RFC 0002 §9, all-in elements', date: '2026-10-13' },
+  // its core. A virtual row, measured below. Measured 2026-10-13: 46,478 B.
+  [ALL_IN]: { maxKb: 50, mode: 'enforce', target: 'RFC 0002 §9, all-in elements, measured + 10 %', date: '2026-10-13' },
   // dist-lib/elements.dev.js and elements.js are reported only: the dev build
   // is never shipped to production, and elements.js alone is not what a host
   // downloads.
