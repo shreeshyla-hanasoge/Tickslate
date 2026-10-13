@@ -54,6 +54,6 @@ All notable changes to Tickslate are recorded here. The format follows
   `widget.d.ts`. `npm run pack:lib` fails if a shipped declaration imports a
   file that is not in the package.
 - Widget gallery (`widgets.html`): every widget at every size, desktop and phone,
-  in Paper and Traed Dark, with empty states, a frozen or live clock and a
+  in Paper and Graphite, with empty states, a frozen or live clock and a
   loss-day toggle. The playground now uses the real widgets for Today's P&L,
   the session clock and the equity curve.

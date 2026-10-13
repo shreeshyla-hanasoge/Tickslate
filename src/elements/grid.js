@@ -267,9 +267,9 @@ export class TsGrid extends Base {
   }
 
   /**
-   * Show `profile` until the schedule next changes, then go back to it, the
-   * manual switch in the Traed spec. With no schedule it lasts until cleared
-   * with override(null). The `profile` attribute, if set, still wins.
+   * Show `profile` until the schedule next changes, then go back to it: a
+   * manual switch the user makes from the dashboard. With no schedule it lasts
+   * until cleared with override(null). The `profile` attribute, if set, still wins.
    */
   override(profile) {
     if (!profile) {

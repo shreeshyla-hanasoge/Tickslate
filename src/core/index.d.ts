@@ -201,13 +201,13 @@ export interface Formatter {
   readonly locale: string | undefined
   readonly currency: string | undefined
   readonly timeZone: string | undefined
-  /** '+₹1,523.85', '−₹141.00', '₹0.00'. sign defaults to 'always'. */
+  /** '+₹2,185.65', '−₹263.00', '₹0.00'. sign defaults to 'always'. */
   money(v: Numeric, o?: { sign?: 'always' | 'negative'; compact?: boolean; decimals?: number }): string
   /** sign defaults to 'negative'. */
   number(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number; compact?: boolean }): string
   /** Grouped, no currency symbol; decimals default to 2. */
   price(v: Numeric, o?: { decimals?: number }): string
-  /** Takes a ratio: 0.013 → '+1.30%'. sign defaults to 'always'. */
+  /** Takes a ratio: 0.027 → '+2.70%'. sign defaults to 'always'. */
   percent(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number }): string
   /** 24-hour unless hour12: '11:42', '11:42:20'. */
   time(t: number, o?: { seconds?: boolean; hour12?: boolean }): string

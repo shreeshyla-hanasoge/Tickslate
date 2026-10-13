@@ -48,7 +48,7 @@
     </div>
     <div class="bar" role="group" aria-label="Theme">
       <button type="button" data-theme-pick="light" aria-pressed="false">Paper</button>
-      <button type="button" data-theme-pick="dark" aria-pressed="false">Traed Dark</button>
+      <button type="button" data-theme-pick="dark" aria-pressed="false">Graphite</button>
     </div>
     <div class="bar">
       <button type="button" id="reset">Reset layout</button>
@@ -191,7 +191,7 @@
   // ── Sessions, the profile schedule and a pretend clock ──
   const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
   const calendar = createCalendar({ sessions: [presets.nse({ segment: 'derivatives' }), presets.mcx()] })
-  // Traed's market hours: NSE F&O widened to 09:00–15:45.
+  // Example market hours: NSE F&O widened to 09:00–15:45.
   grid.schedule = { calendar, market: { sessions: ['nse-fo'], leadMinutes: 15, lagMinutes: 5 } }
 
   let offset = 0
@@ -320,10 +320,10 @@
   setInterval(tick, 1000)
 
   const samples = [
-    ['Gain', fmt.money(1523.85)], ['Loss', fmt.money(-141)], ['Zero', fmt.money(0)],
-    ['Lakh grouping', fmt.money(152385)], ['Compact', fmt.money(1800, { compact: true })],
-    ['Compact loss', fmt.money(-330000, { compact: true })], ['Balance (no plus)', fmt.money(82949.68, { sign: 'negative' })],
-    ['Price', fmt.price(22512.4)], ['Change', fmt.percent(0.013)], ['Win rate', fmt.percent(0.21, { decimals: 0, sign: 'negative' })],
+    ['Gain', fmt.money(2185.65)], ['Loss', fmt.money(-263)], ['Zero', fmt.money(0)],
+    ['Lakh grouping', fmt.money(274936)], ['Compact', fmt.money(2700, { compact: true })],
+    ['Compact loss', fmt.money(-460000, { compact: true })], ['Balance (no plus)', fmt.money(64318.27, { sign: 'negative' })],
+    ['Price', fmt.price(23847.6)], ['Change', fmt.percent(0.027)], ['Win rate', fmt.percent(0.43, { decimals: 0, sign: 'negative' })],
     ['Countdown', fmt.duration(160000)], ['Time left', fmt.duration(13680000, { style: 'words' })],
   ]
   document.getElementById('samples').innerHTML = samples.map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join('')
