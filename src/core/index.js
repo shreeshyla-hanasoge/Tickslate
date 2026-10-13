@@ -14,7 +14,7 @@ export {
   footprint,
   snapSize,
 } from './sizes.js'
-export { WIDGETS, typeOf } from './catalog.js'
+export { WIDGETS, DEFAULT_PROFILE, typeOf, typeForTag } from './catalog.js'
 export { place } from './place.js'
 export { LAYOUT_VERSION, BUILT_IN_PROFILES, TOP_STRIP_MAX, readLayout, emptyLayout } from './layout.js'
 export {

@@ -40,11 +40,13 @@ await copyFile(resolve(root, 'src/themes/tokens.css'), resolve(out, 'tokens.css'
 // elements entry points at the core as '../core/index.js'; at the package
 // root that is './index.js'. It also imports './widget.js' for the widget base
 // class, whose declarations ship as widget.d.ts beside it: TypeScript maps
-// that specifier to widget.d.ts, so no rewrite is needed.
+// that specifier to widget.d.ts, so no rewrite is needed. grid.d.ts is the
+// same: the entry re-exports it from './grid.js'.
 const types = [
   ['src/core/index.d.ts', 'index.d.ts'],
   ['src/elements/index.d.ts', 'elements.d.ts'],
   ['src/elements/widget.d.ts', 'widget.d.ts'],
+  ['src/elements/grid.d.ts', 'grid.d.ts'],
 ]
 const shipped = []
 for (const [from, to] of types) {

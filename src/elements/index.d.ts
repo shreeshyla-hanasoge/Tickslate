@@ -1,44 +1,13 @@
-import type { Calendar, DayResult, Layout, LayoutIssue, Numeric, ProfileSchedule, Time, WidgetCatalog } from '../core/index.js'
+import type { Calendar, DayResult, Numeric, Time } from '../core/index.js'
 import { TsWidget } from './widget.js'
 
 export { version } from '../core/index.js'
 // widget.d.ts is shipped beside this file (scripts/pack-lib.mjs), so this
 // import resolves both in the repo and in the published package.
 export { TsWidget } from './widget.js'
-export type { ViewModelContext } from './widget.js'
-
-export interface TsLayoutChangeDetail {
-  /** The whole layout after the edit; save this. */
-  layout: Layout
-  profile: string
-  reason: 'move' | 'resize' | 'remove'
-  /** The item that was moved, resized or removed. */
-  id: string
-}
-
-/**
- * <ts-grid>: positions its children (each tagged item="<layout id>") from a
- * Layout, and lets the user rearrange them like apps on an iPhone: long-press
- * to edit, drag to move, drag the corner handle to resize, tap − to remove.
- */
-export declare class TsGrid extends HTMLElement {
-  /** Read through readLayout(); repairs fire `ts-layout-issues`. */
-  layout: Layout
-  /** Defaults to WIDGETS. Set it before `layout` if it adds tiles of the host's own. */
-  catalog: WidgetCatalog
-  /** The profile shown; reflects the `profile` attribute. Defaults to 'market'. */
-  profile: string
-  /** Edit mode; reflects the `editing` attribute. */
-  editing: boolean
-  /** 2, 3 or 4, from the grid's own width. 0 before it is first measured. */
-  readonly columns: number
-  /** Switches between 'market' and 'closed' on time when `profile` isn't pinned. */
-  schedule: (ProfileSchedule & { calendar: Calendar }) | null
-  /** What the grid takes the time to be. Defaults to Date.now. */
-  clock: () => number
-  /** Show a profile until the schedule next changes (or until override(null) with no schedule). */
-  override(profile: string | null): void
-}
+export type { ViewModelContext, WidgetState } from './widget.js'
+// grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
+export * from './grid.js'
 
 /** Freshness, allowed on every widget's data (RFC 0001 §8.1). */
 export interface WidgetFreshness {
@@ -98,16 +67,8 @@ export declare class TsSessionClock extends TsWidget<SessionClockData> {}
 
 declare global {
   interface HTMLElementTagNameMap {
-    'ts-grid': TsGrid
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock
-  }
-  interface HTMLElementEventMap {
-    'ts-layout-change': CustomEvent<TsLayoutChangeDetail>
-    'ts-layout-issues': CustomEvent<{ issues: LayoutIssue[] }>
-    'ts-edit-change': CustomEvent<{ editing: boolean }>
-    'ts-columns-change': CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone' }>
-    'ts-profile-change': CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>
   }
 }

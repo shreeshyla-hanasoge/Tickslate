@@ -230,7 +230,7 @@ describe('readLayout', () => {
   })
 
   test('replaces input that is not an object with an empty layout', () => {
-    for (const input of [null, undefined, 'layout', 42, []]) {
+    for (const input of [null, undefined, 'layout', 42]) {
       const { layout, issues } = readLayout(input, { device: 'phone' })
       assert.deepEqual(layout, emptyLayout('phone'))
       assert.deepEqual(issues.map((i) => i.code), ['bad-shape'])
@@ -267,6 +267,7 @@ describe('readLayout', () => {
       ['profiles.market[1]', 'unknown-widget', 'dropped'],
       ['profiles.market[2]', 'duplicate-id', 'dropped'],
     ])
+    assert.equal(issues[0].message, 'No widget called "lossLimit" is in the catalog.')
   })
 
   test('snaps unsupported sizes and replaces unknown ones', () => {
@@ -501,3 +502,65 @@ function prng(seed) {
     return seed / 0x80000000
   }
 }
+
+describe('readLayout: array shorthand and unknown: keep', () => {
+  test('an array becomes a version-1 layout with the items in market', () => {
+    const { layout, issues } = readLayout([{ id: 'pnl', type: 'todayPnl', size: 'Wide' }])
+    assert.deepEqual(layout, {
+      version: 1,
+      device: 'desktop',
+      profiles: { market: [{ id: 'pnl', type: 'todayPnl', size: 'Wide' }], closed: [] },
+    })
+    assert.deepEqual(issues, [])
+    assert.equal(readLayout([{ id: 'todayPnl', size: 'S' }], { device: 'phone' }).layout.device, 'phone')
+  })
+
+  test('an empty array is valid', () => {
+    const { layout, issues } = readLayout([])
+    assert.deepEqual(layout, emptyLayout('desktop'))
+    assert.deepEqual(issues, [])
+  })
+
+  test('bad items in an array are reported under profiles.market', () => {
+    const { layout, issues } = readLayout([{ id: 'todayPnl', size: 'S' }, 5, { id: 'todayPnl', size: 'M' }])
+    assert.equal(layout.profiles.market.length, 1)
+    assert.deepEqual(issues.map((i) => [i.path, i.code]), [
+      ['profiles.market[1]', 'bad-shape'],
+      ['profiles.market[2]', 'duplicate-id'],
+    ])
+  })
+
+  test("unknown: 'keep' keeps an unknown item once, with its size when valid", () => {
+    const { layout, issues } = readLayout(
+      [{ id: 'mine', size: 'L' }, { id: 'other', type: 'mine', size: 'huge' }, { id: 'noSize' }],
+      { unknown: 'keep' },
+    )
+    assert.deepEqual(layout.profiles.market, [
+      { id: 'mine', size: 'L' },
+      { id: 'other', type: 'mine', size: 'S' },
+      { id: 'noSize', size: 'S' },
+    ])
+    assert.equal(issues.length, 3)
+    for (const i of issues) assert.deepEqual([i.code, i.fixed], ['unknown-widget', 'kept'])
+  })
+
+  test("unknown: 'keep' still drops duplicate ids and keeps known items normal", () => {
+    const { layout, issues } = readLayout(
+      [{ id: 'mine', size: 'M' }, { id: 'mine', size: 'M' }, { id: 'todayPnl', size: 'L' }],
+      { unknown: 'keep' },
+    )
+    assert.deepEqual(layout.profiles.market.map((i) => [i.id, i.size]), [['mine', 'M'], ['todayPnl', 'M']])
+    assert.deepEqual(issues.map((i) => [i.code, i.fixed]), [
+      ['unknown-widget', 'kept'],
+      ['duplicate-id', 'dropped'],
+      ['unsupported-size', 'replaced'],
+    ])
+  })
+
+  test('the default still drops unknown items', () => {
+    const { layout, issues } = readLayout([{ id: 'mine', size: 'M' }])
+    assert.deepEqual(layout.profiles.market, [])
+    assert.deepEqual(issues.map((i) => [i.code, i.fixed]), [['unknown-widget', 'dropped']])
+    assert.equal(readLayout([{ id: 'mine', size: 'M' }], { unknown: 'drop' }).layout.profiles.market.length, 0)
+  })
+})

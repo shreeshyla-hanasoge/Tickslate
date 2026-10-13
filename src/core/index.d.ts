@@ -51,6 +51,8 @@ export interface WidgetSpec {
   phoneRows?: Readonly<Partial<Record<SizeName, number>>>
 }
 export type WidgetCatalog = Readonly<Record<string, WidgetSpec>>
+/** A catalog object, or a function that resolves one item to its spec (null when unknown). */
+export type Catalog = WidgetCatalog | ((item: LayoutItem) => WidgetSpec | null)
 
 /** The v1 widgets. Spread into a larger catalog to add a host's own tiles. */
 export declare const WIDGETS: Readonly<{
@@ -63,7 +65,16 @@ export declare const WIDGETS: Readonly<{
   watchlist: WidgetSpec
   sessionClock: WidgetSpec
   miniChart: WidgetSpec
+  card: WidgetSpec
+  metric: WidgetSpec
+  chart: WidgetSpec
 }>
+
+/** The profile a layout uses when none is named. */
+export declare const DEFAULT_PROFILE: 'market'
+
+/** The catalog key whose spec has this tag; own entries only, null for a function catalog. */
+export declare function typeForTag(catalog: Catalog, tag: string): string | null
 
 // ── Layouts ────────────────────────────────────────────────────────────
 
@@ -96,7 +107,7 @@ export interface LayoutIssue {
     | 'top-strip-too-long'
     | 'top-strip-unknown-id'
   message: string
-  fixed: 'dropped' | 'replaced' | 'migrated'
+  fixed: 'dropped' | 'replaced' | 'migrated' | 'kept'
 }
 
 export declare const LAYOUT_VERSION: 1
@@ -114,8 +125,8 @@ export declare function emptyLayout(device?: Device): Layout
  * can't, and reports each change in `issues`. The result is a fresh copy.
  */
 export declare function readLayout(
-  input: unknown,
-  options?: { catalog?: WidgetCatalog; device?: Device },
+  input: Layout | LayoutItem[] | unknown,
+  options?: { catalog?: Catalog; device?: Device; unknown?: 'drop' | 'keep' },
 ): { layout: Layout; issues: LayoutIssue[] }
 
 // ── Placement ──────────────────────────────────────────────────────────
@@ -138,17 +149,17 @@ export interface Placement {
 export declare function place(
   items: readonly LayoutItem[],
   columns: Columns,
-  catalog?: WidgetCatalog,
+  catalog?: Catalog,
 ): { placements: Placement[]; rows: number }
 
 // ── Editing (pure; inputs are never changed) ───────────────────────────
 
 /** Appends an item, snapping its size. Throws on a missing or duplicate id. */
-export declare function addItem(items: readonly LayoutItem[], item: LayoutItem, catalog?: WidgetCatalog): LayoutItem[]
+export declare function addItem(items: readonly LayoutItem[], item: LayoutItem, catalog?: Catalog): LayoutItem[]
 export declare function removeItem(items: readonly LayoutItem[], id: string): LayoutItem[]
 /** Moves an item to an index, clamped to the list. An unknown id returns a copy. */
 export declare function moveItem(items: readonly LayoutItem[], id: string, toIndex: number): LayoutItem[]
-export declare function resizeItem(items: readonly LayoutItem[], id: string, size: SizeName, catalog?: WidgetCatalog): LayoutItem[]
+export declare function resizeItem(items: readonly LayoutItem[], id: string, size: SizeName, catalog?: Catalog): LayoutItem[]
 /** The next supported size up (1) or down (-1), stopping at the ends. */
 export declare function stepSize(spec: WidgetSpec, current: SizeName, dir: 1 | -1): SizeName
 /**
@@ -174,7 +185,7 @@ export declare function dropIndex(
   id: string,
   target: { col: number; row: number },
   columns: Columns,
-  catalog?: WidgetCatalog,
+  catalog?: Catalog,
   aspect?: number,
 ): number
 
