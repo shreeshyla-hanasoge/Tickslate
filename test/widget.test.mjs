@@ -1,7 +1,8 @@
 import { test, describe, before, after, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsWidget, SHARED_CSS, standaloneCss, resolveFormatOptions, escapeHtml } from '../src/elements/widget.js'
-import { configure } from '../src/core/index.js'
+import { configure, WIDGETS } from '../src/core/index.js'
+import { resetWarnings } from '../src/elements/dev.js'
 import { FakeNode, FakeRoot, FakeElement, tick } from './fake-dom.mjs'
 
 // This file is loaded with no DOM (fake-dom.mjs installs nothing on import):
@@ -356,5 +357,105 @@ describe('rendering', () => {
       await tick()
       assert.equal(log.updates.length, base + 2)
     })
+  })
+})
+
+describe('the spec', () => {
+  let Widget
+  let warnings
+  before(async () => {
+    globalThis.HTMLElement = FakeElement
+    globalThis.document = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+    Widget = (await import('../src/elements/widget.js?fake-dom-spec')).TsWidget
+    delete globalThis.HTMLElement
+    // widget.js above and this fresh copy share dev.js, so one reset serves both.
+  })
+  after(() => {
+    delete globalThis.document
+    mock.restoreAll()
+  })
+
+  const make = (statics, localName = 'my-tile') => {
+    const Cls = class extends Widget {}
+    Object.assign(Cls, statics)
+    const el = new Cls()
+    el.localName = localName
+    return el
+  }
+  const warn = () => {
+    resetWarnings()
+    warnings = []
+    mock.method(console, 'warn', (m) => warnings.push(m))
+  }
+
+  test('a static spec with no catalogKey snaps sizes and names the tile', async () => {
+    const el = make({ spec: { label: 'Signups', sizes: ['S', 'Wide'] } })
+    el.setAttribute('size', 'M')
+    assert.equal(el.size, 'Wide')
+    assert.equal(el.label, 'Signups')
+    el.connect()
+    await tick()
+    assert.equal(el.shadowRoot.section.getAttribute('aria-label'), 'Signups')
+  })
+
+  test('catalogKey wins over a static spec', () => {
+    const el = make({ catalogKey: 'todayPnl', spec: { label: 'Signups', sizes: ['Tall'] } })
+    assert.equal(el.spec, WIDGETS.todayPnl)
+    assert.equal(el.label, "Today's P&L")
+    assert.equal(el.size, 'S')
+  })
+
+  test('an unknown catalogKey falls through to the static spec', () => {
+    const el = make({ catalogKey: 'nope', spec: { label: 'Mine', sizes: ['Tall'] } })
+    assert.equal(el.label, 'Mine')
+    assert.deepEqual(el.spec.sizes, ['Tall'])
+  })
+
+  test('invalid sizes and labels in a static spec are dropped', () => {
+    const el = make({ spec: { label: 7, sizes: ['Huge', 'M', 3, 'S'], phoneRows: { M: 3 } } })
+    assert.deepEqual(el.spec, { label: '', sizes: ['M', 'S'], phoneRows: { M: 3 } })
+    assert.equal(make({ spec: { sizes: 'S' } }).spec.sizes.length, 0)
+  })
+
+  test('with no source the spec is empty and size still resolves', () => {
+    for (const el of [make({}), make({ spec: null }), make({ spec: 'x' })]) {
+      assert.deepEqual(el.spec, { label: '', sizes: [] })
+      assert.equal(el.size, 'S')
+    }
+  })
+
+  test('a subclass can override the spec getter', () => {
+    const Cls = class extends Widget {
+      get spec() {
+        return { label: this.getAttribute('title') || 'Card', sizes: ['M'] }
+      }
+    }
+    const el = new Cls()
+    el.setAttribute('title', 'Revenue')
+    assert.equal(el.label, 'Revenue')
+    assert.equal(el.size, 'M')
+  })
+
+  test('no label anywhere warns once and names the region by its tag', async () => {
+    warn()
+    const el = make({ spec: { sizes: ['S'] } })
+    el.connect()
+    await tick()
+    el.requestRender()
+    await tick()
+    assert.equal(el.shadowRoot.section.getAttribute('aria-label'), 'my-tile')
+    assert.deepEqual(warnings, ['tickslate: <my-tile> has no label, so its region is named "my-tile". Set a label attribute or static spec.'])
+    mock.restoreAll()
+  })
+
+  test('a label attribute or a spec label does not warn', async () => {
+    warn()
+    const a = make({ spec: { sizes: ['S'] } })
+    a.setAttribute('label', 'Named')
+    const b = make({ spec: { label: 'Also named', sizes: ['S'] } }, 'other-tile')
+    for (const el of [a, b]) el.connect()
+    await tick()
+    assert.deepEqual(warnings, [])
+    mock.restoreAll()
   })
 })
