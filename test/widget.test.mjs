@@ -1,9 +1,9 @@
-import { test, describe, before, after, mock } from 'node:test'
+import { test, describe, before, after, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsWidget, SHARED_CSS, standaloneCss, resolveFormatOptions, escapeHtml } from '../src/elements/widget.js'
 import { configure, WIDGETS } from '../src/core/index.js'
 import { resetWarnings } from '../src/elements/dev.js'
-import { FakeNode, FakeRoot, FakeElement, tick } from './fake-dom.mjs'
+import { FakeNode, FakeRoot, FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 
 // This file is loaded with no DOM (fake-dom.mjs installs nothing on import):
 // importing widget.js above must not throw.
@@ -59,7 +59,7 @@ describe('rendering', () => {
   let log
   before(async () => {
     globalThis.HTMLElement = FakeElement
-    globalThis.document = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+    globalThis.document = new FakeDocument()
     // A fresh instance of the module, so it extends the fake HTMLElement.
     Widget = (await import('../src/elements/widget.js?fake-dom')).TsWidget
     delete globalThis.HTMLElement
@@ -80,6 +80,7 @@ describe('rendering', () => {
       }
     }
   })
+  afterEach(() => globalThis.document.reset())
   after(() => {
     delete globalThis.document
   })
@@ -365,11 +366,12 @@ describe('the spec', () => {
   let warnings
   before(async () => {
     globalThis.HTMLElement = FakeElement
-    globalThis.document = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+    globalThis.document = new FakeDocument()
     Widget = (await import('../src/elements/widget.js?fake-dom-spec')).TsWidget
     delete globalThis.HTMLElement
     // widget.js above and this fresh copy share dev.js, so one reset serves both.
   })
+  afterEach(() => globalThis.document.reset())
   after(() => {
     delete globalThis.document
     mock.restoreAll()
