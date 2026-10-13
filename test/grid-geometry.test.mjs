@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px } from '../src/elements/grid-geometry.js'
+import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes } from '../src/elements/grid-geometry.js'
+import { WIDGETS, typeForTag } from '../src/core/index.js'
 import { TsGrid } from '../src/elements/index.js'
 
 const desktop = metrics(1264, 4, 150, 16)
@@ -49,4 +50,85 @@ test('px reads px lengths and falls back otherwise', () => {
 
 test('the elements entry imports cleanly without a DOM', () => {
   assert.equal(typeof TsGrid, 'function')
+})
+
+// What the grid does for a tag: its type from the built-in catalog, else the tag itself.
+const resolve = (tag) => {
+  const type = typeForTag(WIDGETS, tag) ?? tag
+  return { type, spec: Object.prototype.hasOwnProperty.call(WIDGETS, type) ? WIDGETS[type] : null }
+}
+
+test('itemsFromChildren types, sizes and ids two plain children', () => {
+  const items = itemsFromChildren([{ tag: 'ts-today-pnl', declaredSize: 'Wide' }, { tag: 'ts-session-clock' }], resolve)
+  assert.deepEqual(items, [{ id: 'todayPnl', size: 'Wide' }, { id: 'sessionClock', size: 'S' }])
+})
+
+test('itemsFromChildren takes the first supported size when none is declared or the declared one is bad', () => {
+  const items = itemsFromChildren([{ tag: 'ts-equity-curve' }, { tag: 'ts-metric', declaredSize: 'huge' }], resolve)
+  assert.deepEqual(items.map((i) => i.size), ['Wide', 'S'])
+})
+
+test('itemsFromChildren snaps a declared size the widget does not support', () => {
+  assert.equal(itemsFromChildren([{ tag: 'ts-session-clock', declaredSize: 'L' }], resolve)[0].size, 'Banner')
+})
+
+test('itemsFromChildren numbers repeated types and skips ids already taken', () => {
+  const items = itemsFromChildren([{ tag: 'ts-card' }, { tag: 'ts-card' }, { tag: 'ts-card', item: 'card-2' }, { tag: 'ts-card' }], resolve)
+  // The explicit card-2 is claimed first, so the generated ones step around it.
+  assert.deepEqual(items.map((i) => i.id), ['card', 'card-3', 'card-2', 'card-4'])
+  assert.deepEqual(items.map((i) => i.type), [undefined, 'card', 'card', 'card'])
+})
+
+test('an explicit item that differs from its type carries the type', () => {
+  assert.deepEqual(itemsFromChildren([{ tag: 'ts-chart', item: 'revenue', declaredSize: 'L' }], resolve), [{ id: 'revenue', type: 'chart', size: 'L' }])
+})
+
+test('a repeated explicit id gives the later child an id of its own', () => {
+  const items = itemsFromChildren([{ tag: 'ts-card', item: 'a' }, { tag: 'ts-card', item: 'a' }], resolve)
+  assert.deepEqual(items.map((i) => i.id), ['a', 'card'])
+})
+
+test('a tag no catalog knows is its own type and keeps a declared size', () => {
+  assert.deepEqual(itemsFromChildren([{ tag: 'my-news', declaredSize: 'Tall' }, { tag: 'my-news' }], resolve), [
+    { id: 'my-news', size: 'Tall' },
+    { id: 'my-news-2', type: 'my-news', size: 'S' },
+  ])
+})
+
+test('generated ids avoid ids the user removed', () => {
+  const [item] = itemsFromChildren([{ tag: 'ts-card' }], resolve, new Set(['card']))
+  assert.equal(item.id, 'card-2')
+})
+
+test('a child spec decides the size list over the catalog', () => {
+  const items = itemsFromChildren([{ tag: 'ts-card', declaredSize: 'XL', spec: { label: '', sizes: ['S', 'Wide'] } }], resolve)
+  assert.equal(items[0].size, 'Wide')
+})
+
+test('specResolver goes element, then host catalog, then the built-ins', () => {
+  const own = { label: 'Own', sizes: ['S', 'Wide'] }
+  const host = { news: { tag: 'my-news', label: 'News', sizes: ['Tall'] }, card: { tag: 'ts-card', label: 'Host card', sizes: ['M'] } }
+  const spec = specResolver(new Map([['a', own]]), host, WIDGETS)
+  assert.equal(spec({ id: 'a', type: 'card' }), own)
+  assert.equal(spec({ id: 'b', type: 'card' }), host.card)
+  assert.equal(spec({ id: 'news' }), host.news)
+  assert.equal(spec({ id: 'metric' }), WIDGETS.metric)
+  assert.equal(spec({ id: 'nothing' }), null)
+  assert.equal(spec({ id: 'toString' }), null)
+})
+
+test('specResolver accepts a function catalog', () => {
+  const spec = specResolver(new Map(), () => ({ label: 'F', sizes: ['M'] }), WIDGETS)
+  assert.equal(spec({ id: 'x' }).label, 'F')
+})
+
+test('hostResizes picks only values that differ from what the grid wrote', () => {
+  const found = hostResizes([
+    { id: 'a', size: 'M', written: 'M' }, // the grid's own write
+    { id: 'b', size: 'L', written: 'M' }, // the host asked for L
+    { id: 'c', size: 'L', written: undefined }, // never written: a declared size, read elsewhere
+    { id: 'd', size: 'giant', written: 'M' }, // not a size
+    { id: 'e', size: null, written: 'M' },
+  ])
+  assert.deepEqual([...found], [['b', 'L']])
 })
