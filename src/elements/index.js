@@ -9,17 +9,19 @@ import { TsGrid } from './grid.js'
 import { TsWidget } from './widget.js'
 import { TsCard } from './card.js'
 import { TsMetric } from './metric.js'
+import { TsChart } from './series-chart.js'
 import { TsTodayPnl } from './today-pnl.js'
 import { TsEquityCurve } from './equity-curve.js'
 import { TsSessionClock } from './session-clock.js'
 import { persistLayout } from './persist.js'
 import { define } from './registry.js'
 
-export { version, persistLayout, TsGrid, TsWidget, TsCard, TsMetric, TsTodayPnl, TsEquityCurve, TsSessionClock }
+export { version, persistLayout, TsGrid, TsWidget, TsCard, TsMetric, TsChart, TsTodayPnl, TsEquityCurve, TsSessionClock }
 
 define('ts-grid', TsGrid)
 define('ts-card', TsCard)
 define('ts-metric', TsMetric)
+define('ts-chart', TsChart)
 define('ts-today-pnl', TsTodayPnl)
 define('ts-equity-curve', TsEquityCurve)
 define('ts-session-clock', TsSessionClock)

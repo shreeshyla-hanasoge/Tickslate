@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { scale, linePath, linePaths, bandPath } from '../src/elements/chart.js'
+import { scale, linePath, linePaths, bandPath, seriesDomain, areaPaths } from '../src/elements/chart.js'
 
 describe('scale', () => {
   test('maps linearly, including to a reversed range', () => {
@@ -125,5 +125,58 @@ describe('large inputs', () => {
     assert.deepEqual([top, bottom], [4, 216])
     assert.equal(zeroY, 110)
     assert.ok(area.startsWith(line) && area.endsWith(' L896 110 L4 110 Z'))
+  })
+})
+
+describe('seriesDomain', () => {
+  test('spans every series, with zero included by default', () => {
+    const d = seriesDomain([[{ x: 2, y: 5 }, { x: 4, y: 9 }], [{ x: 1, y: 7 }, { x: 3, y: 6 }]])
+    assert.deepEqual(d, { x: [1, 4], y: [0, 9] })
+  })
+
+  test('includeZero: false keeps the data range, and negatives still reach below zero', () => {
+    assert.deepEqual(seriesDomain([[{ x: 0, y: 40 }, { x: 1, y: 60 }]], { includeZero: false }).y, [40, 60])
+    assert.deepEqual(seriesDomain([[{ x: 0, y: -4 }, { x: 1, y: 6 }]], { includeZero: false }).y, [-4, 6])
+  })
+
+  test('skips unusable points, and has a unit domain when there is nothing', () => {
+    assert.deepEqual(seriesDomain([[{ x: 0, y: NaN }, { x: 1, y: 3 }, null]]).x, [1, 1])
+    assert.deepEqual(seriesDomain([]), { x: [0, 1], y: [0, 1] })
+    assert.deepEqual(seriesDomain([[], []]), { x: [0, 1], y: [0, 1] })
+    assert.deepEqual(seriesDomain(undefined), { x: [0, 1], y: [0, 1] })
+  })
+
+  test('a very long series does not overflow the stack', () => {
+    const points = Array.from({ length: 300000 }, (_, i) => ({ x: i, y: i % 7 }))
+    assert.deepEqual(seriesDomain([points], { includeZero: false }), { x: [0, 299999], y: [0, 6] })
+  })
+})
+
+describe('areaPaths', () => {
+  const box = { width: 100, height: 50, pad: 5, xDomain: [0, 10], yDomain: [0, 100] }
+
+  test('draws on the domain it is given, not its own extent', () => {
+    const { line, area, zeroY } = areaPaths([{ x: 0, y: 0 }, { x: 10, y: 50 }], box)
+    assert.equal(line, 'M5 45 L95 25')
+    assert.equal(zeroY, 45)
+    assert.equal(area, 'M5 45 L95 25 L95 45 L5 45 Z')
+  })
+
+  test('two series on one domain share the zero line', () => {
+    const a = areaPaths([{ x: 0, y: 10 }, { x: 10, y: 20 }], box)
+    const b = areaPaths([{ x: 0, y: 80 }, { x: 5, y: 90 }], box)
+    assert.equal(a.zeroY, b.zeroY)
+    assert.match(b.line, /^M5 /)
+  })
+
+  test('the zero line is clamped into the plot when zero is off the domain', () => {
+    assert.equal(areaPaths([{ x: 0, y: 60 }, { x: 1, y: 70 }], { ...box, yDomain: [50, 100] }).zeroY, 45)
+    assert.equal(areaPaths([{ x: 0, y: -60 }, { x: 1, y: -70 }], { ...box, yDomain: [-100, -50] }).zeroY, 5)
+  })
+
+  test('nothing to draw gives empty paths', () => {
+    const r = areaPaths([], box)
+    assert.equal(r.line, '')
+    assert.equal(r.area, '')
   })
 })

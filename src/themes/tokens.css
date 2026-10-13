@@ -34,6 +34,13 @@
   --ts-accent: #2C52C4;
   /* The chart zero line. --ts-line is too faint for a mark that carries meaning. */
   --ts-axis: #948C7C;
+  /* Chart series, in order of use; each is 3:1 or better on --ts-surface. */
+  --ts-series-1: #2C52C4;
+  --ts-series-2: #B45309;
+  --ts-series-3: #0F766E;
+  --ts-series-4: #8B3FB5;
+  --ts-series-5: #BE185D;
+  --ts-series-6: #6B7A1A;
   /* Focus rings follow the accent unless a host sets their own. */
   --ts-focus: var(--ts-accent);
   --ts-radius: 10px;
@@ -76,6 +83,12 @@
     --ts-warn: #FBBF24;
     --ts-accent: #818CF8;
     --ts-axis: #6B7280;
+    --ts-series-1: #818CF8;
+    --ts-series-2: #F59E0B;
+    --ts-series-3: #2DD4BF;
+    --ts-series-4: #C084FC;
+    --ts-series-5: #F472B6;
+    --ts-series-6: #A3E635;
     --ts-focus: var(--ts-accent);
     --ts-radius: 12px;
     --ts-pad: 16px;
@@ -98,6 +111,12 @@
   --ts-warn: #FBBF24;
   --ts-accent: #818CF8;
   --ts-axis: #6B7280;
+  --ts-series-1: #818CF8;
+  --ts-series-2: #F59E0B;
+  --ts-series-3: #2DD4BF;
+  --ts-series-4: #C084FC;
+  --ts-series-5: #F472B6;
+  --ts-series-6: #A3E635;
   --ts-focus: var(--ts-accent);
   --ts-radius: 12px;
   --ts-pad: 16px;
@@ -120,6 +139,12 @@
   --ts-warn: #A85A06;
   --ts-accent: #2C52C4;
   --ts-axis: #948C7C;
+  --ts-series-1: #2C52C4;
+  --ts-series-2: #B45309;
+  --ts-series-3: #0F766E;
+  --ts-series-4: #8B3FB5;
+  --ts-series-5: #BE185D;
+  --ts-series-6: #6B7A1A;
   --ts-focus: var(--ts-accent);
   --ts-radius: 10px;
   --ts-pad: 18px;

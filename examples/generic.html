@@ -78,6 +78,10 @@
       <ts-metric item="p95" label="p95 latency" size="Wide" id="p95"></ts-metric>
       <ts-metric item="errors" label="Error rate" size="S" id="errors"></ts-metric>
       <ts-metric item="tickets" label="Open tickets" size="S" id="tickets"></ts-metric>
+      <ts-chart item="trend" label="Revenue and cost" size="M" id="trend"></ts-chart>
+      <ts-chart item="regions" label="Requests per minute" size="L" id="regions"></ts-chart>
+      <ts-chart item="latency" label="Median latency" size="Wide" id="latency"></ts-chart>
+      <ts-chart item="orders" label="Orders by channel" size="XL" id="orders"></ts-chart>
       <ts-card item="traffic" label="Page views by channel" size="M" sizes="Wide M L XL" live>
         <div class="acts" slot="actions" role="group" aria-label="Range">
           <button type="button" aria-pressed="false">7D</button>
@@ -155,6 +159,41 @@
   })
   metric('errors', { value: 0.0042, previous: 0.005, format: 'percent', goodWhen: 'down', compareLabel: 'vs last week', asOf })
   metric('tickets', { value: 86, previous: 71, goodWhen: 'down', compareLabel: 'vs yesterday', asOf })
+
+  // Charts take rows, or named series, and draw up to four lines or areas.
+  // The same two ways of passing data give the same chart.
+  const day = (n) => Date.UTC(2026, 8, 13 + n)
+  const wave = (base, amp, phase, n) => Array.from({ length: 31 }, (_, i) => Math.round(base + amp * Math.sin((i + phase) / 4.2) + n * i))
+  const revenue = wave(11800, 1300, 0, 55)
+  const cost = wave(7900, 600, 2, 30)
+  document.getElementById('trend').data = {
+    rows: revenue.map((r, i) => ({ date: new Date(day(i)).toISOString().slice(0, 10), revenue: r, cost: cost[i] })),
+    x: 'date',
+    y: [{ key: 'revenue', name: 'Revenue', kind: 'area' }, { key: 'cost', name: 'Cost' }],
+    format: 'money', decimals: 0, asOf,
+  }
+  const perMinute = (base, amp, phase) => wave(base, amp, phase, 0).map((v, i) => ({ x: day(i), y: v }))
+  document.getElementById('regions').data = {
+    series: [
+      { name: 'North America', points: perMinute(4200, 700, 0) },
+      { name: 'Europe', points: perMinute(3200, 600, 5) },
+      { name: 'Asia Pacific', kind: 'area', points: perMinute(2000, 500, 9) },
+      { name: 'South America', points: perMinute(640, 180, 3) },
+    ],
+    live: true,
+  }
+
+  // One chart per remaining size, so every size is visible here.
+  document.getElementById('latency').data = {
+    series: [{ name: 'Median latency', points: wave(240, 40, 1, 0).map((v, i) => ({ x: day(i), y: v })) }],
+  }
+  document.getElementById('orders').data = {
+    series: [
+      { name: 'Web', kind: 'area', points: wave(900, 150, 0, 8).map((v, i) => ({ x: day(i), y: v })) },
+      { name: 'Mobile', points: wave(700, 120, 3, 6).map((v, i) => ({ x: day(i), y: v })) },
+      { name: 'Partners', points: wave(300, 60, 7, 2).map((v, i) => ({ x: day(i), y: v })) },
+    ],
+  }
 
   // The last card has nothing slotted, so a null data shows its empty view.
   document.getElementById('archive').data = null

@@ -103,3 +103,42 @@ export function bandPath(lower, upper, x, y) {
   for (let i = bottom.length - 1; i >= 0; i--) back += ` L${round(x(bottom[i].x))} ${round(y(bottom[i].y))}`
   return `${forward}${back} Z`
 }
+
+/**
+ * The shared domain of several series: [min, max] of x and of y over every
+ * finite point, so lines drawn on it line up. Loops, not spreads, as `extent`
+ * does. `includeZero` (default true) stretches y to 0; a chart of plain lines
+ * passes false so a level far from zero isn't flattened against the top.
+ * With nothing to measure the domain is [0, 1] on both axes.
+ */
+export function seriesDomain(series, { includeZero = true } = {}) {
+  let x0 = Infinity
+  let x1 = -Infinity
+  let y0 = Infinity
+  let y1 = -Infinity
+  for (const points of series || []) {
+    for (const p of points || []) {
+      if (!finite(p)) continue
+      x0 = Math.min(x0, p.x)
+      x1 = Math.max(x1, p.x)
+      y0 = Math.min(y0, p.y)
+      y1 = Math.max(y1, p.y)
+    }
+  }
+  if (x0 === Infinity) return { x: [0, 1], y: [0, 1] }
+  if (includeZero) {
+    y0 = Math.min(y0, 0)
+    y1 = Math.max(y1, 0)
+  }
+  return { x: [x0, x1], y: [y0, y1] }
+}
+
+/**
+ * One series drawn on a domain it shares with others: its line, its area
+ * closed at the zero line, and where that line falls. The domain is the
+ * caller's, so no series stretches the axes for the rest.
+ */
+export function areaPaths(points, { width, height, pad = 4, xDomain, yDomain }) {
+  const { line, area, zeroY } = linePaths(points, { width, height, pad, xDomain, yDomain, includeZero: false })
+  return { line, area, zeroY }
+}
