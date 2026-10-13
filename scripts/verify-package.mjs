@@ -9,7 +9,8 @@
  * build, so skipping build:umd yields a tarball whose unpkg and jsdelivr
  * entries 404 for every CDN user, and nothing else in the release notices.
  */
-import { readFile } from 'node:fs/promises'
+import { readFile, mkdtemp, mkdir, symlink, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { existsSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { resolve, dirname, relative, sep } from 'node:path'
@@ -67,6 +68,35 @@ for (const [target, where] of targets) {
   }
 }
 
+// ------------------------------------------------- export conditions (RFC 0002 §8)
+//
+// A bundler or Node picks the first matching condition in key order, so a
+// missing "default" breaks require-less tooling and a "development" listed
+// after "import" is never reached.
+
+for (const [subpath, entry] of Object.entries(manifest.exports || {})) {
+  if (typeof entry === 'string') continue // tokens.css and package.json stay plain paths
+  const keys = Object.keys(entry)
+  const missing = ['types', 'import', 'default'].filter((k) => !keys.includes(k))
+  if (missing.length) fail(`exports["${subpath}"] has no ${missing.join(', ')} condition`)
+  else ok(`exports["${subpath}"] has types, import and default`)
+}
+const elementsEntry = (manifest.exports || {})['./elements']
+if (!elementsEntry || elementsEntry.development !== './elements.dev.js') {
+  fail('exports["./elements"] has no "development" condition pointing at ./elements.dev.js')
+} else if (Object.keys(elementsEntry).indexOf('development') > Object.keys(elementsEntry).indexOf('import')) {
+  fail('exports["./elements"] lists "development" after "import", so it is never reached')
+} else ok('exports["./elements"] has "development" -> ./elements.dev.js, before "import"')
+for (const f of ['./elements.js', './elements.dev.js']) {
+  if (!Array.isArray(manifest.sideEffects) || !manifest.sideEffects.includes(f)) {
+    fail(`sideEffects does not list ${f}, so a bundler may drop its import as unused`)
+  } else ok(`sideEffects lists ${f}`)
+}
+if (manifest.engines && manifest.engines.node !== '>=20') {
+  fail(`engines.node is "${manifest.engines.node}", but RFC 0002 §8 requires ">=20"`)
+} else if (!manifest.engines) fail('dist-lib/package.json has no engines field')
+else ok('engines.node is >=20')
+
 // ----------------------------------------------------------------------- docs
 
 for (const f of ['README.md', 'LICENSE', 'CHANGELOG.md']) {
@@ -89,7 +119,7 @@ if (present.length) {
 }
 
 const modules = {}
-for (const rel of ['index.js', 'elements.js']) {
+for (const rel of ['index.js', 'elements.js', 'elements.dev.js']) {
   try {
     const mod = await import(pathToFileURL(resolve(out, rel)).href)
     if (Object.keys(mod).length) {
@@ -107,7 +137,7 @@ for (const rel of ['index.js', 'elements.js']) {
 // publishes, and the `version` export hosts read at runtime. Read from the
 // imported module, because the bundler is free to rename the binding.
 
-for (const rel of ['index.js', 'elements.js']) {
+for (const rel of ['index.js', 'elements.js', 'elements.dev.js']) {
   const mod = modules[rel]
   if (!mod) continue
   if (typeof mod.version !== 'string') fail(`dist-lib/${rel} has no version export`)
@@ -115,6 +145,55 @@ for (const rel of ['index.js', 'elements.js']) {
     fail(`version mismatch: dist-lib/package.json is ${manifest.version}, dist-lib/${rel} exports ${mod.version} ` +
          '(bump package.lib.json and src/core/index.js together)')
   } else ok(`${rel} exports version ${mod.version}, matching dist-lib/package.json`)
+}
+
+// ------------------------------------------------ development and production
+//
+// The two element builds differ only in their warnings, and must share one
+// core: a dev build that bundled its own copy would hold a second configure()
+// state, so a host's settings would reach one build's widgets and not the
+// other's. elements.dev.js may be unreadable if build:dev was skipped; that
+// shows up above as a missing manifest target.
+
+const read = (rel) => readFile(resolve(out, rel), 'utf8').catch(() => null)
+const prod = await read('elements.js')
+const dev = await read('elements.dev.js')
+if (prod !== null) {
+  if (prod.includes('console.warn')) fail('elements.js contains console.warn, so a development warning leaked into production (is __TS_DEV__ defined false in vite.lib.config.js?)')
+  else ok('elements.js contains no console.warn')
+}
+if (dev !== null) {
+  if (!dev.includes('console.warn')) fail('elements.dev.js contains no console.warn, so it has no development warnings (is __TS_DEV__ defined true in vite.dev.config.js?)')
+  else ok('elements.dev.js contains console.warn')
+  const specifiers = [...dev.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*(['"])([^'"]+)\1/g)].map((m) => m[2])
+  const norm = (sp) => sp.replace(/^\.\//, '')
+  if (!specifiers.includes('./index.js')) fail('elements.dev.js does not import ./index.js, so it does not share the core')
+  else if (specifiers.some((sp) => norm(sp) === 'elements.js')) fail('elements.dev.js imports elements.js, which would register every element twice')
+  else ok('elements.dev.js imports ./index.js and never elements.js')
+}
+
+// Resolved by Node itself in a scratch consumer that finds the package the way
+// an install would, rather than by reading the manifest back to ourselves.
+// The scratch dir holds a symlink, so nothing is copied or installed.
+const scratch = await mkdtemp(resolve(tmpdir(), 'tickslate-resolve-'))
+try {
+  await mkdir(resolve(scratch, 'node_modules'))
+  await symlink(out, resolve(scratch, 'node_modules', manifest.name), 'dir')
+  const resolveIn = (flags) => execFileSync(process.execPath, [
+    ...flags, '--input-type=module', '-e',
+    `console.log(import.meta.resolve('${manifest.name}/elements'))`,
+  ], { cwd: scratch, encoding: 'utf8' }).trim()
+  const base = (url) => url.slice(url.lastIndexOf('/') + 1)
+  const plain = base(resolveIn([]))
+  const withDev = base(resolveIn(['--conditions=development']))
+  if (plain !== 'elements.js') fail(`${manifest.name}/elements resolves to ${plain} by default, not elements.js`)
+  else ok(`${manifest.name}/elements resolves to elements.js by default`)
+  if (withDev !== 'elements.dev.js') fail(`${manifest.name}/elements resolves to ${withDev} under --conditions=development, not elements.dev.js`)
+  else ok(`${manifest.name}/elements resolves to elements.dev.js under --conditions=development`)
+} catch (e) {
+  fail(`could not resolve ${manifest.name}/elements from a scratch consumer: ${(e && (e.stderr || e.message) || '').toString().trim()}`)
+} finally {
+  await rm(scratch, { recursive: true, force: true })
 }
 
 // ---------------------------------------------------------------- pack list

@@ -1351,10 +1351,10 @@ gzip of the unminified `elements.js` (25.7 kB); minified it is 19.9 kB.
 
 | Budget | Until RFC 0002 is approved | After approval, during development | At release (release-0-1-0) |
 |---|---|---|---|
-| Core, `index.js` | 6 kB (RFC 0001), warn | **8 kB** (8,192 B), enforce | measured + 10 %, enforce |
+| Core, `index.js` | 6 kB (RFC 0001), warn | **10 kB** (10,240 B), enforce (a development ceiling, tightened at release prep) | measured + 10 %, enforce |
 | `elements.js` alone | 24 kB (RFC 0001), warn | replaced by the all-in budget | — |
 | All-in elements, bundled with its core | reported only | **40 kB** (40,960 B), enforce | measured + 10 %, enforce |
-| UMD, `umd/tickslate.umd.js` | reported only | **8 kB** (8,192 B), enforce | measured + 10 %, enforce |
+| UMD, `umd/tickslate.umd.js` | reported only | **11 kB** (11,264 B), enforce (the core plus a ~150 B wrapper, so headroom above the core's 10 kB) | measured + 10 %, enforce |
 | `elements.dev.js` | — | reported only | reported only |
 | Grid plus one widget | — | — | **15 kB** (15,360 B) once per-widget entries land (P1) |
 
@@ -1441,7 +1441,7 @@ approved.
 | 13 | How are layouts saved in 0.1.0? | **Recommended:** ship `persistLayout(grid, { key })` as a one-line function in 0.1.0 and use it in the README quick start (§1.9). The `persist` attribute, async adapters and the "edits will be lost" warning follow in P1.<br>Alternative: hosts save from `ts-layout-change` themselves. | Proposed — maintainer to confirm |
 | 14 | Is the full add-widget picker in 0.1.0? | **Recommended:** no. 0.1.0 ships `hiddenItems`, `restore(id)` and the built-in Add back list, so removal is never a one-way door. The picker for new types arrives in P1, with a cancellable `ts-add-request` that the host answers by rendering the child.<br>Alternative: build the picker for 0.1.0. | Proposed — maintainer to confirm |
 | 15 | May a widget's data be passed as a JSON attribute, for Blade, Django, Rails and static pages? | **Recommended:** yes. A `data` attribute starting with `{` or `[` is parsed as JSON, and the property wins once set. A parse failure shows the error view with a development warning (§2.6).<br>Alternative: the property only. | Proposed — maintainer to confirm |
-| 16 | What size budgets apply? RFC 0001 §13's targets (core 6 kB, elements 24 kB for all nine widgets) no longer fit: the core is already over, and elements is close with three of nine widgets (§9). | **Recommended:** report against RFC 0001's budgets as warnings until this RFC is approved, then enforce core ≤ 8 kB and all-in elements ≤ 40 kB min + gzip during development, tightened to measured + 10 % at release; grid plus one widget ≤ 15 kB once per-widget entries land in P1 (§9).<br>Alternative: keep 6 kB and 24 kB and cut code to meet them. | Proposed — maintainer to confirm |
+| 16 | What size budgets apply? RFC 0001 §13's targets (core 6 kB, elements 24 kB for all nine widgets) no longer fit: the core is already over, and elements is close with three of nine widgets (§9). | **Recommended:** report against RFC 0001's budgets as warnings until this RFC is approved, then enforce core ≤ 10 kB and all-in elements ≤ 40 kB min + gzip during development, tightened to measured + 10 % at release; grid plus one widget ≤ 15 kB once per-widget entries land in P1 (§9).<br>Alternative: keep 6 kB and 24 kB and cut code to meet them. | Proposed — maintainer to confirm |
 | 17 | Which Node version does the package require? | **Recommended:** `engines` `>=20`, and CI on Node 20, 22 and 24 (§8).<br>Alternative: keep `>=18`, which is end-of-life. | Proposed — maintainer to confirm |
 | 18 | What is the dark theme called publicly? | **Recommended:** Graphite in the playground and gallery; Paper stays the light theme's name.<br>Alternative: keep the current product-named label, against the generic-vocabulary rule. | Proposed — maintainer to confirm |
 | 19 | What is the default layout profile called? | **Recommended:** keep `market` as the storage key for compatibility, with no alias. Document profiles as an optional scheduling feature; generic hosts use the array shorthand going in and the event's `items` coming out, and the P1 profile switcher is hidden when no schedule is set (§1.3).<br>Alternative: rename it (for example `default`) with an alias for saved layouts. | Proposed — maintainer to confirm |

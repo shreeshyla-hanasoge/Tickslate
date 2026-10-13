@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build:lib": "vite build --config vite.lib.config.js",
+    "build:dev": "vite build --config vite.dev.config.js",
     "build:umd": "vite build --config vite.umd.config.js",
     "pack:lib": "node scripts/pack-lib.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "size": "node scripts/check-size.mjs",
     "test": "node --test test/*.test.mjs",
-    "release": "npm test && npm run build:lib && npm run build:umd && npm run pack:lib && npm run verify:package && npm run size"
+    "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run pack:lib && npm run verify:package && npm run size"
   },
   "devDependencies": {
     "esbuild": "0.21.5",

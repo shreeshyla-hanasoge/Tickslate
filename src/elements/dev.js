@@ -7,7 +7,7 @@
  */
 
 /* global __TS_DEV__ */
-export const DEV = typeof __TS_DEV__ === 'undefined' ? true : Boolean(__TS_DEV__)
+export const DEV = typeof __TS_DEV__ !== 'undefined' ? __TS_DEV__ : true
 
 const warned = new Set()
 
