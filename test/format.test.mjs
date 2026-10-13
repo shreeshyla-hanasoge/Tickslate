@@ -58,6 +58,69 @@ describe('fit', () => {
   })
 })
 
+describe('fit styles', () => {
+  const us = createFormatter({ locale: 'en-US', currency: 'USD' })
+  const de = createFormatter({ locale: 'de-DE', currency: 'EUR' })
+
+  test('money goes straight from full to compact; other styles drop decimals first', () => {
+    assert.equal(us.fit(2185.65, 7), '+$2.2K')
+    assert.equal(us.fit(2185.65, 20), '+$2,185.65')
+    assert.equal(us.fit(1234.56, 6, { style: 'number' }), '1,235')
+  })
+
+  test('number and percent styles', () => {
+    assert.equal(us.fit(1234567.891, 9, { style: 'number' }), '1,234,568')
+    assert.equal(us.fit(1234567.891, 5, { style: 'number' }), '1.2M')
+    assert.equal(us.fit(0.123456, 5, { style: 'percent' }), '+12%')
+    assert.equal(us.fit(0.5, 3, { style: 'percent', sign: 'negative' }), '50%')
+    assert.match(de.fit(1234567, 8, { style: 'number' }), /^1,2\s?Mio\.$/)
+    assert.equal(de.fit(0.5, 20, { style: 'percent', sign: 'negative' }), '50,00\u00a0%')
+  })
+
+  test('never returns a compact form that is not shorter', () => {
+    assert.equal(us.fit(5, 1, { style: 'number' }), '5')
+    assert.equal(us.fit(999, 1, { style: 'number' }), '999')
+  })
+})
+
+describe('compact numbers and units', () => {
+  const us = createFormatter({ locale: 'en-US' })
+  const de = createFormatter({ locale: 'de-DE' })
+
+  test('number compact', () => {
+    assert.equal(us.number(1200000, { compact: true }), '1.2M')
+    assert.match(de.number(1200000, { compact: true }), /^1,2\s?Mio\.$/)
+  })
+
+  test('sanctioned units go through Intl', () => {
+    assert.equal(us.unit(182, 'millisecond'), '182 ms')
+    assert.match(de.unit(182, 'millisecond'), /^182\sms$/)
+    assert.equal(us.unit(1500, 'megabyte', { decimals: 1 }), '1,500.0 MB')
+    assert.match(us.unit(1200000, 'byte', { compact: true }), /^1\.2M\s?byte$/)
+    assert.equal(us.unit(-4, 'second'), `${MINUS}4 sec`)
+    assert.match(de.unit(1200, 'kilometer-per-hour'), /^1\.200\s?km\/h$/)
+    assert.equal(us.unit(12, 'percent'), '12%')
+  })
+
+  test('other units are appended literally', () => {
+    assert.equal(us.unit(3, 'seats'), '3 seats')
+    assert.equal(de.unit(1234.5, 'seats', { decimals: 1 }), '1.234,5 seats')
+    assert.equal(us.unit(1200000, 'users', { compact: true }), '1.2M users')
+    assert.match(de.unit(1200000, 'Nutzer', { compact: true }), /^1,2\s?Mio\. Nutzer$/)
+    assert.equal(us.unit(2, 'second-per-banana'), '2 second-per-banana')
+    assert.equal(us.unit('x', 'ms'), '—')
+  })
+})
+
+describe('percent takes a fraction', () => {
+  test('sign defaults to always', () => {
+    const us = createFormatter({ locale: 'en-US' })
+    assert.equal(us.percent(0.12), '+12.00%')
+    assert.equal(us.percent(0.12, { sign: 'negative' }), '12.00%')
+    assert.equal(createFormatter({ locale: 'de-DE' }).percent(0.12, { sign: 'negative' }), '12,00\u00a0%')
+  })
+})
+
 describe('numbers, prices and percents', () => {
   test('number signs only negatives by default', () => {
     assert.equal(inr.number(66), '66')
