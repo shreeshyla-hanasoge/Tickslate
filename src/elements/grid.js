@@ -54,6 +54,7 @@ import {
 } from './grid-geometry.js'
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
+import { isOutside, pickFocusTarget } from './grid-focus.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -83,6 +84,15 @@ const TOAST_MS = 6000
 const TEXT = {
   removed: (label) => `${label} removed`,
   undo: 'Undo',
+  editLayout: 'Edit layout',
+  done: 'Done',
+  addBack: (n) => `Add back (${n})`,
+  addBackItem: (label) => `Add back ${label}`,
+  addedBack: (label) => `${label} added back.`,
+  hiddenHeading: 'Hidden from this layout',
+  editingGroup: 'Editing layout',
+  emptyBoard: 'No widgets on this layout yet',
+  dashboard: 'Dashboard',
   lockedWarning: '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.',
 }
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
@@ -148,18 +158,29 @@ const TEMPLATE = `
   }
   @keyframes pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
   @media (prefers-reduced-motion: reduce) {
-    :host([editing]) .chrome { outline: 2px dashed var(--ts-line, #E2DACB); outline-offset: -1px; }
+    /* The wiggle is gone, so this outline alone says "editing". The RFC's 45% mix is
+       2.8:1 against Paper's --ts-bg, under the 3:1 it asks for; 50% clears it in both themes. */
+    :host([editing]) .chrome { outline: 2px dashed color-mix(in srgb, var(--ts-ink) 50%, transparent); outline-offset: -1px; }
     .remove, .resize { animation: none; }
   }
-  .dock { position: sticky; bottom: 22px; height: 0; z-index: 7; display: flex; justify-content: center; pointer-events: none; }
+  [hidden] { display: none !important; }
+  /* The dock holds the pill and, above it, the undo toast, so they never overlap.
+     It has no height of its own until the pill shows, then it reserves the pill's
+     room: below the grid when it all fits, floating over the tiles when it doesn't. */
+  .dock { position: sticky; bottom: 22px; height: 0; z-index: 7; pointer-events: none; }
+  .dock.has-pill { height: 56px; margin-top: 22px; }
+  .stack {
+    position: absolute; inset-inline: 0; bottom: 0; display: flex; flex-direction: column; align-items: center;
+    gap: 10px; pointer-events: none;
+  }
   .toast {
-    position: absolute; bottom: 0; display: inline-flex; align-items: center; gap: 0; padding: 4px 4px 4px 20px;
+    position: relative; display: inline-flex; align-items: center; gap: 0; padding: 4px 4px 4px 20px;
     border-radius: 999px; box-sizing: border-box; max-width: calc(100% - 32px); white-space: nowrap;
     background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
     font: 500 13px var(--ts-font-ui); pointer-events: auto;
   }
   /* Kept in the tree while off, so the status region announces the next text put in it. */
-  .toast:not(.on) { width: 1px; height: 1px; padding: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+  .toast:not(.on) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; opacity: 0; pointer-events: none; }
   .toast .msg { overflow: hidden; text-overflow: ellipsis; }
   .toast .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .toast .undo {
@@ -167,14 +188,75 @@ const TEMPLATE = `
     background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
   }
   .toast .undo:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
+  .pill {
+    position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px;
+    box-sizing: border-box; max-width: calc(100% - 32px); pointer-events: auto;
+    background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow-lift);
+  }
+  .pb {
+    min-width: 44px; min-height: 44px; margin: 0; padding: 0 20px; border: 0; border-radius: 999px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+    background: none; color: var(--ts-ink); font: 600 13px var(--ts-font-ui);
+  }
+  .pb:focus-visible, .mi:focus-visible, .edit-btn:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
+  .pb[aria-expanded="true"] { background: var(--ts-surface-2); }
+  .pb.done { padding-inline: 24px; background: var(--ts-accent); color: var(--ts-surface); }
+  .pb.ghost { border: 1px solid var(--ts-line); background: var(--ts-surface); }
+  .pb .plus { color: var(--ts-accent); font-size: 16px; line-height: 1; }
+  .menu {
+    position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; z-index: 3; box-sizing: border-box;
+    width: 250px; max-width: calc(100vw - 32px); max-height: 50vh; overflow-y: auto; padding: 6px;
+    display: flex; flex-direction: column; text-align: start;
+    background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line);
+    border-radius: var(--ts-radius); box-shadow: var(--ts-shadow-lift); pointer-events: auto;
+  }
+  .menu-h { padding: 8px 10px 6px; font: 600 10px var(--ts-font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+  .mi {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px;
+    margin: 0; padding: 0 10px; border: 0; border-radius: var(--ts-radius-sm); cursor: pointer; text-align: start;
+    background: none; color: inherit; font: 13px var(--ts-font-ui);
+  }
+  .mi:hover { background: var(--ts-surface-2); }
+  .mi .plus { color: var(--ts-accent); font-size: 16px; }
+  /* Visually hidden until a keyboard user reaches it, so it is the first Tab stop without crowding the dashboard. */
+  .edit-btn {
+    position: absolute; top: 12px; left: 12px; z-index: 8; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .edit-btn:focus-visible {
+    width: auto; height: auto; min-height: 44px; margin: 0; padding: 0 18px; overflow: visible; clip-path: none;
+    border: 1px solid var(--ts-line); border-radius: 999px; cursor: pointer;
+    background: var(--ts-surface); color: var(--ts-ink); font: 600 13px var(--ts-font-ui); box-shadow: var(--ts-shadow-lift);
+  }
+  .empty {
+    position: absolute; inset: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; padding: 16px; text-align: center; color: var(--ts-ink); font: 500 14px var(--ts-font-ui);
+    border: 1.5px dashed color-mix(in srgb, var(--ts-ink) 22%, transparent); border-radius: var(--ts-radius);
+    background: color-mix(in srgb, var(--ts-ink) 4%, transparent);
+  }
+  .empty .note { margin: 0; }
+  .empty .anchor { position: relative; }
+  .empty .menu { bottom: auto; top: calc(100% + 8px); inset-inline-start: 50%; transform: translateX(-50%); }
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
+<button class="edit-btn" type="button" hidden></button>
 <div class="board" part="board">
   <div class="placeholder" part="placeholder"></div>
   <slot></slot>
   <div class="chromes"></div>
+  <div class="empty" part="empty" hidden>
+    <slot name="empty"><p class="note"></p></slot>
+    <div class="anchor"><button class="pb ghost add" type="button" aria-expanded="false" hidden><span class="plus" aria-hidden="true">+</span><span class="t"></span></button><div class="menu" role="group" hidden></div></div>
+  </div>
 </div>
-<div class="dock"><div class="toast" part="toast" role="status"><span class="msg"></span><span class="sep"> · </span><button class="undo" type="button" tabindex="-1"></button></div></div>
+<div class="dock"><div class="stack">
+  <div class="toast" part="toast" role="status"><span class="msg"></span><span class="sep"> · </span><button class="undo" type="button" tabindex="-1"></button></div>
+  <div class="pill" part="edit-pill" role="group" hidden>
+    <button class="pb add" type="button" aria-expanded="false" hidden><span class="plus" aria-hidden="true">+</span><span class="t"></span></button>
+    <button class="pb done" type="button"></button>
+    <div class="menu" role="group" hidden></div>
+  </div>
+</div></div>
 <div class="sr" role="status" aria-live="polite"></div>
 `
 
@@ -182,7 +264,7 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked']
+    return ['editing', 'profile', 'locked', 'edit-controls']
   }
 
   constructor() {
@@ -201,6 +283,22 @@ export class TsGrid extends Base {
     this._toastText = root.querySelector('.toast .msg')
     this._toastUndo = root.querySelector('.toast .undo')
     this._toastUndo.textContent = TEXT.undo
+    this._editBtn = root.querySelector('.edit-btn')
+    this._editBtn.textContent = TEXT.editLayout
+    this._dock = root.querySelector('.dock')
+    this._pill = root.querySelector('.pill')
+    this._pill.setAttribute('aria-label', TEXT.editingGroup)
+    this._pill.querySelector('.done').textContent = TEXT.done
+    this._emptyPanel = root.querySelector('.empty')
+    this._emptyPanel.querySelector('.note').textContent = TEXT.emptyBoard
+    // Each place Add back appears: its button, its list, and what counts as inside it.
+    this._addBack = {
+      pill: { add: this._pill.querySelector('.add'), menu: this._pill.querySelector('.menu'), wrap: this._pill },
+      empty: { add: this._emptyPanel.querySelector('.add'), menu: this._emptyPanel.querySelector('.menu'), wrap: this._emptyPanel.querySelector('.anchor') },
+    }
+    this._menuOwner = null // 'pill' or 'empty' while a list is open
+    this._menuSig = ''
+    this._editOrigin = null // the element that started editing, for the focus return
     this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
     this._history = createHistory()
     this._removing = new Set() // ids fading out, so a second click or Delete does nothing
@@ -248,6 +346,8 @@ export class TsGrid extends Base {
     this._onPointerCancel = this._onPointerCancel.bind(this)
     this._onKeyDown = this._onKeyDown.bind(this)
     this._onDocKeyDown = this._onDocKeyDown.bind(this)
+    this._onDocPointerDown = this._onDocPointerDown.bind(this)
+    this._onMenuPointerDown = this._onMenuPointerDown.bind(this)
     this._frame = this._frame.bind(this)
 
     this.addEventListener('pointerdown', this._onPointerDown)
@@ -274,6 +374,28 @@ export class TsGrid extends Base {
       const button = target.closest('.remove')
       if (button) this._remove(button.parentElement.dataset.id)
       else if (target.closest('.undo')) this._undoFromToast()
+      else if (target.closest('.edit-btn')) {
+        if (this.locked) return
+        this._editOrigin = this._editBtn
+        this.editing = true
+      } else if (target.closest('.done')) this.editing = false
+      else if (target.closest('.add')) this._toggleMenu(target.closest('.pill') ? 'pill' : 'empty')
+      else if (target.closest('.mi')) this._restoreFromMenu(target.closest('.mi').dataset.id)
+    })
+    root.addEventListener('keydown', (e) => {
+      if (!this._menuOwner) return
+      if (e.key === 'Escape') {
+        // Closing the list is all Escape does here, not leaving edit mode.
+        e.preventDefault()
+        this._closeMenu(true)
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const items = [...this._addBack[this._menuOwner].menu.querySelectorAll('.mi')]
+        const at = items.indexOf(root.activeElement)
+        if (at < 0 && root.activeElement !== this._addBack[this._menuOwner].add) return
+        e.preventDefault()
+        const next = at < 0 ? (e.key === 'ArrowDown' ? 0 : items.length - 1) : (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+        if (items[next]) items[next].focus()
+      }
     })
     // The toast waits while the user is looking at it.
     const toastHold = (key, on) => () => {
@@ -489,6 +611,7 @@ export class TsGrid extends Base {
     this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
     if (!this._explicit) this._reconcile()
     this._measure(true)
+    this._syncControls()
     if (this._editing) this._startEditing()
     document.addEventListener('visibilitychange', this._onVisibility)
     this._reschedule(true)
@@ -527,6 +650,9 @@ export class TsGrid extends Base {
         this._cancelGesture()
         this._hideToast(false)
       }
+      this._syncControls()
+    } else if (name === 'edit-controls') {
+      this._syncControls()
     } else if (name === 'editing') {
       const on = this.hasAttribute('editing')
       if (on === this._editing) return
@@ -684,6 +810,7 @@ export class TsGrid extends Base {
     }
     this._wasShown = shown
     this._rendered = true
+    this._syncControls()
     if (DEV && !keepTiles) this._watchOrphans()
   }
 
@@ -772,7 +899,8 @@ export class TsGrid extends Base {
       if (this._editing && !held && !this._wiggles.has(p.id)) this._wiggle(p.id)
     }
     this._board.style.transition = animate ? '' : 'none'
-    this._board.style.height = `${boardHeight(rows, m)}px`
+    // An empty board keeps one row, so its message and Add back have somewhere to sit.
+    this._board.style.height = `${boardHeight(rows || 1, m)}px`
   }
 
   _chrome(id) {
@@ -835,16 +963,155 @@ export class TsGrid extends Base {
       this._wiggle(id)
     }
     document.addEventListener('keydown', this._onDocKeyDown)
+    document.addEventListener('pointerdown', this._onDocPointerDown, true)
+    this._syncControls()
   }
 
   _stopEditing() {
     if (this._gesture) this._cancelGesture()
+    // Before any chrome turns aria-hidden or the pill goes, or focus would be lost with them.
+    this._returnFocus()
+    this._closeMenu(false)
     for (const [id, chrome] of this._chromes) {
       chrome.tabIndex = -1
       chrome.setAttribute('aria-hidden', 'true')
       this._unwiggle(id)
     }
     document.removeEventListener('keydown', this._onDocKeyDown)
+    document.removeEventListener('pointerdown', this._onDocPointerDown, true)
+    this._editOrigin = null
+    this._syncControls()
+  }
+
+  /** A press outside the grid ends editing; one in the pill or its list is inside, because the path names the grid. */
+  _onDocPointerDown(e) {
+    if (this._editing && isOutside(e.composedPath(), this)) this.editing = false
+  }
+
+  /** Put focus back where editing began, but only if it is inside the grid and about to be lost. */
+  _returnFocus() {
+    if (!this.isConnected) return
+    const active = this.shadowRoot.activeElement || (document.activeElement !== this && this.contains(document.activeElement) ? document.activeElement : null)
+    if (!active) return
+    const origin = this._editOrigin
+    let candidate = null
+    if (origin) {
+      const button = origin === this._editBtn
+      if (button) origin.tabIndex = 0
+      candidate = {
+        target: origin,
+        connected: origin.isConnected,
+        // The button is hidden by the opt-out or the lock; a tile is only focusable if it has a tab index.
+        hidden: button ? !this._controlsOn() : origin.hidden || origin.tabIndex < 0 || origin.style.display === 'none',
+        disabled: !!origin.disabled,
+      }
+    }
+    this._focus(pickFocusTarget([candidate]) || this)
+  }
+
+  /** The grid itself is the last resort, so it gets a tab index and a name when the host gave none. */
+  _focus(target) {
+    if (target === this) {
+      if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '-1')
+      if (!this.hasAttribute('aria-label') && !this.hasAttribute('aria-labelledby')) this.setAttribute('aria-label', TEXT.dashboard)
+      if (!this.hasAttribute('role')) this.setAttribute('role', 'group')
+    }
+    target.focus()
+  }
+
+  _controlsOn() {
+    return !this.locked && this.getAttribute('edit-controls') !== 'off'
+  }
+
+  // ── Edit controls: the Edit layout button, the pill, Add back, the empty board ──
+
+  _syncControls() {
+    const on = this._controlsOn()
+    const editing = this._editing
+    const pillOn = on && editing
+    // While editing it stays out of the Tab order but can still take focus back.
+    this._editBtn.hidden = !on
+    this._editBtn.tabIndex = editing ? -1 : 0
+    this._pill.hidden = !pillOn
+    this._dock.classList.toggle('has-pill', pillOn)
+    const empty = this._rendered && !!this._m && this._order.length === 0
+    this._emptyPanel.hidden = !empty
+    const hidden = this.hiddenItems
+    for (const [owner, show] of [['pill', pillOn && hidden.length > 0], ['empty', empty && on && hidden.length > 0]]) {
+      const c = this._addBack[owner]
+      c.add.hidden = !show
+      if (show) c.add.querySelector('.t').textContent = TEXT.addBack(hidden.length)
+      if (!show && this._menuOwner === owner) this._closeMenu(false)
+    }
+    // Rebuilt only when the list changed, so an open list isn't torn down under the pointer.
+    const sig = hidden.map((h) => `${h.id}\n${h.label}`).join('\n\n')
+    if (sig !== this._menuSig) {
+      this._menuSig = sig
+      for (const { menu } of Object.values(this._addBack)) {
+        menu.textContent = ''
+        const heading = document.createElement('span')
+        heading.className = 'menu-h'
+        heading.textContent = TEXT.hiddenHeading
+        menu.appendChild(heading)
+        for (const h of hidden) {
+          const item = document.createElement('button')
+          item.type = 'button'
+          item.className = 'mi'
+          item.dataset.id = h.id
+          item.setAttribute('aria-label', TEXT.addBackItem(h.label))
+          const name = document.createElement('span')
+          name.textContent = h.label
+          const plus = document.createElement('span')
+          plus.className = 'plus'
+          plus.setAttribute('aria-hidden', 'true')
+          plus.textContent = '+'
+          item.append(name, plus)
+          menu.appendChild(item)
+        }
+      }
+    }
+  }
+
+  _toggleMenu(owner) {
+    if (this._menuOwner === owner) return this._closeMenu(true)
+    this._closeMenu(false)
+    const c = this._addBack[owner]
+    c.menu.hidden = false
+    c.add.setAttribute('aria-expanded', 'true')
+    this._menuOwner = owner
+    document.addEventListener('pointerdown', this._onMenuPointerDown, true)
+    const first = c.menu.querySelector('.mi')
+    if (first) first.focus()
+  }
+
+  /** `refocus` hands focus back to the Add back button, for Escape and a second press on it. */
+  _closeMenu(refocus) {
+    const owner = this._menuOwner
+    if (!owner) return
+    const c = this._addBack[owner]
+    this._menuOwner = null
+    document.removeEventListener('pointerdown', this._onMenuPointerDown, true)
+    c.menu.hidden = true
+    c.add.setAttribute('aria-expanded', 'false')
+    if (refocus && !c.add.hidden) c.add.focus()
+  }
+
+  _onMenuPointerDown(e) {
+    if (this._menuOwner && isOutside(e.composedPath(), this._addBack[this._menuOwner].wrap)) this._closeMenu(false)
+  }
+
+  _restoreFromMenu(id) {
+    const hidden = this.hiddenItems.find((h) => h.id === id)
+    this._closeMenu(false)
+    if (!hidden || !this.restore(id)) return
+    this._announce(TEXT.addedBack(hidden.label))
+    const el = this._tiles.get(id)
+    const chrome = this._chromes.get(id)
+    // Edit mode: the tile's handle. Otherwise its tile if it can take focus, else the grid.
+    this._focus(pickFocusTarget([
+      chrome && { target: chrome, connected: chrome.isConnected, hidden: !this._editing },
+      el && { target: el, connected: el.isConnected, hidden: el.tabIndex < 0 || el.style.display === 'none' },
+    ]) || this)
   }
 
   /**
@@ -907,6 +1174,7 @@ export class TsGrid extends Base {
       }, 120)
       g.timer = setTimeout(() => {
         this._unsqueeze(g)
+        this._editOrigin = this._tiles.get(g.id)
         this.editing = true
         this._lift(g)
       }, LONG_PRESS_MS)
@@ -1242,6 +1510,7 @@ export class TsGrid extends Base {
       this._removedFor(profile).add(id)
       this._layout = withProfile(this._layout, profile, removeItem(list, id))
       this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'remove', id, index, item: list[index] })
+      this._syncControls()
       // The toast is a live region, so it speaks for itself; the grid's own
       // status region would say the same thing twice.
       if (!this._showToast(TEXT.removed(label))) this._announce(TEXT.removed(label) + '.')
