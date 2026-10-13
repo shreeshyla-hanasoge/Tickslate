@@ -11,9 +11,12 @@
  * heading on Wide and M, and the accessible name on every variant.
  */
 
-import { TsWidget } from './widget.js'
+import { TsWidget, sk } from './widget.js'
 import { linePaths } from './chart.js'
 import { toNumber, toTime } from '../core/index.js'
+
+// English strings in one place, ready for overridable messages.
+export const STRINGS = Object.freeze({ empty: 'No trades today', shortLabel: 'Today' })
 
 // Characters the headline holds per variant before fmt.fit() switches it to
 // the compact form. Sized for the 34px / 48px figures in a tile that never
@@ -277,8 +280,24 @@ const TEMPLATES = {
 </div>`,
 }
 
+// Loading shapes follow each variant's layout block for block, so the figures
+// land where the blocks were. S says "Today" as its content does.
+const SKELETONS = {
+  S: `<div class="hd"><span class="lb ell">${STRINGS.shortLabel}</span></div>${sk(65, 30)}<span class="f1"></span>${sk(80, 11)}`,
+  Wide: `<div class="cols">
+  <div class="col lhs"><div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(75, 44)}${sk(60, 11)}</div>
+  <div class="col rhs">${`<div class="rowb">${sk(40, 9)}<span class="f1"></span>${sk(35, 13)}</div>`.repeat(3)}</div>
+</div>`,
+  M: `<div class="hd"><span class="lb ell" data-k="label"></span></div>
+<div class="rowb base">${sk(40, 44)}${sk(30, 11)}</div>
+<span class="sk grow"></span>
+<div class="axis">${sk('x', 9)}${sk('x', 9)}${sk('x', 9)}</div>
+<div class="g3 sep trio">${`<div class="col">${sk(60, 9)}${sk(75, 16)}</div>`.repeat(3)}</div>`,
+}
+
 export class TsTodayPnl extends TsWidget {
   static catalogKey = 'todayPnl'
+  static emptyText = STRINGS.empty
 
   static styles = `
 [hidden] { display: none; }
@@ -317,6 +336,10 @@ export class TsTodayPnl extends TsWidget {
 
   static template(variant) {
     return TEMPLATES[variant] || TEMPLATES.Wide
+  }
+
+  static skeleton(variant) {
+    return SKELETONS[variant] || SKELETONS.Wide
   }
 
   static viewModel(data, variant, ctx) {

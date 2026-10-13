@@ -17,6 +17,9 @@
  *
  * The element's shadow root is a FakeRoot, whose `.tile` is `section`: read
  * what a render wrote from `el.shadowRoot.section.html` and its attributes.
+ * `section.querySelector(sel)` returns the same node for a selector until the
+ * next innerHTML write, so `.textContent` shows what a render put there, and
+ * `section.dispatch('click', { target })` stands in for a click on the tile.
  */
 
 export class FakeNode {
@@ -25,6 +28,8 @@ export class FakeNode {
     this.textContent = ''
     this.htmlWrites = 0
     this.html = ''
+    this.kids = new Map()
+    this.listeners = new Map()
   }
   setAttribute(k, v) {
     this.attrs.set(k, String(v))
@@ -32,15 +37,30 @@ export class FakeNode {
   getAttribute(k) {
     return this.attrs.has(k) ? this.attrs.get(k) : null
   }
+  removeAttribute(k) {
+    this.attrs.delete(k)
+  }
+  addEventListener(type, fn) {
+    if (!this.listeners.has(type)) this.listeners.set(type, [])
+    this.listeners.get(type).push(fn)
+  }
+  /** Run this node's listeners for `type` with `event`, like a bubbled event arriving here. */
+  dispatch(type, event) {
+    for (const fn of this.listeners.get(type) || []) fn(event)
+  }
   set innerHTML(v) {
     this.html = v
     this.htmlWrites++
+    // New markup means new descendants: a test reads the text a render wrote
+    // into the ones it asked for since.
+    this.kids.clear()
   }
   get innerHTML() {
     return this.html
   }
-  querySelector() {
-    return new FakeNode()
+  querySelector(sel) {
+    if (!this.kids.has(sel)) this.kids.set(sel, new FakeNode())
+    return this.kids.get(sel)
   }
 }
 

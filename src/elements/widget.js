@@ -39,8 +39,26 @@
  *     `{ fmt, now, label }`: the formatter, the current time in ms (from
  *     `clock` if set) and the effective label. Return `ariaLabel` to name the
  *     tile with its headline result ("Today's P&L, +₹2,185.65"); without it
- *     the tile is named by the label. `data` is never null here. If this
- *     throws, the base logs it once and shows the empty state.
+ *     the tile is named by the label. `data` is never null here, and is `{}`
+ *     for a `static dataOptional` widget that has none yet. If this throws,
+ *     the base logs it once and shows the error view.
+ *
+ *   static dataOptional = false
+ *     True for a widget that can draw something useful before it has data (a
+ *     card with a static body). It renders its template while data is
+ *     undefined, with viewModel getting `{}`; the skeleton then shows only
+ *     for state="loading".
+ *
+ *   static emptyText = 'No data'
+ *     What the empty state says (data === null), unless the host slots its own
+ *     content into `slot="empty"`.
+ *
+ *   static skeleton(variant) → string
+ *     The loading view's markup: `.sk` blocks shaped like that variant's
+ *     content, so content lands without the tile moving. Build them with
+ *     `sk(width, height)`. Include an element with `data-k="label"` and the
+ *     base fills it with the real label. Static markup, pure in `variant`.
+ *     The default is a header, a headline bar and two text lines.
  *
  *   viewContext() → object
  *     Extra keys for viewModel's `ctx`, for what the pure view model needs
@@ -68,7 +86,13 @@
  * ── What the base provides ──────────────────────────────────────────────
  *
  *   data            Get/set. Setting schedules ONE render per microtask,
- *                   however many times it is set. null/undefined → empty state.
+ *                   however many times it is set. undefined (never set) shows
+ *                   the loading skeleton; null shows the empty state.
+ *   state           Attribute and property: 'loading' (a skeleton, even over
+ *                   existing data), 'error' (the error view) or null.
+ *   error           Property: a message shows the error view, null clears it.
+ *   actions         Property: the action names the widget may offer, such as
+ *                   ['retry']. Re-applied on connect; actionEnabled(name).
  *   size            Attribute and property, reflected. Snapped to the
  *                   widget's supported sizes; with no attribute, the first
  *                   supported size. <ts-grid> sets it.
@@ -98,10 +122,18 @@
  *
  * ── Rendering ───────────────────────────────────────────────────────────
  *
- * The tile is `<section class="tile" part="tile" aria-label>`. On render, the
- * section's content is rebuilt from template(variant) only when the variant
- * changed or when leaving the empty state; otherwise update() just writes new
- * values. Rendering needs a connected element; connecting always renders.
+ * The tile is `<section class="tile" part="tile" aria-label>`. Exactly one
+ * view is shown, first match wins (RFC 0002 §2.3):
+ *
+ *   1. error    state 'error', `error` set, or a view model that threw
+ *   2. loading  state 'loading', or data undefined (unless dataOptional)
+ *   3. empty    data null
+ *   4. content  anything else
+ *
+ * The section's content is rebuilt from template(variant) only when the
+ * variant changed or when leaving another view; otherwise update() just writes
+ * new values. The tile is a fixed box, so no view changes its size. Rendering
+ * needs a connected element; connecting always renders.
  *
  * Importing this module needs no DOM (it is loaded by Node tests and during
  * server-side rendering); only constructing a widget does.
@@ -109,6 +141,15 @@
 
 import { WIDGETS, createFormatter, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
 import { DEV, warnOnce } from './dev.js'
+
+// Every English string the base shows, in one place so messages can be made
+// overridable later (RFC 0002 §2.4). `{label}` and `{message}` are filled in.
+export const STRINGS = Object.freeze({
+  noData: 'No data',
+  errorDefault: "Couldn't display this data",
+  errorRegion: '{label}, error: {message}',
+  retry: 'Retry',
+})
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -154,6 +195,26 @@ export function standaloneCss() {
 
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+}
+
+// Skeleton block sizes are classes, not inline styles, so a host's strict
+// style-src CSP can't blank them. Widths snap to 5% steps, heights to the few
+// the content actually uses; 'x' is a fixed axis-label width.
+const SK_WIDTHS = Array.from({ length: 19 }, (_, i) => 10 + i * 5)
+const SK_HEIGHTS = [4, 6, 9, 10, 11, 12, 13, 16, 30, 44]
+const SK_CSS =
+  SK_WIDTHS.map((w) => `.sk.w${w} { width: ${w}%; }`).join(' ') +
+  ' .sk.wx { width: 40px; } ' +
+  SK_HEIGHTS.map((h) => `.sk.h${h} { height: ${h}px; }`).join(' ')
+
+/**
+ * One skeleton block: width as a percent (snapped to 5) or 'x' for an axis
+ * label, height in px (snapped to the nearest the content uses).
+ */
+export function sk(width, height) {
+  const w = width === 'x' ? 'wx' : `w${SK_WIDTHS.reduce((a, b) => (Math.abs(b - width) < Math.abs(a - width) ? b : a))}`
+  const h = SK_HEIGHTS.reduce((a, b) => (Math.abs(b - height) < Math.abs(a - height) ? b : a))
+  return `<span class="sk ${w} h${h}"></span>`
 }
 
 // Headline figures shrink with the tile, capped at the design size.
@@ -222,7 +283,21 @@ ${standaloneCss()}
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } }
-.empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--ts-muted); }
+.empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ts-muted); text-align: center; }
+.err { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+.err-msg { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; font-size: 12px; font-weight: 500; color: var(--ts-ink); text-align: start; }
+.err-msg svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--ts-warn); }
+.btn.retry { color: var(--ts-ink); }
+.sk { display: block; flex: none; position: relative; overflow: hidden; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); }
+.sk.grow { flex: 1; min-height: 0; width: 100%; }
+.sk::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ts-surface-2) 35%, var(--ts-surface)), transparent);
+  animation: ts-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes ts-shimmer { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .sk::after { animation: none; display: none; } }
+${SK_CSS}
 .lp, .ln { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .lp { stroke: var(--ts-profit); }
 .ln { stroke: var(--ts-loss); }
@@ -236,6 +311,7 @@ const EMPTY_SPEC = Object.freeze({ label: '', sizes: Object.freeze([]) })
 // Per class, so a widget's CSS and each variant's markup are built once.
 const cssCache = new WeakMap()
 const templateCache = new WeakMap()
+const skeletonCache = new WeakMap()
 
 function cssFor(Ctor) {
   let css = cssCache.get(Ctor)
@@ -251,6 +327,19 @@ function templateFor(Ctor, variant) {
   return html
 }
 
+function skeletonFor(Ctor, variant) {
+  let byVariant = skeletonCache.get(Ctor)
+  if (!byVariant) skeletonCache.set(Ctor, (byVariant = new Map()))
+  let html = byVariant.get(variant)
+  if (html === undefined) byVariant.set(variant, (html = Ctor.skeleton(variant)))
+  return html
+}
+
+const WARN_GLYPH =
+  '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.9 15 14.1H1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M8 6.2v3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="8" cy="11.9" r=".95" fill="currentColor"></circle></svg>'
+
+const STATES = ['loading', 'error']
+
 /** The nearest ancestor <ts-grid>, looking out through shadow roots. */
 function findGrid(el) {
   let node = el.parentElement || (el.getRootNode && el.getRootNode().host)
@@ -263,15 +352,18 @@ function findGrid(el) {
 
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'state']
   }
 
   constructor() {
     super()
-    this._data = null
+    // undefined, not null: a widget nobody has given data yet is loading, not empty.
+    this._data = undefined
+    this._error = null
+    this._actions = Object.freeze([])
     this._clock = null
     this._queued = false
-    this._shown = null // 'empty', a variant, or null before the first render
+    this._shown = null // a variant for content, 'view:…' for the other views, or null before the first render
     this._refs = new Map()
     this._fmt = null
     this._fmtKey = ''
@@ -289,6 +381,11 @@ export class TsWidget extends Base {
     const root = this.attachShadow({ mode: 'open' })
     root.innerHTML = `<style>${cssFor(this.constructor)}</style><section class="tile" part="tile"></section>`
     this._section = root.querySelector('.tile')
+    // One delegated listener: the Retry button is rebuilt with the error view.
+    this._section.addEventListener('click', (e) => {
+      const target = e.target && e.target.closest ? e.target.closest('[data-action]') : null
+      if (target && target.getAttribute('data-action') === 'retry' && this.actionEnabled('retry')) this.emit('retry')
+    })
   }
 
   // ── Public API ─────────────────────────────────────────────────────────
@@ -300,6 +397,40 @@ export class TsWidget extends Base {
   set data(value) {
     this._data = value
     this.requestRender()
+  }
+
+  /** 'loading', 'error' or null; anything else reads as null. */
+  get state() {
+    const value = this.getAttribute('state')
+    return STATES.includes(value) ? value : null
+  }
+
+  set state(value) {
+    if (value === null || value === undefined || value === '') this.removeAttribute('state')
+    else this.setAttribute('state', value)
+  }
+
+  get error() {
+    return this._error
+  }
+
+  set error(value) {
+    const message = value instanceof Error ? value.message : value
+    this._error = typeof message === 'string' && message ? message : null
+    this.requestRender()
+  }
+
+  get actions() {
+    return this._actions
+  }
+
+  set actions(value) {
+    this._actions = Object.freeze(Array.isArray(value) ? value.filter((a) => typeof a === 'string') : [])
+    this.requestRender()
+  }
+
+  actionEnabled(name) {
+    return this._actions.includes(name)
   }
 
   get size() {
@@ -426,6 +557,11 @@ export class TsWidget extends Base {
     return {}
   }
 
+  /** The default loading shape: a header, a headline bar and two text lines. */
+  static skeleton() {
+    return `<div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(60, 30)}${sk(85, 11)}${sk(70, 11)}`
+  }
+
   viewContext() {
     return {}
   }
@@ -435,7 +571,7 @@ export class TsWidget extends Base {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
-    this.upgrade('data', 'size', 'clock')
+    this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions')
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
@@ -498,39 +634,75 @@ export class TsWidget extends Base {
     const Ctor = this.constructor
     const label = this._name()
     const variant = this.variant
-    let vm = null
-    if (this._data !== null && this._data !== undefined) {
-      try {
-        vm = Ctor.viewModel(this._data, variant, { ...this.viewContext(), fmt: this.formatter, now: this.now(), label }) || {}
-        if (this._shown !== variant) {
-          this._section.innerHTML = templateFor(Ctor, variant)
-          this._refs.clear()
-          this._shown = variant
-        }
-        this._section.setAttribute('aria-label', vm.ariaLabel || label)
-        this.update(vm, variant)
-        this._failed = false
-        return
-      } catch (err) {
-        // A widget that can't draw its data shouldn't take the page with it.
-        // Logged once per run of failures: a clock tick would otherwise log every second.
-        if (!this._failed) console.error(`<${this.localName}> could not render its data:`, err)
-        this._failed = true
-      }
-    } else {
+    const state = this.state
+
+    if (state === 'error' || this._error) {
       this._failed = false
+      return this._showError(label, this._error)
     }
-    this._showEmpty(label)
+    if (state === 'loading' || (this._data === undefined && !Ctor.dataOptional)) {
+      this._failed = false
+      return this._showLoading(label, variant)
+    }
+    if (this._data === null) {
+      this._failed = false
+      return this._showEmpty(label)
+    }
+    try {
+      const vm = Ctor.viewModel(this._data === undefined ? {} : this._data, variant, { ...this.viewContext(), fmt: this.formatter, now: this.now(), label }) || {}
+      if (this._shown !== variant) {
+        this._section.innerHTML = templateFor(Ctor, variant)
+        this._refs.clear()
+        this._shown = variant
+      }
+      this._section.removeAttribute('aria-busy')
+      this._section.setAttribute('aria-label', vm.ariaLabel || label)
+      this.update(vm, variant)
+      this._failed = false
+    } catch (err) {
+      // A widget that can't draw its data shouldn't take the page with it.
+      // Logged once per run of failures: a clock tick would otherwise log every second.
+      if (!this._failed) console.error(`<${this.localName}> could not render its data:`, err)
+      this._failed = true
+      this._showError(label, null)
+    }
+  }
+
+  /** Swap in a non-content view's markup, and write the real label into it. */
+  _show(key, html, label, name, busy) {
+    if (this._shown !== key) {
+      this._section.innerHTML = html
+      this._refs.clear()
+      this._shown = key
+    }
+    // A skeleton may carry its own words (Today's P&L S says "Today"), so the hook is optional.
+    const slot = this._section.querySelector('[data-k="label"]')
+    if (slot) slot.textContent = label
+    this._section.setAttribute('aria-label', name)
+    if (busy) this._section.setAttribute('aria-busy', 'true')
+    else this._section.removeAttribute('aria-busy')
+  }
+
+  _showLoading(label, variant) {
+    this._show(`view:loading:${variant}`, skeletonFor(this.constructor, variant), label, label, true)
   }
 
   _showEmpty(label) {
-    if (this._shown !== 'empty') {
-      this._section.innerHTML = '<div class="hd"><span class="lb"></span></div><div class="empty">No data</div>'
-      this._refs.clear()
-      this._shown = 'empty'
-    }
-    this._section.querySelector('.lb').textContent = label
-    this._section.setAttribute('aria-label', label)
+    const text = escapeHtml(this.constructor.emptyText)
+    this._show('view:empty', `<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="empty"><slot name="empty">${text}</slot></div>`, label, label, false)
+  }
+
+  _showError(label, message) {
+    const text = message || STRINGS.errorDefault
+    const retry = this.actionEnabled('retry') ? `<button type="button" class="btn retry" data-action="retry">${escapeHtml(STRINGS.retry)}</button>` : ''
+    this._show(
+      retry ? 'view:error:retry' : 'view:error',
+      `<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="err" part="error"><span class="err-msg">${WARN_GLYPH}<span data-k="message"></span></span>${retry}</div>`,
+      label,
+      STRINGS.errorRegion.replace('{label}', label).replace('{message}', text),
+      false,
+    )
+    this._section.querySelector('[data-k="message"]').textContent = text
   }
 }
 
@@ -539,3 +711,5 @@ export class TsWidget extends Base {
 TsWidget.catalogKey = null
 TsWidget.spec = null
 TsWidget.styles = ''
+TsWidget.dataOptional = false
+TsWidget.emptyText = STRINGS.noData
