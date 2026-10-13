@@ -1,4 +1,4 @@
-import type { Calendar, DayResult, Numeric, Time } from '../core/index.js'
+import type { Calendar, DayResult, Layout, LayoutItem, Numeric, Time } from '../core/index.js'
 import { TsWidget } from './widget.js'
 
 export { version } from '../core/index.js'
@@ -8,6 +8,22 @@ export { TsWidget } from './widget.js'
 export type { ViewModelContext, WidgetState } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
+import type { TsGrid } from './grid.js'
+
+export interface PersistLayoutOptions {
+  /** Each device is stored under `${key}:${device}`. */
+  key: string
+  /** A Layout or item array serves both devices; in the object form `phone` falls back to `desktop`. */
+  defaults?: Layout | LayoutItem[] | { desktop: Layout | LayoutItem[]; phone?: Layout | LayoutItem[] }
+  /** Defaults to `localStorage` when it exists. Storage that throws is treated as empty. */
+  storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null
+}
+
+/** Loads the grid's layout for its device, saves every `ts-layout-change`, and reloads when the device changes. */
+export declare function persistLayout(
+  grid: TsGrid,
+  options: PersistLayoutOptions
+): { reset(device?: 'desktop' | 'phone'): void; dispose(): void }
 
 /** Freshness, allowed on every widget's data (RFC 0001 §8.1). */
 export interface WidgetFreshness {
