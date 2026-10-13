@@ -268,7 +268,9 @@ function banner(d, ids, first, env, now) {
     if (st.open && tfs.length) {
       const closes = tfs.map((tf) => d.calendar.candleClose(id, now, tf)).filter((t) => t !== null)
       if (closes.length) {
-        const at = Math.min(...closes)
+        // A loop rather than a spread into Math.min: no argument list grows with the data.
+        let at = Infinity
+        for (const t of closes) at = Math.min(at, t)
         next = round(((at - st.win.open) / (st.win.close - st.win.open)) * 100, 2)
         if (nextAt === null || at < nextAt) nextAt = at
       }

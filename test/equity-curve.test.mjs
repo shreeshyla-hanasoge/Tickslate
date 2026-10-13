@@ -401,3 +401,32 @@ describe('live', () => {
     assert.equal(equityCurveModel({ days: OCT }, 'M', ctx()).live, false)
   })
 })
+
+describe('large inputs', () => {
+  // Made-up data, about 550 years of consecutive days: far longer than an
+  // argument list can hold, so a Math.min(...days) would throw a RangeError.
+  // Equity falls 250 a day for the first half, then rises 300 a day, so the
+  // lowest point (-25,000,000) and the end (5,000,000, also the peak) are known.
+  const n = 200000
+  const start = Date.UTC(1500, 0, 1)
+  const days = Array.from({ length: n }, (_, i) =>
+    d(new Date(start + i * 86400000).toISOString().slice(0, 10), i < n / 2 ? -250 : 300),
+  )
+
+  test('200,000 days build every variant, with the lowest point from the whole series', () => {
+    for (const v of ['Wide', 'M', 'XL']) {
+      const vm = equityCurveModel({ days }, v, ctx('All'))
+      assert.equal(vm.tradingDays, n)
+      assert.equal(vm.chartLabel, `Equity curve: peak ${fmt.money(5e6)}, lowest ${fmt.money(-25e6)}, ends at ${fmt.money(5e6)}`)
+      assert.equal(vm.chart.line.split(' L').length, n)
+    }
+  })
+
+  test('the XL peak line and drawdown band cover every day', () => {
+    const vm = equityCurveModel({ days }, 'XL', ctx('All'))
+    assert.equal(vm.maxDrawdown, fmt.money(-25e6))
+    assert.equal(vm.chart.peakLine.split(' L').length, n)
+    // Along the peak, back along the equity: two points a day.
+    assert.equal(vm.chart.band.split(' L').length, 2 * n)
+  })
+})

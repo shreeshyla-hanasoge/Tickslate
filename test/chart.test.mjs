@@ -104,3 +104,26 @@ describe('bandPath', () => {
     assert.equal(bandPath([{ x: 0, y: 0 }], [], f, f), '')
   })
 })
+
+describe('large inputs', () => {
+  // Made-up data: more points than an argument list can hold, so a
+  // Math.min(...points) anywhere on the way would throw a RangeError.
+  test('200,000 points draw, with the domain taken from every point', () => {
+    const n = 200000
+    // 7919 is coprime with 2001, so the values visit every whole number from
+    // -1000 to 1000 and the extremes are known without scanning.
+    const points = Array.from({ length: n }, (_, i) => ({ x: i, y: ((i * 7919) % 2001) - 1000 }))
+    const { line, area, zeroY } = linePaths(points, { width: 900, height: 220, pad: 4 })
+    const drawn = line.slice(1).split(' L').map((p) => p.split(' ').map(Number))
+    assert.equal(drawn.length, n)
+    // The first point is the lowest value, at the left edge; the last is at the right.
+    assert.deepEqual(drawn[0], [4, 216])
+    assert.equal(drawn[n - 1][0], 896)
+    // The highest value reaches the top of the box and nothing leaves it.
+    const top = drawn.reduce((lo, [, py]) => Math.min(lo, py), Infinity)
+    const bottom = drawn.reduce((hi, [, py]) => Math.max(hi, py), -Infinity)
+    assert.deepEqual([top, bottom], [4, 216])
+    assert.equal(zeroY, 110)
+    assert.ok(area.startsWith(line) && area.endsWith(' L896 110 L4 110 Z'))
+  })
+})

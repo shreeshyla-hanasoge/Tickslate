@@ -22,6 +22,20 @@ export function scale(d0, d1, r0, r1) {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 
+// [min, max] of one coordinate over the points, in a loop: spreading a long
+// series into Math.min passes one argument per point and overflows the stack
+// (in Node's V8, from about 125,000 points). Folding with Math.min and
+// Math.max gives exactly what the spread gave, NaN and -0 included.
+function extent(points, key) {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const p of points) {
+    lo = Math.min(lo, p[key])
+    hi = Math.max(hi, p[key])
+  }
+  return [lo, hi]
+}
+
 /** 'M x y L x y …' for points in data units, or '' when there are none. */
 export function linePath(points, x, y) {
   let d = ''
@@ -44,10 +58,8 @@ export function linePath(points, x, y) {
  */
 export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, includeZero = true } = {}) {
   const pts = (points || []).filter(finite)
-  const xs = pts.map((p) => p.x)
-  const ys = pts.map((p) => p.y)
-  const [x0, x1] = xDomain || (pts.length ? [Math.min(...xs), Math.max(...xs)] : [0, 1])
-  let [y0, y1] = yDomain || (pts.length ? [Math.min(...ys), Math.max(...ys)] : [0, 1])
+  const [x0, x1] = xDomain || (pts.length ? extent(pts, 'x') : [0, 1])
+  let [y0, y1] = yDomain || (pts.length ? extent(pts, 'y') : [0, 1])
   if (includeZero) {
     y0 = Math.min(y0, 0)
     y1 = Math.max(y1, 0)

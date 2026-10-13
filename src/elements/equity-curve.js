@@ -155,7 +155,9 @@ export function equityCurveModel(data, variant, ctx) {
   const peak = fmt.money(stats.peak)
   // A drawdown is a loss, so it reads as a negative amount.
   const maxDrawdown = fmt.money(-stats.maxDrawdown)
-  const lowest = n ? Math.min(...series.map((s) => s.equity)) : 0
+  // A loop rather than a spread into Math.min: years of days overflow the stack.
+  let lowest = n ? Infinity : 0
+  for (const s of series) lowest = Math.min(lowest, s.equity)
 
   const dayWord = plural(n, 'day')
   const tradingDays = plural(n, 'trading day')

@@ -449,6 +449,45 @@ describe('update()', () => {
   })
 })
 
+describe('large inputs', () => {
+  // 1,000 made-up sessions, so nothing in the model may build an argument
+  // list as long as the lanes. They open a minute apart from 08:00 to 11:59
+  // (then the pattern repeats) and each trades for six hours.
+  const n = 1000
+  const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+  const opensAt = (i) => 8 * 60 + (i % 240)
+  const sessions = Array.from({ length: n }, (_, i) => ({
+    id: `s${i}`,
+    label: `Session ${i}`,
+    timeZone: IST,
+    days: [1, 2, 3, 4, 5],
+    open: hhmm(opensAt(i)),
+    close: hhmm(opensAt(i) + 360),
+  }))
+  const many = { calendar: createCalendar({ sessions }), sessions: sessions.map((s) => s.id), timeframes: [5, 15] }
+  const now = at('2026-10-12', '11:42', 20)
+  // Open by now: the sessions that opened at 11:42 or before.
+  const openCount = sessions.filter((_, i) => opensAt(i) <= 11 * 60 + 42).length
+
+  test('Banner: a lane per session, and the next close is the earliest across all of them', () => {
+    const m = model(many, 'Banner', now)
+    assert.equal(m.lanes.length, n)
+    assert.equal(m.lanes.filter((l) => l.open).length, openCount)
+    assert.ok(m.lanes.every((l) => l.error === null && (l.open ? l.next !== null : l.next === null)))
+    assert.equal(m.live, true)
+    // Every session opened on a whole minute, so the soonest 5m close is 11:43:00.
+    assert.equal(m.nextClose, 'next close in 0:40')
+    assert.equal(m.ariaLabel.split('; ').length, n)
+  })
+
+  test('S: shows the first of 1,000 sessions', () => {
+    const m = model(many, 'S', now)
+    assert.equal(m.session, 'Session 0')
+    assert.equal(m.from, '08:00')
+    assert.equal(m.to, '14:00')
+  })
+})
+
 const round3 = (v) => Math.round(v * 1000) / 1000
 
 function dates(from, days) {
