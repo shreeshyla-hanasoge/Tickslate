@@ -1,24 +1,29 @@
 # Tickslate — notes for agent sessions
 
-Tickslate is an open-source library of finance dashboard widgets. It is a
-standalone project: a sibling of Emberwick (the maintainer's candlestick chart
-library), not part of it. Traed, the maintainer's trading app, is its first
-consumer.
+Tickslate is an open-source library of dashboard widgets for any data, with a
+finance set built in. It is a standalone project: a sibling of Emberwick (the
+maintainer's candlestick chart library), not part of it. The maintainer's
+trading app is its first consumer.
 
-**Read [docs/BRIEF.md](docs/BRIEF.md) before writing code.** It holds the
-decisions already made, the v1 scope and the first tasks in order.
+**The current contract is [RFC 0002](docs/rfc/0002-integration-and-ux.md),
+on top of [RFC 0001](docs/rfc/0001-api.md).** Read both before writing code.
+[docs/BRIEF.md](docs/BRIEF.md) is the original handover and explains where the
+project came from. Branches, waves and changelog fragments follow
+[docs/WORKFLOW.md](docs/WORKFLOW.md), and every widget meets
+[docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
 
 ## Hard rules
 
-- **Work only in this repo.** Never edit Emberwick (`~/projects/Emberwick`) or
-  Traed (`~/projects/traed` and its `traed-*` checkouts) from a Tickslate
-  session. Read them for reference only.
+- **Work only in this repo.** Never edit a sibling project (Emberwick, or the
+  first consumer's app) from a Tickslate session. Read them for reference
+  only.
 - **Commits are authored by the maintainer alone.** Never add a
   `Co-Authored-By` line or any AI attribution to commits or PRs.
 - **npm publish, version tags and GitHub releases are the maintainer's.** Prepare
   them; don't run them.
-- **Agree the API before building it.** The first task is an API RFC; get the
-  maintainer's approval on it before implementing.
+- **Agree the API before building it.** Public API changes go through an RFC
+  (RFC 0002 is current; RFC 0003 covers P1) and need the maintainer's
+  approval in chat before implementing PRs merge to master.
 
 ## Principles
 
@@ -31,12 +36,14 @@ decisions already made, the v1 scope and the first tasks in order.
   never a fork.
 - **Data in, nothing out.** Widgets render data the host passes in. No
   fetching, no broker APIs, no credentials.
-- **Generic vocabulary.** Name things as any trading app would (strategy,
-  account, allocation, position, order, fill, instrument, session), never
-  after one product's screens.
+- **Generic vocabulary.** Name things as any dashboard would (metric, series,
+  card, row, status, target) and, in the finance set, as any trading app would
+  (strategy, account, allocation, position, order, fill, instrument,
+  session), never after one product's screens.
 - **Accessible by default.** Each widget is a labelled region; charts get
   `role="img"` and a label stating the result; gains and losses always carry a
   sign, not only a colour; motion respects `prefers-reduced-motion`.
+  Every widget meets docs/ACCESSIBILITY.md before it merges.
 
 ## Conventions copied from Emberwick
 

@@ -12,3 +12,5 @@ coverage/
 npm-debug.log*
 
 .DS_Store
+
+CLAUDE.local.md
