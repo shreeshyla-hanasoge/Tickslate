@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- Every registered widget at every size it supports, in one theme chosen by
+     ?theme=light|dark. It loads nothing from the network. The spec drives it
+     through window.__fx. ?fill=1 puts a height: 100% element in each card. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widget fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
+  h2 { font: 600 15px/1.2 var(--ts-font-ui); margin: 24px 0 8px; }
+  .set { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  figure { margin: 0; max-width: 100%; }
+  figcaption { margin-top: 4px; font-size: 12px; color: var(--ts-muted); }
+  .fill { height: 100%; background: var(--ts-surface-2); }
+  ul { margin: 0; padding: 0; list-style: none; }
+</style>
+</head>
+<body>
+<main id="stage">
+  <h1>Widget fixture</h1>
+</main>
+<script type="module">
+  import { WIDGETS, SIZES, SIZE_NAMES } from '/src/core/index.js'
+  import '/src/elements/index.js'
+  import { setup, dataFor, frozenClock, fillCard } from './data.js'
+
+  setup()
+  const params = new URLSearchParams(location.search)
+  const theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const fill = params.has('fill')
+  document.documentElement.dataset.theme = theme
+  const stage = document.getElementById('stage')
+
+  // Widths as a 4-column desktop grid gives them. A narrow viewport shrinks the
+  // tile instead of scrolling the page; only the height is under test.
+  const widthOf = (size) => SIZES[size].cols * 304 + (SIZES[size].cols - 1) * 16
+
+  const defined = (tag) => !!customElements.get(tag)
+  const entries = Object.entries(WIDGETS).filter(([, spec]) => defined(spec.tag)).map(([key, spec]) => ({ key, tag: spec.tag, label: spec.label, sizes: [...spec.sizes] }))
+  const tiles = new Map()
+
+  for (const entry of entries) {
+    const h2 = document.createElement('h2')
+    h2.textContent = entry.label
+    const set = document.createElement('div')
+    set.className = 'set'
+    for (const size of entry.sizes) {
+      const el = document.createElement(entry.tag)
+      el.setAttribute('size', size)
+      el.dataset.key = entry.key
+      el.dataset.size = size
+      el.style.width = `min(${widthOf(size)}px, 100%)`
+      if (entry.tag === 'ts-card') {
+        if (fill) {
+          el.setAttribute('label', 'Fill')
+          el.insertAdjacentHTML('beforeend', '<div class="fill"></div>')
+        } else fillCard(el, size)
+      }
+      el.clock = frozenClock
+      el.data = dataFor(entry.tag)
+      const figure = document.createElement('figure')
+      const caption = document.createElement('figcaption')
+      caption.textContent = `${size} · ${SIZES[size].cols} × ${SIZES[size].rows}`
+      figure.append(el, caption)
+      set.append(figure)
+      tiles.set(`${entry.key}:${size}`, el)
+    }
+    stage.append(h2, set)
+  }
+
+  const modes = {
+    data: (el, scale) => { el.state = null; el.error = null; el.data = dataFor(el.localName, scale) },
+    loading: (el) => { el.error = null; el.data = undefined; el.state = 'loading' },
+    empty: (el) => { el.state = null; el.error = null; el.data = null },
+    error: (el) => { el.state = null; el.data = dataFor(el.localName); el.actions = ['retry']; el.error = "Couldn't reach the data service" },
+  }
+
+  window.__fx = {
+    theme,
+    entries,
+    tiles,
+    sizeNames: SIZE_NAMES,
+    setMode(el, mode, scale = 1) { modes[mode](el, scale) },
+    box(el) {
+      const r = el.getBoundingClientRect()
+      return { w: r.width, h: r.height }
+    },
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>
