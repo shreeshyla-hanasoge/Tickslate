@@ -13,9 +13,11 @@
  * `translate` rather than `transform` also leaves `rotate` and `scale` free,
  * so the edit-mode wiggle and the lift turn around the tile's own centre.
  *
- * In edit mode a transparent "chrome" layer covers each tile. It catches
- * every pointer, so a drag can never press a button inside a widget, and it
- * carries the remove badge and the resize handle.
+ * In edit mode a transparent "chrome" covers each tile: a plain container of
+ * three sibling buttons (RFC 0002 §5.9). The handle covers the tile, catches
+ * every pointer, so a drag can never press a button inside a widget, and is
+ * the one Tab stop; remove and resize sit beside it, reachable by assistive
+ * technology. Nothing interactive is nested inside anything interactive.
  */
 
 import {
@@ -55,6 +57,7 @@ import {
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
+import { keyAction, tapAction } from './grid-input.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -93,6 +96,21 @@ const TEXT = {
   editingGroup: 'Editing layout',
   emptyBoard: 'No widgets on this layout yet',
   dashboard: 'Dashboard',
+  editStart: (n) => `Editing layout, ${n} ${n === 1 ? 'tile' : 'tiles'}. Tab to a tile, Space to pick it up.`,
+  editDone: 'Done editing layout.',
+  handle: (label, size, n, total) => `${label}, ${size}, position ${n} of ${total}`,
+  instructions: 'Space or Enter picks the tile up, then the arrow keys move it and Space drops it. Plus and minus resize it. Delete removes it. You can also tap the tile, then tap where it should go.',
+  removeLabel: (label) => `Remove ${label}`,
+  resizeLabel: (label, size) => `Resize ${label}, now ${size}`,
+  pickedUp: (label) => `${label}, picked up. Use the arrow keys to move it, Space to drop, Escape to cancel.`,
+  moved: (label, n, total) => `${label}, moved to position ${n} of ${total}.`,
+  dropped: (label) => `${label}, dropped.`,
+  droppedAt: (label, n, total) => `${label}, dropped at position ${n} of ${total}.`,
+  cancelled: (label) => `${label}, move cancelled.`,
+  blocked: "Can't move further.",
+  resized: (label, size) => `${label}, size ${size}.`,
+  profile: (name) => `Showing the ${name} layout.`,
+  undone: 'Undone.',
   lockedWarning: '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.',
 }
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
@@ -121,16 +139,24 @@ const TEMPLATE = `
   }
   .placeholder.on { opacity: 1; }
   .chromes { position: absolute; inset: 0; pointer-events: none; }
+  /* The container never takes a pointer; its three buttons do, while editing. */
   .chrome {
     position: absolute; top: 0; left: 0; box-sizing: border-box; pointer-events: none;
-    border-radius: var(--ts-radius, 10px); outline: none; z-index: 2;
+    border-radius: var(--ts-radius, 10px); z-index: 2;
   }
-  :host([editing]) .chrome { pointer-events: auto; cursor: grab; }
-  :host([locked]) .chrome { pointer-events: none; }
-  .chrome.removing, .chrome.removing .remove { pointer-events: none; }
+  .chrome button { font: inherit; color: inherit; }
+  .handle {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: inherit;
+    background: none; pointer-events: none; cursor: grab; -webkit-tap-highlight-color: transparent;
+  }
+  :host([editing]) .handle, :host([editing]) .remove, :host([editing]) .resize { pointer-events: auto; }
+  :host([locked]) .chrome button { pointer-events: none; }
+  .chrome.removing .handle, .chrome.removing .remove, .chrome.removing .resize { pointer-events: none; }
   .chrome.removing .remove { display: none; }
-  :host([dragging]) .chrome { cursor: grabbing; }
-  .chrome:focus-visible { box-shadow: 0 0 0 2px var(--ts-accent, #2C52C4); }
+  :host([dragging]) .handle { cursor: grabbing; }
+  /* An outline, not a shadow, so the ring survives forced colours. */
+  .handle:focus-visible, .resize:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
+  .chrome.held .handle { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .remove, .resize { display: none; }
   :host([editing]) .remove, :host([editing]) .resize { display: flex; }
   .chrome.lifted .remove, .chrome.lifted .resize, .chrome.fixed .resize { display: none; }
@@ -146,10 +172,10 @@ const TEMPLATE = `
     border: 1px solid var(--ts-line, #E2DACB); box-shadow: var(--ts-shadow, none);
     font: 600 16px/1 var(--ts-font-ui, system-ui, sans-serif);
   }
-  .remove:focus-visible span { box-shadow: 0 0 0 2px var(--ts-accent, #2C52C4); }
+  .remove:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .resize {
-    position: absolute; right: -6px; bottom: -6px; width: 44px; height: 44px;
-    cursor: nwse-resize; touch-action: none; animation: pop 160ms var(--ts-ease, ease-out);
+    position: absolute; right: -6px; bottom: -6px; width: 44px; height: 44px; margin: 0; padding: 0; border: 0;
+    background: none; cursor: nwse-resize; touch-action: none; animation: pop 160ms var(--ts-ease, ease-out);
   }
   .resize::after {
     content: ''; position: absolute; right: 12px; bottom: 12px; width: 12px; height: 12px;
@@ -237,6 +263,7 @@ const TEMPLATE = `
   .empty .note { margin: 0; }
   .empty .anchor { position: relative; }
   .empty .menu { bottom: auto; top: calc(100% + 8px); inset-inline-start: 50%; transform: translateX(-50%); }
+  .hint { display: none; }
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 <button class="edit-btn" type="button" hidden></button>
@@ -258,6 +285,7 @@ const TEMPLATE = `
   </div>
 </div></div>
 <div class="sr" role="status" aria-live="polite"></div>
+<p class="hint" id="hint"></p>
 `
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
@@ -302,6 +330,10 @@ export class TsGrid extends Base {
     this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
     this._history = createHistory()
     this._removing = new Set() // ids fading out, so a second click or Delete does nothing
+    root.querySelector('.hint').textContent = TEXT.instructions
+    this._inertWas = new Map() // tile → whether the host had set inert, restored exactly when editing ends
+    this._deferred = false // a scheduled profile change waiting for Done
+    this._said = [] // announcements waiting for the next frame
 
     this._layout = emptyLayout()
     this._catalog = WIDGETS
@@ -352,6 +384,10 @@ export class TsGrid extends Base {
 
     this.addEventListener('pointerdown', this._onPointerDown)
     this.addEventListener('keydown', this._onKeyDown)
+    // Firefox clicks a button on Space's keyup unless that is cancelled too, and a click would pick the tile up again.
+    this.addEventListener('keyup', (e) => {
+      if (this._editing && (e.key === ' ' || e.key === 'Spacebar') && this._handleOf(e)) e.preventDefault()
+    })
     // Once a tile is lifted the page must not scroll under the finger. Only
     // a non-passive touchmove can stop that mid-gesture.
     this.addEventListener('touchmove', (e) => {
@@ -372,7 +408,12 @@ export class TsGrid extends Base {
       const target = e.target.closest ? e.target : null
       if (!target) return
       const button = target.closest('.remove')
+      const handle = target.closest('.handle')
+      const resize = target.closest('.resize')
       if (button) this._remove(button.parentElement.dataset.id)
+      else if (handle) this._tap(handle.parentElement.dataset.id)
+      else if (resize) this._resizeClick(resize.parentElement.dataset.id)
+      else if (target === this._board) this._tap(null)
       else if (target.closest('.undo')) this._undoFromToast()
       else if (target.closest('.edit-btn')) {
         if (this.locked) return
@@ -563,7 +604,7 @@ export class TsGrid extends Base {
     this._schedule = value || null
     if (!value) this._override = null
     this._reschedule(false)
-    this._profileChanged(before, 'schedule')
+    this._profileChanged(before, 'schedule', true)
   }
 
   /** What the grid takes the time to be. Tests and demos can replace it. */
@@ -573,7 +614,7 @@ export class TsGrid extends Base {
 
   set clock(fn) {
     this._clock = typeof fn === 'function' ? fn : () => Date.now()
-    this._reschedule(true)
+    this._reschedule(true, 'schedule', true)
   }
 
   /**
@@ -614,7 +655,7 @@ export class TsGrid extends Base {
     this._syncControls()
     if (this._editing) this._startEditing()
     document.addEventListener('visibilitychange', this._onVisibility)
-    this._reschedule(true)
+    this._reschedule(true, 'schedule', true)
   }
 
   disconnectedCallback() {
@@ -643,7 +684,7 @@ export class TsGrid extends Base {
     return el.getAttribute('item') !== this._itemOf.get(el)
   }
 
-  attributeChangedCallback(name) {
+  attributeChangedCallback(name, old, value) {
     if (name === 'locked') {
       if (this.locked) {
         this.editing = false
@@ -669,19 +710,27 @@ export class TsGrid extends Base {
     } else if (name === 'profile') {
       this._cancelGesture()
       this._sync(false)
+      if (this._rendered && old !== value) this._announce(TEXT.profile(this.profile))
     }
   }
 
   // ── Profiles on a schedule ─────────────────────────────────────────────
 
   /** Work out the scheduled profile now and arm a timer for the next change. */
-  _reschedule(emit, reason = 'schedule') {
+  _reschedule(emit, reason = 'schedule', quiet = false) {
     clearTimeout(this._profileTimer)
     const before = this.profile
     const s = this._schedule
     if (!s || !this.isConnected) {
       this._scheduled = null
+      this._deferred = false
+    } else if ((this._editing || this._gesture) && this._scheduled !== null) {
+      // Tiles must not reshuffle under a hand that is rearranging them. Done
+      // (or the gesture ending) applies the change that fell due, and re-arms the timer.
+      this._deferred = true
+      return
     } else {
+      this._deferred = false
       const now = this._clock()
       if (this._override && now >= this._override.until) {
         this._override = null
@@ -693,15 +742,22 @@ export class TsGrid extends Base {
       const wait = until === null || until === Infinity ? MAX_WAIT : Math.min(MAX_WAIT, Math.max(0, until - now))
       this._profileTimer = setTimeout(() => this._reschedule(true), wait)
     }
-    if (emit) this._profileChanged(before, reason)
+    if (emit) this._profileChanged(before, reason, quiet)
   }
 
-  _profileChanged(before, reason) {
+  _profileChanged(before, reason, quiet = false) {
     const profile = this.profile
     if (profile === before) return
     this._cancelGesture()
     this._sync(false)
+    // Not on load, when nothing has changed from the user's point of view.
+    if (!quiet) this._announce(TEXT.profile(profile))
     this._emit('ts-profile-change', { profile, reason })
+  }
+
+  /** Apply a scheduled change that fell due while the user was editing or dragging. */
+  _applyDeferred() {
+    if (this._deferred && !this._editing && !this._gesture && this.isConnected) this._reschedule(true)
   }
 
   // ── Measuring and rendering ────────────────────────────────────────────
@@ -897,7 +953,9 @@ export class TsGrid extends Base {
       setBox(chrome, box, slide)
       const held = this._gesture && this._gesture.id === p.id
       if (this._editing && !held && !this._wiggles.has(p.id)) this._wiggle(p.id)
+      if (this._editing) this._makeInert(el)
     }
+    this._orderChromes(placements)
     this._board.style.transition = animate ? '' : 'none'
     // An empty board keeps one row, so its message and Add back have somewhere to sit.
     this._board.style.height = `${boardHeight(rows || 1, m)}px`
@@ -909,20 +967,61 @@ export class TsGrid extends Base {
       chrome = document.createElement('div')
       chrome.className = 'chrome'
       chrome.dataset.id = id
-      chrome.setAttribute('role', 'button')
-      chrome.setAttribute('aria-roledescription', 'tile')
-      chrome.innerHTML = '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button><div class="resize" aria-hidden="true"></div>'
+      // Three siblings, never a button inside a button: the handle takes focus and
+      // keys, remove and resize are named for assistive technology but not Tab stops.
+      chrome.innerHTML = '<button class="handle" type="button" aria-describedby="hint" aria-pressed="false"></button>' +
+        '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button>' +
+        '<button class="resize" type="button" tabindex="-1"></button>'
       this._chromeLayer.appendChild(chrome)
       this._chromes.set(id, chrome)
     }
     const label = this._label(id)
-    chrome.setAttribute('aria-label', `${label}. Space to move, plus or minus to resize, Delete to remove.`)
-    chrome.querySelector('.remove').setAttribute('aria-label', `Remove ${label}`)
-    chrome.tabIndex = this._editing ? 0 : -1
-    chrome.setAttribute('aria-hidden', this._editing ? 'false' : 'true')
+    const item = this._item(id)
+    const size = item ? item.size : ''
+    const handle = chrome.querySelector('.handle')
+    setAttr(handle, 'aria-label', TEXT.handle(label, size, this._position(id), this._order.length))
+    setAttr(chrome.querySelector('.remove'), 'aria-label', TEXT.removeLabel(label))
+    setAttr(chrome.querySelector('.resize'), 'aria-label', TEXT.resizeLabel(label, size))
+    handle.tabIndex = this._editing ? 0 : -1
+    if (this._editing) chrome.removeAttribute('aria-hidden')
+    else chrome.setAttribute('aria-hidden', 'true')
     const spec = this._spec(id)
     chrome.classList.toggle('fixed', !spec || spec.sizes.length < 2)
     return chrome
+  }
+
+  /**
+   * Keep the chromes in the DOM in placement order, so Tab follows what the
+   * eye sees. moveBefore keeps focus and running animations; without it a
+   * moved node loses both, so the focused handle is refocused and the wiggle restarted.
+   */
+  _orderChromes(placements) {
+    const layer = this._chromeLayer
+    const want = [...placements].sort((a, b) => a.row - b.row || a.col - b.col).map((p) => this._chromes.get(p.id))
+    const active = this.shadowRoot.activeElement
+    const moved = []
+    for (let i = 0; i < want.length; i++) {
+      const at = layer.children[i]
+      if (at === want[i]) continue
+      if (typeof layer.moveBefore === 'function') layer.moveBefore(want[i], at || null)
+      else layer.insertBefore(want[i], at || null)
+      moved.push(want[i])
+    }
+    if (!moved.length || typeof layer.moveBefore === 'function') return
+    if (active && active.isConnected && this.shadowRoot.activeElement !== active) active.focus({ preventScroll: true })
+    if (this._editing) for (const chrome of moved) if (!(this._gesture && this._gesture.id === chrome.dataset.id)) this._wiggle(chrome.dataset.id)
+  }
+
+  /** Tiles are inert while editing, so a widget's own buttons and links can't be reached; the host's own value comes back after. */
+  _makeInert(el) {
+    if (this._inertWas.has(el)) return
+    this._inertWas.set(el, el.hasAttribute('inert'))
+    el.setAttribute('inert', '')
+  }
+
+  _restoreInert() {
+    for (const [el, was] of this._inertWas) if (!was) el.removeAttribute('inert')
+    this._inertWas.clear()
   }
 
   _dropChrome(id) {
@@ -957,23 +1056,31 @@ export class TsGrid extends Base {
 
   _startEditing() {
     if (!this.isConnected) return
+    // Focus inside a tile would be dropped by inert; its handle is the same place in edit mode.
+    const inside = document.activeElement && document.activeElement !== this && this.contains(document.activeElement) ? document.activeElement : null
+    const focusId = inside && [...this._tiles].find(([, el]) => el.contains(inside))
+    for (const el of this._tiles.values()) this._makeInert(el)
     for (const [id, chrome] of this._chromes) {
-      chrome.tabIndex = 0
-      chrome.setAttribute('aria-hidden', 'false')
+      chrome.querySelector('.handle').tabIndex = 0
+      chrome.removeAttribute('aria-hidden')
       this._wiggle(id)
     }
+    if (focusId && this._chromes.has(focusId[0])) this._chromes.get(focusId[0]).querySelector('.handle').focus({ preventScroll: true })
     document.addEventListener('keydown', this._onDocKeyDown)
     document.addEventListener('pointerdown', this._onDocPointerDown, true)
     this._syncControls()
+    this._announce(TEXT.editStart(this._order.length))
   }
 
   _stopEditing() {
     if (this._gesture) this._cancelGesture()
+    // Tiles can take focus again before it is returned, or the origin tile would refuse it.
+    this._restoreInert()
     // Before any chrome turns aria-hidden or the pill goes, or focus would be lost with them.
     this._returnFocus()
     this._closeMenu(false)
     for (const [id, chrome] of this._chromes) {
-      chrome.tabIndex = -1
+      chrome.querySelector('.handle').tabIndex = -1
       chrome.setAttribute('aria-hidden', 'true')
       this._unwiggle(id)
     }
@@ -981,6 +1088,8 @@ export class TsGrid extends Base {
     document.removeEventListener('pointerdown', this._onDocPointerDown, true)
     this._editOrigin = null
     this._syncControls()
+    if (this.isConnected) this._announce(TEXT.editDone)
+    this._applyDeferred()
   }
 
   /** A press outside the grid ends editing; one in the pill or its list is inside, because the path names the grid. */
@@ -1109,7 +1218,7 @@ export class TsGrid extends Base {
     const chrome = this._chromes.get(id)
     // Edit mode: the tile's handle. Otherwise its tile if it can take focus, else the grid.
     this._focus(pickFocusTarget([
-      chrome && { target: chrome, connected: chrome.isConnected, hidden: !this._editing },
+      chrome && { target: chrome.querySelector('.handle'), connected: chrome.isConnected, hidden: !this._editing },
       el && { target: el, connected: el.isConnected, hidden: el.tabIndex < 0 || el.style.display === 'none' },
     ]) || this)
   }
@@ -1149,7 +1258,7 @@ export class TsGrid extends Base {
       if (node.getRootNode() === root) {
         if (node.classList.contains('remove')) return { kind: 'remove', id: node.parentElement.dataset.id }
         if (node.classList.contains('resize')) return { kind: 'resize', id: node.parentElement.dataset.id }
-        if (node.classList.contains('chrome')) return { kind: 'chrome', id: node.dataset.id }
+        if (node.classList.contains('handle')) return { kind: 'chrome', id: node.parentElement.dataset.id }
         if (node === this._board) return { kind: 'board' }
       } else if (node.parentElement === this && node.hasAttribute('item')) {
         const id = node.getAttribute('item')
@@ -1213,6 +1322,8 @@ export class TsGrid extends Base {
     window.removeEventListener('pointercancel', this._onPointerCancel)
     this.removeAttribute('dragging')
     this._gesture = null
+    // A long press that came to nothing leaves no edit mode to wait for.
+    if (this._deferred && !this._editing) Promise.resolve().then(() => this._applyDeferred())
   }
 
   _unsqueeze(g) {
@@ -1288,9 +1399,14 @@ export class TsGrid extends Base {
         // The pointer may already be gone; the drag still ends on pointerup.
       }
     }
-    this._suppressClick = true
+    // A held tile has no pointer to click away: the next tap is the destination.
+    if (g.pointerType !== 'keyboard') this._suppressClick = true
     this._unwiggle(g.id)
     liftStyle(el, chrome, true)
+    if (g.pointerType === 'keyboard') {
+      chrome.querySelector('.handle').setAttribute('aria-pressed', 'true')
+      chrome.classList.add('held')
+    }
     this._showPlaceholder(box, false)
     if (navigator.vibrate) navigator.vibrate(8)
     if (g.pointerType !== 'keyboard') g.raf = requestAnimationFrame(this._frame)
@@ -1346,7 +1462,7 @@ export class TsGrid extends Base {
     this._showPlaceholder(this._boxes.get(g.id), true)
   }
 
-  _drop(g) {
+  _drop(g, placed) {
     clearTimeout(g.settle)
     // Release decides, even for a flick that ended before the slot settled.
     if (g.pointerType !== 'keyboard') {
@@ -1355,11 +1471,16 @@ export class TsGrid extends Base {
     }
     this._settle(g)
     const moved = !sameOrder(g.from, this._order)
-    if (moved) {
-      this._commit('move', g.id)
-      this._announce(`${this._label(g.id)}, moved to position ${this._position(g.id)} of ${this._order.length}.`)
-    } else if (g.pointerType === 'keyboard') {
-      this._announce(`${this._label(g.id)}, dropped.`)
+    if (moved) this._commit('move', g.id)
+    const label = this._label(g.id)
+    const at = [this._position(g.id), this._order.length]
+    if (g.pointerType !== 'keyboard') {
+      if (moved) this._announce(TEXT.moved(label, ...at))
+    } else if (placed && moved) {
+      this._announce(TEXT.droppedAt(label, ...at))
+    } else {
+      // Each arrow press already said where the tile went.
+      this._announce(TEXT.dropped(label))
     }
   }
 
@@ -1373,6 +1494,10 @@ export class TsGrid extends Base {
     setTimeout(() => {
       this._suppressClick = false
     }, 0)
+    if (chrome) {
+      chrome.classList.remove('held')
+      chrome.querySelector('.handle').setAttribute('aria-pressed', 'false')
+    }
     if (!el || !chrome || !box) return
     const animate = this._motion()
     setBox(el, box, animate, true)
@@ -1397,7 +1522,7 @@ export class TsGrid extends Base {
       this._order = g.from
       this._render(true, g.id)
       this._settle(g)
-      if (g.pointerType === 'keyboard') this._announce(`${this._label(g.id)}, move cancelled.`)
+      if (g.pointerType === 'keyboard') this._announce(TEXT.cancelled(this._label(g.id)))
     } else {
       this._end()
     }
@@ -1480,7 +1605,7 @@ export class TsGrid extends Base {
     const size = this._item(g.id).size
     if (size !== g.size0) {
       this._commit('resize', g.id)
-      this._announce(`${this._label(g.id)}, size ${size}.`)
+      this._announce(TEXT.resized(this._label(g.id), size))
     }
   }
 
@@ -1491,11 +1616,16 @@ export class TsGrid extends Base {
     const el = this._tiles.get(id)
     const chrome = this._chromes.get(id)
     const label = this._label(id)
+    // The handle or button that has focus goes with the tile, so say now where focus goes next.
+    const ids = [...this._placements.values()].sort((a, b) => a.row - b.row || a.col - b.col).map((p) => p.id)
+    const near = ids[ids.indexOf(id) + 1] || ids[ids.indexOf(id) - 1]
     // Held until the tile is gone, so a double-click can't remove twice.
     this._removing.add(id)
     chrome.classList.add('removing')
     const finish = () => {
       if (!this._removing.delete(id)) return
+      // Read now, not when the removal began: the user may have moved on during the fade.
+      const hadFocus = chrome.contains(this.shadowRoot.activeElement)
       this._order = removeItem(this._order, id)
       el.style.display = 'none'
       this._dropChrome(id)
@@ -1511,6 +1641,7 @@ export class TsGrid extends Base {
       this._layout = withProfile(this._layout, profile, removeItem(list, id))
       this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'remove', id, index, item: list[index] })
       this._syncControls()
+      if (hadFocus) this._focusAfterRemove(near)
       // The toast is a live region, so it speaks for itself; the grid's own
       // status region would say the same thing twice.
       if (!this._showToast(TEXT.removed(label))) this._announce(TEXT.removed(label) + '.')
@@ -1526,6 +1657,16 @@ export class TsGrid extends Base {
       for (const a of el.getAnimations()) a.cancel()
     }
     el.animate(out, options).finished.then(done, done)
+  }
+
+  /** Focus the removed tile's neighbour, else the pill's Done, else the grid, so it is never left on a node that is gone. */
+  _focusAfterRemove(near) {
+    const chrome = near && this._chromes.get(near)
+    const done = this._pill.querySelector('.done')
+    this._focus(pickFocusTarget([
+      chrome && { target: chrome.querySelector('.handle'), connected: chrome.isConnected, hidden: !this._editing },
+      { target: done, connected: done.isConnected, hidden: this._pill.hidden },
+    ]) || this)
   }
 
   // ── The undo toast ─────────────────────────────────────────────────────
@@ -1584,7 +1725,7 @@ export class TsGrid extends Base {
     // Keyboard users pressed Undo with focus on the toast, which is now gone.
     const back = this._profileItems().find((item) => !before.has(item.id))
     const chrome = back && this._chromes.get(back.id)
-    if (this._editing && chrome) chrome.focus()
+    if (this._editing && chrome) chrome.querySelector('.handle').focus()
   }
 
   // ── Keyboard ───────────────────────────────────────────────────────────
@@ -1597,75 +1738,153 @@ export class TsGrid extends Base {
       // Leave a text field's own undo alone.
       const origin = e.composedPath()[0]
       if (origin && (origin.isContentEditable || /^(input|textarea|select)$/i.test(origin.localName || ''))) return
-      if (!this._gesture && this.undo()) e.preventDefault()
+      if (!this._gesture && this.undo()) {
+        this._announce(TEXT.undone)
+        e.preventDefault()
+      }
       return
     }
     if (e.key !== 'Escape') return
     if (this._gesture) this._cancelGesture()
-    else this.editing = false
+    else {
+      // Escape in a host's dialog, menu or field is that widget's, not ours.
+      const active = document.activeElement
+      if (active && active !== document.body && !this.contains(active)) return
+      this.editing = false
+    }
     e.preventDefault()
   }
 
-  _onKeyDown(e) {
-    if (!this._editing) return
-    const chrome = e.composedPath()[0]
-    if (!chrome || !chrome.classList || !chrome.classList.contains('chrome')) return
-    const id = chrome.dataset.id
-    const g = this._gesture
-    const held = g && g.kind === 'drag' && g.pointerType === 'keyboard' && g.id === id
-    const key = e.key
+  /** The handle an event came from, if any. */
+  _handleOf(e) {
+    const el = e.composedPath()[0]
+    return el && el.classList && el.classList.contains('handle') ? el : null
+  }
 
-    if (key === ' ' || key === 'Enter') {
-      e.preventDefault()
-      if (held) return this._drop(g)
-      if (g) return
+  /** The tile picked up and not yet dropped, by key or by tap; both share it. */
+  _heldId() {
+    const g = this._gesture
+    return g && g.kind === 'drag' && g.pointerType === 'keyboard' ? g.id : null
+  }
+
+  _onKeyDown(e) {
+    if (!this._editing || e.ctrlKey || e.metaKey || e.altKey) return
+    const handle = this._handleOf(e)
+    if (!handle) return
+    const held = this._heldId()
+    // A pointer drag owns the tiles until it ends.
+    if (this._gesture && !held) return
+    const action = keyAction(e.key, handle.parentElement.dataset.id, { held })
+    if (!action) return
+    e.preventDefault()
+    this._perform(action)
+  }
+
+  /** A handle was activated without dragging: by tap, click, or a screen reader's activate. Null is the empty board. */
+  _tap(id) {
+    if (!this._editing || this.locked) return
+    const held = this._heldId()
+    if (this._gesture && !held) return
+    const action = tapAction(id, { held })
+    if (action) this._perform(action)
+  }
+
+  /** Run what keyAction or tapAction decided. */
+  _perform(a) {
+    const g = this._gesture
+    const id = a.id
+    if (a.type === 'pickUp') {
+      if (g || !this._placements.has(id)) return
       this._gesture = { kind: 'pending', pointerType: 'keyboard', id, x: 0, y: 0 }
       this._lift(this._gesture)
-      this._announce(`${this._label(id)}, picked up. Use the arrow keys to move it, Space to drop, Escape to cancel.`)
-    } else if (held && key.startsWith('Arrow')) {
-      e.preventDefault()
-      this._keyMove(g, key)
-    } else if (!g && (key === '+' || key === '=' || key === '-' || key === '_')) {
-      e.preventDefault()
-      const spec = this._spec(id)
-      if (!spec) return
-      const item = this._item(id)
-      const next = stepSize(spec, item.size, key === '-' || key === '_' ? -1 : 1)
-      if (next === item.size) return
-      this._order = resizeItem(this._order, id, next, this._resolve)
-      this._render(true)
-      this._commit('resize', id)
-      this._announce(`${this._label(id)}, size ${next}.`)
-    } else if (!g && (key === 'Delete' || key === 'Backspace')) {
-      e.preventDefault()
-      if (this._removing.has(id)) return
-      const ids = [...this._placements.keys()]
-      const next = ids[ids.indexOf(id) + 1] || ids[ids.indexOf(id) - 1]
-      this._remove(id)
-      if (next) setTimeout(() => this._chromes.get(next) && this._chromes.get(next).focus(), this._motion() ? 200 : 0)
+      if (this._gesture) this._announce(TEXT.pickedUp(this._label(id)))
+    } else if (a.type === 'moveBy') {
+      if (g && this._heldId() === id) this._keyMove(g, a.dCol, a.dRow)
+    } else if (a.type === 'placeAt') {
+      if (g && this._heldId() === id) this._placeAt(g, a.targetId)
+    } else if (a.type === 'drop') {
+      if (g && this._heldId() === id) this._drop(g)
+    } else if (a.type === 'cancel') {
+      if (g && this._heldId() === id) this._cancelGesture()
+    } else if (a.type === 'resizeStep') {
+      if (!g) this._resizeStep(id, a.dir)
+    } else if (a.type === 'remove') {
+      if (!g) this._remove(id)
     }
   }
 
+  /** Move the held tile to the target's slot and drop it there. */
+  _placeAt(g, targetId) {
+    const to = this._order.findIndex((item) => item.id === targetId)
+    if (to < 0) return
+    if (to !== this._order.findIndex((item) => item.id === g.id)) {
+      this._order = moveItem(this._order, g.id, to)
+      this._render(true)
+    }
+    this._drop(g, true)
+    this._reveal(g.id)
+  }
+
+  /** The resize button's click: a tap on it steps to the next size, wrapping, like the pointer's tap. */
+  _resizeClick(id) {
+    if (!this._editing || this._gesture) return
+    const spec = this._spec(id)
+    const item = this._item(id)
+    if (!spec || !item) return
+    let next = stepSize(spec, item.size, 1)
+    if (next === item.size) next = stepSize(spec, item.size, -1) === item.size ? item.size : smallest(spec)
+    this._applyResize(id, next)
+  }
+
+  _resizeStep(id, dir) {
+    const spec = this._spec(id)
+    const item = this._item(id)
+    if (!spec || !item) return
+    this._applyResize(id, stepSize(spec, item.size, dir))
+  }
+
+  _applyResize(id, size) {
+    const item = this._item(id)
+    if (!item || size === item.size) return
+    this._order = resizeItem(this._order, id, size, this._resolve)
+    this._render(true)
+    this._commit('resize', id)
+    this._announce(TEXT.resized(this._label(id), size))
+    this._reveal(id)
+  }
+
+  /** Scroll the tile's handle into view once it has slid there, smoothly only when motion is welcome. */
+  _reveal(id) {
+    const show = () => {
+      const chrome = this._chromes.get(id)
+      const handle = chrome && chrome.querySelector('.handle')
+      if (handle && handle.isConnected && handle.scrollIntoView) handle.scrollIntoView({ block: 'nearest', behavior: this._motion() ? 'smooth' : 'auto' })
+    }
+    // The chrome is still sliding to its new box; measuring now would aim at the old one.
+    if (this._motion()) setTimeout(show, 240)
+    else show()
+  }
+
   /** Move a held tile one cell, going further if that cell can't hold it. */
-  _keyMove(g, key) {
+  _keyMove(g, dCol, dRow) {
     const p = this._placements.get(g.id)
-    const dx = key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1 : 0
-    const dy = key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0
     const current = this._order.findIndex((item) => item.id === g.id)
     const limit = Math.max(this._columns, this._order.length * 2)
     for (let step = 1; step <= limit; step++) {
-      const col = p.col + dx * step
-      const row = p.row + dy * step
+      const col = p.col + dCol * step
+      const row = p.row + dRow * step
       if (col < 0 || row < 0 || col > this._columns - p.cols) break
       const target = dropIndex(this._order, g.id, { col, row }, this._columns, this._resolve)
       if (target !== current) {
         this._order = moveItem(this._order, g.id, target)
         this._render(true)
         this._showPlaceholder(this._boxes.get(g.id), true)
-        this._announce(`Position ${this._position(g.id)} of ${this._order.length}.`)
+        this._announce(TEXT.moved(this._label(g.id), this._position(g.id), this._order.length))
+        this._reveal(g.id)
         return
       }
     }
+    this._announce(TEXT.blocked)
   }
 
   // ── Output ─────────────────────────────────────────────────────────────
@@ -1683,8 +1902,26 @@ export class TsGrid extends Base {
     return sorted.findIndex((p) => p.id === id) + 1
   }
 
+  /**
+   * Speak `text` politely. The region is cleared first and filled on the next
+   * frame, because setting identical text twice in a row says nothing the
+   * second time. Texts queued in the same frame are read together, in order.
+   */
   _announce(text) {
-    this._status.textContent = text
+    const status = this._status
+    status.textContent = ''
+    this._said.push(text)
+    if (this._sayFrame) return
+    const say = () => {
+      cancelAnimationFrame(this._sayFrame)
+      clearTimeout(this._sayTimer)
+      this._sayFrame = 0
+      status.textContent = this._said.join(' ')
+      this._said = []
+    }
+    this._sayFrame = requestAnimationFrame(say)
+    // A background tab pauses frames; the words are still owed.
+    this._sayTimer = setTimeout(say, 120)
   }
 
   _emit(name, detail) {
@@ -1731,6 +1968,10 @@ function liftStyle(el, chrome, on, animate = true) {
     el.style.boxShadow = ''
     if (!animate) chrome.classList.remove('lifted')
   }
+}
+
+function setAttr(el, name, value) {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value)
 }
 
 function sameOrder(a, b) {

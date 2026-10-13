@@ -32,6 +32,16 @@ export interface TsLayoutChangeDetail {
  * visible tiles shows an empty panel (`part="empty"`), replaceable through
  * `slot="empty"`, that also offers Add back (not while locked or with `edit-controls="off"`).
  *
+ * Accessible editing: each tile's edit chrome is a plain container of three
+ * sibling buttons, the handle (the tile's one Tab stop, named "<label>,
+ * <size>, position n of N"), Remove and Resize. Space or Enter picks a tile
+ * up, arrows move it, Space drops it, Escape cancels, + and - resize, Delete
+ * removes. Without a keyboard or a drag (WCAG 2.5.7), tap a tile to pick it
+ * up, then tap another tile to put it in that slot, or the held tile to drop
+ * it; Escape or a tap on empty board cancels. Managed tiles are `inert` while
+ * editing, and the grid's polite status region announces each step. A
+ * scheduled profile change that falls due while editing applies after Done.
+ *
  * Attributes: `editing`, `profile`, `locked`, `undo-toast="off"`,
  * `edit-controls="off"`.
  * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
