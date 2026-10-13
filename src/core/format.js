@@ -27,17 +27,92 @@ function pick(o) {
   return out
 }
 
-/** A number from a number or a numeric string, else NaN. Booleans and null are not numbers. */
+// Decimal strings only. Number() also reads '0x10', '0b1' and 'Infinity',
+// which are never what a P&L field means.
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i
+
+/**
+ * A finite number from a number, a decimal string or a decimal-library object
+ * (Decimal.js, big.js), else NaN. Booleans and null are not numbers.
+ */
 export function toNumber(v) {
   if (typeof v === 'number') return v
-  if (typeof v === 'string' && v.trim() !== '') return Number(v)
+  if (typeof v === 'string') {
+    const s = v.trim()
+    if (!DECIMAL.test(s)) return NaN
+    const n = Number(s)
+    return Number.isFinite(n) ? n : NaN
+  }
+  if (v && typeof v === 'object' && typeof v.toNumber === 'function') {
+    try {
+      const n = v.toNumber()
+      return typeof n === 'number' && Number.isFinite(n) ? n : NaN
+    } catch {
+      return NaN
+    }
+  }
   return NaN
+}
+
+// Each check returns an error message, or '' when the value is usable.
+const CHECKS = {
+  locale(v) {
+    if (typeof v !== 'string') return 'must be a string'
+    try {
+      Intl.getCanonicalLocales(v)
+      return ''
+    } catch {
+      return 'is not a valid locale'
+    }
+  },
+  currency(v) {
+    if (typeof v !== 'string' || !/^[A-Za-z]{3}$/.test(v)) return 'is not a three-letter currency code'
+    try {
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: v })
+      return ''
+    } catch {
+      return 'is not a currency code this runtime knows'
+    }
+  },
+  timeZone(v) {
+    if (typeof v !== 'string') return 'must be a string'
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: v })
+      return ''
+    } catch {
+      return 'is not a time zone this runtime knows'
+    }
+  },
+}
+
+/**
+ * The first valid value of each option, from the formatter's own options and
+ * then the configure() defaults. Each invalid one is listed, so the host
+ * hears about it, and never reaches Intl, which would throw from money().
+ */
+function resolve(options) {
+  const own = pick(options)
+  const out = {}
+  const issues = []
+  for (const option of Object.keys(CHECKS)) {
+    for (const value of [own[option], defaults[option]]) {
+      if (value === undefined) continue
+      const problem = CHECKS[option](value)
+      if (!problem) {
+        out[option] = value
+        break
+      }
+      issues.push(Object.freeze({ option, value, message: `${option} ${JSON.stringify(value)} ${problem}` }))
+    }
+  }
+  return { values: out, issues: Object.freeze(issues) }
 }
 
 const DASH = '—'
 
 export function createFormatter(options = {}) {
-  const { locale, currency, timeZone } = { ...defaults, ...pick(options) }
+  const { values, issues } = resolve(options)
+  const { locale, currency, timeZone } = values
   const cache = new Map()
   // Intl constructors are slow next to format(); widgets format on every
   // tick, so each distinct set of options is built once.
@@ -127,5 +202,5 @@ export function createFormatter(options = {}) {
     return full.length <= maxChars ? full : money(value, { ...o, compact: true })
   }
 
-  return Object.freeze({ locale, currency, timeZone, money, number, price, percent, time, duration, fit })
+  return Object.freeze({ locale, currency, timeZone, issues, money, number, price, percent, time, duration, fit })
 }

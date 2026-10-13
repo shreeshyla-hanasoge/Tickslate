@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { createFormatter, configure, currentConfig } from '../src/core/index.js'
+import { createFormatter, configure, currentConfig, toNumber } from '../src/core/index.js'
 
 const inr = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 const MINUS = '−'
@@ -109,4 +109,96 @@ test('configure sets defaults for formatters made later', () => {
   } finally {
     configure({ locale: before.locale ?? '', currency: before.currency ?? '' })
   }
+})
+
+describe('toNumber', () => {
+  test('rejects what Number() would read but a decimal field never means', () => {
+    for (const v of ['0x10', '0b1', '0o7', 'Infinity', '-Infinity', '', '  ', '1_000', '1,5', 'NaN', '1e999']) assert.ok(Number.isNaN(toNumber(v)), JSON.stringify(v))
+  })
+
+  test('still parses padded, signed, fractional and exponent strings', () => {
+    assert.equal(toNumber(' 12 '), 12)
+    assert.equal(toNumber('1e3'), 1000)
+    assert.equal(toNumber('-1.5E-2'), -0.015)
+    assert.equal(toNumber('+.5'), 0.5)
+    assert.equal(toNumber('5.'), 5)
+  })
+
+  test('reads decimal-library objects through toNumber()', () => {
+    assert.equal(toNumber({ toNumber: () => 12.5 }), 12.5)
+    assert.ok(Number.isNaN(toNumber({ toNumber: () => Infinity })))
+    assert.ok(Number.isNaN(toNumber({ toNumber: () => '5' })))
+    assert.ok(Number.isNaN(toNumber({ toNumber() { throw new Error('boom') } })))
+    assert.ok(Number.isNaN(toNumber({})))
+    assert.ok(Number.isNaN(toNumber(null)))
+    assert.ok(Number.isNaN(toNumber(true)))
+  })
+
+  test('formatters take decimal-library objects', () => {
+    assert.equal(inr.money({ toNumber: () => 1375.5 }), '+₹1,375.50')
+  })
+})
+
+describe('createFormatter validation', () => {
+  test('valid options leave issues empty', () => {
+    assert.deepEqual(inr.issues, [])
+    assert.deepEqual(createFormatter().issues, [])
+  })
+
+  test('a bad currency falls back, is listed, and money() does not throw', () => {
+    const f = createFormatter({ locale: 'en-IN', currency: 'RUPEE' })
+    assert.equal(f.currency, undefined)
+    assert.deepEqual(f.issues.map(({ option, value }) => ({ option, value })), [{ option: 'currency', value: 'RUPEE' }])
+    assert.equal(typeof f.issues[0].message, 'string')
+    assert.equal(f.money(5), '+5.00')
+    const unknown = createFormatter({ currency: 'ZZZ' })
+    assert.equal(typeof unknown.money(5), 'string')
+  })
+
+  test('a bad locale and a bad time zone fall back too', () => {
+    const f = createFormatter({ locale: 'not a locale!', currency: 'INR', timeZone: 'Mars/Olympus' })
+    assert.equal(f.locale, undefined)
+    assert.equal(f.timeZone, undefined)
+    assert.deepEqual(f.issues.map((i) => i.option), ['locale', 'timeZone'])
+    assert.doesNotThrow(() => f.money(1))
+    assert.doesNotThrow(() => f.time(0))
+  })
+
+  test('non-string options are issues, not exceptions', () => {
+    const f = createFormatter({ locale: 5, currency: 978, timeZone: {} })
+    assert.deepEqual(f.issues.map((i) => i.option), ['locale', 'currency', 'timeZone'])
+  })
+
+  test('falls back to the configure() default, then the runtime', () => {
+    const before = currentConfig()
+    try {
+      configure({ currency: 'EUR', timeZone: 'Asia/Kolkata' })
+      const f = createFormatter({ currency: 'nope', timeZone: 'Nowhere/Land' })
+      assert.equal(f.currency, 'EUR')
+      assert.equal(f.timeZone, 'Asia/Kolkata')
+      assert.equal(f.issues.length, 2)
+      // A bad configure() default is reported by the formatter that reaches for it.
+      configure({ currency: 'XX' })
+      const g = createFormatter()
+      assert.equal(g.currency, undefined)
+      assert.deepEqual(g.issues.map((i) => i.option), ['currency'])
+    } finally {
+      configure({ locale: before.locale || '', currency: before.currency || '', timeZone: before.timeZone || '' })
+    }
+  })
+
+  test('makes no console calls', () => {
+    const saved = {}
+    const calls = []
+    for (const m of ['log', 'warn', 'error', 'info', 'debug']) {
+      saved[m] = console[m]
+      console[m] = () => calls.push(m)
+    }
+    try {
+      createFormatter({ locale: '!!', currency: 'x', timeZone: 'no' }).money(1)
+    } finally {
+      Object.assign(console, saved)
+    }
+    assert.deepEqual(calls, [])
+  })
 })
