@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickslate bare install</title>
+<!--
+  The smallest possible install: only the elements entry. No tokens.css link and
+  no web fonts. The tiles still get the Paper theme from the default tokens
+  (RFC 0002 §6.1), and figures use the system fallback with tabular digits.
+
+  Things to try in the console:
+    document.documentElement.style.setProperty('--ts-surface', '#EEF')   a host rule wins
+    document.head.append(Object.assign(document.createElement('link'),
+      { rel: 'stylesheet', href: '/src/themes/tokens.css' }))            a late tokens.css wins too
+    document.documentElement.dataset.theme = 'auto' | 'dark' | 'light'  opt in to dark
+-->
+<style>
+  /* Page chrome only: the tiles need nothing from here. */
+  body { margin: 0; padding: 24px; font: 14px system-ui, sans-serif; }
+  .page { max-width: 960px; margin: 0 auto; }
+  ts-today-pnl.alone { max-width: 320px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Bare install</h1>
+  <ts-grid locale="en-IN" currency="INR">
+    <ts-today-pnl item="todayPnl" label="Today's P&amp;L"></ts-today-pnl>
+    <ts-equity-curve item="equityCurve" label="Equity curve"></ts-equity-curve>
+  </ts-grid>
+  <ts-today-pnl class="alone" id="alone" size="S" label="Standalone tile" locale="en-IN" currency="INR"></ts-today-pnl>
+</div>
+
+<script type="module">
+  import '/src/elements/index.js'
+
+  // Implicit mode (a grid from markup alone) is a later story, so the layout is explicit.
+  document.querySelector('ts-grid').layout = {
+    version: 1,
+    device: 'desktop',
+    profiles: { market: [{ id: 'todayPnl', size: 'Wide' }, { id: 'equityCurve', size: 'M' }] },
+  }
+
+  // Made-up figures.
+  const asOf = Date.now()
+  const intraday = Array.from({ length: 24 }, (_, i) => ({ t: asOf - (24 - i) * 600000, v: Math.round(Math.sin(i / 3) * 300 + i * 40) }))
+  const pnl = { net: 1284.5, realized: 960, unrealized: 324.5, fees: 118.25, closedCount: 5, openCount: 2, intraday, asOf, live: false }
+  for (const el of document.querySelectorAll('ts-today-pnl')) el.data = pnl
+
+  const days = []
+  const date = new Date(Date.UTC(2026, 0, 1))
+  while (days.length < 40) {
+    date.setUTCDate(date.getUTCDate() + 1)
+    if (date.getUTCDay() % 6 === 0) continue
+    const i = days.length
+    days.push({ date: date.toISOString().slice(0, 10), pnl: Math.round(Math.sin(i / 5) * 900 + 200), trades: 3 + (i % 4) })
+  }
+  document.querySelector('ts-equity-curve').data = { days, fees: 4120.5, trades: days.reduce((s, d) => s + d.trades, 0) }
+</script>
+</body>
+</html>

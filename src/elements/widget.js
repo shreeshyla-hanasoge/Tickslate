@@ -141,6 +141,7 @@
 
 import { WIDGETS, createFormatter, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
 import { DEV, warnOnce } from './dev.js'
+import { ensureTokens } from './default-tokens.js'
 
 // Every English string the base shows, in one place so messages can be made
 // overridable later (RFC 0002 §2.4). `{label}` and `{message}` are filled in.
@@ -230,6 +231,8 @@ export function sk(width, height) {
 // and 9cqi is 52px, so the 34px and 48px caps apply and nothing changes. The
 // dark theme's smaller padding only gives more room. .md has no measured fit
 // to meet; 12cqi keeps its cap everywhere but the narrowest tile.
+// .n, .big and .xbig keep tabular-nums: with the system fallback face (see
+// --ts-font-num) it is what stops live figures jittering as digits change.
 // Every colour here is a token. A host's own theme is a few variables, not a fork.
 export const SHARED_CSS = `
 :host { display: block; }
@@ -271,8 +274,8 @@ ${standaloneCss()}
   font: 500 11px var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
   border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer;
 }
-.btn.on { background: var(--ts-surface-2); color: var(--ts-ink); }
-.btn:focus-visible { outline: 2px solid var(--ts-accent); outline-offset: 2px; }
+.btn.on { background: var(--ts-surface-2); color: var(--ts-ink); box-shadow: inset 0 -2px 0 var(--ts-accent); }
+.btn:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
 @media (pointer: coarse) { .btn { min-height: 44px; min-width: 44px; } }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
@@ -303,7 +306,7 @@ ${SK_CSS}
 .ln { stroke: var(--ts-loss); }
 .ap { fill: color-mix(in srgb, var(--ts-profit) var(--ts-fill, 12%), transparent); }
 .an { fill: color-mix(in srgb, var(--ts-loss) var(--ts-fill, 12%), transparent); }
-.lz { stroke: var(--ts-line); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.lz { stroke: var(--ts-axis); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 `
 
 const EMPTY_SPEC = Object.freeze({ label: '', sizes: Object.freeze([]) })
@@ -571,6 +574,8 @@ export class TsWidget extends Base {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
+    // Before the first render, so the tile never paints unstyled; cheap after the first call.
+    ensureTokens()
     this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions')
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
