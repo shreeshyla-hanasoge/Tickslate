@@ -18,8 +18,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 18 is the floor the published manifest advertises in "engines".
-        node: ['18', '20', '22']
+        # 20 is the floor the published manifest advertises in "engines".
+        node: ['20', '22', '24']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -38,6 +38,17 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - run: npm run build:lib
-      - run: npm run build:umd
-      - run: npm run pack:lib
+      # The same chain the maintainer runs before publishing (test, build:lib,
+      # build:umd, pack:lib, verify:package, size), so CI can't pass a
+      # package that a local release would refuse.
+      - run: npm run release
+      - name: What would be published
+        run: npm pack --dry-run ./dist-lib
+      # The exact files a release would publish, kept for inspection or a
+      # by-hand check of a PR's build.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-lib
+          path: dist-lib/
+          if-no-files-found: error
+          retention-days: 14
