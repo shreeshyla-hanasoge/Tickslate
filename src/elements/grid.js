@@ -58,6 +58,7 @@ import {
   reconcile,
   specResolver,
 } from './grid-geometry.js'
+import { ensureTokens } from './default-tokens.js'
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
@@ -111,6 +112,8 @@ const TEMPLATE = `
   :host([hidden]) { display: none; }
   :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
+  /* Focus lands here when a removed tile leaves nothing else to take it. */
+  .board:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   /* A long press must never start a text selection on a touch screen, but a
      mouse user may copy a figure out of a tile until they start editing. */
   @media (pointer: coarse) {
@@ -120,8 +123,8 @@ const TEMPLATE = `
   .placeholder {
     position: absolute; top: 0; left: 0; box-sizing: border-box; pointer-events: none;
     border-radius: var(--ts-radius, 10px);
-    background: color-mix(in srgb, var(--ts-ink, #1C1A16) 4%, transparent);
-    border: 1.5px dashed color-mix(in srgb, var(--ts-ink, #1C1A16) 22%, transparent);
+    background: color-mix(in srgb, var(--ts-ink) 4%, transparent);
+    border: 1.5px dashed color-mix(in srgb, var(--ts-ink) 22%, transparent);
     opacity: 0; transition: opacity 120ms ease;
   }
   .placeholder.on { opacity: 1; }
@@ -155,8 +158,8 @@ const TEMPLATE = `
   .remove span {
     width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
-    background: var(--ts-surface-2, #F1EBDE); color: var(--ts-ink, #1C1A16);
-    border: 1px solid var(--ts-line, #E2DACB); box-shadow: var(--ts-shadow, none);
+    background: var(--ts-surface-2); color: var(--ts-ink);
+    border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow, none);
     font: 600 16px/1 var(--ts-font-ui, system-ui, sans-serif);
   }
   .remove:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
@@ -166,7 +169,7 @@ const TEMPLATE = `
   }
   .resize::after {
     content: ''; position: absolute; right: 12px; bottom: 12px; width: 12px; height: 12px;
-    border-right: 3px solid var(--ts-muted, #6A655B); border-bottom: 3px solid var(--ts-muted, #6A655B);
+    border-right: 3px solid var(--ts-muted); border-bottom: 3px solid var(--ts-muted);
     border-bottom-right-radius: 6px;
   }
   @keyframes pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
@@ -254,7 +257,7 @@ const TEMPLATE = `
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 <button class="edit-btn" type="button" hidden></button>
-<div class="board" part="board">
+<div class="board" part="board" role="region">
   <div class="placeholder" part="placeholder"></div>
   <slot></slot>
   <div class="chromes"></div>
@@ -279,7 +282,7 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'persist']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'persist', 'aria-label']
   }
 
   constructor() {
@@ -304,7 +307,6 @@ export class TsGrid extends Base {
     this._hint = root.querySelector('.hint')
     this._messages = null
     this._tText = null // the translate function the static texts were last written with
-    this._ownLabel = null // the aria-label the grid gave itself as a last resort, so it only ever rewrites its own
     this._widgets = new Set() // the widgets inside it, at any depth of shadow roots, which it tells when its messages or locale change
     this._offConfigure = null
     this._persistOn = false // true from the first measure on connect to disconnect, when the persist attribute may attach
@@ -538,14 +540,20 @@ export class TsGrid extends Base {
     this._pill.querySelector('.done').textContent = t('grid.done')
     this._emptyPanel.querySelector('.note').textContent = t('grid.emptyBoard')
     this._hint.textContent = t('grid.instructions')
-    // Only a name the grid gave itself: a host's own aria-label is never touched.
-    if (this._ownLabel !== null && this.getAttribute('aria-label') === this._ownLabel) {
-      this._ownLabel = t('grid.dashboard')
-      this.setAttribute('aria-label', this._ownLabel)
-    }
+    this._nameBoard()
     // The Add back list and each tile's chrome names were built from the old table.
     this._menuSig = ''
     for (const id of this._chromes.keys()) this._chrome(id)
+  }
+
+  /**
+   * The one place the dashboard region is named: the host's aria-label, else
+   * the message. It is written to the board and never to the host, so a host's
+   * own label is never overwritten and a rename or a locale change just wins.
+   */
+  _nameBoard() {
+    const name = this.getAttribute('aria-label') || this.t('grid.dashboard')
+    if (this._board.getAttribute('aria-label') !== name) this._board.setAttribute('aria-label', name)
   }
 
   _setCatalog(catalog) {
@@ -725,6 +733,8 @@ export class TsGrid extends Base {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
+    // The chrome reads --ts-* tokens with no fallbacks, like the widgets, so a grid of custom tiles still finds them.
+    ensureTokens()
     // A messages property set before the element was defined would shadow the accessor.
     if (Object.prototype.hasOwnProperty.call(this, 'messages')) {
       const value = this.messages
@@ -796,7 +806,9 @@ export class TsGrid extends Base {
   }
 
   attributeChangedCallback(name, old, value) {
-    if (name === 'locked') {
+    if (name === 'aria-label') {
+      this._nameBoard()
+    } else if (name === 'locked') {
       if (this.locked) {
         this.editing = false
         this._cancelGesture()
@@ -1286,15 +1298,12 @@ export class TsGrid extends Base {
     this._focus(pickFocusTarget([candidate]) || this)
   }
 
-  /** The grid itself is the last resort, so it gets a tab index and a name when the host gave none. */
+  /** The grid is the last resort, and focus goes to its board: the named region, so a screen reader says where focus landed. */
   _focus(target) {
     if (target === this) {
-      if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '-1')
-      if (!this.hasAttribute('aria-label') && !this.hasAttribute('aria-labelledby')) {
-        this._ownLabel = this.t('grid.dashboard')
-        this.setAttribute('aria-label', this._ownLabel)
-      }
-      if (!this.hasAttribute('role')) this.setAttribute('role', 'group')
+      if (!this._board.hasAttribute('tabindex')) this._board.setAttribute('tabindex', '-1')
+      this._board.focus()
+      return
     }
     target.focus()
   }
@@ -2170,7 +2179,7 @@ function liftStyle(el, chrome, on, animate = true) {
     chrome.style.zIndex = '6'
     el.style.scale = String(LIFT_SCALE)
     chrome.style.scale = String(LIFT_SCALE)
-    el.style.boxShadow = 'var(--ts-shadow-lift, 0 24px 48px -16px rgba(0, 0, 0, .4))'
+    el.style.boxShadow = 'var(--ts-shadow-lift)'
     el.style.borderRadius = 'var(--ts-radius, 10px)'
     chrome.classList.add('lifted')
   } else {

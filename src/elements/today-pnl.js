@@ -353,10 +353,11 @@ export class TsTodayPnl extends TsWidget {
 /* An entry is a circle and an exit a diamond, so the two differ by shape and not by colour alone. */
 .mk.entry { background: var(--ts-accent); }
 .mk.exit { background: var(--ts-ink); border-radius: 0; transform: rotate(45deg) scale(.85); }
-.nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ts-muted); }
+.nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ts-muted); unicode-bidi: plaintext; }
 .nodata[hidden] { display: none; }
 /* Time runs left to right in every locale, so the drawing box and its axis never mirror. */
 .chart, .axis { direction: ltr; }
+.axis > * { unicode-bidi: plaintext; }
 .axis { position: relative; display: flex; justify-content: space-between; min-height: 1.4em; }
 .axis .mid { position: absolute; inset-block-start: 0; transform: translateX(-50%); }
 .trio { padding-block-start: 10px; }

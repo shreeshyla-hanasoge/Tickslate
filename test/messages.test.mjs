@@ -1105,26 +1105,42 @@ describe('a grid tells the widgets under it', () => {
     assert.equal(g._pill.querySelector('.menu').children[0].textContent, 'Ausgeblendet')
   })
 
-  test('the dashboard name the grid gave itself follows the messages; a host’s own never changes', () => {
+  test('the board’s name follows the messages; a host’s own aria-label wins and is never rewritten', () => {
+    const label = (g) => g._board.getAttribute('aria-label')
     const mine = makeGrid()
-    mine._focus(mine)
-    assert.equal(mine.getAttribute('aria-label'), 'Dashboard')
+    assert.equal(label(mine), 'Dashboard')
     mine.messages = { 'grid.dashboard': 'Tableau' }
-    assert.equal(mine.getAttribute('aria-label'), 'Tableau')
+    assert.equal(label(mine), 'Tableau')
     mine.messages = null
-    assert.equal(mine.getAttribute('aria-label'), 'Dashboard')
+    assert.equal(label(mine), 'Dashboard')
+    assert.equal(mine.getAttribute('aria-label'), null, 'the host itself is not named')
 
     const hosts = makeGrid({ 'aria-label': 'Desk' })
-    hosts._focus(hosts)
+    assert.equal(label(hosts), 'Desk')
     hosts.messages = { 'grid.dashboard': 'Tableau' }
+    assert.equal(label(hosts), 'Desk')
     assert.equal(hosts.getAttribute('aria-label'), 'Desk')
 
-    // The host renames it after the grid named it: the grid lets go.
+    // The host names it, renames it and then drops the name: the board follows each step.
     const renamed = makeGrid()
-    renamed._focus(renamed)
     renamed.setAttribute('aria-label', 'Board')
+    assert.equal(label(renamed), 'Board')
     renamed.messages = { 'grid.dashboard': 'Tableau' }
-    assert.equal(renamed.getAttribute('aria-label'), 'Board')
+    assert.equal(label(renamed), 'Board')
+    renamed.removeAttribute('aria-label')
+    assert.equal(label(renamed), 'Tableau')
+  })
+
+  test('the fallback focus goes to the board and adds no role or name to the host', () => {
+    const g = makeGrid()
+    let focused = null
+    g._board.focus = () => { focused = g._board }
+    g._focus(g)
+    assert.equal(focused, g._board)
+    assert.equal(g._board.getAttribute('tabindex'), '-1')
+    assert.equal(g.getAttribute('role'), null)
+    assert.equal(g.getAttribute('aria-label'), null)
+    assert.equal(g.getAttribute('tabindex'), null)
   })
 
   test('configure() reaches a grid’s own text', () => {

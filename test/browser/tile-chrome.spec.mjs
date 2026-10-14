@@ -27,6 +27,45 @@ async function open(page, query = '') {
   }, SIZES)
 }
 
+test.describe('the dashboard region', () => {
+  const GRID = '/test/browser/fixtures/grid.html?mode=explicit'
+  const load = async (page) => {
+    guard(page, [])
+    await page.goto(GRID)
+    await page.waitForFunction(() => window.__ready === true)
+  }
+
+  test('the board is the one region, named by the host\'s aria-label, else "Dashboard", and follows messages', async ({ page }) => {
+    await load(page)
+    // The fixture names its grid; the board takes that name, and the host itself is not a second landmark.
+    await page.evaluate(() => document.getElementById('g').setAttribute('aria-label', 'Sales desk'))
+    await expect(page.getByRole('region')).toHaveCount(1)
+    await expect(page.getByRole('region', { name: 'Sales desk' })).toHaveCount(1)
+    await page.evaluate(() => document.getElementById('g').removeAttribute('aria-label'))
+    await expect(page.getByRole('region', { name: 'Dashboard' })).toHaveCount(1)
+    await page.evaluate(() => { document.getElementById('g').messages = { 'grid.dashboard': 'Tableau de bord' } })
+    await expect(page.getByRole('region', { name: 'Tableau de bord' })).toHaveCount(1)
+    const host = await page.evaluate(() => {
+      const g = document.getElementById('g')
+      return { role: g.getAttribute('role'), label: g.getAttribute('aria-label'), board: g.shadowRoot.querySelector('[part="board"]').getAttribute('role') }
+    })
+    expect(host).toEqual({ role: null, label: null, board: 'region' })
+  })
+
+  test('the tiles are groups inside it, and focus with nowhere else to go lands on it', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => document.getElementById('g').removeAttribute('aria-label'))
+    // The tiles are light-DOM children slotted into the board, so only the accessibility tree shows them inside it.
+    expect(await page.locator('#g').ariaSnapshot()).toMatch(/region "Dashboard":[\s\S]*- group "/)
+    const focused = await page.evaluate(() => {
+      const g = document.getElementById('g')
+      g._focus(g)
+      return { inside: g.shadowRoot.activeElement && g.shadowRoot.activeElement.getAttribute('part'), host: g.getAttribute('tabindex') }
+    })
+    expect(focused).toEqual({ inside: 'board', host: null })
+  })
+})
+
 test.describe('tile semantics', () => {
   test('every tile is a labelled group with a level-3 heading, and none is a landmark', async ({ page }) => {
     const errors = []
@@ -123,7 +162,7 @@ const systemColours = (page) =>
     const probe = document.createElement('span')
     document.body.append(probe)
     const out = {}
-    for (const name of ['Highlight', 'CanvasText', 'ButtonFace']) {
+    for (const name of ['Highlight', 'HighlightText', 'CanvasText', 'ButtonFace']) {
       probe.style.color = name
       out[name] = getComputedStyle(probe).color
     }
@@ -136,11 +175,11 @@ test.describe('forced colours', () => {
     await page.emulateMedia({ forcedColors: 'active' })
   })
 
-  test('the forced-colors query matches, and the system colours are the three the CSS uses', async ({ page }) => {
+  test('the forced-colors query matches, and the system colours are the four the CSS uses', async ({ page }) => {
     await open(page)
     expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
     const colours = await systemColours(page)
-    expect(new Set(Object.values(colours)).size, 'three distinct colours').toBeGreaterThanOrEqual(2)
+    expect(new Set(Object.values(colours)).size, 'distinct colours').toBeGreaterThanOrEqual(2)
   })
 
   test('the session clock fill, ticks and marker stay visible in system colours', async ({ page }) => {
@@ -225,7 +264,8 @@ test.describe('forced colours', () => {
       }
     })
     expect(found.onBackground).toBe(colours.Highlight)
-    expect(found.onColor).toBe(colours.ButtonFace)
+    // The text colour that pairs with the Highlight it sits on.
+    expect(found.onColor).toBe(colours.HighlightText)
     expect(found.fill).toBe(colours.Highlight)
     expect(found.fillWidth).toBeGreaterThan(0)
     expect(found.barBorder).toBe('1px')
@@ -262,6 +302,34 @@ test.describe('right-to-left pages', () => {
     expect(rtl).toEqual(ltr)
     expect(rtl.plotDirection).toBe('ltr')
     expect(ltrMarks.length).toBeGreaterThan(1)
+  })
+
+  test('the session clock\'s times sit under the matching ends of its bar, in either direction', async ({ page }) => {
+    await open(page)
+    const read = () =>
+      page.evaluate(() => {
+        const root = window.__fx.tiles.get('sessionClock:S').shadowRoot
+        const track = root.querySelector('.trk').getBoundingClientRect()
+        const from = root.querySelector('.from').getBoundingClientRect()
+        const to = root.querySelector('.to').getBoundingClientRect()
+        return {
+          fromAtStart: Math.round(from.left - track.left),
+          toAtEnd: Math.round(track.right - to.right),
+          fromText: root.querySelector('.from').textContent,
+          ft: getComputedStyle(root.querySelector('.ft')).direction,
+        }
+      })
+    const ltr = await read()
+    expect(ltr.fromText.length).toBeGreaterThan(0)
+    await page.evaluate(() => { document.documentElement.dir = 'rtl' })
+    await page.evaluate(() => window.__fx.nextFrame())
+    const rtl = await read()
+    expect(rtl.ft).toBe('ltr')
+    // The opening time is under the bar's left end (where the fill starts) and the closing one under its right end.
+    expect(rtl.fromAtStart).toBeCloseTo(ltr.fromAtStart, 0)
+    expect(rtl.toAtEnd).toBeCloseTo(ltr.toAtEnd, 0)
+    expect(rtl.fromAtStart).toBeLessThanOrEqual(2)
+    expect(rtl.toAtEnd).toBeLessThanOrEqual(2)
   })
 
   test('the header mirrors: the label sits at the inline start, the meta at the inline end', async ({ page }) => {

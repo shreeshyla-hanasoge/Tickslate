@@ -108,7 +108,7 @@ For `::part()` styling from the host page.
 
 | Part | Element |
 |---|---|
-| `tile` | The tile box, `role="group"` named by the headline sentence |
+| `tile` | The tile box, `role="group"` named by the label, then the `value` slot's text |
 | `header` | The header row: the live dot, the label and the right-hand text, with your `actions` slot |
 | `label` | The label, a `role="heading"` whose level comes from `heading-level` |
 | `value` | The `value` slot, so `::part(value)` styles what you slot there |

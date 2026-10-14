@@ -352,13 +352,13 @@ export class TsSessionClock extends TsWidget {
   static styles = `
 [hidden] { display: none !important; }
 .trk { position: relative; height: 6px; border-radius: 99px; background: var(--ts-surface-2); overflow: hidden; flex: none; }
-/* Time runs left to right in every locale, so a progress track never mirrors. */
-.trk, .lt { direction: ltr; }
+/* Time runs left to right in every locale, so a progress track never mirrors, and the times under it stay under its ends. */
+.trk, .lt, .ft { direction: ltr; }
 .fill, .lf { position: absolute; inset-inline-start: 0; width: 0; background: var(--ts-accent); border-radius: 99px; }
 .fill { top: 0; bottom: 0; }
 .ft { gap: 6px; }
 .ft .n { flex: none; }
-.mid { text-align: center; }
+.mid { text-align: center; unicode-bidi: plaintext; }
 .title { white-space: nowrap; flex: none; }
 .ts, .ms { display: none; }
 .legend { display: flex; gap: 10px; white-space: nowrap; }

@@ -1,6 +1,6 @@
 import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { configure, createFormatter, createMessages } from '../src/core/index.js'
 import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 
@@ -9,11 +9,18 @@ import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 // text alternatives. The elements are loaded once the fake HTMLElement is
 // installed, so this file imports nothing from src/elements/ statically.
 
+// The grid is not a widget: it has no tile chrome, and its geometry is another story's (see the logical-properties scan).
+const DEFINE_MODULES = readdirSync(new URL('../src/elements/define/', import.meta.url))
+  .filter((f) => f.endsWith('.js') && f !== 'grid.js')
+  .map((f) => f.slice(0, -3))
+  .sort()
+
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '')
 
 let W // widget.js: TsWidget, header, arrowFor, SHARED_CSS
 let C // the six widget classes and their pure models
+let DEFINED // define-module name → the widget classes it exports
 before(async () => {
   globalThis.HTMLElement = FakeElement
   globalThis.document = new FakeDocument()
@@ -27,6 +34,13 @@ before(async () => {
     import('../src/elements/series-chart.js'),
   ])
   C = { pnl, equity, clock, card, metric, chart }
+  // Every widget the library registers, found from the define modules (each is a per-widget entry, RFC 0003 §2.1)
+  // and not from a list kept here, so a new widget is scanned the day it is added.
+  DEFINED = {}
+  for (const name of DEFINE_MODULES) {
+    const mod = await import(`../src/elements/define/${name}.js`)
+    DEFINED[name] = Object.values(mod).filter((x) => typeof x === 'function' && x.prototype instanceof W.TsWidget)
+  }
   delete globalThis.HTMLElement
 })
 after(() => {
@@ -316,6 +330,42 @@ describe('arrows beside gains and losses', () => {
     assert.equal(W.arrowFor('-5'), '', 'a hyphen is not a minus sign')
   })
 
+  test('arrowFor finds the sign behind a bidi mark or a leading currency, never one after a digit', () => {
+    assert.equal(W.arrowFor('\u200E+1,234.50'), '▲', 'left-to-right mark')
+    assert.equal(W.arrowFor('\u200F\u200E−1,234.50 US$'), '▼', 'right-to-left then left-to-right mark')
+    assert.equal(W.arrowFor('\u061C+١٫٢'), '▲', 'Arabic letter mark')
+    assert.equal(W.arrowFor('€ +1.234,50'), '▲', 'a currency in front')
+    assert.equal(W.arrowFor('€ −1.234,50'), '▼')
+    assert.equal(W.arrowFor('US$ +5'), '▲')
+    assert.equal(W.arrowFor('5+'), '', 'a sign after a digit is not the figure\'s')
+    assert.equal(W.arrowFor('1,2K−'), '')
+    assert.equal(W.arrowFor('\u200F0.00 US$'), '', 'a bidi mark alone is not a sign')
+    assert.equal(W.arrowFor('€ 0,00'), '')
+  })
+
+  // The formatter's own output in each right-to-left locale and in nl, whose currency leads the sign.
+  for (const [locale, currency] of [['en-IN', 'INR'], ['ar', 'USD'], ['ar-EG', 'USD'], ['he', 'USD'], ['fa', 'USD'], ['nl', 'EUR'], ['de', 'EUR']]) {
+    test(`${locale}: money and a fitted headline get an arrow from their sign, and a rounded zero none`, () => {
+      const f = createFormatter({ locale, currency })
+      for (const text of [f.money(1234.5), f.fit(1234.5, 10), f.fit(1234.5, 12)]) assert.equal(W.arrowFor(text), '▲', JSON.stringify(text))
+      for (const text of [f.money(-1234.5), f.fit(-1234.5, 10), f.fit(-1234.5, 12)]) assert.equal(W.arrowFor(text), '▼', JSON.stringify(text))
+      for (const text of [f.money(0), f.money(0.001), f.fit(0.001, 10)]) assert.equal(W.arrowFor(text), '', JSON.stringify(text))
+    })
+
+    test(`${locale}: the P&L and equity view models carry the arrows`, () => {
+      const f = createFormatter({ locale, currency })
+      const msgs = createMessages()
+      const pnl = C.pnl.todayPnlModel({ net: 2185.65, realized: -400, unrealized: 0 }, 'M', { fmt: f, t: msgs, label: "Today's P&L", now: 0 })
+      assert.equal(pnl.netArrow, '▲')
+      assert.equal(pnl.realizedArrow, '▼')
+      assert.equal(pnl.unrealizedArrow, '')
+      const eq = C.equity.equityCurveModel({ days: [{ date: '2026-10-05', pnl: 500 }, { date: '2026-10-06', pnl: -200 }] }, 'XL', { fmt: f, t: msgs, label: 'Equity curve', range: 'All' })
+      assert.equal(eq.headlineArrow, '▲')
+      assert.equal(eq.peakArrow, '▲')
+      assert.equal(eq.maxDrawdownArrow, '▼')
+    })
+  }
+
   const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
   const t = createMessages()
 
@@ -361,6 +411,21 @@ describe('arrows beside gains and losses', () => {
     assert.equal(none.maxDrawdownArrow, '', 'a drawdown of nothing is not a loss')
     for (const v of ['Wide', 'M', 'XL']) assert.ok(C.equity.TsEquityCurve.template(v).includes('data-k="netAr"'), v)
     for (const v of ['M', 'XL']) assert.ok(C.equity.TsEquityCurve.template(v).includes('data-k="maxDrawdownAr"'), v)
+  })
+
+  test('the equity curve builds the range buttons\' strings only for the variant that draws them', () => {
+    const days = [{ date: '2026-10-05', pnl: 1 }]
+    for (const v of ['Wide', 'M']) assert.deepEqual(C.equity.equityCurveModel({ days }, v, { fmt, t, label: 'Equity curve', range: 'All' }).ranges, [], v)
+    assert.equal(C.equity.equityCurveModel({ days }, 'XL', { fmt, t, label: 'Equity curve', range: 'All' }).ranges.length, C.equity.RANGES.length)
+    for (const v of ['Wide', 'M']) assert.ok(!C.equity.TsEquityCurve.template(v).includes('data-range'), v)
+  })
+
+  test('the equity headline is formatted once and its arrow reads that text', () => {
+    let fits = 0
+    const counting = { ...fmt, fit: (...a) => (fits++, fmt.fit(...a)) }
+    const vm = C.equity.equityCurveModel({ days: [{ date: '2026-10-05', pnl: 100 }] }, 'M', { fmt: counting, t, label: 'Equity curve', range: 'All' })
+    assert.equal(fits, 1)
+    assert.equal(vm.headlineArrow, '▲')
   })
 
   test('the metric still has its own arrow, hidden from a listener', () => {
@@ -440,27 +505,81 @@ describe('typography tokens', () => {
 // ── CSS rules ──────────────────────────────────────────────────────────────
 
 // Named up front, because a test's name is needed before the elements are loaded.
-const SHEETS = ['the shared CSS', 'TsTodayPnl', 'TsEquityCurve', 'TsSessionClock', 'TsCard', 'TsMetric', 'TsChart']
-const sheet = (name) => (name === 'the shared CSS' ? W.SHARED_CSS : WIDGETS().find(([n]) => n === name)[1].styles)
+const SHEETS = ['the shared CSS', ...DEFINE_MODULES]
+const sheet = (name) => (name === 'the shared CSS' ? W.SHARED_CSS : DEFINED[name].map((Ctor) => Ctor.styles).join('\n'))
 
-// `(...)` groups collapsed, so a shorthand's values can be counted.
-const collapse = (value) => {
-  let v = value
-  for (let n = v.length; ; n = v.length) {
-    v = v.replace(/\([^()]*\)/g, '()')
-    if (v.length === n) return v
+test('every define module registers a widget, and the template tests cover every one of them', () => {
+  for (const name of DEFINE_MODULES) assert.ok(DEFINED[name].length > 0, `${name} exports a widget class`)
+  const defined = DEFINE_MODULES.flatMap((name) => DEFINED[name]).sort((a, b) => a.name.localeCompare(b.name))
+  const listed = WIDGETS().map(([, Ctor]) => Ctor).sort((a, b) => a.name.localeCompare(b.name))
+  assert.deepEqual(listed.map((c) => c.name), defined.map((c) => c.name), 'WIDGETS() above lists the widgets the define modules export')
+})
+
+// Top-level, space-separated parts of a value: a group such as var(--a, 1px) or calc(1px + 2px) is one part.
+const parts = (value) => {
+  const out = []
+  let depth = 0
+  let cur = ''
+  for (const ch of value.trim()) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth--
+    if (/\s/.test(ch) && !depth) {
+      if (cur) out.push(cur)
+      cur = ''
+    } else cur += ch
   }
+  if (cur) out.push(cur)
+  return out
 }
+
+// Quoted text is content, not CSS: a "red" in a string is a word.
+const unquote = (value) => value.replace(/"[^"]*"|'[^']*'/g, '""')
+
+/** [property, value] for each declaration in a stylesheet, comments and strings removed. */
+function declarations(css) {
+  const found = []
+  for (const m of stripComments(css).matchAll(/(?:^|[;{\s])([a-z-]+)\s*:\s*([^;{}]*)(?=[;}])/g)) found.push([m[1], unquote(m[2]).replace(/\s*!important\s*$/, '').trim()])
+  return found
+}
+
+// Properties whose four values are [top, right, bottom, left]: the same two sides in a mirrored page are not the same sides.
+const BOX = /^(?:margin|padding|inset|border-width|border-style|border-color|scroll-margin|scroll-padding)$/
+// The properties a position or origin keyword can name a side in.
+const POSITIONED = /^(?:background|background-position|background-position-x|mask|mask-position|mask-position-x|object-position|transform-origin|perspective-origin)$/
 
 /** The physical, direction-dependent declarations in a stylesheet. */
 export function physicalDeclarations(css) {
   const found = []
-  for (const m of stripComments(css).matchAll(/(?:^|[;{\s])([a-z-]+)\s*:\s*([^;{}]*)(?=[;}])/g)) {
-    const [, prop, value] = m
+  for (const [prop, value] of declarations(css)) {
+    const v = parts(value)
     if (/^(?:left|right)$/.test(prop) || /^(?:margin|padding|border|scroll-margin|scroll-padding)-(?:left|right)(?:-|$)/.test(prop) || /^border-(?:top|bottom)-(?:left|right)-radius$/.test(prop)) found.push(`${prop}: ${value}`)
-    else if (/^(?:text-align|float|clear)$/.test(prop) && /^(?:left|right)$/.test(value.trim())) found.push(`${prop}: ${value}`)
-    else if (/^(?:margin|padding)$/.test(prop) && collapse(value.trim()).split(/\s+/).length === 4) found.push(`${prop}: ${value}`)
+    else if (/^(?:text-align|text-align-last|float|clear)$/.test(prop) && /^(?:left|right)$/.test(value)) found.push(`${prop}: ${value}`)
+    else if (BOX.test(prop) && v.length === 4 && v[1] !== v[3]) found.push(`${prop}: ${value}`)
     else if (prop === 'border-radius' && /\//.test(value)) found.push(`${prop}: ${value}`)
+    else if (prop === 'border-radius' && v.length > 1) {
+      // top-left, top-right, bottom-right, bottom-left, as CSS fills in the ones that were left out.
+      const [a, b, c = a, d = b] = v
+      const corners = v.length === 2 ? [a, b, a, b] : v.length === 3 ? [a, b, c, b] : [a, b, c, d]
+      if (corners[0] !== corners[1] || corners[3] !== corners[2]) found.push(`${prop}: ${value}`)
+    } else if (POSITIONED.test(prop) && v.some((x) => /^(?:left|right)$/i.test(x))) found.push(`${prop}: ${value}`)
+  }
+  return found
+}
+
+const PHYSICAL_PROPS = 'left|right|(?:margin|padding|border|scroll-margin|scroll-padding)-(?:left|right)'
+const PHYSICAL_CAMEL = 'left|right|(?:margin|padding|border|scrollMargin|scrollPadding)(?:Left|Right)'
+/** Physical placement written from JavaScript: style properties, setProperty, cssText and style attributes. */
+export function physicalScript(source) {
+  const found = []
+  for (const m of source.matchAll(new RegExp(`\\.style\\.(?:${PHYSICAL_CAMEL}|textAlign\\s*=\\s*['"\`](?:left|right))\\b`, 'g'))) found.push(m[0])
+  for (const m of source.matchAll(new RegExp(`\\.style\\[\\s*['"\`](?:${PHYSICAL_PROPS}|${PHYSICAL_CAMEL})['"\`]`, 'g'))) found.push(m[0])
+  for (const m of source.matchAll(new RegExp(`setProperty\\(\\s*['"\`](?:${PHYSICAL_PROPS})['"\`]`, 'g'))) found.push(m[0])
+  // Whole strings written into a style: the declarations in them are checked like a stylesheet's, with ${…} holes filled.
+  for (const m of source.matchAll(/(?:\.style\.cssText\s*(?:\+?=)\s*|setAttribute\(\s*['"`]style['"`]\s*,\s*)(['"`])([\s\S]*?)\1/g)) {
+    for (const d of physicalDeclarations(`a { ${m[2].replace(/\$\{[^}]*\}/g, '0')} }`)) found.push(`style text: ${d}`)
+  }
+  for (const m of source.matchAll(/style="([^"]*)"/g)) {
+    for (const d of physicalDeclarations(`a { ${m[1].replace(/\$\{[^}]*\}/g, '0')} }`)) found.push(`style attribute: ${d}`)
   }
   return found
 }
@@ -472,20 +591,43 @@ describe('logical properties only', () => {
     assert.equal(physicalDeclarations('a { inset-inline-start: 0; margin-inline: 4px; text-align: start; margin: 0 auto; padding: var(--ts-pad, 18px); margin: calc(1px + 2px) 0 }').length, 0)
     assert.equal(physicalDeclarations('a { padding: 0 var(--a, 1px) 2px; text-align: center }').length, 0)
     assert.equal(physicalDeclarations('/* left: 0 */ a { top: 0 }').length, 0)
+    // Four values that are the same on both sides read the same mirrored.
+    assert.equal(physicalDeclarations('a { margin: 1px 4px 2px 4px; padding: 0 var(--a, 1px) 2px var(--a, 1px); inset: 0 6px 0 6px; border-radius: 4px 4px 0 0; border-radius: 3px 3px }').length, 0)
+  })
+
+  test('the scanner finds four-value and keyword forms of left and right', () => {
+    assert.equal(physicalDeclarations('a { border-radius: 4px 0 0 4px }').length, 1)
+    assert.equal(physicalDeclarations('a { border-radius: 99px 0 }').length, 1, 'two values are asymmetric too')
+    assert.equal(physicalDeclarations('a { border-radius: 1px 2px 3px }').length, 1)
+    assert.equal(physicalDeclarations('a { inset: 0 0 0 8px }').length, 1)
+    assert.equal(physicalDeclarations('a { border-width: 1px 0 1px 2px; border-style: solid none solid dashed; border-color: red blue green yellow }').length, 3)
+    assert.equal(physicalDeclarations('a { background-position: left top; background: url(a.png) no-repeat right center; transform-origin: left center; transform-origin: 100% right; object-position: right }').length, 5)
+    assert.equal(physicalDeclarations('a { background-position: center; background: url(left.png) no-repeat; transform-origin: center; text-align-last: end; background-position: 0 0 }').length, 0)
+    assert.equal(physicalDeclarations('a { text-align-last: right }').length, 1)
+  })
+
+  test('the script scanner finds style writes, setProperty, cssText and style attributes', () => {
+    assert.equal(physicalScript("el.style.left = '4px'; el.style.marginRight = 0; el.style.textAlign = 'left'").length, 3)
+    assert.equal(physicalScript("el.style.setProperty('left', '4px'); el.style.setProperty('padding-right', 0); el.style['right'] = 0").length, 3)
+    assert.equal(physicalScript("el.style.cssText = 'left: 4px; top: 0'; el.style.cssText += `margin-right: 2px`").length, 2)
+    assert.equal(physicalScript("el.setAttribute('style', 'right: 0')").length, 1)
+    assert.equal(physicalScript('`<i style="left:${x}%"></i>`').length, 1)
+    assert.equal(physicalScript("el.style.insetInlineStart = '4px'; el.style.setProperty('inset-inline-start', x); el.style.cssText = 'top: 0'; `<i style=\"inset-inline-start:${x}%\"></i>`; el.style.width = 'left'").length, 0)
   })
 
   for (const name of SHEETS) {
-    test(`${name} has no left, right, margin-left, padding-right or text-align: left|right`, () => {
+    test(`${name} has no physical left or right: properties, sides, corners, keywords or four-value shorthands`, () => {
       assert.deepEqual(physicalDeclarations(sheet(name)), [])
     })
   }
 
-  test('nor does the JavaScript that places marks and ticks', () => {
-    for (const file of ['today-pnl', 'equity-curve', 'session-clock', 'card', 'metric', 'series-chart', 'widget']) {
-      const source = stripComments(read(`src/elements/${file}.js`))
-      assert.doesNotMatch(source, /\.style\.(?:left|right|marginLeft|marginRight|paddingLeft|paddingRight|textAlign)\b/, file)
-      assert.doesNotMatch(source, /style="[^"]*(?:^|[;\s"])(?:left|right|margin-left|margin-right)\s*:/, file)
-    }
+  // The grid is left out on purpose: its geometry (pixel boxes from getBoundingClientRect, left/top placement of the
+  // chrome and of a dragged tile) is the rtl story's to move to logical properties, and mixing the two here
+  // would make that story's diff unreadable. Its colours are checked below, which the rtl story does not touch.
+  test('nor does the JavaScript that places marks and ticks, in any element module but the grid\'s', () => {
+    const files = readdirSync(new URL('../src/elements/', import.meta.url)).filter((f) => f.endsWith('.js') && !/^grid/.test(f))
+    assert.ok(files.includes('widget.js') && files.includes('today-pnl.js'), 'the scan found the widgets')
+    for (const file of files) assert.deepEqual(physicalScript(stripComments(read(`src/elements/${file}`))), [], file)
   })
 
   test('figures isolate their bidi run, and the drawing boxes force left to right', () => {
@@ -494,18 +636,110 @@ describe('logical properties only', () => {
     const ltr = {
       pnl: /\.chart, \.axis \{ direction: ltr; \}/,
       equity: /\.plot, \.ax \{ direction: ltr; \}/,
-      clock: /\.trk, \.lt \{ direction: ltr; \}/,
+      // The times under the bar sit under its ends, so the row is in the same box as the bar.
+      clock: /\.trk, \.lt, \.ft \{ direction: ltr; \}/,
       chart: /\.chartcol \{[^}]*direction: ltr;/,
       metric: /\.rhs svg, \.plot svg \{[^}]*direction: ltr;/,
     }
     const classes = { pnl: 'TsTodayPnl', equity: 'TsEquityCurve', clock: 'TsSessionClock', chart: 'TsChart', metric: 'TsMetric' }
     for (const [key, re] of Object.entries(ltr)) assert.match(C[key][classes[key]].styles, re, key)
   })
+
+  test('words inside a forced left-to-right box pick their own direction', () => {
+    // Today's P&L .chart, the equity .plot and the session clock's .lt (its .msg) are ltr; their empty and no-data
+    // text, and the clock's middle phrase, must not take that direction when the page's language reads the other way.
+    assert.match(C.pnl.TsTodayPnl.styles, /\.nodata \{[^}]*unicode-bidi: plaintext;/)
+    assert.match(C.equity.TsEquityCurve.styles, /\.plot \.empty \{[^}]*unicode-bidi: plaintext;/)
+    assert.match(C.clock.TsSessionClock.styles, /\.msg \{[^}]*unicode-bidi: plaintext;/)
+    assert.match(C.clock.TsSessionClock.styles, /\.mid \{[^}]*unicode-bidi: plaintext;/)
+    // Axis labels hold dates and month names, which are words too.
+    assert.match(C.pnl.TsTodayPnl.styles, /\.axis > \* \{ unicode-bidi: plaintext; \}/)
+    assert.match(C.equity.TsEquityCurve.styles, /\.ax > span \{ unicode-bidi: plaintext; \}/)
+    assert.match(C.chart.TsChart.styles, /\.xax > \* \{ unicode-bidi: plaintext; \}/)
+  })
+
+  test('the arrow has a gap after it so it reads as a marker apart from the sign', () => {
+    const rule = (sel) => W.SHARED_CSS.match(new RegExp(`${sel.replace(/[.]/g, '\\.')} \\{([^}]*)\\}`))[1]
+    assert.match(rule('.big .ar, .xbig .ar'), /margin-inline-end: \.375em/)
+    assert.match(rule('.n .ar'), /margin-inline-end: \.22em/)
+  })
+
+  test('the Wide equity headline keeps its 34px on a roomy tile and shrinks only on a narrow one', () => {
+    const css = stripComments(C.equity.TsEquityCurve.styles)
+    assert.doesNotMatch(css.replace(/@container[^{]*\{[^{}]*\{[^}]*\}\s*\}/g, ''), /\.side \.big/, 'no unconditional rule shrinks it')
+    assert.match(css, /@container \(not \(min-width: 420px\)\) \{ \.side \.big \{ font-size: min\(31px, 17cqi\); \} \}/)
+    assert.match(css, /@container \(min-width: 420px\) \{ \.side \{ width: 190px; \} \}/)
+  })
 })
 
+// ── Colours ────────────────────────────────────────────────────────────────
+
+// Every CSS named colour. `transparent` and `currentColor` are not colours a host would theme, so they are fine.
+const NAMED = `aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue
+chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki
+darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey
+darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro
+ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen
+lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen
+lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue
+mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream
+mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise
+palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon
+sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato
+turquoise violet wheat white whitesmoke yellow yellowgreen`.split(/\s+/)
+const NAMED_RE = new RegExp(`(?<![\\w-])(?:${NAMED.join('|')})(?![\\w-]|\\()`, 'gi')
+// Colour functions and hex; color-mix() of tokens is how a widget tints, and is not one of these.
+const COLOUR_VALUE = /#[0-9a-f]{3,8}\b|(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi
+// Values that are words and not colours, whatever those words are.
+const NOT_COLOUR = /^(?:font|font-family|content|animation|animation-name|transition|transition-property|will-change|grid-area|grid-template-areas|container-name|counter-reset|counter-increment|quotes)$/
+
+/** The colours a stylesheet writes itself: hex, functions and named colours, in declaration values only. */
+export function colourValues(css) {
+  const found = []
+  for (const [prop, value] of declarations(css)) {
+    if (NOT_COLOUR.test(prop)) continue
+    for (const m of value.match(COLOUR_VALUE) || []) found.push(`${prop}: ${m}`)
+    for (const m of value.match(NAMED_RE) || []) found.push(`${prop}: ${m}`)
+  }
+  return found
+}
+
+describe('colours', () => {
+  test('the scanner finds a named colour or a colour value, and not a word that only looks like one', () => {
+    assert.equal(colourValues('a { color: red; background: Tomato; border: 1px solid navy; fill: #fff; stroke: rgb(0 0 0); box-shadow: 0 0 0 1px darkslategray; --x: gold }').length, 7)
+    assert.equal(colourValues('a { color: hsl(0 0% 0%); background: oklch(60% 0.1 20); outline: 1px solid color(srgb 1 0 0) }').length, 3)
+    assert.equal(colourValues('.red, .tan { top: 0 } /* color: red */ a { content: "red"; color: var(--ts-ink); background: transparent; border-color: currentColor; fill: var(--red) }').length, 0)
+    assert.equal(colourValues('a { width: calc(tan(45deg) * 1px); background: color-mix(in srgb, var(--ts-ink) 4%, transparent); font-family: system-ui, sans-serif; animation: gold 1s }').length, 0)
+    assert.equal(colourValues('@media (forced-colors: active) { a { color: CanvasText; background: Highlight; border-color: ButtonFace } }').length, 0)
+  })
+
+  for (const name of SHEETS) {
+    test(`${name} writes no colour of its own: tokens, and system colours under forced colours`, () => {
+      assert.deepEqual(colourValues(sheet(name)), [])
+    })
+  }
+
+  test('the grid reads the same tokens, with no colour fallback of its own', () => {
+    const source = stripScriptComments(read('src/elements/grid.js'))
+    const style = source.match(/<style>([\s\S]*?)<\/style>/)[1]
+    assert.deepEqual(colourValues(style), [], 'the grid\'s stylesheet')
+    // What it writes into a style from script (the lifted tile's shadow, say).
+    const written = [...source.matchAll(/\.style\.(\w+)\s*=\s*(['"`])(.*?)\2/g)].map((m) => `${m[1].replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}: ${m[3]};`)
+    assert.ok(written.length > 0, 'the scan found the style writes')
+    assert.deepEqual(colourValues(`a { ${written.join(' ')} }`), [], 'the grid\'s style writes')
+    assert.deepEqual(source.match(COLOUR_VALUE) || [], [], 'no colour anywhere else in its source')
+  })
+})
+
+// Line comments too, which stripComments leaves: a // inside a url or a string would be cut, and nothing the grid writes has one.
+function stripScriptComments(source) {
+  return stripComments(source).replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1')
+}
+
 describe('forced colours', () => {
-  const ALLOWED = ['Highlight', 'CanvasText', 'ButtonFace']
-  // Every CSS system colour keyword, so one outside the three is caught too.
+  // HighlightText is the pair for Highlight; the spec's list (RFC 0003 §29.1) has ButtonFace, which is not its pair.
+  const ALLOWED = ['Highlight', 'HighlightText', 'CanvasText', 'ButtonFace']
+  // Every CSS system colour keyword, so one outside the list is caught too.
   const SYSTEM = ['AccentColor', 'AccentColorText', 'ActiveText', 'ButtonBorder', 'ButtonFace', 'ButtonText', 'Canvas', 'CanvasText', 'Field', 'FieldText', 'GrayText', 'Highlight', 'HighlightText', 'LinkText', 'Mark', 'MarkText', 'SelectedItem', 'SelectedItemText', 'VisitedText']
   const KEYWORD = new RegExp(`(?<![\\w-])(${SYSTEM.join('|')})(?![\\w-])`, 'g')
 
@@ -540,19 +774,18 @@ describe('forced colours', () => {
   })
 
   for (const name of SHEETS) {
-    test(`${name}: system colours only inside the forced-colors query, and only the three`, () => {
+    test(`${name}: system colours only inside the forced-colors query, and only the four`, () => {
       const { inside, rest } = split(sheet(name))
       assert.deepEqual(rest.match(KEYWORD) || [], [], 'no system colour outside the query')
       for (const word of inside.match(KEYWORD) || []) assert.ok(ALLOWED.includes(word), `${word} is not one of ${ALLOWED.join(', ')}`)
-      assert.doesNotMatch(rest, /#[0-9a-f]{3,8}\b|\b(?:rgb|hsl)a?\(/i, 'and no colour value')
-      assert.doesNotMatch(inside, /#[0-9a-f]{3,8}\b|\b(?:rgb|hsl)a?\(/i)
+      assert.deepEqual(colourValues(inside), [], 'and no other colour inside it')
     })
   }
 
   // [what stays visible, where it lives, the selector it is drawn with]
   const VISIBLE = [
     ['the live dot', () => W.SHARED_CSS, /\.dot\.live \{ background: Highlight; \}/],
-    ['the selected button', () => W.SHARED_CSS, /\.btn\.on \{ background: Highlight; color: ButtonFace; \}/],
+    ['the selected button, with the text colour that pairs with Highlight', () => W.SHARED_CSS, /\.btn\.on \{ background: Highlight; color: HighlightText; \}/],
     ['the profit and loss lines and the zero line', () => W.SHARED_CSS, /\.lp, \.ln, \.lz \{ stroke: CanvasText; \}/],
     ['the session clock\'s fill', () => C.clock.TsSessionClock.styles, /\.fill, \.lf \{ background: Highlight; \}/],
     ['the session clock\'s ticks', () => C.clock.TsSessionClock.styles, /\.tk, \.tk\.b \{ background: CanvasText; \}/],
@@ -572,4 +805,15 @@ describe('forced colours', () => {
       assert.match(inside, re)
     })
   }
+})
+
+describe('the dashboard region', () => {
+  test('the grid\'s board is the one region landmark, and the host is not given a role or a name', () => {
+    const source = read('src/elements/grid.js')
+    assert.match(source, /<div class="board" part="board" role="region">/)
+    // The one place that names it, and nothing else writes the host's role or label.
+    assert.equal((source.match(/_board\.setAttribute\('aria-label'/g) || []).length, 1)
+    assert.doesNotMatch(source, /this\.setAttribute\('(?:role|aria-label)'/)
+    assert.match(source, /return \['editing', 'profile', 'locked', 'edit-controls', 'locale', 'persist', 'aria-label'\]/)
+  })
 })

@@ -263,6 +263,8 @@ const DOT = '<span class="dot live" data-k="dot" aria-hidden="true" hidden></spa
 // "synced 11:42". The words either side of the time are their own nodes, so a narrow tile can hide them.
 const META = '<span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>'
 
+const HEADING = '[part="label"]'
+
 /**
  * The header row every widget starts with: `[status dot][label][spacer][meta]`
  * (RFC 0003 §5.1). `part="header"` is the row and `part="label"` the label,
@@ -288,15 +290,20 @@ export function header(opts) {
   return `<div class="hd" part="header">${dot ? DOT : ''}${label}${extra}${right ? `<span class="f1"></span>${right}` : ''}</div>`
 }
 
+// The sign sits in the run of non-digits before the first digit: after a bidi mark (U+200E, U+200F, U+061C),
+// after a currency in front ("€ +1,50" in nl), or at the very start. A sign after a digit is never the figure's.
+const LEADING_SIGN = /^[^\p{Nd}]*?([+−])/u
+
 /**
  * The ▲ or ▼ that goes beside a signed figure (RFC 0003 §5.5), read from the
- * text the reader sees so it can never disagree with it. A figure that shows
- * no sign (zero) gets none. The glyph's node is `aria-hidden`: the sign is
- * what a listener hears.
+ * text the reader sees so it can never disagree with it. The text, not the
+ * number: a value that rounds to zero shows no sign, and so gets no arrow,
+ * which only the formatted text knows. A figure that shows no sign (zero) gets
+ * none. The glyph's node is `aria-hidden`: the sign is what a listener hears.
  */
 export function arrowFor(text) {
-  const first = typeof text === 'string' ? text[0] : ''
-  return first === '+' ? '▲' : first === '−' ? '▼' : ''
+  const sign = typeof text === 'string' ? LEADING_SIGN.exec(text) : null
+  return sign ? (sign[1] === '+' ? '▲' : '▼') : ''
 }
 
 // Headline figures shrink with the tile, capped at the design size.
@@ -344,8 +351,9 @@ ${standaloneCss()}
 .n.sm, .n.xs { font-weight: var(--ts-num-weight-small, 500); }
 /* The arrow beside a signed figure (arrowFor): a small mark raised to the digits' middle, and no room taken when it is empty. */
 .ar:empty { display: none; }
-.big .ar, .xbig .ar { font-size: .4em; margin-inline-end: .1em; vertical-align: .55em; line-height: 0; }
-.n .ar { font-size: .7em; margin-inline-end: .2em; vertical-align: .1em; }
+/* The gap after it is about .15em of the figure, so the arrow reads as a marker apart from the sign (margins are in the arrow's own, smaller em). */
+.big .ar, .xbig .ar { font-size: .4em; margin-inline-end: .375em; vertical-align: .55em; line-height: 0; }
+.n .ar { font-size: .7em; margin-inline-end: .22em; vertical-align: .1em; }
 .mut { color: var(--ts-muted); }
 .pos { color: var(--ts-profit); }
 .neg { color: var(--ts-loss); }
@@ -410,7 +418,7 @@ ${SK_CSS}
    Backgrounds and box-shadows are dropped in forced colours, so what they drew is redrawn in marks that stay. */
 @media (forced-colors: active) {
   .dot.live { background: Highlight; }
-  .btn.on { background: Highlight; color: ButtonFace; }
+  .btn.on { background: Highlight; color: HighlightText; }
   .lp, .ln, .lz { stroke: CanvasText; }
 }
 `
@@ -941,7 +949,12 @@ export class TsWidget extends Base {
    * its tag, which the heading would only repeat, so the heading is hidden.
    */
   _markHeading(grid, label) {
-    const heading = this._section.querySelector('[part="label"]')
+    // Remembered with the other refs, which are dropped whenever the markup is rebuilt.
+    let heading = this._refs.get(HEADING)
+    if (!heading) {
+      heading = this._section.querySelector(HEADING)
+      if (heading) this._refs.set(HEADING, heading)
+    }
     if (!heading) return
     this._setAttr(heading, 'aria-level', String(this._headingLevel(grid)))
     const named = !!this.label

@@ -195,8 +195,8 @@ status region announces each step. `ts-edit-change` fires on every change.
 
 When editing ends, focus goes back to the element that started it (the Edit
 layout button, or the tile under the long press) if it can still take focus,
-else to the grid itself (`tabindex="-1"`, named "Dashboard" unless you set
-`aria-label`).
+else to the grid's board, the dashboard region (`tabindex="-1"`, named "Dashboard"
+unless you set `aria-label` on the grid).
 
 ### The edit pill and Add back
 
@@ -291,9 +291,12 @@ that loads its script late does not jump. See [Theming](../theming.md).
 
 ## Accessibility
 
-- The grid is a plain container; each tile is its own labelled region. The
-  grid adds no landmark of its own until it needs to take focus, when it gets
-  `role="group"` and the name "Dashboard" (unless you gave it one).
+- The grid's board is the dashboard's one `role="region"` landmark, named by
+  your `aria-label` on `<ts-grid>` and else "Dashboard" (`grid.dashboard`, so
+  it follows `messages` and `locale`). Each tile is a labelled group inside it,
+  not a landmark of its own. The grid writes nothing to its own host: no role
+  and no `aria-label`. When focus has nowhere else to go, for example after the
+  last tile is removed, it goes to the board.
 - Everything the pointer can do has a keyboard path and a single-pointer path
   (WCAG 2.5.7): the handle, `+` and `-`, Delete, tap to place and the resize
   button. Targets in the pill and toast are 44px.

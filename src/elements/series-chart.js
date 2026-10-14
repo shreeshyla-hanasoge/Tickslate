@@ -379,6 +379,7 @@ export class TsChart extends TsWidget {
 .yin span { height: 0; display: flex; align-items: center; justify-content: flex-end; line-height: 1; white-space: nowrap; }
 .xax { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-size: 11px; color: var(--ts-muted); min-height: 14px; }
 .xax > :last-child { justify-self: end; }
+.xax > * { unicode-bidi: plaintext; }
 .xax.gut { padding-inline-end: 42px; }
 .c-1 { --c: var(--ts-series-1); }
 .c-2 { --c: var(--ts-series-2); }

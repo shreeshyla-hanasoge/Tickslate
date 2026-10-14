@@ -101,8 +101,9 @@ list wins.
     hidden expansion, so `1W` is announced as "1W, 1 week".
 16. **Tokens only.** Widget CSS uses `--ts-*` variables and no colour values,
     so a host theme or a palette reaches every pixel. The one exception is
-    `@media (forced-colors: active)`, where `Highlight`, `CanvasText` and
-    `ButtonFace` (the user's own colours) keep the session-clock fill and ticks,
+    `@media (forced-colors: active)`, where `Highlight`, `HighlightText`,
+    `CanvasText` and `ButtonFace` (the user's own colours, `HighlightText` being
+    the text colour that pairs with `Highlight`) keep the session-clock fill and ticks,
     the live dot, Today's P&L marks, chart lines, the selected `.btn.on` and the
     metric target bar visible. `test/tile-chrome.test.mjs` fails on a colour
     anywhere else.

@@ -128,7 +128,7 @@ The base members are listed in [Your own widget](../guide/your-own-widget.md).
 
 | Part | Element |
 |---|---|
-| `tile` | The tile box, `role="group"` named by the headline sentence |
+| `tile` | The tile box, `role="group"` named by the label (the plot carries the result) |
 | `header` | The header row: the live dot, the label and the right-hand text (at `Wide`, the first series' name) |
 | `label` | The label, a `role="heading"` whose level comes from `heading-level` |
 | `chart` | The plot box: the svg, without its axis labels |

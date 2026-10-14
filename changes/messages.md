@@ -11,7 +11,7 @@
 
 - Every string the widgets and the grid show or announce now comes from messages: the empty, error and Retry text, the chrome labels, the grid's announcements, the toast, the Add back list and each widget's own words. English output is unchanged.
 - A built-in widget's default label and empty text are the `widget.<key>.label` and `widget.<key>.empty` messages, so a host overrides them in `messages` without a `label` attribute. A widget's own `static emptyText` still works, and a host's `widget.<key>.empty` wins over it.
-- `<ts-grid>` observes `locale` so its messages pick plural forms in the right language, and a change to its `messages` or `locale` draws every widget under it again, including one inside a host component's shadow root. The grid's controls (Add back, its list, the Dashboard name it gave itself) follow too; an `aria-label` the host set is never rewritten.
+- `<ts-grid>` observes `locale` so its messages pick plural forms in the right language, and a change to its `messages` or `locale` draws every widget under it again, including one inside a host component's shadow root. The grid's controls (Add back, its list, the name of its dashboard region) follow too; an `aria-label` the host set is never rewritten.
 
 ### Internal
 

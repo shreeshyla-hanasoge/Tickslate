@@ -159,6 +159,7 @@ export function equityCurveModel(data, variant, ctx) {
   const tradesText = trades === null ? '' : t('equity.tradeCount', { count: fmt.number(trades, { decimals: 0 }) }, trades)
 
   const net = fmt.money(stats.net)
+  const headline = fmt.fit(stats.net, HEADLINE_CHARS[v])
   const peak = fmt.money(stats.peak)
   // A drawdown is a loss, so it reads as a negative amount.
   const maxDrawdown = fmt.money(-stats.maxDrawdown)
@@ -202,14 +203,15 @@ export function equityCurveModel(data, variant, ctx) {
     // Rows the series couldn't use: no readable date or no finite P&L.
     dropped: Array.isArray(d.days) ? d.days.length - all.length : 0,
     // `long` is spoken after the short name, so "1W" is heard as "1W, 1 week" (a visually hidden expansion).
-    ranges: RANGES.map((value) => ({ value, on: value === range, text: t(`equity.range${value}`), long: t('equity.rangeExpand', { long: t(`equity.range${value}.long`) }) })),
+    // Only XL draws the buttons, so the other variants build none of these strings.
+    ranges: v !== 'XL' ? [] : RANGES.map((value) => ({ value, on: value === range, text: t(`equity.range${value}`), long: t('equity.rangeExpand', { long: t(`equity.range${value}.long`) }) })),
     live: d.live === true,
     empty,
     // The short word fits Wide's 170px column; a host's own label is used as given.
     label: v === 'Wide' ? t('equity.wide', { label: label === t('widget.equityCurve.label') ? t('equity.short') : label, days: dayWord }) : label,
-    headline: fmt.fit(stats.net, HEADLINE_CHARS[v]),
+    headline,
     // ▲ or ▼ beside each coloured figure, read from the sign the reader sees (RFC 0003 §5.5).
-    headlineArrow: arrowFor(fmt.fit(stats.net, HEADLINE_CHARS[v])),
+    headlineArrow: arrowFor(headline),
     net,
     netClass: colour(stats.net),
     peak,
@@ -291,9 +293,10 @@ export class TsEquityCurve extends TsWidget {
 .rowl.xl { gap: 24px; }
 /* Time runs left to right in every locale, so the drawing box and its axis never mirror. */
 .plot, .ax { direction: ltr; }
+.ax > span { unicode-bidi: plaintext; }
 .plot { position: relative; flex: 1; min-height: 0; min-width: 0; }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.plot .empty { position: absolute; inset: 0; font-size: 12px; }
+.plot .empty { position: absolute; inset: 0; font-size: 12px; unicode-bidi: plaintext; }
 .plot .sk { position: absolute; inset: 0; width: auto; }
 .dd { fill: color-mix(in srgb, var(--ts-loss) 22%, transparent); }
 .side { width: 170px; flex: none; justify-content: space-between; }
@@ -302,8 +305,10 @@ export class TsEquityCurve extends TsWidget {
 .rail { width: 220px; flex: none; gap: 16px; }
 .rail.sep { border-top: 0; border-inline-start: 1px solid var(--ts-line); padding-inline-start: 24px; }
 .stats { padding-block-start: 10px; }
-/* The arrow takes room beside the net figure, which fills the Wide side column. */
-.side .big { font-size: min(31px, 17cqi); }
+/* The arrow takes room beside the net figure, which fills the Wide side column. A roomy tile widens the column by the
+   arrow and its gap and keeps the 34px headline; a narrow one keeps the column and shrinks the figure instead. */
+@container (min-width: 420px) { .side { width: 190px; } }
+@container (not (min-width: 420px)) { .side .big { font-size: min(31px, 17cqi); } }
 `
 
   static get observedAttributes() {
