@@ -88,6 +88,12 @@
  *   data            Get/set. Setting schedules ONE render per microtask,
  *                   however many times it is set. undefined (never set) shows
  *                   the loading skeleton; null shows the empty state.
+ *                   Also a `data` attribute whose trimmed value starts with { or [:
+ *                   parsed as JSON until the property is set, which then wins
+ *                   for good. A parse failure shows the error view.
+ *   static dataShape  Optional { key: kind | { kind, optional?, of? } } (see
+ *                   dev.js). In development, data that doesn't match warns once
+ *                   per element, naming the path. Production never checks.
  *   state           Attribute and property: 'loading' (a skeleton, even over
  *                   existing data), 'error' (the error view) or null.
  *   error           Property: a message shows the error view, null clears it.
@@ -140,7 +146,7 @@
  */
 
 import { WIDGETS, createFormatter, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
-import { DEV, warnOnce } from './dev.js'
+import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
 
 // Every English string the base shows, in one place so messages can be made
@@ -192,6 +198,16 @@ export function standaloneCss() {
     const height = rows === 1 ? 'var(--ts-row, 150px)' : `calc(${rows} * var(--ts-row, 150px) + ${rows - 1} * var(--ts-gap, 16px))`
     return `:host([size="${name}"]) { height: ${height}; }`
   }).join('\n')
+}
+
+/**
+ * How a message names an element: `<ts-today-pnl item="pnl">`, or just the tag
+ * without an item. It lives here rather than in dev.js because the render-failure error
+ * uses it in production, and dev.js must vanish from a production build.
+ */
+export function describeElement(el) {
+  const item = el && typeof el.getAttribute === 'function' ? el.getAttribute('item') : null
+  return `<${el.localName}${item ? ` item="${item}"` : ''}>`
 }
 
 export function escapeHtml(s) {
@@ -343,6 +359,16 @@ const WARN_GLYPH =
 
 const STATES = ['loading', 'error']
 
+// Gives each element its own warning keys: two <ts-card>s without an item
+// would otherwise share one and the second would never warn.
+let uids = 0
+
+// How long data may stay undefined after connecting before development says so.
+const NO_DATA_MS = 10000
+
+// attribute that each formatter option comes from, for naming a warning's source
+const FORMAT_ATTR = { locale: 'locale', currency: 'currency', timeZone: 'time-zone' }
+
 /** The nearest ancestor <ts-grid>, looking out through shadow roots. */
 function findGrid(el) {
   let node = el.parentElement || (el.getRootNode && el.getRootNode().host)
@@ -355,7 +381,7 @@ function findGrid(el) {
 
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone', 'state']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'state', 'data']
   }
 
   constructor() {
@@ -373,6 +399,16 @@ export class TsWidget extends Base {
     this._every = 0
     this._timer = 0
     this._failed = false
+    // The JSON data attribute (RFC 0002 §2.6): the property wins once set, so
+    // the attribute only feeds _data while this is false.
+    this._dataSet = false
+    this._fromAttr = false
+    this._parseError = false
+    // Development diagnostics. Unconditional fields are cheap; the code that
+    // reads them sits behind `if (DEV)`.
+    this._uid = ++uids
+    this._undefTimer = 0
+    this._checkedData = undefined
     this._onVisibility = () => {
       if (this._visible()) {
         this._arm()
@@ -399,6 +435,9 @@ export class TsWidget extends Base {
 
   set data(value) {
     this._data = value
+    this._dataSet = true
+    this._fromAttr = false
+    this._parseError = false
     this.requestRender()
   }
 
@@ -580,10 +619,12 @@ export class TsWidget extends Base {
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
+    if (DEV) this._watchForData()
     this.requestRender()
   }
 
   disconnectedCallback() {
+    if (DEV) clearTimeout(this._undefTimer)
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVisibility)
     this._disarm()
   }
@@ -591,10 +632,101 @@ export class TsWidget extends Base {
   attributeChangedCallback(name, oldValue, newValue) {
     if (oldValue === newValue) return
     if (name === 'size') this._normaliseSize()
+    else if (name === 'data') this._readDataAttribute(newValue)
     this.requestRender()
   }
 
   // ── Internals ──────────────────────────────────────────────────────────
+
+  /**
+   * Feed the data attribute into _data when no property has been set. A value
+   * that isn't JSON-shaped is ignored, but data this attribute supplied earlier
+   * is dropped so a removed attribute doesn't leave stale numbers behind.
+   */
+  _readDataAttribute(value) {
+    if (this._dataSet) return
+    const text = typeof value === 'string' ? value.trim() : ''
+    if (text[0] !== '{' && text[0] !== '[') {
+      if (this._fromAttr) {
+        this._data = undefined
+        this._fromAttr = false
+        this._parseError = false
+      }
+      return
+    }
+    this._fromAttr = true
+    // A framework that stringified an object sends this; it isn't JSON, and
+    // saying so as a parse error would hide the real cause.
+    if (text === '[object Object]') {
+      this._data = undefined
+      this._parseError = true
+      if (DEV) warnOnce(`attr-object:${this._uid}`, `${describeElement(this)} data attribute reads "[object Object]"; set the data property instead.`)
+      return
+    }
+    try {
+      this._data = JSON.parse(text)
+      this._parseError = false
+    } catch (err) {
+      this._data = undefined
+      this._parseError = true
+      if (DEV) {
+        const { message, position } = parseErrorParts(err)
+        warnOnce(`attr-json:${this._uid}`, `${describeElement(this)} data attribute is not valid JSON: ${message}${position === null ? '' : ` (position ${position})`}.`)
+      }
+    }
+  }
+
+  // The checks below wrap their whole body in `if (DEV)`. A class method
+  // survives tree-shaking even when its only caller is guarded, so the guard
+  // has to be inside for a production build to lose the messages.
+
+  /** Development: say so if nothing has set data (and nothing is loading on purpose) 10 s after connecting. */
+  _watchForData() {
+    if (DEV) {
+      clearTimeout(this._undefTimer)
+      if (this._data !== undefined || this._parseError) return
+      this._undefTimer = setTimeout(() => {
+        if (this._data === undefined && !this._parseError && !this.state && !this.constructor.dataOptional && this.isConnected) {
+          warnOnce(`no-data:${this._uid}`, `${describeElement(this)} has had no data for 10 s and still shows a skeleton. Set data, or null for the empty state.`)
+        }
+      }, NO_DATA_MS)
+      // A pending check must not keep a Node process (a test, SSR) alive.
+      if (this._undefTimer && typeof this._undefTimer.unref === 'function') this._undefTimer.unref()
+    }
+  }
+
+  /** Development: warn about invalid formatter options, naming where each came from. */
+  _checkFormatter(fmt) {
+    if (DEV) {
+      for (const issue of fmt.issues) {
+        const attr = FORMAT_ATTR[issue.option]
+        const grid = findGrid(this)
+        let source = 'configure()'
+        if (this.getAttribute(attr) === issue.value) source = `its ${attr} attribute`
+        else if (grid && grid.getAttribute(attr) === issue.value) source = `its grid's ${attr} attribute`
+        warnOnce(`format:${this._uid}:${issue.option}`, `${describeElement(this)} ${issue.message} (from ${source}); the default is used.`)
+      }
+    }
+  }
+
+  /** Development: a view model that couldn't read some rows says how many. */
+  _checkDropped(vm) {
+    if (DEV && vm.dropped > 0) {
+      warnOnce(`dropped:${this._uid}`, `${describeElement(this)} dropped ${vm.dropped} ${vm.dropped === 1 ? 'row' : 'rows'} it couldn't read.`)
+    }
+  }
+
+  /** Development: check data against the class's dataShape, once per new value. */
+  _checkShape(data) {
+    if (DEV) {
+      const shape = this.constructor.dataShape
+      // Undefined is a dataOptional widget before its data; there is nothing to check yet.
+      if (!shape || data === undefined || this._checkedData === data) return
+      this._checkedData = data
+      const problem = checkShape(data, shape)
+      if (problem) warnOnce(`shape:${this._uid}`, `${describeElement(this)} ${shapeMessage(problem)}`)
+    }
+  }
 
   _supported() {
     return this.spec.sizes
@@ -641,7 +773,7 @@ export class TsWidget extends Base {
     const variant = this.variant
     const state = this.state
 
-    if (state === 'error' || this._error) {
+    if (state === 'error' || this._error || this._parseError) {
       this._failed = false
       return this._showError(label, this._error)
     }
@@ -654,7 +786,13 @@ export class TsWidget extends Base {
       return this._showEmpty(label)
     }
     try {
-      const vm = Ctor.viewModel(this._data === undefined ? {} : this._data, variant, { ...this.viewContext(), fmt: this.formatter, now: this.now(), label }) || {}
+      const fmt = this.formatter
+      if (DEV) {
+        this._checkFormatter(fmt)
+        this._checkShape(this._data)
+      }
+      const vm = Ctor.viewModel(this._data === undefined ? {} : this._data, variant, { ...this.viewContext(), fmt, now: this.now(), label }) || {}
+      if (DEV) this._checkDropped(vm)
       if (this._shown !== variant) {
         this._section.innerHTML = templateFor(Ctor, variant)
         this._refs.clear()
@@ -667,7 +805,7 @@ export class TsWidget extends Base {
     } catch (err) {
       // A widget that can't draw its data shouldn't take the page with it.
       // Logged once per run of failures: a clock tick would otherwise log every second.
-      if (!this._failed) console.error(`<${this.localName}> could not render its data:`, err)
+      if (!this._failed) console.error(`tickslate: ${describeElement(this)} could not render its data; see docs/widgets/${this.localName}.md`, err)
       this._failed = true
       this._showError(label, null)
     }
@@ -717,4 +855,5 @@ TsWidget.catalogKey = null
 TsWidget.spec = null
 TsWidget.styles = ''
 TsWidget.dataOptional = false
+TsWidget.dataShape = null
 TsWidget.emptyText = STRINGS.noData

@@ -1,4 +1,4 @@
-import type { Calendar, DayResult, Layout, LayoutItem, Numeric, Time } from '../core/index.js'
+import type { Calendar, DayResult, Layout, LayoutItem, Numeric, SizeName, Time } from '../core/index.js'
 import { TsWidget } from './widget.js'
 
 export { version } from '../core/index.js'
@@ -31,6 +31,19 @@ export interface WidgetFreshness {
   asOf?: Time
   /** Shows the pulsing dot. */
   live?: boolean
+}
+
+export interface CardData extends WidgetFreshness {}
+
+/**
+ * <ts-card>, every size. Slots: default (the body), value, actions, footer and empty.
+ * Attributes: label, sizes (whitespace-separated, default all seven), live, as-of, scrollable.
+ * `data` only updates the header; `data = null` never replaces slotted content.
+ */
+export declare class TsCard extends TsWidget<CardData> {
+  static dataOptional: true
+  /** From the sizes and label attributes. */
+  get spec(): { label: string; sizes: SizeName[] }
 }
 
 export interface TodayPnlData extends WidgetFreshness {
@@ -83,6 +96,7 @@ export declare class TsSessionClock extends TsWidget<SessionClockData> {}
 
 declare global {
   interface HTMLElementTagNameMap {
+    'ts-card': TsCard
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock

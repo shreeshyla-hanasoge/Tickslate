@@ -7,15 +7,17 @@
 import { version } from '../core/index.js'
 import { TsGrid } from './grid.js'
 import { TsWidget } from './widget.js'
+import { TsCard } from './card.js'
 import { TsTodayPnl } from './today-pnl.js'
 import { TsEquityCurve } from './equity-curve.js'
 import { TsSessionClock } from './session-clock.js'
 import { persistLayout } from './persist.js'
 import { define } from './registry.js'
 
-export { version, persistLayout, TsGrid, TsWidget, TsTodayPnl, TsEquityCurve, TsSessionClock }
+export { version, persistLayout, TsGrid, TsWidget, TsCard, TsTodayPnl, TsEquityCurve, TsSessionClock }
 
 define('ts-grid', TsGrid)
+define('ts-card', TsCard)
 define('ts-today-pnl', TsTodayPnl)
 define('ts-equity-curve', TsEquityCurve)
 define('ts-session-clock', TsSessionClock)

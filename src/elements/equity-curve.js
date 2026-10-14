@@ -269,6 +269,13 @@ const SKELETONS = {
 export class TsEquityCurve extends TsWidget {
   static catalogKey = 'equityCurve'
   static emptyText = STRINGS.empty
+  static dataShape = {
+    days: { kind: 'array', of: { date: 'time', pnl: 'numeric' } },
+    fees: { kind: 'numeric', optional: true },
+    trades: { kind: 'number', optional: true },
+    asOf: { kind: 'time', optional: true },
+    live: { kind: 'boolean', optional: true },
+  }
 
   static styles = `
 [hidden] { display: none !important; }

@@ -8,8 +8,8 @@ export interface TsLayoutChangeDetail {
   /** The layout before the edit. */
   previous: Layout
   profile: string
-  reason: 'move' | 'resize' | 'remove'
-  /** The item that was moved, resized or removed. */
+  reason: 'move' | 'resize' | 'remove' | 'add' | 'undo'
+  /** The item that was moved, resized, removed or added back. Empty for 'undo', which restores a whole profile: compare `previous` and `layout`. */
   id: string
   /** On 'remove': the item's index in the profile before it went. */
   index?: number
@@ -20,7 +20,8 @@ export interface TsLayoutChangeDetail {
 /**
  * <ts-grid>: positions its children and lets the user rearrange them like
  * apps on an iPhone: long-press to edit, drag to move, drag the corner handle
- * to resize, tap − to remove.
+ * to resize, tap − to remove. Ctrl or Cmd+Z undoes while editing, and after a
+ * remove an undo toast (`part="toast"`; `undo-toast="off"` suppresses it) offers Undo for 6 s.
  *
  * With no `layout` set it works from its children alone (implicit mode): each
  * child becomes a tile, its id is written back as `item`, and the grid's own
@@ -39,6 +40,26 @@ export declare class TsGrid extends HTMLElement {
   profile: string
   /** Edit mode; reflects the `editing` attribute. */
   editing: boolean
+  /**
+   * Read-only dashboard: no long press, no edit mode, no edit controls. While
+   * set, `editing = true` is ignored with one development warning, and setting
+   * it while editing ends edit mode. Reflects the `locked` attribute.
+   */
+  locked: boolean
+  /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
+  readonly hiddenItems: ReadonlyArray<{ id: string; type: string; label: string }>
+  /**
+   * Restores the active profile's previous layout (up to 20 steps per profile,
+   * cleared when the host sets `layout`) and fires `ts-layout-change` with
+   * reason 'undo'. Returns false when there is nothing to undo.
+   */
+  undo(): boolean
+  /**
+   * Adds a hidden child's item back (its declared size, else its first
+   * supported one), fires `ts-layout-change` with reason 'add' and records an
+   * undo step. Returns false when no hidden child has that id.
+   */
+  restore(id: string): boolean
   /** 2, 3 or 4, from the grid's own width. 0 before it is first measured. */
   readonly columns: number
   /** Switches between 'market' and 'closed' on time when `profile` isn't pinned. */

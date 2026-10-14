@@ -3,6 +3,20 @@ import type { Formatter, SizeName, WidgetSpec } from '../core/index.js'
 /** 'loading' covers a re-fetch over existing data; 'error' shows the error view. */
 export type WidgetState = 'loading' | 'error' | null
 
+/** What dataShape can ask of a value (RFC 0002 §2.7). `numeric` and `time` accept what toNumber and toTime read. */
+export type ShapeKind = 'number' | 'numeric' | 'time' | 'string' | 'boolean' | 'array' | 'object'
+
+export interface ShapeField {
+  kind: ShapeKind
+  /** Absent (or null) is fine. Default false: the key is required. */
+  optional?: boolean
+  /** Array items, or a nested object's shape. */
+  of?: ShapeKind | ShapeField | DataShape
+}
+
+/** A bare kind is required; keys not listed are allowed. */
+export type DataShape = Readonly<Record<string, ShapeKind | ShapeField>>
+
 /** The context a view model receives. */
 export interface ViewModelContext {
   /** Whatever the element's viewContext() adds. */
@@ -24,6 +38,8 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   static styles: string
   /** Static markup for one variant, built once per variant. */
   static template(variant: SizeName): string
+  /** The data's expected shape. In development, data that doesn't match warns once per element; production never checks. Default null. */
+  static dataShape: DataShape | null
   /** Render the template while data is undefined (viewModel then gets `{}`); the skeleton shows only for state="loading". Default false. */
   static dataOptional: boolean
   /** What the empty state says. Default 'No data'. */
@@ -34,7 +50,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   static viewModel(data: any, variant: SizeName, ctx: ViewModelContext): { ariaLabel?: string } & Record<string, unknown>
   static get observedAttributes(): string[]
 
-  /** Setting it schedules one render per microtask. undefined (never set) shows the loading skeleton; null shows the empty state. */
+  /** Setting it schedules one render per microtask. Once set, the `data` attribute (JSON starting with { or [) is ignored; until then it supplies the data, and a parse failure shows the error view. undefined (never set) shows the loading skeleton; null shows the empty state. */
   data: Data | null | undefined
   /** Attribute and property. 'loading' shows the skeleton even over existing data; 'error' shows the error view. */
   state: WidgetState

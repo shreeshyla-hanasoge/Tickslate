@@ -11,7 +11,7 @@
  * record), and give it a document that can report visibility:
  *
  *   globalThis.HTMLElement = FakeElement
- *   globalThis.document = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+ *   globalThis.document = new FakeDocument()
  *   const { TsWidget } = await import('../src/elements/widget.js?fake-dom')
  *   delete globalThis.HTMLElement
  *
@@ -39,6 +39,15 @@ export class FakeNode {
   }
   removeAttribute(k) {
     this.attrs.delete(k)
+  }
+  hasAttribute(k) {
+    return this.attrs.has(k)
+  }
+  toggleAttribute(k, force) {
+    const on = force === undefined ? !this.attrs.has(k) : Boolean(force)
+    if (on) this.setAttribute(k, '')
+    else this.removeAttribute(k)
+    return on
   }
   addEventListener(type, fn) {
     if (!this.listeners.has(type)) this.listeners.set(type, [])
@@ -74,6 +83,27 @@ export class FakeRoot extends FakeNode {
   }
 }
 
+/**
+ * The document widgets listen to for visibilitychange. Tests connect many
+ * widgets and rarely disconnect them, so the listeners pile up on the one
+ * document and Node warns past ten; reset() between tests drops them.
+ */
+export class FakeDocument extends EventTarget {
+  constructor() {
+    super()
+    this.visibilityState = 'visible'
+    this._added = []
+  }
+  addEventListener(type, fn, opts) {
+    this._added.push([type, fn, opts])
+    super.addEventListener(type, fn, opts)
+  }
+  reset() {
+    for (const [type, fn, opts] of this._added) super.removeEventListener(type, fn, opts)
+    this._added = []
+  }
+}
+
 export class FakeElement extends EventTarget {
   constructor() {
     super()
@@ -88,6 +118,15 @@ export class FakeElement extends EventTarget {
   }
   getAttribute(k) {
     return this.attrs.has(k) ? this.attrs.get(k) : null
+  }
+  hasAttribute(k) {
+    return this.attrs.has(k)
+  }
+  toggleAttribute(k, force) {
+    const on = force === undefined ? !this.attrs.has(k) : Boolean(force)
+    if (on) this.setAttribute(k, '')
+    else this.removeAttribute(k)
+    return on
   }
   setAttribute(k, v) {
     const old = this.getAttribute(k)

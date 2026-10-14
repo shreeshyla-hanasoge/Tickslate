@@ -1,11 +1,11 @@
-import { test, describe, before, after } from 'node:test'
+import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { SHARED_CSS, STRINGS, sk } from '../src/elements/widget.js'
 import { TsTodayPnl } from '../src/elements/today-pnl.js'
 import { TsEquityCurve } from '../src/elements/equity-curve.js'
 import { TsSessionClock } from '../src/elements/session-clock.js'
 import { WIDGETS } from '../src/core/index.js'
-import { FakeElement, tick } from './fake-dom.mjs'
+import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 
 // Loading, empty and error views (RFC 0002 §2.3, §2.4). Importing the modules
 // above needs no DOM; the element tests below install the shared fake one.
@@ -74,10 +74,11 @@ describe('the views', () => {
   let log
   before(async () => {
     globalThis.HTMLElement = FakeElement
-    globalThis.document = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+    globalThis.document = new FakeDocument()
     Widget = (await import('../src/elements/widget.js?fake-dom-states')).TsWidget
     delete globalThis.HTMLElement
   })
+  afterEach(() => globalThis.document.reset())
   after(() => {
     delete globalThis.document
   })

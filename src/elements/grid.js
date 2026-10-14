@@ -21,6 +21,7 @@
 import {
   DEFAULT_PROFILE,
   WIDGETS,
+  addItem,
   activeProfile,
   columnsFor,
   dropIndex,
@@ -52,6 +53,7 @@ import {
   specResolver,
 } from './grid-geometry.js'
 import { DEV, warnOnce } from './dev.js'
+import { createHistory } from './grid-history.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -75,6 +77,14 @@ const UNDEFINED_TAG_MS = 2000
 // Children that are never tiles, however the markup is written.
 const NOT_TILES = new Set(['script', 'style', 'template', 'link', 'meta', 'noscript'])
 const NO_SPECS = new Map()
+// How long the undo toast stays, unless the pointer or focus is on it.
+const TOAST_MS = 6000
+// English in one place, so a messages option can replace it later.
+const TEXT = {
+  removed: (label) => `${label} removed`,
+  undo: 'Undo',
+  lockedWarning: '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.',
+}
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 
 // Built on first use, so importing this module where there is no DOM (Node,
@@ -84,9 +94,14 @@ const TEMPLATE = `
 <style>
   :host { display: block; position: relative; -webkit-tap-highlight-color: transparent; }
   :host([hidden]) { display: none; }
-  :host([dragging]) { cursor: grabbing; -webkit-user-select: none; user-select: none; }
+  :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
-  ::slotted(*) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  /* A long press must never start a text selection on a touch screen, but a
+     mouse user may copy a figure out of a tile until they start editing. */
+  @media (pointer: coarse) {
+    :host(:not([locked])) ::slotted(*) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  }
+  :host([editing]) ::slotted(*), :host([dragging]) ::slotted(*) { -webkit-user-select: none; user-select: none; }
   .placeholder {
     position: absolute; top: 0; left: 0; box-sizing: border-box; pointer-events: none;
     border-radius: var(--ts-radius, 10px);
@@ -101,6 +116,9 @@ const TEMPLATE = `
     border-radius: var(--ts-radius, 10px); outline: none; z-index: 2;
   }
   :host([editing]) .chrome { pointer-events: auto; cursor: grab; }
+  :host([locked]) .chrome { pointer-events: none; }
+  .chrome.removing, .chrome.removing .remove { pointer-events: none; }
+  .chrome.removing .remove { display: none; }
   :host([dragging]) .chrome { cursor: grabbing; }
   .chrome:focus-visible { box-shadow: 0 0 0 2px var(--ts-accent, #2C52C4); }
   .remove, .resize { display: none; }
@@ -133,6 +151,22 @@ const TEMPLATE = `
     :host([editing]) .chrome { outline: 2px dashed var(--ts-line, #E2DACB); outline-offset: -1px; }
     .remove, .resize { animation: none; }
   }
+  .dock { position: sticky; bottom: 22px; height: 0; z-index: 7; display: flex; justify-content: center; pointer-events: none; }
+  .toast {
+    position: absolute; bottom: 0; display: inline-flex; align-items: center; gap: 0; padding: 4px 4px 4px 20px;
+    border-radius: 999px; box-sizing: border-box; max-width: calc(100% - 32px); white-space: nowrap;
+    background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
+    font: 500 13px var(--ts-font-ui); pointer-events: auto;
+  }
+  /* Kept in the tree while off, so the status region announces the next text put in it. */
+  .toast:not(.on) { width: 1px; height: 1px; padding: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+  .toast .msg { overflow: hidden; text-overflow: ellipsis; }
+  .toast .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .toast .undo {
+    min-width: 44px; min-height: 44px; margin: 0 0 0 16px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
+    background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
+  }
+  .toast .undo:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 <div class="board" part="board">
@@ -140,6 +174,7 @@ const TEMPLATE = `
   <slot></slot>
   <div class="chromes"></div>
 </div>
+<div class="dock"><div class="toast" part="toast" role="status"><span class="msg"></span><span class="sep"> · </span><button class="undo" type="button" tabindex="-1"></button></div></div>
 <div class="sr" role="status" aria-live="polite"></div>
 `
 
@@ -147,7 +182,7 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile']
+    return ['editing', 'profile', 'locked']
   }
 
   constructor() {
@@ -162,6 +197,13 @@ export class TsGrid extends Base {
     this._placeholder = root.querySelector('.placeholder')
     this._chromeLayer = root.querySelector('.chromes')
     this._status = root.querySelector('.sr')
+    this._toast = root.querySelector('.toast')
+    this._toastText = root.querySelector('.toast .msg')
+    this._toastUndo = root.querySelector('.toast .undo')
+    this._toastUndo.textContent = TEXT.undo
+    this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
+    this._history = createHistory()
+    this._removing = new Set() // ids fading out, so a second click or Delete does nothing
 
     this._layout = emptyLayout()
     this._catalog = WIDGETS
@@ -227,9 +269,23 @@ export class TsGrid extends Base {
       }
     }, true)
     root.addEventListener('click', (e) => {
-      const button = e.target.closest && e.target.closest('.remove')
+      const target = e.target.closest ? e.target : null
+      if (!target) return
+      const button = target.closest('.remove')
       if (button) this._remove(button.parentElement.dataset.id)
+      else if (target.closest('.undo')) this._undoFromToast()
     })
+    // The toast waits while the user is looking at it.
+    const toastHold = (key, on) => () => {
+      const t = this._toastState
+      if (!t) return
+      t[key] = on
+      this._toastTimer()
+    }
+    this._toast.addEventListener('pointerenter', toastHold('hover', true))
+    this._toast.addEventListener('pointerleave', toastHold('hover', false))
+    this._toast.addEventListener('focusin', toastHold('focus', true))
+    this._toast.addEventListener('focusout', toastHold('focus', false))
   }
 
   // ── Public API ─────────────────────────────────────────────────────────
@@ -243,6 +299,9 @@ export class TsGrid extends Base {
   /** A Layout or an item array. Setting it ends implicit mode for good. */
   set layout(value) {
     this._explicit = true
+    // The host's layout is the new truth; an old snapshot would undo into a stranger.
+    this._history.clear()
+    this._hideToast(false)
     this._apply(value)
   }
 
@@ -295,8 +354,81 @@ export class TsGrid extends Base {
     this.toggleAttribute('editing', !!value)
   }
 
+  /** Read-only dashboard: no long press, no edit mode, no chromes. */
+  get locked() {
+    return this.hasAttribute('locked')
+  }
+
+  set locked(value) {
+    this.toggleAttribute('locked', !!value)
+  }
+
   get columns() {
     return this._columns
+  }
+
+  /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
+  get hiddenItems() {
+    const shown = new Set(this._profileItems().map((item) => item.id))
+    const seen = new Set()
+    const list = []
+    for (const el of this.children) {
+      if (!isTile(el)) continue
+      const id = el.getAttribute('item')
+      if (!id || shown.has(id) || seen.has(id)) continue
+      seen.add(id)
+      const type = this._typeFor(el.localName).type
+      list.push({ id, type, label: this._labelFor(el, this._resolve({ id, type })) })
+    }
+    return list
+  }
+
+  /**
+   * Put the active profile back the way it was before the last edit. A host
+   * can call this even while locked: the lock is for the user's hands.
+   */
+  undo() {
+    const profile = this.profile
+    const before = this._profileItems()
+    const snapshot = this._history.undo(profile)
+    if (!snapshot) return false
+    const items = hasOwn(snapshot.profiles, profile) && Array.isArray(snapshot.profiles[profile]) ? snapshot.profiles[profile] : []
+    this._cancelGesture()
+    this._hideToast(false)
+    // Children must follow the restored list: a tile the undo brings back is
+    // no longer "removed", and one it takes away (an undone restore) is again.
+    const now = new Set(items.map((item) => item.id))
+    const removed = this._removedFor(profile)
+    for (const item of before) if (!now.has(item.id)) removed.add(item.id)
+    for (const id of now) removed.delete(id)
+    const previous = this._layout
+    this._layout = withProfile(this._layout, profile, items)
+    this._sync(true)
+    this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'undo', id: '' })
+    return true
+  }
+
+  /** Add a hidden child's item back, at the end of the profile; false when no hidden child has that id. */
+  restore(id) {
+    const hidden = this.hiddenItems.find((h) => h.id === id)
+    if (!hidden) return false
+    const el = [...this.children].find((c) => isTile(c) && c.getAttribute('item') === id)
+    const spec = this._resolve({ id, type: hidden.type })
+    const sizes = spec && Array.isArray(spec.sizes) && spec.sizes.length ? spec.sizes : null
+    const declared = this._declared.get(el) || el.getAttribute('size')
+    const size = sizes ? (sizes.includes(declared) ? declared : sizes[0]) : declared || 'S'
+    // As in implicit mode, the type is implied when it is the id.
+    const item = id === hidden.type ? { id, size } : { id, type: hidden.type, size }
+    const profile = this.profile
+    const previous = this._layout
+    const list = this._profileItems()
+    this._history.push(profile, previous)
+    this._removedFor(profile).delete(id)
+    this._layout = withProfile(this._layout, profile, addItem(list, item, this._resolve))
+    this._hideToast(false)
+    this._sync(true)
+    this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'add', id })
+    return true
   }
 
   /** { calendar, market: { sessions, leadMinutes?, lagMinutes? } }; switches profiles on time. */
@@ -367,6 +499,7 @@ export class TsGrid extends Base {
     this._mutationObserver.disconnect()
     this._cancelGesture()
     this._stopEditing()
+    this._hideToast(false)
     document.removeEventListener('visibilitychange', this._onVisibility)
     clearTimeout(this._profileTimer)
     for (const timer of this._watching) clearTimeout(timer)
@@ -388,9 +521,21 @@ export class TsGrid extends Base {
   }
 
   attributeChangedCallback(name) {
-    if (name === 'editing') {
+    if (name === 'locked') {
+      if (this.locked) {
+        this.editing = false
+        this._cancelGesture()
+        this._hideToast(false)
+      }
+    } else if (name === 'editing') {
       const on = this.hasAttribute('editing')
       if (on === this._editing) return
+      if (on && this.locked) {
+        // Revert rather than ignore, so the attribute never lies about the state.
+        if (DEV) warnOnce('grid-locked-editing', TEXT.lockedWarning)
+        this.removeAttribute('editing')
+        return
+      }
       this._editing = on
       if (on) this._startEditing()
       else this._stopEditing()
@@ -669,8 +814,10 @@ export class TsGrid extends Base {
   }
 
   _label(id) {
-    const el = this._tiles.get(id)
-    const spec = this._spec(id)
+    return this._labelFor(this._tiles.get(id), this._spec(id), id)
+  }
+
+  _labelFor(el, spec, id = el && el.getAttribute('item')) {
     return (el && (el.getAttribute('label') || el.getAttribute('aria-label'))) || (spec && spec.label) || id
   }
 
@@ -746,6 +893,8 @@ export class TsGrid extends Base {
   }
 
   _onPointerDown(e) {
+    // Before anything is started, so a widget button under the pointer keeps its click.
+    if (this.locked) return
     if (this._gesture || !e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return
     const hit = this._hit(e.composedPath())
     const base = { pointerId: e.pointerId, pointerType: e.pointerType, startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY }
@@ -1070,11 +1219,15 @@ export class TsGrid extends Base {
   // ── Removing ───────────────────────────────────────────────────────────
 
   _remove(id) {
-    if (!this._editing || !this._placements.has(id) || this._gesture) return
+    if (!this._editing || !this._placements.has(id) || this._gesture || this._removing.has(id)) return
     const el = this._tiles.get(id)
     const chrome = this._chromes.get(id)
     const label = this._label(id)
+    // Held until the tile is gone, so a double-click can't remove twice.
+    this._removing.add(id)
+    chrome.classList.add('removing')
     const finish = () => {
+      if (!this._removing.delete(id)) return
       this._order = removeItem(this._order, id)
       el.style.display = 'none'
       this._dropChrome(id)
@@ -1084,21 +1237,85 @@ export class TsGrid extends Base {
       const previous = this._layout
       const list = this._profileItems()
       const index = list.findIndex((item) => item.id === id)
+      this._history.push(profile, previous)
       // Children can't bring a removed tile back; only a restore can.
       this._removedFor(profile).add(id)
       this._layout = withProfile(this._layout, profile, removeItem(list, id))
       this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'remove', id, index, item: list[index] })
-      this._announce(`${label} removed.`)
+      // The toast is a live region, so it speaks for itself; the grid's own
+      // status region would say the same thing twice.
+      if (!this._showToast(TEXT.removed(label))) this._announce(TEXT.removed(label) + '.')
     }
     if (!this._motion()) return finish()
     this._unwiggle(id)
     const out = [{ opacity: 1, scale: 1 }, { opacity: 0, scale: 0.85 }]
     const options = { duration: 180, easing: 'ease-in', fill: 'forwards' }
     chrome.animate(out, options)
-    el.animate(out, options).finished.then(() => {
+    // A cancelled animation rejects; the tile must still go.
+    const done = () => {
       finish()
       for (const a of el.getAnimations()) a.cancel()
-    })
+    }
+    el.animate(out, options).finished.then(done, done)
+  }
+
+  // ── The undo toast ─────────────────────────────────────────────────────
+
+  /** Show the toast; false when the host turned it off, so the caller announces instead. */
+  _showToast(text) {
+    if (this.getAttribute('undo-toast') === 'off') return false
+    const toast = this._toast
+    const wasOn = !!this._toastState
+    if (this._toastState) clearTimeout(this._toastState.timer)
+    this._toastState = { remaining: TOAST_MS, started: 0, timer: 0, hover: false, focus: false }
+    this._toastText.textContent = text
+    this._toastUndo.tabIndex = 0
+    toast.classList.add('on')
+    if (!wasOn && this._motion() && toast.animate) toast.animate([{ translate: '0 12px', opacity: 0 }, { translate: '0 0', opacity: 1 }], { duration: 180, easing: 'ease-out' })
+    this._toastTimer()
+    return true
+  }
+
+  /** Start or pause the countdown: it runs only while neither hovered nor focused. */
+  _toastTimer() {
+    const t = this._toastState
+    if (!t) return
+    if (t.timer) {
+      clearTimeout(t.timer)
+      t.remaining = Math.max(0, t.remaining - (Date.now() - t.started))
+      t.timer = 0
+    }
+    if (t.hover || t.focus) return
+    t.started = Date.now()
+    t.timer = setTimeout(() => this._hideToast(true), t.remaining)
+  }
+
+  _hideToast(animate) {
+    const t = this._toastState
+    if (!t) return
+    clearTimeout(t.timer)
+    this._toastState = null
+    const toast = this._toast
+    const off = () => {
+      // A newer toast may have opened during the exit.
+      if (this._toastState) return
+      toast.classList.remove('on')
+      this._toastText.textContent = ''
+      this._toastUndo.tabIndex = -1
+    }
+    // Focus on the button would be lost with it; hand it back to the grid.
+    if (this.shadowRoot.activeElement === this._toastUndo) this._toastUndo.blur()
+    if (animate && this._motion() && toast.animate) toast.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: 'ease-in' }).finished.then(off, off)
+    else off()
+  }
+
+  _undoFromToast() {
+    const before = new Set(this._profileItems().map((item) => item.id))
+    if (!this.undo()) return this._hideToast(false)
+    // Keyboard users pressed Undo with focus on the toast, which is now gone.
+    const back = this._profileItems().find((item) => !before.has(item.id))
+    const chrome = back && this._chromes.get(back.id)
+    if (this._editing && chrome) chrome.focus()
   }
 
   // ── Keyboard ───────────────────────────────────────────────────────────
@@ -1106,7 +1323,15 @@ export class TsGrid extends Base {
   _onDocKeyDown(e) {
     // Escape works even when focus is outside the grid, as after a long press
     // with the mouse.
-    if (e.key !== 'Escape' || e.defaultPrevented) return
+    if (e.defaultPrevented) return
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && typeof e.key === 'string' && e.key.toLowerCase() === 'z') {
+      // Leave a text field's own undo alone.
+      const origin = e.composedPath()[0]
+      if (origin && (origin.isContentEditable || /^(input|textarea|select)$/i.test(origin.localName || ''))) return
+      if (!this._gesture && this.undo()) e.preventDefault()
+      return
+    }
+    if (e.key !== 'Escape') return
     if (this._gesture) this._cancelGesture()
     else this.editing = false
     e.preventDefault()
@@ -1144,6 +1369,7 @@ export class TsGrid extends Base {
       this._announce(`${this._label(id)}, size ${next}.`)
     } else if (!g && (key === 'Delete' || key === 'Backspace')) {
       e.preventDefault()
+      if (this._removing.has(id)) return
       const ids = [...this._placements.keys()]
       const next = ids[ids.indexOf(id) + 1] || ids[ids.indexOf(id) - 1]
       this._remove(id)
@@ -1177,6 +1403,7 @@ export class TsGrid extends Base {
 
   _commit(reason, id) {
     const previous = this._layout
+    this._history.push(this.profile, previous)
     const items = mergeOrder(this._profileItems(), this._order)
     this._layout = withProfile(this._layout, this.profile, items)
     this._emit('ts-layout-change', { layout: this._layout, items, previous, profile: this.profile, reason, id })

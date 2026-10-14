@@ -340,6 +340,11 @@ const SKELETONS = {
 export class TsSessionClock extends TsWidget {
   static catalogKey = 'sessionClock'
   static emptyText = STRINGS.empty
+  static dataShape = {
+    calendar: 'object',
+    sessions: { kind: 'array', of: 'string' },
+    timeframes: { kind: 'array', optional: true, of: 'number' },
+  }
 
   static styles = `
 [hidden] { display: none !important; }
