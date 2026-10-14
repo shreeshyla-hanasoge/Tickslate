@@ -77,17 +77,25 @@ const BUDGETS = {
  * every entry bundles: card 13,328 B, metric 15,052 B, chart 16,049 B,
  * today-pnl 15,672 B, equity-curve 15,848 B, session-clock 15,006 B. The grid
  * (22,429 B) still fits its first figure, so it was not raised.
+ *
+ * Re-measured 2026-10-14 after tile-chrome (one header, heading and arrows in
+ * every widget, forced-colour rules) and persist-attribute (the grid's storage
+ * adapters), and the review fixes that followed: grid 25,109 B, equity-curve
+ * 17,994 B, session-clock 16,905 B, today-pnl 17,812 B. Only the four that no
+ * longer fitted were raised; card, metric and chart still sit under theirs.
+ * The grid's figure includes the default tokens it now injects, about 1.4 kB.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
+const remeasuredAgain = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-chrome and persist-attribute, RFC 0003 §25' })
 const ENTRY_BUDGETS = {
-  grid: entry(22.5),
+  grid: remeasuredAgain(27),
   card: remeasured(14.5),
   metric: remeasured(16.5),
   chart: remeasured(17.5),
-  'today-pnl': remeasured(17),
-  'equity-curve': remeasured(17.5),
-  'session-clock': remeasured(16.5),
+  'today-pnl': remeasuredAgain(19.5),
+  'equity-curve': remeasuredAgain(19.5),
+  'session-clock': remeasuredAgain(18.5),
 }
 
 /**
