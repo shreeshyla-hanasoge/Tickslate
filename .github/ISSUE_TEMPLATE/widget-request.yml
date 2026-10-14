@@ -1,0 +1,82 @@
+name: Widget request
+description: Ask for a new widget, such as a positions table or an order feed.
+title: "[Widget]: "
+labels: ["widget"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A widget renders data the host passes in. It never fetches, never calls a broker and never holds credentials, so the most useful part of this request is the **shape of the data**. Use generic names (strategy, account, allocation, position, order, fill, instrument, session), and made-up numbers only.
+
+        Check [docs/widgets](https://github.com/shreeshyla-hanasoge/Tickslate/tree/master/docs/widgets) first: `ts-card`, `ts-metric` and `ts-chart` may already do it.
+  - type: input
+    id: name
+    attributes:
+      label: Widget name
+      placeholder: ts-positions
+    validations:
+      required: true
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What does it show, and who is it for?
+      description: The question a user answers by glancing at it.
+    validations:
+      required: true
+  - type: textarea
+    id: data-shape
+    attributes:
+      label: The data it takes in
+      description: A made-up example of the data, as JSON, or a TypeScript type. Say which fields are optional.
+      render: json
+      placeholder: '{ "rows": [{ "instrument": "ABC", "quantity": 10, "change": 0.021 }] }'
+    validations:
+      required: true
+  - type: textarea
+    id: states
+    attributes:
+      label: Sizes and states
+      description: Which sizes it needs (S, Wide, larger), and what empty, loading and error should look like.
+  - type: textarea
+    id: actions
+    attributes:
+      label: Actions and events
+      description: Anything a user can ask the host to do from the widget (for example "close position"). The widget only requests it; the host decides.
+  - type: textarea
+    id: design
+    attributes:
+      label: Sketch or reference
+      description: A drawing, screenshot or link. Please don't paste a real account's figures.
+  - type: input
+    id: browser
+    attributes:
+      label: Browsers you need it in
+      description: Tickslate supports Chrome 111, Safari 16.2 and Firefox 113 or later.
+      placeholder: "Chrome and Safari, desktop and iOS"
+    validations:
+      required: true
+  - type: dropdown
+    id: framework
+    attributes:
+      label: How do you use Tickslate?
+      options:
+        - Plain HTML
+        - Vue
+        - React
+        - Svelte
+        - Angular
+        - Server-rendered template (Laravel, Rails, Django and others)
+        - Another framework
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Would you like to build it?
+      description: A new widget needs an RFC first, then the widget, its docs and tests. See CONTRIBUTING.md.
+      options:
+        - "Yes, with guidance"
+        - "Yes, I can write the RFC"
+        - "No, I'm only requesting it"
+    validations:
+      required: true
