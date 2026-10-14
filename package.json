@@ -12,9 +12,12 @@
     "verify:package": "node scripts/verify-package.mjs",
     "size": "node scripts/check-size.mjs",
     "test": "node --test test/*.test.mjs",
+    "test:browser": "playwright test",
     "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run pack:lib && npm run verify:package && npm run size"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
     "esbuild": "0.21.5",
     "vite": "^5.4.0"
   }

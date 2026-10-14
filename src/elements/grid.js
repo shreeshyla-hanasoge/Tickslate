@@ -81,6 +81,10 @@ const UNDEFINED_TAG_MS = 2000
 // Children that are never tiles, however the markup is written.
 const NOT_TILES = new Set(['script', 'style', 'template', 'link', 'meta', 'noscript'])
 const NO_SPECS = new Map()
+// A second remove inside this window is a double-click or a doubled key press,
+// not a second decision: once the first tile is gone the next one has slid under
+// the pointer and into focus, and would be removed by the same gesture.
+const REMOVE_GUARD_MS = 400
 // How long the undo toast stays, unless the pointer or focus is on it.
 const TOAST_MS = 6000
 // English in one place, so a messages option can replace it later.
@@ -330,6 +334,7 @@ export class TsGrid extends Base {
     this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
     this._history = createHistory()
     this._removing = new Set() // ids fading out, so a second click or Delete does nothing
+    this._removedAt = -Infinity // when a remove last began, for the double-click guard
     root.querySelector('.hint').textContent = TEXT.instructions
     this._inertWas = new Map() // tile → whether the host had set inert, restored exactly when editing ends
     this._deferred = false // a scheduled profile change waiting for Done
@@ -644,7 +649,13 @@ export class TsGrid extends Base {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
-    this._resizeObserver = new ResizeObserver(() => this._measure(false))
+    // Measuring renders, and rendering changes the grid's own height, which the
+    // observer reports again within the same frame. WebKit raises that as an
+    // uncaught "ResizeObserver loop" error, so the work waits for the next frame.
+    this._resizeObserver = new ResizeObserver(() => {
+      cancelAnimationFrame(this._measureFrame)
+      this._measureFrame = requestAnimationFrame(() => this._measure(false))
+    })
     this._resizeObserver.observe(this)
     this._mutationObserver = new MutationObserver((records) => {
       if (!records.some((r) => this._concerns(r))) return
@@ -662,6 +673,7 @@ export class TsGrid extends Base {
 
   disconnectedCallback() {
     this._resizeObserver.disconnect()
+    cancelAnimationFrame(this._measureFrame)
     this._mutationObserver.disconnect()
     this._cancelGesture()
     this._stopEditing()
@@ -1615,6 +1627,9 @@ export class TsGrid extends Base {
 
   _remove(id) {
     if (!this._editing || !this._placements.has(id) || this._gesture || this._removing.has(id)) return
+    const now = Date.now()
+    if (now - this._removedAt < REMOVE_GUARD_MS) return
+    this._removedAt = now
     const el = this._tiles.get(id)
     const chrome = this._chromes.get(id)
     const label = this._label(id)

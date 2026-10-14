@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- A dark island inside a light page and a light island inside a dark page.
+     Each island is a themed block with a card and a metric in it (RFC 0002 §6). -->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Islands fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
+  h2 { font: 600 15px/1.2 var(--ts-font-ui); margin: 0 0 8px; }
+  .page { padding: 16px; margin-bottom: 16px; background: var(--ts-bg); color: var(--ts-ink); }
+  .island { padding: 16px; background: var(--ts-bg); color: var(--ts-ink); }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .row > * { width: min(304px, 100%); }
+</style>
+<script type="module" src="/src/elements/index.js"></script>
+</head>
+<body>
+<main>
+  <h1>Islands</h1>
+  <section class="page" id="light-page" data-theme="light" aria-labelledby="h-light">
+    <h2 id="h-light">Dark island in a light page</h2>
+    <div class="island" id="dark-island" data-theme="dark">
+      <div class="row">
+        <ts-card label="Notes" size="S"><span slot="value">42</span></ts-card>
+        <ts-metric id="dark-metric" label="Sales" size="S"></ts-metric>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 16px">
+      <ts-card id="light-card" label="Plain" size="S"><span slot="value">1</span></ts-card>
+    </div>
+  </section>
+  <section class="page" id="dark-page" data-theme="dark" aria-labelledby="h-dark">
+    <h2 id="h-dark">Light island in a dark page</h2>
+    <div class="island" id="light-island" data-theme="light">
+      <div class="row">
+        <ts-card label="Notes" size="S"><span slot="value">42</span></ts-card>
+        <ts-metric id="light-metric" label="Sales" size="S"></ts-metric>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 16px">
+      <ts-card id="dark-card" label="Plain" size="S"><span slot="value">1</span></ts-card>
+    </div>
+  </section>
+</main>
+<script type="module">
+  import { setup, dataFor, frozenClock } from './data.js'
+  setup()
+  for (const el of document.querySelectorAll('ts-metric')) {
+    el.clock = frozenClock
+    el.data = dataFor('ts-metric')
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

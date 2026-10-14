@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- A dashboard of generic tiles. With no query it is implicit mode from
+     markup alone: the three children below and nothing else, and the second
+     script does nothing. ?mode=explicit sets data and a layout of five tiles
+     and records every grid event in window.__events (an early script does).
+       ?theme=dark   dark theme        ?w=900   container width in px
+       ?locked       a locked grid     ?toast=off / ?controls=off -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grid fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
+  #wrap { margin: 0 auto; }
+  #outside { margin-top: 24px; min-height: 44px; }
+  ul { margin: 0; padding: 0; list-style: none; }
+</style>
+<!-- Recorded from before the elements load, so the grid's first events (the
+     initial column count) are not missed. The grid's events bubble and are composed. -->
+<script>
+  window.__events = []
+  // Implicit mode runs with the import and nothing else, so it records nothing.
+  for (const name of new URLSearchParams(location.search).get('mode') === 'explicit' ? ['ts-layout-change', 'ts-edit-change', 'ts-columns-change', 'ts-profile-change', 'ts-layout-issues'] : []) {
+    document.addEventListener(name, (e) => {
+      const d = e.detail
+      window.__events.push({
+        type: name,
+        reason: d.reason,
+        id: d.id,
+        editing: d.editing,
+        columns: d.columns,
+        initial: d.initial,
+        order: d.items ? d.items.map((item) => item.id) : undefined,
+        sizes: d.items ? d.items.map((item) => item.size) : undefined,
+      })
+    })
+  }
+</script>
+<script type="module" src="/src/elements/index.js"></script>
+</head>
+<body>
+<main>
+  <h1>Grid fixture</h1>
+  <div id="wrap">
+    <ts-grid id="g" aria-label="Dashboard">
+      <ts-metric item="sales" label="Sales" size="Wide"></ts-metric>
+      <ts-card item="notes" label="Notes" size="S"><span slot="value">42</span></ts-card>
+      <ts-card item="tasks" label="Tasks" size="S"><span slot="value">7</span></ts-card>
+    </ts-grid>
+  </div>
+  <p id="outside-text">Text outside the grid.</p>
+  <button id="outside" type="button">Outside button</button>
+</main>
+<script type="module">
+  const params = new URLSearchParams(location.search)
+  if (params.get('mode') === 'explicit') {
+    const { setup, dataFor, frozenClock } = await import('./data.js')
+    await customElements.whenDefined('ts-grid')
+    setup()
+    document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+    if (params.has('w')) document.getElementById('wrap').style.width = `${params.get('w')}px`
+    const g = document.getElementById('g')
+    if (params.has('locked')) g.setAttribute('locked', '')
+    if (params.get('toast') === 'off') g.setAttribute('undo-toast', 'off')
+    if (params.get('controls') === 'off') g.setAttribute('edit-controls', 'off')
+
+    // Tiles beyond the markup's three, so a layout has something to rearrange.
+    g.insertAdjacentHTML('beforeend',
+      '<ts-chart item="traffic" label="Traffic" size="M"></ts-chart>' +
+      '<ts-card item="queue" label="Queue" size="Wide"><ul><li>Larkspur Press</li><li>Tidewater Bakery</li></ul></ts-card>')
+    for (const el of g.children) {
+      el.clock = frozenClock
+      if (el.localName !== 'ts-card') el.data = dataFor(el.localName)
+    }
+
+    g.layout = [
+      { id: 'sales', type: 'metric', size: 'Wide' },
+      { id: 'notes', type: 'card', size: 'S' },
+      { id: 'tasks', type: 'card', size: 'S' },
+      { id: 'traffic', type: 'chart', size: 'M' },
+      { id: 'queue', type: 'card', size: 'Wide' },
+    ]
+    window.__fx = { grid: g }
+    window.__ready = true
+  } else {
+    // Implicit mode: nothing to do, which is the point of it.
+    window.__ready = true
+  }
+</script>
+</body>
+</html>

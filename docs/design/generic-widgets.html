@@ -1,10 +1,11 @@
 <meta charset="utf-8">
 <!--
   REVIEW (newest first; recorded from the maintainer's replies in chat)
-  - 2026-10-13  Status: awaiting review. Drafted for Wave 0, story
-    generic-design-sheet. Not approved yet. No change requests recorded.
-    Implementing stories treat these frames as a proposal until this line
-    says Approved.
+  - 2026-10-13  Approved as drawn. The maintainer approved the sheet in chat
+    ("Go as per recommendation"); implementing stories treat these frames as
+    settled.
+  - 2026-10-13  Drafted for Wave 0, story generic-design-sheet. No change
+    requests were recorded before approval.
 
   Tickslate 0.1.0 design sheet: the generic card, metric and chart, the
   loading, empty, error and stale states, and the editing controls, drawn on
@@ -180,7 +181,7 @@ h1 {
 .review dt { font-weight: 600; font-size: 13px; }
 .review dd { margin: 0; font-size: 13.5px; max-width: 75ch; }
 .status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
-.status::before { content: ''; width: 9px; height: 9px; border-radius: 2px; transform: rotate(45deg); background: var(--ts-warn); }
+.status::before { content: ''; width: 9px; height: 9px; border-radius: 2px; transform: rotate(45deg); background: var(--ts-profit); }
 @media (max-width: 599px) { .review { grid-template-columns: minmax(0, 1fr); gap: 2px; } .review dd { margin-bottom: 8px; } }
 
 .sec { padding-block: 64px 12px; scroll-margin-top: 56px; }
@@ -523,9 +524,9 @@ h3 { font: 600 15px/1.3 var(--sheet-ui); margin: 40px 0 4px; }
   <section class="review" id="review" aria-labelledby="review-h">
     <h2 id="review-h">Review</h2>
     <dl style="display: contents">
-      <dt>Status</dt><dd><span class="status">Awaiting the maintainer&rsquo;s review</span></dd>
-      <dt>Drafted</dt><dd>13 Oct 2026, for story <code>generic-design-sheet</code>. Until this panel says Approved, these frames are a proposal.</dd>
-      <dt>Change requests</dt><dd>None recorded yet. Requests and the approval are recorded here and in the comment at the top of the file.</dd>
+      <dt>Status</dt><dd><span class="status">Approved as drawn, 2026-10-13</span></dd>
+      <dt>Drafted</dt><dd>13 Oct 2026, for story <code>generic-design-sheet</code>.</dd>
+      <dt>Change requests</dt><dd>None. Approved as drawn on 13 Oct 2026.</dd>
     </dl>
   </section>
 

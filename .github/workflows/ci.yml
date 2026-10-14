@@ -52,3 +52,39 @@ jobs:
           path: dist-lib/
           if-no-files-found: error
           retention-days: 14
+
+  # Real browsers, kept apart from the install-free unit job above. Chromium and
+  # WebKit stand for the engines the README claims; the third Playwright project
+  # is mobile Safari (an iPhone 14 profile on WebKit).
+  browser:
+    name: browser (chromium, webkit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      # The browsers are the slow part, so they are cached by Playwright version.
+      - uses: actions/cache@v4
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # With a warm cache this only fetches the system libraries.
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:browser
+      # Traces are kept for failures only (playwright.config.mjs), so a green run uploads nothing.
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            node_modules/.playwright/report/
+            node_modules/.playwright/results/
+          if-no-files-found: ignore
+          retention-days: 14
