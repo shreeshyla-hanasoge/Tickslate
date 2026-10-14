@@ -101,7 +101,7 @@ tile.data = {
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
 | `actions` | property | Names of the actions offered, such as `['retry']` |
-| `locale`, `currency`, `time-zone` | attributes | Formatting. Resolved from the tile, then the nearest `<ts-grid>`, then `configure()`. Without a currency, `format: 'money'` shows a plain signed number |
+| `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Formatting. Resolved from the tile, then the nearest `<ts-grid>`, then `configure()`. Without a currency, `format: 'money'` shows a plain signed number |
 | `item` | attribute | The id a grid matches this child by |
 
 The base members every widget has (`variant`, `clock`, `formatter`, `every()`

@@ -293,7 +293,7 @@ true minus sign (U+2212), and zero has no sign.
 
 ### `createFormatter(options?)`
 
-`(options?: { locale?, currency?, timeZone? }) => Formatter`. Options default to
+`(options?: { locale?, currency?, timeZone?, hourCycle? }) => Formatter`. Options default to
 `configure()`'s, then the runtime's locale. An invalid option falls back to its
 default and is listed in `formatter.issues` (the widgets warn in development).
 Without a currency, money formats as a plain signed number.
@@ -310,14 +310,15 @@ The `Formatter`:
 
 | Member | Result |
 |---|---|
-| `locale`, `currency`, `timeZone` | The resolved options (readonly) |
+| `locale`, `currency`, `timeZone`, `hourCycle` | The resolved options (readonly). `hourCycle` is `'h23'` (24-hour, the default), `'h12'` or `'auto'` (the locale's own) |
 | `issues` | Options that failed validation: `{ option, value, message }[]` |
 | `money(v, { sign?, compact?, decimals? })` | `'+₹2,185.65'`. `sign` is `'always'` (default) or `'negative'` |
 | `number(v, { sign?, decimals?, compact? })` | `sign` defaults to `'negative'`. `compact`: `1200000` is `'1.2M'` in en-US, `'1,2 Mio.'` in de-DE |
 | `price(v, { decimals? })` | Grouped, no currency symbol; 2 decimals by default |
 | `percent(v, { sign?, decimals? })` | Takes a **fraction**: `0.12` is `'+12.00%'` (`sign` `'always'` by default) |
-| `time(t, { seconds?, hour12? })` | 24-hour unless `hour12`: `'11:42'`, `'11:42:20'` |
-| `duration(ms, { style? })` | `'clock'`: `'2:40'`, `'1:02:05'`. `'words'`: `'3h 48m'`, `'48m'`, `'9s'` |
+| `time(t, { seconds?, hour12? })` | Follows `hourCycle`: 24-hour by default (`'11:42'`, `'11:42:20'`), `'2:15 PM'` for `'h12'`, the locale's own for `'auto'`. A per-call `hour12` wins over `hourCycle` |
+| `date(v, { style? })` | A calendar date in the locale, always on the Gregorian calendar (`fa-IR` is not the Persian one). `v` is a timestamp or a plain `'YYYY-MM-DD'`, which never shifts with the time zone. `style`: `'day'` (`'Mar 5'` in en-US), `'month'`, `'monthYear'`, `'medium'` (default, `'Mar 5, 2024'` in en-US) or `'weekday'`; an unknown style is `'medium'` |
+| `duration(ms, { style? })` | `'clock'`: `'2:40'`, `'1:02:05'`. `'words'`: `'3h 48m'`, `'48m'`, `'9s'` in English; other locales get their own units and separators (`de-DE` is not `'2h 30m'`) |
 | `unit(v, unit, { decimals?, compact? })` | `'182 ms'` for an ECMA-402 unit (or an `x-per-y` pair), `'3 seats'` for any other |
 | `fit(v, maxChars, { style?, sign?, decimals? })` | The full form if it fits `maxChars`, else without decimals, else compact (only if shorter). `style` is `'money'` (default), `'number'` or `'percent'` |
 

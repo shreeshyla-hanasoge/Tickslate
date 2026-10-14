@@ -113,7 +113,7 @@ chart.data = {
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
 | `actions` | property | Names of the actions offered, such as `['retry']` |
-| `locale`, `currency`, `time-zone` | attributes | Formatting of values, times and dates |
+| `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Formatting of values, times and dates |
 | `item` | attribute | The id a grid matches this child by |
 
 The base members are listed in [Your own widget](../guide/your-own-widget.md).

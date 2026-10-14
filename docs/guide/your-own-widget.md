@@ -117,7 +117,7 @@ defined is not lost. Add context the pure view model needs from the element
 | `label` | The `label` attribute, else the spec's label. With neither, a development warning and the tile is named by its tag |
 | `spec` | Catalog entry, else the validated `static spec`, else `{ label: '', sizes: [] }` |
 | `clock`, `now()` | What the widget takes the time to be. Settable `() => number`; tests and demos freeze it |
-| `formatter` | The `Formatter` for the `locale`, `currency` and `time-zone` attributes: the widget's own, then the nearest `<ts-grid>`'s, then `configure()`. Cached |
+| `formatter` | The `Formatter` for the `locale`, `currency`, `time-zone` and `hour-cycle` attributes: the widget's own, then the nearest `<ts-grid>`'s, then `configure()`. Cached |
 | `$(selector)` | `querySelector` in the shadow root, cached until the template is rebuilt |
 | `requestRender()` | Schedule a render (coalesced per microtask) |
 | `every(ms)` | Re-render every `ms` while connected and the page is visible; `0` stops. Catches up when the tab becomes visible |

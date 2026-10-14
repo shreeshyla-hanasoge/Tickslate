@@ -85,7 +85,7 @@ With every slot:
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
 | `actions` | property | Names of the actions the card offers, such as `['retry']` |
-| `locale`, `currency`, `time-zone` | attributes | Format the "synced" time. Resolved from the card, then the nearest `<ts-grid>`, then `configure()` |
+| `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Format the "synced" time. Resolved from the card, then the nearest `<ts-grid>`, then `configure()` |
 | `item` | attribute | The id a grid matches this child by |
 
 The card also has the base members every widget has (`variant`, `spec`,

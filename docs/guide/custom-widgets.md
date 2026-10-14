@@ -127,7 +127,7 @@ export function mrrModel(data, variant, { fmt, t, label }) {
 ```
 
 The third argument is the context the base class builds for you: `fmt` is the
-formatter for this tile's `locale`, `currency` and `time-zone` (its own
+formatter for this tile's `locale`, `currency`, `time-zone` and `hour-cycle` (its own
 attributes, then its grid's, then `configure()`'s), `t` translates messages, and
 `label` is the tile's effective label. `now` is there too, from the tile's
 `clock`, for anything that depends on the time.

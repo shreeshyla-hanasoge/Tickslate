@@ -79,7 +79,7 @@ curve.addEventListener('ts-action', (e) => {
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
 | `actions` | property | Names of the actions offered, such as `['retry']` |
-| `locale`, `currency`, `time-zone` | attributes | Formatting; `time-zone` also decides which day a timestamp belongs to. Resolved from the tile, then the nearest `<ts-grid>`, then `configure()` |
+| `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Formatting; `time-zone` also decides which day a timestamp belongs to. Resolved from the tile, then the nearest `<ts-grid>`, then `configure()` |
 | `item` | attribute | The id a grid matches this child by |
 
 The base members are listed in [Your own widget](../guide/your-own-widget.md).

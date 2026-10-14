@@ -287,6 +287,7 @@ export function createFormatter(options = {}) {
       medium: { day: 'numeric', month: 'short', year: 'numeric' },
       weekday: { weekday: 'short' },
     }
+    // An unknown style falls back to 'medium' so a typo still shows a date, not a dash.
     const requestedStyle = o.style
     const style = Object.hasOwn(styles, requestedStyle) ? styles[requestedStyle] : styles.medium
     return df({ ...style, timeZone: zone, calendar: calendar || 'gregory' }).format(t)
@@ -305,7 +306,10 @@ export function createFormatter(options = {}) {
       if (!parts.length) parts.push([s, 'second'])
       if (typeof Intl.DurationFormat === 'function') {
         const duration = { ...(h ? { hours: h } : {}), ...(m ? { minutes: m } : {}), ...(!h && !m ? { seconds: s } : {}) }
-        return durationFormat({ style: 'narrow' }).format(duration)
+        // 'auto' hides a zero seconds field, which would render 0 as an empty
+        // string; 'always' is only right when seconds are the sole unit, or
+        // "3h 48m" would grow a trailing "0s".
+        return durationFormat({ style: 'narrow', ...(!h && !m ? { secondsDisplay: 'always' } : {}) }).format(duration)
       }
       const rendered = parts.map(([n, unit]) => nf({ style: 'unit', unit, unitDisplay: 'narrow', maximumFractionDigits: 0 }).format(n))
       return listFormat({ style: 'narrow', type: 'unit' }).format(rendered)

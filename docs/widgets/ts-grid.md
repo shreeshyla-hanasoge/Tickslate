@@ -155,7 +155,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `locked` | Read-only dashboard: no long press, no edit mode, no edit controls |
 | `edit-controls="off"` | Hides the Edit layout button, the edit pill and the empty board's Add back button, for hosts with their own controls. Long press, Escape and the `editing` attribute still work |
 | `undo-toast="off"` | Suppresses the undo toast; the removal is announced instead |
-| `locale`, `currency`, `time-zone` | Formatting for every tile that has none of its own: the widget's attribute, then these, then `configure()` |
+| `locale`, `currency`, `time-zone`, `hour-cycle` | Formatting for every tile that has none of its own: the widget's attribute, then these, then `configure()` |
 | `dragging` | Set by the grid while a tile is lifted, so you can style around a drag. Do not set it |
 
 ## Properties and methods
