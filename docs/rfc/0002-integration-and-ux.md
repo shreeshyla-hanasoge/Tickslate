@@ -1352,10 +1352,10 @@ gzip of the unminified `elements.js` (25.7 kB); minified it is 19.9 kB.
 
 | Budget | Until RFC 0002 is approved | After approval, during development | At release (release-0-1-0) |
 |---|---|---|---|
-| Core, `index.js` | 6 kB (RFC 0001), warn | **10 kB** (10,240 B), enforce (a development ceiling, tightened at release prep) | measured + 10 %, enforce |
+| Core, `index.js` | 6 kB (RFC 0001), warn | **10 kB** (10,240 B), enforce (a development ceiling, tightened at release prep) | **9.5 kB** (9,728 B), enforce: measured 8,484 B + 10 %, rounded up to 0.5 kB; set 2026-10-13 |
 | `elements.js` alone | 24 kB (RFC 0001), warn | replaced by the all-in budget | — |
-| All-in elements, bundled with its core | reported only | **55 kB** (56,320 B), enforce (a development ceiling: the P0 set still adds metric, chart and two editing stories; per-widget entries in P1 and release prep tighten it) | measured + 10 %, enforce |
-| UMD, `umd/tickslate.umd.js` | reported only | **11 kB** (11,264 B), enforce (the core plus a ~150 B wrapper, so headroom above the core's 10 kB) | measured + 10 %, enforce |
+| All-in elements, bundled with its core | reported only | **55 kB** (56,320 B), enforce (a development ceiling: the P0 set still adds metric, chart and two editing stories; per-widget entries in P1 and release prep tighten it) | **50 kB** (51,200 B), enforce: measured 46,478 B + 10 %, rounded up to 0.5 kB; set 2026-10-13 |
+| UMD, `umd/tickslate.umd.js` | reported only | **11 kB** (11,264 B), enforce (the core plus a ~150 B wrapper, so headroom above the core's 10 kB) | **9.5 kB** (9,728 B), enforce: measured 8,639 B + 10 %, rounded up to 0.5 kB; set 2026-10-13 |
 | `elements.dev.js` | — | reported only | reported only |
 | Grid plus one widget | — | — | **15 kB** (15,360 B) once per-widget entries land (P1) |
 

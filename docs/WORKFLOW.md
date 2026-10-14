@@ -139,9 +139,9 @@ it.
   an approved RFC already says needs nothing new. Where the code has to differ
   from the RFC, record it in the RFC in the same PR and point it out for
   approval.
-- **Never edit Emberwick or Traed.** `~/projects/Emberwick`, `~/projects/traed`
-  and its `traed-*` checkouts are read for reference only. A change they need
-  is written up for the maintainer.
+- **Never edit sibling projects.** The sibling projects listed in
+  `CLAUDE.local.md` are read only, never edit. A change they need is written
+  up for the maintainer.
 - **Each story adds `changes/<story-id>.md` instead of editing
   `CHANGELOG.md`.** Release prep folds the fragments into `CHANGELOG.md`; the
   format is in [changes/README.md](../changes/README.md).
