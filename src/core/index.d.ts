@@ -194,13 +194,22 @@ export interface FormatOptions {
   timeZone?: string
 }
 
-/** Values may be numbers or numeric strings; anything else formats as '—'. */
-export type Numeric = number | string
+/** Values may be numbers, decimal strings or decimal-library objects (Decimal.js, big.js); anything else formats as '—'. */
+export type Numeric = number | string | { toNumber(): number }
+
+/** An option that failed validation and fell back to its default. */
+export interface FormatterIssue {
+  option: 'locale' | 'currency' | 'timeZone'
+  value: unknown
+  message: string
+}
 
 export interface Formatter {
   readonly locale: string | undefined
   readonly currency: string | undefined
   readonly timeZone: string | undefined
+  /** The options that failed validation and fell back to the defaults. */
+  readonly issues: readonly FormatterIssue[]
   /** '+₹2,185.65', '−₹263.00', '₹0.00'. sign defaults to 'always'. */
   money(v: Numeric, o?: { sign?: 'always' | 'negative'; compact?: boolean; decimals?: number }): string
   /** sign defaults to 'negative'. */
@@ -221,8 +230,15 @@ export declare function createFormatter(options?: FormatOptions): Formatter
 /** Sets defaults for formatters (and widgets) created without their own. */
 export declare function configure(options: FormatOptions): void
 export declare function currentConfig(): FormatOptions
-/** A number from a number or numeric string, else NaN. */
+/** A finite number from a number, a decimal string or a decimal-library object; else NaN. */
 export declare function toNumber(v: unknown): number
+
+/** An instant: ms or seconds since the epoch, a Date, an ISO 8601 string or a numeric string. */
+export type Time = number | string | Date
+/** An instant in ms since the epoch, or NaN. A number with |n| < 1e11 is seconds, otherwise ms. */
+export declare function toTime(v: unknown): number
+/** A calendar day 'YYYY-MM-DD' in `timeZone` (default 'UTC'), or null. */
+export declare function toDay(v: unknown, timeZone?: string): string | null
 
 // ── Session calendars ──────────────────────────────────────────────────
 
@@ -308,8 +324,8 @@ export declare function localDate(t: number, timeZone: string): string
 // ── Stats ──────────────────────────────────────────────────────────────
 
 export interface DayResult {
-  /** 'YYYY-MM-DD'. Entries with any other form are skipped. */
-  date: string
+  /** 'YYYY-MM-DD', or any Time: read with toDay(date, timeZone). Entries toDay can't read are skipped. */
+  date: Time
   /** The day's P&L in major units; a numeric string is accepted. Entries that aren't finite numbers are skipped. */
   pnl: number | string
   trades?: number
@@ -326,7 +342,7 @@ export interface EquityPoint {
 }
 
 /** The running equity curve of a daily P&L series, sorted by date. The input is not changed. */
-export declare function equitySeries(days: readonly DayResult[]): EquityPoint[]
+export declare function equitySeries(days: readonly DayResult[], options?: { timeZone?: string }): EquityPoint[]
 
 export interface EquityStats {
   /** Equity at the end of the series. */
@@ -341,4 +357,4 @@ export interface EquityStats {
   trades: number
 }
 
-export declare function equityStats(days: readonly DayResult[]): EquityStats
+export declare function equityStats(days: readonly DayResult[], options?: { timeZone?: string }): EquityStats

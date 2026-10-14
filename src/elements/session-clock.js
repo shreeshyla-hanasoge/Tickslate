@@ -154,9 +154,11 @@ export function visibleTicks(lane, now, railPx) {
   return { key: `${ticks.key}|${lo}|${hi}|${thickOk ? 1 : 0}`, items }
 }
 
+const validTimeframe = (t) => typeof t === 'number' && Number.isFinite(t) && t > 0
+
 function sanitiseTimeframes(list) {
   if (!Array.isArray(list)) return []
-  return list.filter((t) => typeof t === 'number' && Number.isFinite(t) && t > 0).slice(0, MAX_TIMEFRAMES)
+  return list.filter(validTimeframe).slice(0, MAX_TIMEFRAMES)
 }
 
 function timeframeText(tf) {
@@ -187,11 +189,18 @@ function ariaFor(name, env, st) {
  */
 export function sessionClockModel(data, variant, ctx) {
   const d = data && typeof data === 'object' ? data : {}
-  const ids = Array.isArray(d.sessions) ? d.sessions.filter((s) => typeof s === 'string') : []
+  const given = Array.isArray(d.sessions) ? d.sessions : []
+  const ids = given.filter((s) => typeof s === 'string')
   const now = ctx.now
   const first = ids.length ? lookup(d.calendar, ids[0]) : { error: 'No sessions' }
   const env = zoneEnv(first.spec ? first.spec.timeZone : ctx.fmt.timeZone, ctx.fmt)
-  return variant === 'Banner' ? banner(d, ids, first, env, now) : small(d, ids, first, env, now, ctx)
+  const vm = variant === 'Banner' ? banner(d, ids, first, env, now) : small(d, ids, first, env, now, ctx)
+  // Entries that gave no session to show: ids that aren't strings, and (on
+  // Banner) timeframes that aren't positive numbers. An id the calendar
+  // doesn't know still shows as a lane with its error, so it isn't dropped.
+  const badTimeframes = variant === 'Banner' && Array.isArray(d.timeframes) ? d.timeframes.filter((t) => !validTimeframe(t)).length : 0
+  vm.dropped = given.length - ids.length + badTimeframes
+  return vm
 }
 
 function small(d, ids, first, env, now, ctx) {

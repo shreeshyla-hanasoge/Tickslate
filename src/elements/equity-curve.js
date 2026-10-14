@@ -14,7 +14,7 @@
 
 import { TsWidget } from './widget.js'
 import { linePath, linePaths, bandPath } from './chart.js'
-import { WIDGETS, equitySeries, equityStats, toNumber } from '../core/index.js'
+import { WIDGETS, equitySeries, equityStats, toDay, toNumber } from '../core/index.js'
 
 export const RANGES = ['1W', '1M', '3M', 'YTD', 'All']
 
@@ -26,7 +26,6 @@ export const HEADLINE_CHARS = { Wide: 10, M: 12, XL: 12 }
 const DIMS = { Wide: [400, 100], M: [600, 160], XL: [900, 220] }
 
 const DASH = '—'
-const ISO = /^\d{4}-\d{2}-\d{2}$/
 
 // ── Range filtering (pure) ────────────────────────────────────────────────
 
@@ -80,19 +79,27 @@ export function rangeStart(latest, range) {
   }
 }
 
-// The rows the core would use: a real date and a finite P&L. Same test as
+// The rows the core would use: a readable date and a finite P&L. Same test as
 // stats.js, so a row dropped there is never counted as "the latest date" here.
-function usable(days) {
+// A date that isn't 'YYYY-MM-DD' (an ISO instant) is replaced by its day in
+// `timeZone`, so everything after this compares plain days.
+function usable(days, timeZone) {
   if (!Array.isArray(days)) return []
-  return days.filter((d) => d && typeof d.date === 'string' && ISO.test(d.date) && Number.isFinite(toNumber(d.pnl)))
+  const out = []
+  for (const d of days) {
+    if (!d || !Number.isFinite(toNumber(d.pnl))) continue
+    const date = toDay(d.date, timeZone)
+    if (date !== null) out.push(date === d.date ? d : { ...d, date })
+  }
+  return out
 }
 
 /**
  * The days a range keeps, in their input order. Unusable rows are dropped
  * whatever the range. The latest date is the latest usable one.
  */
-export function filterRange(days, range) {
-  const rows = usable(days)
+export function filterRange(days, range, timeZone = 'UTC') {
+  const rows = usable(days, timeZone)
   const r = normalizeRange(range)
   if (r === 'All' || !rows.length) return rows
   let latest = rows[0].date
@@ -129,8 +136,9 @@ export function equityCurveModel(data, variant, ctx) {
   const v = DIMS[variant] ? variant : 'M'
   const [width, height] = DIMS[v]
 
-  const all = usable(d.days)
-  const rows = filterRange(d.days, range)
+  const timeZone = fmt.timeZone || 'UTC'
+  const all = usable(d.days, timeZone)
+  const rows = filterRange(all, range, timeZone)
   // The host's fees and trade count are for its whole series. They are only
   // correct for a range that kept every day; for a narrower one they would
   // describe days that aren't on screen.
@@ -139,8 +147,8 @@ export function equityCurveModel(data, variant, ctx) {
   // The equity inside a range starts from 0 at the range start: it is the P&L
   // made over that range, not the account's running total since the first
   // day. equitySeries always starts at 0, so filtering first gives that.
-  const series = equitySeries(rows)
-  const stats = equityStats(rows)
+  const series = equitySeries(rows, { timeZone })
+  const stats = equityStats(rows, { timeZone })
   const n = series.length
   const empty = n === 0
 
@@ -192,6 +200,8 @@ export function equityCurveModel(data, variant, ctx) {
   return {
     variant: v,
     range,
+    // Rows the series couldn't use: no readable date or no finite P&L.
+    dropped: Array.isArray(d.days) ? d.days.length - all.length : 0,
     ranges: RANGES.map((value) => ({ value, on: value === range })),
     live: d.live === true,
     empty,

@@ -13,7 +13,7 @@
 
 import { TsWidget } from './widget.js'
 import { linePaths } from './chart.js'
-import { toNumber } from '../core/index.js'
+import { toNumber, toTime } from '../core/index.js'
 
 // Characters the headline holds per variant before fmt.fit() switches it to
 // the compact form. Sized for the 34px / 48px figures in a tile that never
@@ -42,18 +42,21 @@ const count = (v, fmt) => {
 /** 'a · b' from the parts that exist. */
 const joined = (parts) => parts.filter(Boolean).join(' · ')
 
-/** Readings with a usable time and value, in time order, as chart points. */
+/**
+ * Readings with a usable time and value, in time order, as chart points, and
+ * how many rows weren't usable. Times may be seconds, ms, ISO strings or Dates.
+ */
 function readings(intraday) {
-  if (!Array.isArray(intraday)) return []
+  if (!Array.isArray(intraday)) return { pts: [], dropped: 0 }
   const out = []
   for (const r of intraday) {
-    const t = toNumber(r && r.t)
+    const t = toTime(r && r.t)
     const v = toNumber(r && r.v)
     if (Number.isFinite(t) && Number.isFinite(v)) out.push({ x: t, y: v })
   }
   // Hosts append, but a merged feed may not arrive in order, and a line
   // drawn through unsorted points doubles back on itself.
-  return out.sort((a, b) => a.x - b.x)
+  return { pts: out.sort((a, b) => a.x - b.x), dropped: intraday.length - out.length }
 }
 
 /** The curve's value at time t, between the readings either side of it. */
@@ -68,8 +71,8 @@ function valueAt(pts, t) {
 
 /** The x-axis span: the session window if the host gave one, else the readings. */
 function domainOf(window, pts) {
-  const from = toNumber(window && window.from)
-  const to = toNumber(window && window.to)
+  const from = toTime(window && window.from)
+  const to = toTime(window && window.to)
   if (Number.isFinite(from) && Number.isFinite(to) && to >= from) return [from, to]
   return pts.length ? [pts[0].x, pts[pts.length - 1].x] : null
 }
@@ -137,10 +140,15 @@ function chartOf(data, pts, fmt) {
   for (const p of pts) if (p.y < low.y) low = p
 
   const marks = []
+  let dropped = 0
   for (const m of Array.isArray(data.marks) ? data.marks : []) {
-    const t = toNumber(m && m.t)
+    const t = toTime(m && m.t)
+    if (!Number.isFinite(t)) {
+      dropped++
+      continue
+    }
     // A mark sits on the curve, so one outside the readings has nowhere to go.
-    if (!Number.isFinite(t) || t < first.x || t > last.x) continue
+    if (t < first.x || t > last.x) continue
     const kind = m.kind === 'exit' ? 'exit' : 'entry'
     const px = x(t)
     if (px < 0 || px > CHART_BOX.width) continue // outside the session window
@@ -164,6 +172,7 @@ function chartOf(data, pts, fmt) {
     zeroY,
     lastX: Math.round(x(last.x) * 10) / 10,
     marks,
+    droppedMarks: dropped,
   }
 }
 
@@ -175,7 +184,7 @@ export function todayPnlModel(data, variant, ctx) {
   const fmt = ctx.fmt
   const d = data || {}
   const net = toNumber(d.net)
-  const asOf = toNumber(d.asOf)
+  const asOf = toTime(d.asOf)
   const time = Number.isFinite(asOf) ? fmt.time(asOf) : ''
   const closed = count(d.closedCount, fmt)
   const open = count(d.openCount, fmt)
@@ -199,6 +208,9 @@ export function todayPnlModel(data, variant, ctx) {
     unrealized: fmt.money(d.unrealized),
     unrealizedTone: tone(d.unrealized),
     fees: feesText,
+    // Rows the tile couldn't read. Only the M variant draws the series, so
+    // only it can say; the others have nothing to drop.
+    dropped: 0,
   }
 
   if (variant === 'S') {
@@ -206,10 +218,11 @@ export function todayPnlModel(data, variant, ctx) {
   } else if (variant === 'Wide') {
     vm.note = joined(['net of fees', time])
   } else if (variant === 'M') {
-    const pts = readings(d.intraday)
+    const { pts, dropped } = readings(d.intraday)
     vm.counts = counts
     vm.summary = summaryOf(pts, fmt)
     vm.chart = chartOf(d, pts, fmt)
+    vm.dropped = dropped + (vm.chart.droppedMarks || 0)
   }
   return vm
 }

@@ -88,3 +88,36 @@ describe('equityStats', () => {
     assert.deepEqual(equityStats([]), { net: 0, peak: 0, maxDrawdown: 0, tradingDays: 0, trades: 0 })
   })
 })
+
+describe('time zones and instants', () => {
+  const kolkata = { timeZone: 'Asia/Kolkata' }
+
+  test('IST midnight, sent as a UTC instant, is the next calendar day', () => {
+    const rows = [{ date: '2026-10-11T18:30:00.000000Z', pnl: 7 }]
+    assert.equal(equitySeries(rows, kolkata)[0].date, '2026-10-12')
+    assert.equal(equitySeries(rows)[0].date, '2026-10-11')
+    assert.equal(equityStats(rows, kolkata).tradingDays, 1)
+  })
+
+  test('keeps both rows of an ISO instant at UTC midnight and a plain date', () => {
+    const rows = [{ date: '2026-10-12T00:00:00.000000Z', pnl: 10 }, { date: '2026-10-13', pnl: '5' }]
+    for (const opts of [undefined, kolkata]) {
+      assert.deepEqual(equitySeries(rows, opts).map((p) => [p.date, p.equity]), [['2026-10-12', 10], ['2026-10-13', 15]])
+      assert.equal(equityStats(rows, opts).tradingDays, 2)
+    }
+  })
+
+  test('reads seconds, ms and Dates', () => {
+    const t = Date.UTC(2026, 9, 12, 6)
+    const rows = [{ date: t, pnl: 1 }, { date: t / 1000 + 86400, pnl: 1 }, { date: new Date(t + 2 * 86400000), pnl: 1 }]
+    assert.deepEqual(equitySeries(rows).map((p) => p.date), ['2026-10-12', '2026-10-13', '2026-10-14'])
+  })
+})
+
+describe('null options', () => {
+  test('are treated like no options', () => {
+    const days = [d('2026-01-01', 100), d('2026-01-02', -40)]
+    assert.deepEqual(equitySeries(days, null), equitySeries(days))
+    assert.deepEqual(equityStats(days, null), equityStats(days))
+  })
+})

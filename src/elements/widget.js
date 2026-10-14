@@ -11,7 +11,18 @@
  *   static catalogKey = 'todayPnl'
  *     The key in the core's WIDGETS catalog. It supplies the supported sizes
  *     (so `size` snaps to them, and defaults to the first) and the default
- *     label.
+ *     label. It wins over `static spec` when both are set.
+ *
+ *   static spec = { label: 'Signups', sizes: ['S', 'Wide'], phoneRows? }
+ *     A host widget's own description, for a widget with no catalog entry.
+ *     Sizes that aren't size names are dropped; a label that isn't a string
+ *     is ignored.
+ *
+ *   get spec() → { label, sizes, phoneRows? }
+ *     Read-only on the base; a subclass may override it (a widget that reads
+ *     its sizes from attributes, say). Resolved from the catalog entry, else
+ *     the validated static spec, else `{ label: '', sizes: [] }`. Size
+ *     snapping and the default label read it.
  *
  *   static styles = `…`
  *     CSS for the widget's own content, appended after the shared CSS. Use
@@ -63,7 +74,8 @@
  *                   supported size. <ts-grid> sets it.
  *   variant         Read-only: the size actually rendered (the snapped size).
  *   label           Attribute and property. Effective label: the attribute,
- *                   else the catalog label.
+ *                   else the spec's label. With neither, a development
+ *                   warning, and the tile is named by the tag.
  *   locale, currency, time-zone
  *                   Attributes. Each resolves: own attribute → nearest
  *                   ancestor <ts-grid>'s attribute → configure() defaults.
@@ -95,7 +107,8 @@
  * server-side rendering); only constructing a widget does.
  */
 
-import { WIDGETS, createFormatter, currentConfig, snapSize, SIZES, SIZE_NAMES } from '../core/index.js'
+import { WIDGETS, createFormatter, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
+import { DEV, warnOnce } from './dev.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -218,6 +231,8 @@ ${standaloneCss()}
 .lz { stroke: var(--ts-line); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 `
 
+const EMPTY_SPEC = Object.freeze({ label: '', sizes: Object.freeze([]) })
+
 // Per class, so a widget's CSS and each variant's markup are built once.
 const cssCache = new WeakMap()
 const templateCache = new WeakMap()
@@ -304,8 +319,27 @@ export class TsWidget extends Base {
   get label() {
     const own = this.getAttribute('label')
     if (own) return own
-    const spec = this._spec()
-    return spec ? spec.label : ''
+    return this.spec.label
+  }
+
+  /**
+   * The widget's description: catalog entry, else a validated static spec,
+   * else nothing. Validated here, not at class definition, so a subclass can
+   * set `static spec` in any order and a bad entry degrades to fewer sizes
+   * rather than throwing in a render.
+   */
+  get spec() {
+    const Ctor = this.constructor
+    const key = Ctor.catalogKey
+    if (key && Object.prototype.hasOwnProperty.call(WIDGETS, key)) return WIDGETS[key]
+    const own = Ctor.spec
+    if (!own || typeof own !== 'object') return EMPTY_SPEC
+    const out = {
+      label: typeof own.label === 'string' ? own.label : '',
+      sizes: Array.isArray(own.sizes) ? own.sizes.filter(isSize) : [],
+    }
+    if (own.phoneRows && typeof own.phoneRows === 'object') out.phoneRows = own.phoneRows
+    return out
   }
 
   set label(value) {
@@ -421,14 +455,18 @@ export class TsWidget extends Base {
 
   // ── Internals ──────────────────────────────────────────────────────────
 
-  _spec() {
-    const key = this.constructor.catalogKey
-    return key && Object.prototype.hasOwnProperty.call(WIDGETS, key) ? WIDGETS[key] : null
+  _supported() {
+    return this.spec.sizes
   }
 
-  _supported() {
-    const spec = this._spec()
-    return spec ? spec.sizes : []
+  /** The name for the tile: the label, else the tag, never empty. */
+  _name() {
+    const label = this.label
+    if (label) return label
+    if (DEV) {
+      warnOnce(`label:${this.localName}`, `<${this.localName}> has no label, so its region is named "${this.localName}". Set a label attribute or static spec.`)
+    }
+    return this.localName
   }
 
   /**
@@ -458,7 +496,7 @@ export class TsWidget extends Base {
 
   _render() {
     const Ctor = this.constructor
-    const label = this.label
+    const label = this._name()
     const variant = this.variant
     let vm = null
     if (this._data !== null && this._data !== undefined) {
@@ -499,4 +537,5 @@ export class TsWidget extends Base {
 // Data properties rather than class fields, so a subclass can set them with
 // `static x = …` or a getter without tripping over an inherited accessor.
 TsWidget.catalogKey = null
+TsWidget.spec = null
 TsWidget.styles = ''

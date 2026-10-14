@@ -1,4 +1,4 @@
-import type { Calendar, DayResult, Layout, LayoutIssue, Numeric, ProfileSchedule, WidgetCatalog } from '../core/index.js'
+import type { Calendar, DayResult, Layout, LayoutIssue, Numeric, ProfileSchedule, Time, WidgetCatalog } from '../core/index.js'
 import { TsWidget } from './widget.js'
 
 export { version } from '../core/index.js'
@@ -42,8 +42,8 @@ export declare class TsGrid extends HTMLElement {
 
 /** Freshness, allowed on every widget's data (RFC 0001 §8.1). */
 export interface WidgetFreshness {
-  /** When the data was taken, ms since the epoch. */
-  asOf?: number
+  /** When the data was taken: any Time, read with toTime (RFC 0002 §4.1). */
+  asOf?: Time
   /** Shows the pulsing dot. */
   live?: boolean
 }
@@ -58,11 +58,11 @@ export interface TodayPnlData extends WidgetFreshness {
   closedCount?: number
   openCount?: number
   /** M: the curve. Readings need not arrive in order. */
-  intraday?: Array<{ t: number; v: Numeric }>
+  intraday?: Array<{ t: Time; v: Numeric }>
   /** M: dots on the curve; ones outside the readings are left out. */
-  marks?: Array<{ t: number; kind: 'entry' | 'exit'; label?: string }>
+  marks?: Array<{ t: Time; kind: 'entry' | 'exit'; label?: string }>
   /** M: the x-axis span, e.g. today's session from `calendar.hours()`. Defaults to the readings' span. */
-  window?: { from: number; to: number }
+  window?: { from: Time; to: Time }
 }
 
 /** <ts-today-pnl>, sizes S · Wide · M. */

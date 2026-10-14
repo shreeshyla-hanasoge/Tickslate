@@ -1,4 +1,4 @@
-import type { Formatter, SizeName } from '../core/index.js'
+import type { Formatter, SizeName, WidgetSpec } from '../core/index.js'
 
 /** The context a view model receives. */
 export interface ViewModelContext {
@@ -7,7 +7,7 @@ export interface ViewModelContext {
   fmt: Formatter
   /** The time in ms: `clock()` if set, else `Date.now()`. */
   now: number
-  /** The effective label: the `label` attribute, else the catalog label. */
+  /** The effective label: the `label` attribute, else the spec's label, else the tag. */
   label: string
 }
 
@@ -15,6 +15,8 @@ export interface ViewModelContext {
 export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: string } = { ariaLabel?: string }> extends HTMLElement {
   /** The key in the core's WIDGETS catalog: supplies supported sizes and the default label. */
   static catalogKey: string | null
+  /** A widget's own description, for host widgets with no catalog entry. catalogKey wins when both are set. */
+  static spec: { label?: string; sizes?: readonly string[]; phoneRows?: Partial<Record<SizeName, number>> } | null
   /** CSS for the widget's own content, appended after the shared CSS. Tokens only. */
   static styles: string
   /** Static markup for one variant, built once per variant. */
@@ -29,8 +31,10 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   size: SizeName
   /** The size actually rendered. */
   readonly variant: SizeName
-  /** The `label` attribute, else the catalog label. */
+  /** The `label` attribute, else the spec's label ('' when neither; the tile is then named by its tag). */
   label: string
+  /** Catalog entry, else the validated static spec, else `{ label: '', sizes: [] }`. Subclasses may override. */
+  readonly spec: Omit<WidgetSpec, 'tag'>
   /** What the widget takes the time to be. Tests and demos can freeze it. */
   clock: (() => number) | null
   now(): number

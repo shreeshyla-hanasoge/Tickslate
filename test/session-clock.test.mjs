@@ -496,3 +496,25 @@ function dates(from, days) {
   for (let i = 0; i < days; i++) out.push(new Date(start + i * 86400000).toISOString().slice(0, 10))
   return out
 }
+
+describe('dropped', () => {
+  const now = at('2026-10-12', '11:42')
+  test('is 0 for clean data', () => {
+    assert.equal(model(data, 'S', now).dropped, 0)
+    assert.equal(model(data, 'Banner', now).dropped, 0)
+  })
+
+  test('counts session ids that are not strings, and bad timeframes on Banner', () => {
+    const messy = { ...data, sessions: ['nse-fo', 5, null, 'mcx'], timeframes: [5, 'x', -1, 15] }
+    assert.equal(model(messy, 'S', now).dropped, 2)
+    assert.equal(model(messy, 'Banner', now).dropped, 4)
+  })
+
+  test('an unknown session id is shown as an error lane, not dropped', () => {
+    assert.equal(model({ ...data, sessions: ['nse-fo', 'nowhere'] }, 'Banner', now).dropped, 0)
+  })
+
+  test('missing data is 0', () => {
+    assert.equal(model(undefined, 'S', now).dropped, 0)
+  })
+})

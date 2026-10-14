@@ -253,3 +253,59 @@ describe('garbage in', () => {
     })
   }
 })
+
+describe('data shapes (RFC 0002 §4)', () => {
+  const secs = (v) => v / 1000
+  const asSeconds = {
+    ...withChart,
+    asOf: secs(withChart.asOf),
+    intraday: withChart.intraday.map((p) => ({ ...p, t: secs(p.t) })),
+    window: { from: secs(withChart.window.from), to: secs(withChart.window.to) },
+  }
+
+  test('second timestamps give the same asOf and axis as ms', () => {
+    const a = model(withChart, 'M')
+    const b = model(asSeconds, 'M')
+    assert.equal(b.time, a.time)
+    assert.deepEqual(b.chart.ticks, a.chart.ticks)
+    assert.equal(b.chart.line, a.chart.line)
+    assert.equal(b.chart.midAt, a.chart.midAt)
+    assert.equal(model(asSeconds, 'Wide').note, model(withChart, 'Wide').note)
+  })
+
+  test('draws from ISO-string readings, marks and window', () => {
+    const iso = (t) => new Date(t).toISOString().replace('Z', '000Z')
+    const data = {
+      ...withChart,
+      asOf: iso(withChart.asOf),
+      intraday: withChart.intraday.map((p) => ({ ...p, t: iso(p.t) })),
+      window: { from: iso(withChart.window.from), to: iso(withChart.window.to) },
+      marks: [{ t: iso(ist(9, 45)), kind: 'entry' }],
+    }
+    const a = model({ ...withChart, marks: [{ t: ist(9, 45), kind: 'entry' }] }, 'M')
+    const b = model(data, 'M')
+    assert.equal(b.chart.empty, false)
+    assert.equal(b.chart.line, a.chart.line)
+    assert.deepEqual(b.chart.ticks, a.chart.ticks)
+    assert.deepEqual(b.chart.marks, a.chart.marks)
+    assert.equal(b.time, a.time)
+  })
+
+  test('returns for 200,000 readings without a RangeError', () => {
+    const start = ist(9, 15)
+    const intraday = Array.from({ length: 200_000 }, (_, i) => ({ t: new Date(start + i * 100).toISOString(), v: Math.sin(i / 1000) * 500 }))
+    const vm = model({ ...day, intraday }, 'M')
+    assert.equal(vm.chart.empty, false)
+    assert.equal(vm.dropped, 0)
+  })
+
+  test('dropped counts the readings and marks it could not use', () => {
+    const rows = [...intraday, { t: 'x', v: 1 }, { t: ist(10, 0), v: 'y' }, null]
+    const vm = model({ ...withChart, intraday: rows, marks: [{ t: 'bad' }, { t: ist(10, 0) }] }, 'M')
+    assert.equal(vm.dropped, 4)
+    assert.equal(model(withChart, 'M').dropped, 0)
+    assert.equal(model(day, 'S').dropped, 0)
+    assert.equal(model(null, 'M').dropped, 0)
+    assert.equal(model({ intraday: [{}, {}] }, 'M').dropped, 2)
+  })
+})

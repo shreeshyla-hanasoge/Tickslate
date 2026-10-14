@@ -430,3 +430,37 @@ describe('large inputs', () => {
     assert.equal(vm.chart.band.split(' L').length, 2 * n)
   })
 })
+
+describe('data shapes (RFC 0002 §4)', () => {
+  test('the curve passes its formatter time zone: an IST midnight row is the next day', () => {
+    const vm = equityCurveModel({ days: [d('2026-10-11T18:30:00.000000Z', 10), d('2026-10-12', 5)] }, 'M', ctx('All'))
+    // Same day twice in Kolkata: still two trading days, both kept.
+    assert.equal(vm.tradingDays, 2)
+    assert.equal(vm.dropped, 0)
+  })
+
+  test('filterRange reads the day in the zone', () => {
+    const rows = [d('2026-10-11T18:30:00.000000Z', 1), d('2026-10-05', 1)]
+    // In Kolkata the latest day is 12 Oct, so the week starts 6 Oct and 5 Oct falls out.
+    assert.deepEqual(dates(filterRange(rows, '1W', 'Asia/Kolkata')), ['2026-10-12'])
+    // In UTC the latest is 11 Oct, so the week starts 5 Oct and keeps both.
+    assert.deepEqual(dates(filterRange(rows, '1W')), ['2026-10-11', '2026-10-05'])
+  })
+
+  test('keeps an ISO-midnight row beside a plain date, with string and number P&L', () => {
+    const vm = equityCurveModel({ days: [d('2026-10-12T00:00:00.000000Z', 10), d('2026-10-13', '5')] }, 'M', ctx('All'))
+    assert.equal(vm.tradingDays, 2)
+    assert.equal(vm.net, '+₹15.00')
+  })
+
+  test('dropped counts rows with no readable date or P&L', () => {
+    const vm = equityCurveModel({ days: [d('2026-10-12', 1), d('nope', 1), d('2026-10-13', 'x'), null, d(1760331000, 2)] }, 'M', ctx('All'))
+    assert.equal(vm.dropped, 3)
+    assert.equal(vm.tradingDays, 2)
+    assert.equal(equityCurveModel({}, 'M', ctx('All')).dropped, 0)
+  })
+
+  test('dropped does not count rows a range merely leaves out', () => {
+    assert.equal(equityCurveModel({ days: OCT }, 'M', ctx('1W')).dropped, 0)
+  })
+})
