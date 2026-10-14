@@ -36,6 +36,15 @@
   .samples summary { cursor: pointer; }
   .samples div { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; padding-top: 8px; }
   .samples b { font: var(--ts-num-weight) 15px var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--ts-ink); }
+  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } .pretend { margin-left: 0; } }
+  .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .snippet[hidden] { display: none; }
+  .snippet { display: block; margin: 0 0 16px; font-size: 13px; color: var(--ts-muted); }
+  .snippet textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 6px; padding: 8px; font: 12px/1.4 ui-monospace, monospace;
+    color: var(--ts-ink); background: var(--ts-surface); border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm); }
+</style>
+<!-- Its own element: Copy HTML puts exactly this into the page it exports. -->
+<style id="slotted-css">
   /* Content the host slots into the cards; tokens only, so it follows the theme. */
   .rows { list-style: none; margin: 0; padding: 0; }
   .rows li { display: flex; align-items: baseline; gap: 10px; min-width: 0; padding-block: 7px; border-top: 1px solid var(--ts-line); }
@@ -50,11 +59,10 @@
   .tile-btn { min-height: 28px; padding: 0 10px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line);
     background: transparent; color: var(--ts-accent); font: 500 12px var(--ts-font-ui); cursor: pointer; }
   @media (pointer: coarse) { .tile-btn { min-height: 44px; min-width: 44px; } }
-  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } .pretend { margin-left: 0; } }
 </style>
 </head>
 <body>
-<div class="page">
+<main class="page">
   <header>
     <h1>Tickslate</h1>
     <nav class="links" aria-label="Other pages">
@@ -74,6 +82,7 @@
     <div class="bar" role="group" aria-label="Grid">
       <button type="button" id="reset">Reset layout</button>
       <button type="button" id="edit" class="primary">Edit layout</button>
+      <button type="button" id="copy">Copy HTML</button>
     </div>
     <div class="bar" role="group" aria-label="Try the states">
       <button type="button" id="locked" aria-pressed="false">Locked</button>
@@ -87,6 +96,9 @@
     <label class="pretend">Pretend it's <input type="time" id="pretend" step="1"> IST
       <button type="button" id="live">Live</button></label>
   </div>
+  <span class="sr" id="copy-status" role="status"></span>
+  <label class="snippet" id="snippet" hidden>Copying was blocked here. Select all of this and copy it.
+    <textarea id="snippet-text" readonly rows="12" spellcheck="false"></textarea></label>
   <details class="samples"><summary>Formatting samples (en-IN, INR)</summary><div id="samples"></div></details>
   <p class="hint" id="hint">Long-press a tile (or press Edit layout) to rearrange. Drag tiles, drag the corner handle to resize, tap − to remove, then Undo or Add back.
     Keyboard: Tab to a tile in edit mode, Space to pick up, arrows to move, Space to drop, + and − to resize.
@@ -121,7 +133,7 @@
     <ts-chart item="chartEnergy" label="Birch Energy" id="chartEnergy"></ts-chart>
     <ts-equity-curve item="equityCurve" label="Equity curve"></ts-equity-curve>
   </ts-grid>
-</div>
+</main>
 <div class="log" id="log" aria-live="off">No edits yet.</div>
 
 <script type="module">
@@ -396,6 +408,139 @@
     ['Countdown', fmt.duration(160000)], ['Time left', fmt.duration(13680000, { style: 'words' })],
   ]
   document.getElementById('samples').innerHTML = samples.map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join('')
+
+  // ── Copy HTML: the layout and data on screen, as one file that runs by itself ──
+  // The page it makes loads the published package from jsDelivr, pinned to the
+  // version this site was built from (the site build defines it; in dev it
+  // falls back to the newest release).
+  const CDN = `https://cdn.jsdelivr.net/npm/tickslate@${typeof __TICKSLATE_VERSION__ === 'undefined' ? 'latest' : __TICKSLATE_VERSION__}`
+  // The attributes a host writes; the grid also writes some of its own, which must not be exported.
+  const TILE_ATTRS = ['item', 'label', 'sizes', 'scrollable', 'live', 'as-of', 'range', 'locale', 'currency', 'time-zone']
+  const esc = (text) => String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+  // JSON inside a script element: a stray "<" could close it, so it is written as <.
+  const json = (value) => JSON.stringify(value).replace(/</g, '\\u003c')
+  // Indented JSON down to `levels` deep, then one line per leaf object, so a
+  // 60-day series reads as 60 lines and not 300.
+  function pretty(value, levels, indent = '') {
+    if (levels < 1 || value === null || typeof value !== 'object') return json(value)
+    const inner = indent + '  '
+    const entries = Array.isArray(value) ? value.map((v) => ['', v]) : Object.entries(value)
+    if (!entries.length) return Array.isArray(value) ? '[]' : '{}'
+    const body = entries.map(([k, v]) => inner + (Array.isArray(value) ? '' : `${json(k)}: `) + pretty(v, levels - 1, inner)).join(',\n')
+    return `${Array.isArray(value) ? '[' : '{'}\n${body}\n${indent}${Array.isArray(value) ? ']' : '}'}`
+  }
+  // The markup the host slotted in, moved to the margin it will sit at in the page.
+  function reindent(html, by) {
+    // innerHTML starts at the first tag, so only the lines after it carry the page's indent.
+    const [first, ...rest] = html.split('\n')
+    const margin = Math.min(Infinity, ...rest.filter((l) => l.trim()).map((l) => l.match(/^ */)[0].length))
+    return [first, ...rest.map((l) => l.slice(margin === Infinity ? 0 : margin))].map((l) => (l.trim() ? by + l : '')).join('\n')
+  }
+  // A session clock holds a calendar object, which JSON can't carry, so the page
+  // rebuilds it. Keep this line in step with the calendar built above.
+  const CALENDAR = "createCalendar({ sessions: [presets.nse({ segment: 'derivatives' }), presets.mcx()] })"
+
+  function buildSnippet() {
+    const tiles = [...grid.children].filter((el) => el.hasAttribute('item'))
+    const data = {}
+    let clock = null
+    for (const el of tiles) {
+      const id = el.getAttribute('item')
+      if (el === clockEl) clock = { id, sessions: el.data.sessions, timeframes: el.data.timeframes }
+      else if (el.data !== undefined) data[id] = el.data
+    }
+    const markup = tiles.map((el) => {
+      const tag = el.localName
+      const attrs = TILE_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => (el.getAttribute(a) === '' ? a : `${a}="${esc(el.getAttribute(a))}"`))
+      const inner = el.innerHTML.trim()
+      const open = `<${tag}${attrs.map((a) => ' ' + a).join('')}>`
+      return inner ? `  ${open}\n${reindent(inner, '    ')}\n  </${tag}>` : `  ${open}</${tag}>`
+    }).join('\n')
+    const gridAttrs = ['locale', 'currency', 'time-zone'].filter((a) => grid.hasAttribute(a)).map((a) => ` ${a}="${esc(grid.getAttribute(a))}"`).join('')
+    const lines = [
+      '<!doctype html>',
+      `<html lang="en" data-theme="${esc(root.dataset.theme || 'auto')}">`,
+      '<head>',
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      '<title>Tickslate dashboard</title>',
+      `<link rel="stylesheet" href="${CDN}/tokens.css">`,
+      '<style>',
+      '  body { margin: 0; padding: 24px; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }',
+      '  .page { max-width: 1312px; margin: 0 auto; }',
+      document.getElementById('slotted-css').textContent.trim().replace(/^ {0,2}(?=\S)/gm, '  '),
+      '</style>',
+      '</head>',
+      '<body>',
+      '<main class="page">',
+      `<ts-grid${gridAttrs} profile="${esc(grid.profile)}">`,
+      markup,
+      '</ts-grid>',
+      '</main>',
+      '<script type="module">',
+      `  import '${CDN}/elements.js'`,
+      ...(clock ? [`  import { createCalendar, presets } from '${CDN}/index.js'`] : []),
+      '',
+      '  const grid = document.querySelector(\'ts-grid\')',
+      '  const tile = (id) => grid.querySelector(\'[item="\' + id + \'"]\')',
+      '',
+      '  // The layout as it stands on the playground, one list of tiles per profile.',
+      `  grid.layout = ${pretty(grid.layout, 3, '  ')}`,
+      '',
+      '  // Made-up figures. Replace each with your own data.',
+      `  const data = ${pretty(data, 3, '  ')}`,
+      '  for (const [id, value] of Object.entries(data)) tile(id).data = value',
+      ...(clock ? [
+        '',
+        `  tile('${clock.id}').data = { calendar: ${CALENDAR}, sessions: ${json(clock.sessions)}, timeframes: ${json(clock.timeframes)} }`,
+      ] : []),
+      // Written apart so the page's own script element isn't closed early.
+      '<' + '/script>',
+      '</body>',
+      '</html>',
+      '',
+    ]
+    return lines.join('\n')
+  }
+
+  // The async clipboard needs a secure context and a user gesture; the old
+  // copy command covers a page opened over plain http.
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {}
+    const box = Object.assign(document.createElement('textarea'), { value: text, readOnly: true })
+    box.style.cssText = 'position: fixed; opacity: 0'
+    document.body.append(box)
+    box.select()
+    let ok = false
+    try { ok = document.execCommand('copy') } catch {}
+    box.remove()
+    return ok
+  }
+
+  const copyBtn = document.getElementById('copy')
+  const copyStatus = document.getElementById('copy-status')
+  const snippetBox = document.getElementById('snippet')
+  let copyTimer = 0
+  copyBtn.addEventListener('click', async () => {
+    const html = buildSnippet()
+    const ok = await copyText(html)
+    const text = ok ? 'Copied the page as HTML. Save it as a .html file and open it.' : 'Copying was blocked. The HTML is shown below to copy by hand.'
+    copyStatus.textContent = text
+    log(text)
+    snippetBox.hidden = ok
+    if (!ok) {
+      const area = document.getElementById('snippet-text')
+      area.value = html
+      area.focus()
+      area.select()
+    }
+    copyBtn.textContent = ok ? 'Copied' : 'Copy HTML'
+    clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => { copyBtn.textContent = 'Copy HTML'; copyStatus.textContent = '' }, 2500)
+  })
 
   // data-theme="auto" follows the OS; Paper and Graphite pin a theme (RFC 0002 §6.2).
   const root = document.documentElement
