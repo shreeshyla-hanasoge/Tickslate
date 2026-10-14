@@ -28,3 +28,6 @@ export {
   withProfile,
   setTopStrip,
 } from './edit.js'
+export { createFormatter, configure, currentConfig, toNumber } from './format.js'
+export { createCalendar, presets, activeProfile, nextProfileChange, usDaylightSaving } from './calendar.js'
+export { zonedTime, localDate } from './zone.js'

@@ -71,10 +71,20 @@ describe('footprint', () => {
     assert.deepEqual(footprint('M', 2, WIDGETS.todayPnl.sizes), { cols: 2, rows: 2, variant: 'M' })
   })
 
-  test('phones swap L, XL and Banner for M when the widget has one', () => {
+  test('phones swap L and XL for M when the widget has one', () => {
     assert.deepEqual(footprint('L', 2, WIDGETS.openPositions.sizes), { cols: 2, rows: 2, variant: 'M' })
     assert.deepEqual(footprint('XL', 2, WIDGETS.miniChart.sizes), { cols: 2, rows: 2, variant: 'M' })
-    assert.deepEqual(footprint('Banner', 2, WIDGETS.pnlCalendar.sizes), { cols: 2, rows: 2, variant: 'M' })
+  })
+
+  test('Banner stays full width with its own design at every width', () => {
+    const cal = WIDGETS.pnlCalendar
+    assert.deepEqual(footprint('Banner', 4, cal.sizes, cal.phoneRows), { cols: 4, rows: 1, variant: 'Banner' })
+    assert.deepEqual(footprint('Banner', 3, cal.sizes, cal.phoneRows), { cols: 3, rows: 1, variant: 'Banner' })
+    // The year heat map wraps into two half-year bands on a phone.
+    assert.deepEqual(footprint('Banner', 2, cal.sizes, cal.phoneRows), { cols: 2, rows: 2, variant: 'Banner' })
+    // Without phoneRows it keeps one row, as the session clock does.
+    assert.deepEqual(footprint('Banner', 2, WIDGETS.sessionClock.sizes), { cols: 2, rows: 1, variant: 'Banner' })
+    assert.deepEqual(footprint('Banner', 2, cal.sizes, { Banner: 0 }), { cols: 2, rows: 1, variant: 'Banner' })
   })
 
   test('phones keep the design, full width, when there is no M', () => {
@@ -391,8 +401,9 @@ describe('editing', () => {
     assert.equal(sizeForExtent(chart, 3, 2, 3, 'XL'), 'XL')
     assert.equal(sizeForExtent(chart, 3, 2, 3, 'L'), 'L')
     assert.equal(sizeForExtent(chart, 3, 2, 3, 'M'), 'L')
-    // On a phone, a full-width Banner calendar renders as M.
+    // On a phone, M and the two-row Banner calendar are both 2×2: keep the current one.
     assert.equal(sizeForExtent(WIDGETS.pnlCalendar, 2, 2, 2, 'Tall'), 'M')
+    assert.equal(sizeForExtent(WIDGETS.pnlCalendar, 2, 2, 2, 'Banner'), 'Banner')
     assert.equal(sizeForExtent(WIDGETS.pnlCalendar, 1, 2, 2, 'M'), 'Tall')
   })
 

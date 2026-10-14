@@ -28,7 +28,7 @@ export function placeFirst(items, columns, catalog, count) {
   for (let i = 0; i < count; i++) {
     const item = items[i]
     const spec = specFor(item, catalog)
-    const fp = footprint(item.size, columns, spec ? spec.sizes : null)
+    const fp = footprint(item.size, columns, spec ? spec.sizes : null, spec ? spec.phoneRows : null)
     const mask = (1 << fp.cols) - 1
     const { col, row } = firstFit(taken, columns, fp.cols, fp.rows, mask)
     for (let r = row; r < row + fp.rows; r++) taken[r] = (taken[r] || 0) | (mask << col)

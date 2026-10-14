@@ -6,12 +6,14 @@
  * `{ ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tall'] } }`.
  */
 
-const widget = (tag, label, sizes) => Object.freeze({ tag, label, sizes: Object.freeze(sizes) })
+const widget = (tag, label, sizes, phoneRows) =>
+  Object.freeze({ tag, label, sizes: Object.freeze(sizes), ...(phoneRows ? { phoneRows: Object.freeze(phoneRows) } : {}) })
 
 export const WIDGETS = Object.freeze({
   todayPnl: widget('ts-today-pnl', "Today's P&L", ['S', 'Wide', 'M']),
   equityCurve: widget('ts-equity-curve', 'Equity curve', ['Wide', 'M', 'XL']),
-  pnlCalendar: widget('ts-pnl-calendar', 'Daily P&L calendar', ['Tall', 'M', 'Banner']),
+  // On phones the year wraps into two half-year bands, so Banner gets 2 rows.
+  pnlCalendar: widget('ts-pnl-calendar', 'Daily P&L calendar', ['Tall', 'M', 'Banner'], { Banner: 2 }),
   edgeStats: widget('ts-edge-stats', 'Edge stats', ['S', 'Wide', 'M']),
   capitalFunding: widget('ts-capital-funding', 'Capital funding', ['S', 'Tall', 'L']),
   openPositions: widget('ts-open-positions', 'Open positions', ['Wide', 'M', 'L']),

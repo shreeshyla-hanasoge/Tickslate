@@ -22,7 +22,17 @@
   .hint { color: var(--ts-muted); font-size: 13px; margin: 0 0 16px; }
   .log { position: fixed; left: 16px; bottom: 16px; max-width: calc(100% - 32px); padding: 8px 12px; border-radius: var(--ts-radius-sm);
     background: var(--ts-surface); border: 1px solid var(--ts-line); color: var(--ts-muted); font: 12px ui-monospace, monospace; }
-  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } }
+  .status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 0 0 12px; font-size: 13px; color: var(--ts-muted); }
+  .status .num { font: var(--ts-num-weight) 20px/1 var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--ts-ink); }
+  .status .open { color: var(--ts-profit); font-weight: 600; }
+  .status .shut { color: var(--ts-muted); font-weight: 600; }
+  .pretend { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+  .pretend input, .pretend button { font: 13px var(--ts-font-ui); min-height: 30px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line); background: var(--ts-surface); color: var(--ts-ink); padding: 0 8px; }
+  .samples { margin: 0 0 12px; font-size: 13px; color: var(--ts-muted); }
+  .samples summary { cursor: pointer; }
+  .samples div { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; padding-top: 8px; }
+  .samples b { font: var(--ts-num-weight) 15px var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--ts-ink); }
+  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } .pretend { margin-left: 0; } }
 </style>
 </head>
 <body>
@@ -30,7 +40,8 @@
   <header>
     <h1>Tickslate</h1>
     <div class="bar" role="group" aria-label="Profile">
-      <button type="button" data-profile="market" aria-pressed="true">Market hours</button>
+      <button type="button" data-profile="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-profile="market" aria-pressed="false">Market hours</button>
       <button type="button" data-profile="closed" aria-pressed="false">After close</button>
     </div>
     <div class="bar" role="group" aria-label="Theme">
@@ -42,6 +53,13 @@
       <button type="button" id="edit" class="primary">Edit</button>
     </div>
   </header>
+  <div class="status" aria-live="off">
+    <span id="clock" class="num"></span>
+    <span id="sessions"></span>
+    <label class="pretend">Pretend it's <input type="time" id="pretend" step="1"> IST
+      <button type="button" id="live">Live</button></label>
+  </div>
+  <details class="samples"><summary>Formatting samples (en-IN, INR)</summary><div id="samples"></div></details>
   <p class="hint">Long-press a tile (or press Edit) to rearrange. Drag tiles, drag the corner handle to resize, tap − to remove.
     Keyboard: Tab to a tile in edit mode, Space to pick up, arrows to move, Space to drop, + and − to resize.</p>
 
@@ -61,6 +79,7 @@
 <div class="log" id="log" aria-live="off">No edits yet.</div>
 
 <script type="module">
+  import { createCalendar, createFormatter, presets, zonedTime, localDate } from '/src/core/index.js'
   import '/src/elements/index.js'
 
   // A stand-in tile until the real widgets exist: shows its label and the
@@ -167,12 +186,72 @@
     log('Layout reset.')
   })
 
-  for (const button of document.querySelectorAll('[data-profile]')) {
+  // ── Sessions, the profile schedule and a pretend clock ──
+  const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
+  const calendar = createCalendar({ sessions: [presets.nse({ segment: 'derivatives' }), presets.mcx()] })
+  // Traed's market hours: NSE F&O widened to 09:00–15:45.
+  grid.schedule = { calendar, market: { sessions: ['nse-fo'], leadMinutes: 15, lagMinutes: 5 } }
+
+  let offset = 0
+  const now = () => Date.now() + offset
+  grid.clock = now
+  const pretend = document.getElementById('pretend')
+  pretend.addEventListener('change', () => {
+    if (!pretend.value) return
+    const [h, m, sec = '00'] = pretend.value.split(':')
+    const today = localDate(Date.now(), 'Asia/Kolkata')
+    offset = zonedTime(today, `${h}:${m}`, 'Asia/Kolkata') + Number(sec) * 1000 - Date.now()
+    grid.clock = now
+    tick()
+  })
+  document.getElementById('live').addEventListener('click', () => {
+    offset = 0
+    pretend.value = ''
+    grid.clock = now
+    tick()
+  })
+
+  const profileButtons = document.querySelectorAll('[data-profile]')
+  function showProfileChoice(choice) {
+    for (const b of profileButtons) b.setAttribute('aria-pressed', String(b.dataset.profile === choice))
+  }
+  for (const button of profileButtons) {
     button.addEventListener('click', () => {
-      grid.profile = button.dataset.profile
-      for (const b of document.querySelectorAll('[data-profile]')) b.setAttribute('aria-pressed', String(b === button))
+      const choice = button.dataset.profile
+      grid.override(choice === 'auto' ? null : choice)
+      showProfileChoice(choice)
     })
   }
+  grid.addEventListener('ts-profile-change', (e) => {
+    log(`Profile ${e.detail.profile} (${e.detail.reason})`)
+    if (e.detail.reason !== 'override') showProfileChoice('auto')
+  })
+
+  const sessionsEl = document.getElementById('sessions')
+  function tick() {
+    const t = now()
+    document.getElementById('clock').textContent = `${fmt.time(t, { seconds: true })} IST`
+    sessionsEl.innerHTML = calendar.sessions.map((id) => {
+      const s = calendar.state(id, t)
+      const label = calendar.session(id).label
+      if (s.open) {
+        const candle = calendar.candleClose(id, t, 5)
+        return `${label} <span class="open">open</span> · closes ${fmt.time(s.closesAt)} (${fmt.duration(s.closesAt - t, { style: 'words' })}) · 5m candle ${fmt.duration(candle - t)}`
+      }
+      return `${label} <span class="shut">closed</span>${s.opensAt ? ` · opens ${fmt.time(s.opensAt)} in ${fmt.duration(s.opensAt - t, { style: 'words' })}` : ''}`
+    }).join(' &nbsp;·&nbsp; ') + ` &nbsp;·&nbsp; layout: <b>${grid.profile}</b>`
+  }
+  tick()
+  setInterval(tick, 1000)
+
+  const samples = [
+    ['Gain', fmt.money(1523.85)], ['Loss', fmt.money(-141)], ['Zero', fmt.money(0)],
+    ['Lakh grouping', fmt.money(152385)], ['Compact', fmt.money(1800, { compact: true })],
+    ['Compact loss', fmt.money(-330000, { compact: true })], ['Balance (no plus)', fmt.money(82949.68, { sign: 'negative' })],
+    ['Price', fmt.price(22512.4)], ['Change', fmt.percent(0.013)], ['Win rate', fmt.percent(0.21, { decimals: 0, sign: 'negative' })],
+    ['Countdown', fmt.duration(160000)], ['Time left', fmt.duration(13680000, { style: 'words' })],
+  ]
+  document.getElementById('samples').innerHTML = samples.map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join('')
 
   const root = document.documentElement
   function pickTheme(theme) {
