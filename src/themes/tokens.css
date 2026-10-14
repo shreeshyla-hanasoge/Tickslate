@@ -1,9 +1,9 @@
 /*
  * Tickslate theme tokens.
  *
- * Paper is the light default. The dark default uses the Tailwind gray scale
- * (gray-900/800/700) with emerald, rose, amber and indigo 400, which is also
- * Traed's existing dark mode, so Traed needs no overrides for dark.
+ * Paper is the light default. Graphite, the dark default, uses the Tailwind
+ * gray scale (gray-900/800/700) with emerald, rose, amber and indigo 400, so a
+ * Tailwind app whose dark mode uses that palette needs no overrides for dark.
  *
  * Every rule is wrapped in :where() so it has zero specificity: a host app
  * overrides any --ts-* variable with a plain selector, no !important.

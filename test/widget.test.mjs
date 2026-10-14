@@ -2,8 +2,10 @@ import { test, describe, before, after, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsWidget, SHARED_CSS, standaloneCss, resolveFormatOptions, escapeHtml } from '../src/elements/widget.js'
 import { configure } from '../src/core/index.js'
+import { FakeNode, FakeRoot, FakeElement, tick } from './fake-dom.mjs'
 
-// This file is loaded with no DOM: the import above must not throw.
+// This file is loaded with no DOM (fake-dom.mjs installs nothing on import):
+// importing widget.js above must not throw.
 
 describe('without a DOM', () => {
   test('importing the module is safe and exports the base class', () => {
@@ -49,82 +51,6 @@ describe('without a DOM', () => {
     assert.equal(escapeHtml(`<a href="x">Tom & 'Jerry'</a>`), '&lt;a href=&quot;x&quot;&gt;Tom &amp; &#39;Jerry&#39;&lt;/a&gt;')
   })
 })
-
-// A just-enough DOM to drive the base class's rendering rules in Node.
-class FakeNode {
-  constructor() {
-    this.attrs = new Map()
-    this.textContent = ''
-    this.htmlWrites = 0
-    this.html = ''
-  }
-  setAttribute(k, v) {
-    this.attrs.set(k, String(v))
-  }
-  getAttribute(k) {
-    return this.attrs.has(k) ? this.attrs.get(k) : null
-  }
-  set innerHTML(v) {
-    this.html = v
-    this.htmlWrites++
-  }
-  get innerHTML() {
-    return this.html
-  }
-  querySelector() {
-    return new FakeNode()
-  }
-}
-
-class FakeRoot extends FakeNode {
-  constructor() {
-    super()
-    this.section = new FakeNode()
-  }
-  querySelector(sel) {
-    return sel === '.tile' ? this.section : new FakeNode()
-  }
-}
-
-class FakeElement extends EventTarget {
-  constructor() {
-    super()
-    this.attrs = new Map()
-    this.isConnected = false
-    this.parentElement = null
-    this.localName = 'x-fake'
-  }
-  attachShadow() {
-    this.shadowRoot = new FakeRoot()
-    return this.shadowRoot
-  }
-  getAttribute(k) {
-    return this.attrs.has(k) ? this.attrs.get(k) : null
-  }
-  setAttribute(k, v) {
-    const old = this.getAttribute(k)
-    this.attrs.set(k, String(v))
-    this._changed(k, old, String(v))
-  }
-  removeAttribute(k) {
-    const old = this.getAttribute(k)
-    this.attrs.delete(k)
-    this._changed(k, old, null)
-  }
-  _changed(k, old, value) {
-    if (this.constructor.observedAttributes.includes(k)) this.attributeChangedCallback(k, old, value)
-  }
-  connect() {
-    this.isConnected = true
-    this.connectedCallback()
-  }
-  disconnect() {
-    this.isConnected = false
-    this.disconnectedCallback()
-  }
-}
-
-const tick = () => new Promise((resolve) => setImmediate(resolve))
 
 describe('rendering', () => {
   let Widget
@@ -172,6 +98,14 @@ describe('rendering', () => {
   test('opens a shadow root with the shared styles and a labelled tile', () => {
     const el = make()
     assert.match(el.shadowRoot.html, /^<style>[\s\S]*\.tile \{[\s\S]*<\/style><section class="tile" part="tile"><\/section>$/)
+  })
+
+  // Later element tests rely on this wiring of the shared harness.
+  test('the shared fake DOM: the element is a FakeElement, its root a FakeRoot and its tile a FakeNode', () => {
+    const el = make()
+    assert.ok(el instanceof FakeElement)
+    assert.ok(el.shadowRoot instanceof FakeRoot)
+    assert.ok(section(el) instanceof FakeNode)
   })
 
   test('size snaps to the catalog sizes, defaults to the first, and is written back once connected', () => {

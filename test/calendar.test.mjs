@@ -138,7 +138,7 @@ describe('validation', () => {
 })
 
 describe('layout profile', () => {
-  // The Traed spec's market hours: NSE widened to 09:00–15:35.
+  // Example market hours: NSE widened to 09:00–15:35.
   const nseOnly = { market: { sessions: ['nse'], leadMinutes: 15, lagMinutes: 5 } }
 
   test('market from 15 minutes before the open to 5 after the close', () => {

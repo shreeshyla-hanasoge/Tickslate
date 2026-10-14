@@ -21,7 +21,7 @@ your own data.
   after-close layout, switched by the exchange session clock and saved as JSON.
 - **Works anywhere.** The widgets are custom elements, so they run in Vue,
   React, Svelte or plain HTML. The core has no runtime dependencies.
-- **Your theme.** Ships with Paper (light) and a gray-scale dark theme; every
+- **Your theme.** Ships with Paper (light) and Graphite (gray-scale dark); every
   colour, radius and font is a `--ts-*` CSS variable you can override.
 - **Your data.** Tickslate never talks to a broker. Your app passes data in.
 

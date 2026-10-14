@@ -27,7 +27,7 @@
  *     Pure: data in, plain display strings and numbers out. `ctx` is
  *     `{ fmt, now, label }`: the formatter, the current time in ms (from
  *     `clock` if set) and the effective label. Return `ariaLabel` to name the
- *     tile with its headline result ("Today's P&L, +₹1,523.85"); without it
+ *     tile with its headline result ("Today's P&L, +₹2,185.65"); without it
  *     the tile is named by the label. `data` is never null here. If this
  *     throws, the base logs it once and shows the empty state.
  *
@@ -146,7 +146,7 @@ export function escapeHtml(s) {
 // Headline figures shrink with the tile, capped at the design size.
 //
 // 1cqi is 1% of the tile's content box (its width less padding and border).
-// A 10-character figure such as "+₹1,523.85" is about 5.0 × font-size wide in
+// A 10-character figure such as "+₹2,185.65" is about 5.0 × font-size wide in
 // Newsreader (measured: 170px at 34px, 240px at 48px). On a phone's 170px S
 // tile the content box is at worst 170 − 2×18 − 2 = 132px, so .big must be
 // ≤ 132 / 5.0 = 26.4px: 19cqi = 25.1px, text ≈ 125px. A Wide tile there is

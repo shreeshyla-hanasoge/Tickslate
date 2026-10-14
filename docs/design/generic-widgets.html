@@ -1,0 +1,1312 @@
+<meta charset="utf-8">
+<!--
+  REVIEW (newest first; recorded from the maintainer's replies in chat)
+  - 2026-10-13  Status: awaiting review. Drafted for Wave 0, story
+    generic-design-sheet. Not approved yet. No change requests recorded.
+    Implementing stories treat these frames as a proposal until this line
+    says Approved.
+
+  Tickslate 0.1.0 design sheet: the generic card, metric and chart, the
+  loading, empty, error and stale states, and the editing controls, drawn on
+  the real grid at desktop width and at 390px, in Paper and dark.
+
+  The page is self-contained. The first style element (data-copy-of) is a
+  copy of the rule blocks in src/themes/tokens.css and is the only place
+  colour values appear. The second (data-sheet) is the sheet itself and
+  reads colour only from --ts-* tokens. The one external request is the optional Google Fonts stylesheet;
+  without it the token font stacks fall back to system faces.
+  Every name and figure on this sheet is made up.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tickslate 0.1.0 Design Sheet</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Newsreader:opsz,wght@6..72,500;6..72,600&amp;display=swap">
+<style data-copy-of="src/themes/tokens.css">
+/* Copied from src/themes/tokens.css, rules unchanged. Re-copy when the tokens change. */
+:where(:root) {
+  --ts-bg: #F3EFE6;
+  --ts-surface: #FFFDF8;
+  --ts-surface-2: #F1EBDE;
+  --ts-line: #E2DACB;
+  --ts-ink: #1C1A16;
+  --ts-muted: #6A655B;
+  --ts-profit: #0E7A4E;
+  --ts-loss: #C0362C;
+  --ts-warn: #A85A06;
+  --ts-accent: #2C52C4;
+  --ts-radius: 10px;
+  --ts-radius-sm: 6px;
+  --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
+  --ts-fill: 12%;
+  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-num: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --ts-row: 150px;
+  --ts-gap: 16px;
+  /* Padding inside a tile. The dark designs are tighter. */
+  --ts-pad: 18px;
+  /* At 2 columns (phones). Rows stay fixed so live numbers never resize a tile. */
+  --ts-row-compact: 150px;
+  --ts-gap-compact: 10px;
+  --ts-num-weight: 500;
+  --ts-num-weight-small: 500;
+  /* A tile picked up while editing the layout. */
+  --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
+  --ts-motion: 220ms;
+  --ts-ease: cubic-bezier(.2, .8, .2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme="light"])) {
+    --ts-bg: #111827;
+    --ts-surface: #1F2937;
+    --ts-surface-2: #374151;
+    --ts-line: #374151;
+    --ts-ink: #F3F4F6;
+    --ts-muted: #9CA3AF;
+    --ts-profit: #34D399;
+    --ts-loss: #FB7185;
+    --ts-warn: #FBBF24;
+    --ts-accent: #818CF8;
+    --ts-radius: 12px;
+    --ts-pad: 16px;
+    --ts-shadow: none;
+    --ts-fill: 16%;
+    --ts-num-weight-small: 600;
+    --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
+  }
+}
+
+:where([data-theme="dark"], .dark) {
+  --ts-bg: #111827;
+  --ts-surface: #1F2937;
+  --ts-surface-2: #374151;
+  --ts-line: #374151;
+  --ts-ink: #F3F4F6;
+  --ts-muted: #9CA3AF;
+  --ts-profit: #34D399;
+  --ts-loss: #FB7185;
+  --ts-warn: #FBBF24;
+  --ts-accent: #818CF8;
+  --ts-radius: 12px;
+  --ts-pad: 16px;
+  --ts-shadow: none;
+  --ts-fill: 16%;
+  --ts-num-weight-small: 600;
+  --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
+}
+</style>
+<style data-sheet>
+/* Layout: one long review sheet. Each board pairs the 1264px desktop grid
+   with its 390px phone reflow, scaled by one factor so their proportions stay
+   true. Everything below reads colour and type from --ts-* tokens only. */
+:root {
+  --sheet-display: var(--ts-font-num);
+  --sheet-ui: var(--ts-font-ui);
+  --sheet-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --sheet-guide: color-mix(in srgb, var(--ts-ink) 11%, transparent);
+  --sheet-dash: color-mix(in srgb, var(--ts-ink) 22%, transparent);
+  --sheet-wash: color-mix(in srgb, var(--ts-ink) 3%, transparent);
+  --sheet-scrim: color-mix(in srgb, var(--ts-bg) 72%, transparent);
+
+  /* Stand-ins for the tokens RFC 0002 section 6 adds. They mix existing
+     tokens so this sheet carries no colour values of its own. The ts-chart
+     story sets the real --ts-series-* values, each 3:1 on --ts-surface. */
+  --ts-series-1: var(--ts-accent);
+  --ts-series-2: var(--ts-warn);
+  --ts-series-3: color-mix(in oklch, var(--ts-accent), var(--ts-profit));
+  --ts-series-4: color-mix(in oklch, var(--ts-accent), var(--ts-loss));
+  --ts-axis: color-mix(in srgb, var(--ts-muted) 70%, transparent);
+  --ts-focus: var(--ts-accent);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--ts-bg); color: var(--ts-ink);
+  font: 14px/1.5 var(--sheet-ui); -webkit-text-size-adjust: 100%;
+}
+a { color: var(--ts-accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
+code { font-family: var(--sheet-mono); font-size: .88em; }
+
+/* ── Page chrome ──────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30;
+  background: var(--ts-bg); border-bottom: 1px solid var(--ts-line);
+}
+.topbar-in, .page { max-width: 1800px; margin-inline: auto; padding-inline: clamp(16px, 3vw, 40px); }
+.topbar-in { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; padding-block: 8px; }
+.brand { font: 500 17px/1.2 var(--sheet-display); white-space: nowrap; }
+.topnav { display: flex; flex-wrap: wrap; gap: 0 16px; font-size: 13px; }
+.topnav a { color: var(--ts-muted); text-decoration: none; padding-block: 8px; }
+.topnav a:hover { color: var(--ts-ink); }
+.controls { margin-inline-start: auto; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.ctl { display: flex; align-items: center; gap: 8px; }
+.ctl-lb { font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+.seg { display: inline-flex; padding: 2px; border: 1px solid var(--ts-line); border-radius: 999px; background: var(--ts-surface); }
+.seg button {
+  font: 500 12px var(--sheet-ui); min-height: 30px; padding: 0 12px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ts-muted); cursor: pointer;
+}
+.seg button:hover { color: var(--ts-ink); }
+.seg button[aria-pressed="true"] { background: var(--ts-ink); color: var(--ts-surface); }
+@media (pointer: coarse) { .seg button { min-height: 40px; } }
+@media (max-width: 699px) { .topbar { position: static; } .controls { margin-inline-start: 0; } }
+
+.page { padding-block: 0 96px; }
+.intro {
+  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 28px 64px;
+  padding-block: 44px 36px; align-items: end;
+}
+@media (max-width: 899px) { .intro { grid-template-columns: minmax(0, 1fr); padding-block: 28px 24px; } }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+h1 {
+  font: 500 clamp(34px, 4.6vw, 56px)/1.02 var(--sheet-display); letter-spacing: -.02em;
+  margin: 12px 0 16px; text-wrap: balance;
+}
+.lede { margin: 0; font-size: 15.5px; line-height: 1.6; max-width: 62ch; }
+.facts { margin: 0; display: grid; font-size: 13px; }
+.facts div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 12px; padding-block: 9px; border-top: 1px solid var(--ts-line); }
+.facts div:last-child { border-bottom: 1px solid var(--ts-line); }
+.facts dt { font-weight: 600; }
+.facts dd { margin: 0; color: var(--ts-muted); font-variant-numeric: tabular-nums; }
+
+.review {
+  display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 8px 24px; align-items: baseline;
+  padding: 18px 22px; background: var(--ts-surface); border: 1px solid var(--ts-line);
+  border-radius: var(--ts-radius); box-shadow: var(--ts-shadow); scroll-margin-top: 72px;
+}
+.review h2 { grid-column: 1 / -1; margin: 0 0 4px; font: 600 11px var(--sheet-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+.review dt { font-weight: 600; font-size: 13px; }
+.review dd { margin: 0; font-size: 13.5px; max-width: 75ch; }
+.status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.status::before { content: ''; width: 9px; height: 9px; border-radius: 2px; transform: rotate(45deg); background: var(--ts-warn); }
+@media (max-width: 599px) { .review { grid-template-columns: minmax(0, 1fr); gap: 2px; } .review dd { margin-bottom: 8px; } }
+
+.sec { padding-block: 64px 12px; scroll-margin-top: 56px; }
+.sec + .sec { border-top: 1px solid var(--ts-line); }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h2 { font: 500 clamp(28px, 3.2vw, 38px)/1.08 var(--sheet-display); letter-spacing: -.01em; margin: 0; }
+.tag { font: 500 13px var(--sheet-mono); color: var(--ts-muted); }
+.sizes { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.sizes span { font: 500 11px/1 var(--sheet-mono); padding: 4px 6px; border: 1px solid var(--ts-line); border-radius: 4px; color: var(--ts-muted); }
+.notes {
+  list-style: none; margin: 22px 0 8px; padding: 0; max-width: 1500px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 16px 32px;
+  font-size: 13.5px; line-height: 1.55;
+}
+.notes li { padding-top: 10px; border-top: 1px solid var(--ts-line); }
+.notes b { display: block; font-weight: 600; margin-bottom: 2px; }
+h3 { font: 600 15px/1.3 var(--sheet-ui); margin: 40px 0 4px; }
+.sub { margin: 0 0 14px; color: var(--ts-muted); font-size: 13px; max-width: 80ch; }
+
+/* ── Frames ───────────────────────────────────────────────────────────── */
+.pair { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px 32px; overflow-x: auto; padding-block: 18px 10px; min-width: 0; }
+.fig { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: none; }
+.fig figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font: 11px/1.4 var(--sheet-mono); color: var(--ts-muted); }
+.fig figcaption b { font: 600 12px var(--sheet-ui); color: var(--ts-ink); }
+.frame {
+  position: relative; overflow: hidden; flex: none; zoom: var(--z, 1);
+  background: var(--ts-bg); color: var(--ts-ink); border: 1px solid var(--ts-line); font-family: var(--ts-font-ui);
+}
+.frame.desk { width: 1312px; padding: 23px; border-radius: 14px; }
+.frame.phone { width: 390px; padding: 26px 19px 30px; border-radius: 38px; }
+.board { position: relative; }
+.cell { position: absolute; border: 1px dashed var(--sheet-guide); border-radius: var(--ts-radius); }
+.slot { position: absolute; }
+
+/* ── Widgets: the shared tile CSS, then this sheet's proposals ─────────── */
+.tile {
+  box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 10px;
+  padding: var(--ts-pad, 18px); background: var(--ts-surface); border: 1px solid var(--ts-line);
+  border-radius: var(--ts-radius); box-shadow: var(--ts-shadow); color: var(--ts-ink);
+  font: 13px var(--ts-font-ui); overflow: hidden; position: relative; container-type: inline-size;
+}
+.tile .hd { display: flex; align-items: center; gap: 8px; min-height: 18px; min-width: 0; }
+.tile .lb { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 600; color: var(--ts-muted); }
+.tile .hd .lb { flex: 0 1 auto; }
+.tile .meta { flex: none; white-space: nowrap; }
+@container (max-width: 200px) { .tile .long { display: none; } }
+.tile .n, .tile .big, .tile .xbig { font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); }
+.tile .big { font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em; white-space: nowrap; }
+.tile .xbig { font-size: min(48px, 9cqi); line-height: 1; letter-spacing: -.02em; white-space: nowrap; }
+.tile .md { font-size: min(17px, 12cqi); }
+.tile .sm { font-size: 11px; }
+.tile .xs { font-size: 10px; }
+.tile .n.sm, .tile .n.xs { font-weight: var(--ts-num-weight-small, 500); }
+.tile .mut { color: var(--ts-muted); }
+.tile .pos { color: var(--ts-profit); }
+.tile .neg { color: var(--ts-loss); }
+.tile .warn { color: var(--ts-warn); }
+.tile .f1 { flex: 1; min-width: 0; }
+.tile .row { display: flex; align-items: center; gap: 8px; }
+.tile .rowb { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tile .rowb.wrap { flex-wrap: wrap; gap: 4px 16px; }
+.tile .col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tile .sep { border-top: 1px solid var(--ts-line); }
+.tile .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tile .btn {
+  display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+  font: 500 11px var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
+  border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted);
+}
+.tile .btn.on { background: var(--ts-surface-2); color: var(--ts-ink); }
+.frame.phone .tile .btn { min-height: 44px; min-width: 44px; }
+.tile .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.tile .dot.live { background: var(--ts-profit); animation: ts-pulse 2s infinite; }
+@keyframes ts-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ts-profit) 55%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.tile .lp, .tile .ln { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.tile .lp { stroke: var(--ts-profit); }
+.tile .ln { stroke: var(--ts-loss); }
+.tile .ap { fill: color-mix(in srgb, var(--ts-profit) var(--ts-fill, 12%), transparent); }
+.tile .an { fill: color-mix(in srgb, var(--ts-loss) var(--ts-fill, 12%), transparent); }
+.tile .lz { stroke: var(--ts-line); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+
+/* Plots: a stretched svg for lines and fills; dots and labels are HTML so
+   they never distort. */
+.tile .chartcol { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.tile .prow { flex: 1; min-height: 0; display: flex; gap: 8px; }
+.tile .plot { position: relative; flex: 1; min-width: 0; min-height: 0; }
+.tile .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.tile .yax { position: relative; width: 34px; flex: none; font-size: 10px; color: var(--ts-muted); }
+.tile .yax span { position: absolute; inset-inline-end: 0; transform: translateY(-50%); line-height: 1; }
+.tile .xax { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-size: 11px; color: var(--ts-muted); min-height: 14px; }
+.tile .xax > :last-child { justify-self: end; }
+.tile .xax.gut { padding-inline-end: 42px; }
+.tile .c-1 { --c: var(--ts-series-1); }
+.tile .c-2 { --c: var(--ts-series-2); }
+.tile .c-3 { --c: var(--ts-series-3); }
+.tile .c-4 { --c: var(--ts-series-4); }
+.tile .c-pos { --c: var(--ts-profit); }
+.tile .c-neg { --c: var(--ts-loss); }
+.tile .c-mut { --c: var(--ts-muted); }
+.tile .sl { fill: none; stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.tile .sa { fill: color-mix(in srgb, var(--c) var(--ts-fill, 12%), transparent); }
+.tile .sd { position: absolute; width: 7px; height: 7px; border-radius: 50%; transform: translate(-50%, -50%); background: var(--c); box-shadow: 0 0 0 2px var(--ts-surface); }
+.tile .gl { stroke: var(--ts-line); stroke-dasharray: 2 4; vector-effect: non-scaling-stroke; }
+.tile .zl { stroke: var(--ts-axis); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.tile .sw { width: 12px; height: 3px; border-radius: 2px; flex: none; background: var(--c); }
+.tile .sw.area { width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--c) 30%, transparent); box-shadow: inset 0 2px 0 var(--c); }
+.tile .sname { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ts-muted); }
+.tile .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11px; }
+.tile .li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.tile .legend .n { color: var(--ts-muted); }
+.tile .crow { flex: 1; min-height: 0; display: flex; gap: 20px; }
+.tile .rail {
+  width: 190px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  border-inline-start: 1px solid var(--ts-line); padding-inline-start: 20px;
+}
+.tile .ri { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 11px; }
+.tile .acts { display: flex; gap: 4px; margin-inline-start: 4px; }
+
+/* Metric */
+.tile .delta { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; font-size: 12px; }
+.tile .delta .n { font-weight: var(--ts-num-weight-small, 500); flex: none; }
+.tile .cols { flex: 1; display: flex; gap: 24px; min-height: 0; }
+.tile .lhs { flex: 1.1; justify-content: space-between; }
+.tile .rhs { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+@container (max-width: 420px) { .tile .cols { gap: 12px; } .tile .lhs { flex: 1.3; } }
+.tile .target { display: flex; flex-direction: column; gap: 6px; }
+.tile .tbar { height: 6px; border-radius: 3px; background: var(--ts-surface-2); overflow: hidden; }
+.tile .tbar i { display: block; height: 100%; border-radius: inherit; background: var(--ts-accent); }
+
+/* Card */
+.tile .body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.tile .body.scroll {
+  overflow: auto; scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(to bottom, var(--ts-ink) calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, var(--ts-ink) calc(100% - 28px), transparent);
+}
+.tile .foot { font-size: 11px; color: var(--ts-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tile .list li { display: flex; align-items: center; gap: 10px; min-width: 0; padding-block: 8px; border-top: 1px solid var(--ts-line); }
+.tile .list li:first-child { border-top: 0; padding-top: 0; }
+@container (max-width: 220px) { .tile .wide-only { display: none; } }
+.tile .slotted {
+  flex: 1; min-height: 0; position: relative; display: flex; align-items: flex-end; gap: 3%;
+  padding: 30px 28px 0 12px; border: 1.5px dashed var(--sheet-dash); border-radius: var(--ts-radius-sm); background: var(--sheet-wash);
+}
+.tile .slotted i { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background: color-mix(in srgb, var(--ts-muted) 24%, transparent); }
+.tile .slotted .cap { position: absolute; inset-block-start: 8px; inset-inline-start: 10px; inset-inline-end: 28px; font: 500 10px/1.3 var(--sheet-mono); color: var(--ts-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .slotted .ht { position: absolute; inset-block: 6px; inset-inline-end: 8px; width: 8px; border: 1px solid var(--ts-muted); border-inline-start: 0; opacity: .6; }
+.tile .stat4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 24px; }
+.tile .svc { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .svc .nm { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .sv { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ts-muted); }
+@container (max-width: 520px) { .tile .stat4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; } }
+.tile .shape { width: 8px; height: 8px; flex: none; }
+.tile .shape.ok, .tile .shape.minor { border-radius: 50%; }
+.tile .shape.ok { background: var(--ts-profit); }
+.tile .shape.minor { background: var(--ts-warn); }
+.tile .shape.degraded { background: var(--ts-warn); transform: rotate(45deg) scale(.85); }
+.tile .shape.major { width: 10px; height: 9px; background: var(--ts-loss); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
+/* States */
+.tile .empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ts-muted); text-align: center; }
+.tile .btn.cta { color: var(--ts-accent); border-color: color-mix(in srgb, var(--ts-accent) 45%, var(--ts-line)); }
+.tile .err { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+.tile .err-msg { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; font-size: 12px; font-weight: 500; color: var(--ts-ink); text-align: start; }
+.tile .err-msg svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--ts-warn); }
+.tile .btn.retry { color: var(--ts-ink); }
+.tile .dot.stale { background: var(--ts-warn); }
+.tile .sk { display: block; flex: none; position: relative; overflow: hidden; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); }
+.tile .sk.grow { flex: 1; min-height: 0; width: 100%; }
+.tile .sk::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ts-surface-2) 35%, var(--ts-surface)), transparent);
+  animation: ts-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes ts-shimmer { to { transform: translateX(100%); } }
+.tile .skrow { display: flex; align-items: center; gap: 10px; padding-block: 9px; border-top: 1px solid var(--ts-line); }
+.tile .skrow:first-child { border-top: 0; padding-top: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .tile .dot.live { animation: none; }
+  .tile .sk::after { animation: none; display: none; }
+}
+
+/* ── Grid editing UI ──────────────────────────────────────────────────── */
+.chrome { position: absolute; inset: 0; border-radius: var(--ts-radius); pointer-events: none; }
+.rm { position: absolute; top: -16px; left: -16px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+.rm span {
+  width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--ts-surface-2); color: var(--ts-ink); border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow);
+  font: 600 16px/1 var(--ts-font-ui);
+}
+.rs { position: absolute; right: -6px; bottom: -6px; width: 44px; height: 44px; }
+.rs::after {
+  content: ''; position: absolute; right: 12px; bottom: 12px; width: 12px; height: 12px;
+  border-right: 3px solid var(--ts-muted); border-bottom: 3px solid var(--ts-muted); border-bottom-right-radius: 6px;
+}
+.dock { display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 6; }
+.dock.flow { margin-top: 22px; }
+.dock.float { position: absolute; inset-inline: 0; bottom: 22px; }
+.toast {
+  display: inline-flex; align-items: center; gap: 16px; padding: 4px 4px 4px 20px; border-radius: 999px;
+  background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift); font: 500 13px var(--ts-font-ui);
+}
+.toast .act {
+  min-height: 44px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600;
+  background: color-mix(in srgb, var(--ts-surface) 14%, transparent);
+}
+.pill {
+  position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px;
+  background: var(--ts-surface); border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow-lift);
+}
+.pb {
+  min-height: 44px; padding: 0 20px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px;
+  font: 600 13px var(--ts-font-ui); color: var(--ts-ink); white-space: nowrap;
+}
+.pb svg { width: 16px; height: 16px; }
+.pb.open { background: var(--ts-surface-2); }
+.pb.primary { background: var(--ts-accent); color: var(--ts-surface); padding-inline: 24px; }
+.menu {
+  position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; width: 250px; padding: 6px;
+  background: var(--ts-surface); border: 1px solid var(--ts-line); border-radius: var(--ts-radius); box-shadow: var(--ts-shadow-lift);
+}
+.menu-h { display: block; padding: 8px 10px 6px; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+.mi { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: var(--ts-radius-sm); font-size: 13px; }
+.mi .ty { margin-inline-start: auto; font-size: 11px; color: var(--ts-muted); }
+.mi svg { width: 16px; height: 16px; flex: none; color: var(--ts-accent); }
+.mi.focus { box-shadow: inset 0 0 0 2px var(--ts-focus); }
+.editbtn {
+  position: absolute; top: 12px; left: 12px; z-index: 4; display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0 18px 0 14px; border-radius: 999px; font: 600 13px var(--ts-font-ui);
+  background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line);
+  box-shadow: 0 0 0 2px var(--ts-bg), 0 0 0 4px var(--ts-focus), var(--ts-shadow-lift);
+}
+.editbtn svg { width: 16px; height: 16px; }
+.emptyboard {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center;
+  border: 1.5px dashed var(--sheet-dash); border-radius: var(--ts-radius); background: var(--sheet-wash);
+}
+.emptyboard p { margin: 0; font: 500 14px var(--ts-font-ui); }
+.ghost {
+  min-height: 44px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--ts-line); background: var(--ts-surface); color: var(--ts-ink); font: 600 13px var(--ts-font-ui);
+}
+.ghost svg { width: 16px; height: 16px; color: var(--ts-accent); }
+.scrim { position: absolute; inset: 0; z-index: 5; background: var(--sheet-scrim); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.dialog {
+  position: absolute; z-index: 6; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow-lift);
+  font: 13px/1.35 var(--ts-font-ui);
+}
+.dialog.center { top: 44px; inset-inline-start: calc(50% - 290px); width: 580px; max-height: calc(100% - 88px); border-radius: calc(var(--ts-radius) + 6px); }
+.dialog.sheet { inset-inline: 0; bottom: 0; max-height: 76%; border-radius: 22px 22px 0 0; border-bottom: 0; }
+.grab { align-self: center; flex: none; width: 36px; height: 4px; margin-top: 8px; border-radius: 2px; background: var(--sheet-dash); }
+.dlg-hd { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 8px 4px 20px; }
+.dlg-title { flex: 1; font: 600 17px/1.2 var(--ts-font-ui); }
+.icon-btn { width: 44px; height: 44px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; color: var(--ts-muted); }
+.icon-btn svg, .search svg { width: 18px; height: 18px; flex: none; }
+.search {
+  flex: none; margin: 6px 16px 10px; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px;
+  border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm); background: var(--ts-bg); color: var(--ts-muted);
+  box-shadow: 0 0 0 2px var(--ts-surface), 0 0 0 4px var(--ts-focus);
+}
+.plist {
+  flex: 1; min-height: 0; overflow: hidden; padding: 0 16px 16px; display: flex; flex-direction: column;
+  -webkit-mask-image: linear-gradient(to bottom, var(--ts-ink) calc(100% - 44px), transparent);
+  mask-image: linear-gradient(to bottom, var(--ts-ink) calc(100% - 44px), transparent);
+}
+.pgrp { padding: 14px 4px 6px; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+.pick { display: flex; align-items: center; gap: 8px 16px; padding: 10px 4px; border-top: 1px solid var(--ts-line); }
+.pgrp + .pick { border-top: 0; }
+.pname { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pname .nm { font-size: 14px; font-weight: 500; }
+.pname .ds { font-size: 12px; color: var(--ts-muted); }
+.chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 60%; }
+.chip {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; min-width: 38px; padding: 0 9px;
+  border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm); background: var(--ts-surface); color: var(--ts-ink);
+  font: 500 11px var(--ts-font-ui); white-space: nowrap;
+}
+.chip.add { color: var(--ts-accent); border-color: color-mix(in srgb, var(--ts-accent) 45%, var(--ts-line)); }
+.chip svg { width: 14px; height: 14px; }
+.dialog.sheet .pick { flex-wrap: wrap; }
+.dialog.sheet .chips { justify-content: flex-start; max-width: none; width: 100%; }
+.dialog.sheet .pick.restore .chips { width: auto; }
+.frame.phone .chip { min-height: 44px; min-width: 44px; }
+</style>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <span class="brand">Tickslate 0.1.0</span>
+    <nav class="topnav" aria-label="Sections">
+      <a href="#review">Review</a>
+      <a href="#card">Card</a>
+      <a href="#metric">Metric</a>
+      <a href="#chart">Chart</a>
+      <a href="#states">States</a>
+      <a href="#editing">Editing</a>
+    </nav>
+    <div class="controls">
+      <div class="ctl">
+        <span class="ctl-lb" id="theme-label">Theme</span>
+        <div class="seg" role="group" aria-labelledby="theme-label">
+          <button type="button" id="theme-auto" data-theme-set="auto" aria-pressed="true">Auto</button>
+          <button type="button" id="theme-paper" data-theme-set="light" aria-pressed="false">Paper</button>
+          <button type="button" id="theme-dark" data-theme-set="dark" aria-pressed="false">Dark</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <span class="ctl-lb" id="scale-label">Frames</span>
+        <div class="seg" role="group" aria-labelledby="scale-label">
+          <button type="button" id="scale-fit" data-scale="fit" aria-pressed="true">Fit</button>
+          <button type="button" id="scale-actual" data-scale="actual" aria-pressed="false">Actual size</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <div class="intro">
+    <div>
+      <div class="eyebrow">Design sheet &middot; Wave 0 &middot; RFC 0002 surfaces</div>
+      <h1>Tickslate 0.1.0 design sheet</h1>
+      <p class="lede">Every new surface in 0.1.0, drawn on the real grid before anyone builds it: the generic card, metric and chart, the loading, empty, error and stale states, and the editing controls. Each board appears at desktop width and at 390px, in the theme the switch above sets. Implementing stories build to these frames.</p>
+    </div>
+    <dl class="facts">
+      <div><dt>Desktop</dt><dd>1264px board &middot; 4 columns of 304px &middot; 150px rows &middot; 16px gap</dd></div>
+      <div><dt>Phone</dt><dd>390px screen &middot; 2 columns of 170px &middot; 150px rows &middot; 10px gap</dd></div>
+      <div><dt>Reflow</dt><dd>S and Tall stay half width; Wide, M and Banner fill the width; L and XL draw their M design</dd></div>
+      <div><dt>Colour, type</dt><dd><code>--ts-*</code> tokens only, copied from <code>src/themes/tokens.css</code>. <code>--ts-series-1</code> to <code>4</code>, <code>--ts-axis</code> and <code>--ts-focus</code> are stand-ins mixed from those tokens until RFC 0002 adds them.</dd></div>
+      <div><dt>Figures</dt><dd>Every name, number and time here is made up.</dd></div>
+    </dl>
+  </div>
+
+  <section class="review" id="review" aria-labelledby="review-h">
+    <h2 id="review-h">Review</h2>
+    <dl style="display: contents">
+      <dt>Status</dt><dd><span class="status">Awaiting the maintainer&rsquo;s review</span></dd>
+      <dt>Drafted</dt><dd>13 Oct 2026, for story <code>generic-design-sheet</code>. Until this panel says Approved, these frames are a proposal.</dd>
+      <dt>Change requests</dt><dd>None recorded yet. Requests and the approval are recorded here and in the comment at the top of the file.</dd>
+    </dl>
+  </section>
+
+  <section class="sec" id="card" aria-labelledby="card-h">
+    <div class="sec-head"><h2 id="card-h">Card</h2><span class="tag">&lt;ts-card&gt;</span><span class="sizes"><span>S</span><span>Wide</span><span>Tall</span><span>M</span><span>L</span><span>Banner</span><span>XL</span></span></div>
+    <ul class="notes">
+      <li><b>Chrome</b>The shared tile: <code>--ts-surface</code>, a 1px <code>--ts-line</code> border, <code>--ts-radius</code> and <code>--ts-pad</code>. The header holds the live dot, the label, the meta (&lsquo;synced 14:05&rsquo;) and then the <code>actions</code> slot at the far end. On a tile narrower than 200px the meta shortens to &lsquo;14:05&rsquo; or &lsquo;Stale&rsquo; so the label keeps its room.</li>
+      <li><b>Slots</b><code>value</code> renders like <code>.big</code> and shrinks with the tile. <code>footer</code> is one line of 11px muted text at the bottom. The body takes the rest (<code>flex: 1; min-height: 0</code>), so a slotted chart at <code>height: 100%</code> fills it at every size.</li>
+      <li><b>Scrollable</b>Only the body scrolls, and its last 28px fade out so a cut-off row reads as more to come. Recent signups (Tall) shows it. The header, value and footer stay put.</li>
+      <li><b>On phones</b>S and Tall stay half width; Wide, M and Banner fill the width. L and XL take the M footprint. The card has no layouts of its own per size, so its slotted content reflows into the box it gets.</li>
+    </ul>
+    <div data-mount="card"></div>
+  </section>
+
+  <section class="sec" id="metric" aria-labelledby="metric-h">
+    <div class="sec-head"><h2 id="metric-h">Metric</h2><span class="tag">&lt;ts-metric&gt;</span><span class="sizes"><span>S</span><span>Wide</span><span>M</span></span></div>
+    <ul class="notes">
+      <li><b>Sizes</b>S: label, headline and the change on the bottom line. Wide: the same on the left, a sparkline on the right. M: the change beside the headline, a sparkline with its first and last dates, a target bar and a caption.</li>
+      <li><b>The change</b>&#x25B2; or &#x25BC; (hidden from screen readers), then the signed change with + or the true minus sign. Wide and M show the amount and the percentage; S shows the percentage. The compare label follows in muted text.</li>
+      <li><b>Colour follows goodWhen</b>Signups rises with <code>goodWhen</code> &lsquo;up&rsquo;, so it is profit-coloured; Revenue falls, so it is loss-coloured. p95 latency falls with &lsquo;down&rsquo;, so the fall is profit-coloured, while Open tickets rises with &lsquo;down&rsquo; and is loss-coloured. Active seats uses &lsquo;neither&rsquo; and stays muted.</li>
+      <li><b>Sparkline and target</b>The sparkline takes the change&rsquo;s colour, fills its area at <code>--ts-fill</code> and marks the last point. The target bar is <code>--ts-accent</code> on a <code>--ts-surface-2</code> track, 6px tall, with its share of the target above it.</li>
+    </ul>
+    <div data-mount="metric"></div>
+  </section>
+
+  <section class="sec" id="chart" aria-labelledby="chart-h">
+    <div class="sec-head"><h2 id="chart-h">Chart</h2><span class="tag">&lt;ts-chart&gt;</span><span class="sizes"><span>Wide</span><span>M</span><span>L</span><span>XL</span></span></div>
+    <ul class="notes">
+      <li><b>Sizes</b>Wide names the first series in the header and has no legend. M adds a legend row under the header. L and XL move the legend to a rail on the right, with each series&rsquo; last value.</li>
+      <li><b>Series</b>Up to four, in <code>--ts-series-1</code> to <code>--ts-series-4</code>. Lines are 2px; areas fill to zero at <code>--ts-fill</code>. Every series ends in a dot. A legend swatch is a bar for a line and a filled square for an area, so the kind never relies on colour alone.</li>
+      <li><b>Axes</b>x labels at the start, middle and end. From M up, dashed <code>--ts-line</code> gridlines carry compact labels on the right. The zero line is dashed <code>--ts-axis</code>.</li>
+      <li><b>On this board</b>Wide: one area (Daily signups) and one line (p95 latency, live). M: an area with a line, and four lines. L: an area with a line. XL: four series, one area and three lines, with range buttons. Two metric tiles fill the column beside L.</li>
+    </ul>
+    <div data-mount="chart"></div>
+  </section>
+
+  <section class="sec" id="states" aria-labelledby="states-h">
+    <div class="sec-head"><h2 id="states-h">Data states</h2><span class="tag">card &middot; metric &middot; chart &middot; Today&rsquo;s P&amp;L</span></div>
+    <ul class="notes">
+      <li><b>Loading</b>The real label stays. <code>--ts-surface-2</code> blocks follow each size&rsquo;s layout, so content lands without a shift. A shimmer crosses them every 1.6 s and stops under reduced motion. The tile carries <code>aria-busy</code>.</li>
+      <li><b>Empty</b>The widget&rsquo;s <code>emptyText</code>, centred and muted: &lsquo;No trades today&rsquo;, &lsquo;No data yet&rsquo;, or &lsquo;No data&rsquo; by default. A <code>slot="empty"</code> child replaces it and stays clickable.</li>
+      <li><b>Error</b>A <code>--ts-warn</code> glyph and the message, centred in ink. The host&rsquo;s <code>error</code> text when it set one, else &lsquo;Couldn&rsquo;t display this data&rsquo;. Retry appears only when <code>actions</code> include &lsquo;retry&rsquo;.</li>
+      <li><b>Stale</b>The content stays. The dot turns <code>--ts-warn</code> and stops pulsing, and the meta reads &lsquo;Stale &middot; 3 min&rsquo; in <code>--ts-warn</code>. In every state the tile keeps its size.</li>
+    </ul>
+
+    <h3>Loading, every size</h3>
+    <p class="sub">Metric, Today&rsquo;s P&amp;L, chart and card at each size they support. The card keeps its header and actions; only its body becomes a skeleton.</p>
+    <div data-mount="loading"></div>
+
+    <h3>Empty, default text</h3>
+    <p class="sub">Today&rsquo;s P&amp;L (M), chart (Wide), metric (S) and card (S): the same four tiles in every board below, so each state can be compared with the others.</p>
+    <div data-mount="empty"></div>
+
+    <h3>Empty, slotted call to action</h3>
+    <p class="sub">Host content in <code>slot="empty"</code>. Its look is the host&rsquo;s choice; these use <code>.btn</code> with <code>--ts-accent</code> text.</p>
+    <div data-mount="cta"></div>
+
+    <h3>Error</h3>
+    <p class="sub">Today&rsquo;s P&amp;L and the card show the host&rsquo;s error text (&lsquo;Feed disconnected&rsquo;); the chart and metric show the default for a view model that threw.</p>
+    <div data-mount="error"></div>
+
+    <h3>Error with Retry</h3>
+    <p class="sub">The same tiles with <code>actions</code> including &lsquo;retry&rsquo;. Retry fires <code>ts-action</code> with action &lsquo;retry&rsquo;; the tile stays in the error view until data arrives.</p>
+    <div data-mount="retry"></div>
+
+    <h3>Stale</h3>
+    <p class="sub">Live data that hasn&rsquo;t changed for 3 minutes (stale-after defaults to 2 minutes). The region&rsquo;s name gains &lsquo;stale&rsquo;.</p>
+    <div data-mount="stale"></div>
+  </section>
+
+  <section class="sec" id="editing" aria-labelledby="editing-h">
+    <div class="sec-head"><h2 id="editing-h">Editing the grid</h2><span class="tag">&lt;ts-grid&gt; &middot; built-in controls</span></div>
+    <ul class="notes">
+      <li><b>Edit pill</b>Floats at the bottom of the grid while editing: <code>--ts-surface</code>, a <code>--ts-line</code> border and <code>--ts-shadow-lift</code>. Done is the <code>--ts-accent</code> button. Add back (n) appears while tiles are hidden and opens its list above the pill. Every target is 44px.</li>
+      <li><b>Undo toast</b>An <code>--ts-ink</code> ground with <code>--ts-surface</code> text, so it reads as a message rather than a control. It sits 10px above the pill, shows for 6 s, pauses on hover or focus, and appears without sliding under reduced motion.</li>
+      <li><b>Edit layout</b>The grid&rsquo;s first Tab stop. Hidden until focused, then shown over the top-left corner of the grid with a 2px <code>--ts-focus</code> ring outside a <code>--ts-bg</code> ring. The board doesn&rsquo;t move.</li>
+      <li><b>Empty board and picker</b>A profile with no tiles keeps a one-row board with a dashed outline, the message and Add back. The picker (P1) is a bottom sheet below 700px and a centred dialog above, with removed tiles listed first.</li>
+    </ul>
+
+    <h3>Editing, nothing hidden</h3>
+    <p class="sub">Remove badge top left and resize handle bottom right, as the grid draws them today. Tiles rock gently while editing; the frames hold still. The pill holds Done alone.</p>
+    <div data-mount="edit-done"></div>
+
+    <h3>Just removed a tile</h3>
+    <p class="sub">Revenue was removed: its gap has closed, the toast offers Undo, and the pill gains Add back (1). On the phone the grid is taller than the screen, so the pill and toast float over the tiles.</p>
+    <div data-mount="edit-undo"></div>
+
+    <h3>Add back, list open</h3>
+    <p class="sub">Two tiles are hidden. The list names them by label, and the first has keyboard focus. Choosing one restores it and moves focus to the restored tile.</p>
+    <div data-mount="edit-addback"></div>
+
+    <h3>Edit layout button, focused</h3>
+    <p class="sub">Keyboard focus has just reached the grid. Enter starts editing; when editing ends, focus comes back here.</p>
+    <div data-mount="edit-button"></div>
+
+    <h3>Empty board</h3>
+    <p class="sub">Every tile on this profile was removed. The board stays one row tall, and Add back opens the same list as the pill. A host can replace the panel with <code>slot="empty"</code>.</p>
+    <div data-mount="edit-empty"></div>
+
+    <h3>Widget picker, P1 preview</h3>
+    <p class="sub">Opened from the pill in a later release. Search has focus. Removed tiles come first as restores; each size chip adds the widget at that size.</p>
+    <div data-mount="picker"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict'
+
+  // Characters are written as escapes so the script reads the same in any encoding.
+  var MINUS = '−'
+  var MID = '·'
+  var UP = '▲'
+  var DOWN = '▼'
+  var TIMES = '×'
+  var STALE = 'Stale ' + MID + ' 3 min'
+
+  // ── Grid geometry, as <ts-grid> measures it ───────────────────────────
+  var GEO = {
+    desk: { kind: 'desk', cols: 4, width: 1264, row: 150, gap: 16 },
+    phone: { kind: 'phone', cols: 2, width: 350, row: 150, gap: 10 },
+  }
+  var FRAME_W = { desk: 1312, phone: 390 }
+  var PAIR_GAP = 32
+
+  var SIZES = { S: [1, 1], Wide: [2, 1], Tall: [1, 2], M: [2, 2], L: [3, 2], Banner: [4, 1], XL: [4, 2] }
+  var ALL = Object.keys(SIZES)
+  var METRIC = ['S', 'Wide', 'M']
+  var CHART = ['Wide', 'M', 'L', 'XL']
+  var PNL = ['S', 'Wide', 'M']
+
+  // footprint() from src/core/sizes.js, for 4 and 2 columns.
+  function footprint(size, cols, supported) {
+    var wh = SIZES[size]
+    if (cols === 4 || wh[0] === 1) return { w: wh[0], h: wh[1], variant: size }
+    if (size === 'Banner') return { w: 2, h: 1, variant: 'Banner' }
+    if ((size === 'L' || size === 'XL') && supported.indexOf('M') >= 0) return { w: 2, h: 2, variant: 'M' }
+    return { w: 2, h: wh[1], variant: size }
+  }
+
+  // place() from src/core/place.js: each item takes the first cell, top to
+  // bottom and left to right, where its footprint fits.
+  function place(items, cols) {
+    var taken = []
+    var rows = 0
+    var free = function (row, col, fp) {
+      for (var r = row; r < row + fp.h; r++) for (var c = col; c < col + fp.w; c++) if (taken[r] && taken[r][c]) return false
+      return true
+    }
+    var placed = items.map(function (item) {
+      var fp = footprint(item.size, cols, item.sizes)
+      for (var row = 0; ; row++) {
+        for (var col = 0; col + fp.w <= cols; col++) {
+          if (!free(row, col, fp)) continue
+          for (var r = row; r < row + fp.h; r++) {
+            taken[r] = taken[r] || []
+            for (var c = col; c < col + fp.w; c++) taken[r][c] = true
+          }
+          rows = Math.max(rows, row + fp.h)
+          return { item: item, col: col, row: row, w: fp.w, h: fp.h, variant: fp.variant }
+        }
+      }
+    })
+    return { placed: placed, rows: rows }
+  }
+
+  var px = function (n) { return Math.round(n * 100) / 100 + 'px' }
+
+  function board(items, g, o) {
+    o = o || {}
+    var res = place(items, g.cols)
+    var colW = (g.width - g.gap * (g.cols - 1)) / g.cols
+    var rows = Math.max(res.rows, o.minRows || 0)
+    var height = rows * g.row + (rows - 1) * g.gap
+    var html = ''
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < g.cols; c++) {
+        html += '<div class="cell" style="left:' + px(c * (colW + g.gap)) + ';top:' + px(r * (g.row + g.gap)) + ';width:' + px(colW) + ';height:' + g.row + 'px"></div>'
+      }
+    }
+    res.placed.forEach(function (p) {
+      var w = p.w * colW + (p.w - 1) * g.gap
+      var h = p.h * g.row + (p.h - 1) * g.gap
+      var chrome = o.editing
+        ? '<div class="chrome"><span class="rm"><span>' + MINUS + '</span></span>' + (p.item.sizes.length > 1 ? '<span class="rs"></span>' : '') + '</div>'
+        : ''
+      html += '<div class="slot" style="left:' + px(p.col * (colW + g.gap)) + ';top:' + px(p.row * (g.row + g.gap)) + ';width:' + px(w) + ';height:' + px(h) + '">' + p.item.render(p.variant, g) + chrome + '</div>'
+    })
+    return '<div class="board" style="width:' + g.width + 'px;height:' + height + 'px">' + html + (o.inside || '') + '</div>'
+  }
+
+  function caption(kind) {
+    return kind === 'desk'
+      ? '<b>Desktop</b><span>1264px board ' + MID + ' 4 ' + TIMES + ' 304px ' + MID + ' 150px rows ' + MID + ' 16px gap</span>'
+      : '<b>Phone</b><span>390px ' + MID + ' 2 ' + TIMES + ' 170px ' + MID + ' 150px rows ' + MID + ' 10px gap</span>'
+  }
+
+  function frame(kind, inner, o) {
+    o = o || {}
+    var style = o.height ? ' style="height:' + o.height + 'px"' : ''
+    return '<figure class="fig" data-kind="' + kind + '"><figcaption>' + caption(kind) + '</figcaption><div class="frame ' + kind + '"' + style + '>' + inner + '</div></figure>'
+  }
+
+  var pair = function (desk, phone) { return '<div class="pair">' + desk + phone + '</div>' }
+  var boards = function (items, o) { return pair(frame('desk', board(items, GEO.desk, o)), frame('phone', board(items, GEO.phone, o))) }
+
+  // ── Made-up data ──────────────────────────────────────────────────────
+  // A small seeded generator, so the same curves appear on every load.
+  function rng(seed) {
+    var a = seed >>> 0
+    return function () {
+      a = (a + 0x6d2b79f5) | 0
+      var t = Math.imul(a ^ (a >>> 15), 1 | a)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  }
+
+  // A trend from `from` to `to` with a wobble that is zero at both ends, so
+  // the last point is exactly the figure a legend or headline shows.
+  function walk(seed, n, from, to, wobble) {
+    var r = rng(seed)
+    var out = []
+    var w = 0
+    for (var i = 0; i < n; i++) {
+      var t = i / (n - 1)
+      w = w * 0.55 + (r() - 0.5) * wobble
+      out.push(from + (to - from) * t + w * Math.sin(Math.PI * t))
+    }
+    out[n - 1] = to
+    return out
+  }
+
+  function average(values, span) {
+    return values.map(function (_, i) {
+      var from = Math.max(0, i - span + 1)
+      var sum = 0
+      for (var j = from; j <= i; j++) sum += values[j]
+      return sum / (i - from + 1)
+    })
+  }
+
+  var compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+  var whole = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+  var money = function (v) { return '$' + compact.format(v) }
+  var count = function (v) { return whole.format(v) }
+
+  // ── Small pieces ──────────────────────────────────────────────────────
+  var ICON = {
+    warn: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.9 15 14.1H1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M8 6.2v3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="8" cy="11.9" r=".95" fill="currentColor"></circle></svg>',
+    plus: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>',
+    grid: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="1.75" width="5.5" height="5.5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"></rect><rect x="8.75" y="1.75" width="5.5" height="5.5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"></rect><rect x="1.75" y="8.75" width="12.5" height="5.5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"></rect></svg>',
+    close: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>',
+    search: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M10.5 10.5 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>',
+  }
+
+  var tile = function (inner, extra) { return '<section class="tile' + (extra ? ' ' + extra : '') + '">' + inner + '</section>' }
+
+  // The shared header: [status dot][label][spacer][meta][actions].
+  function hd(o) {
+    var dot = o.dot ? '<span class="dot ' + o.dot + '" aria-hidden="true"></span>' : ''
+    // On a tile under 200px the meta drops to its core ('14:05', 'Stale') so the label keeps its room.
+    var text = o.meta ? o.meta.replace(/^synced /, '<span class="long">synced </span>').replace(' ' + MID + ' 3 min', '<span class="long"> ' + MID + ' 3 min</span>') : ''
+    var meta = o.meta ? '<span class="sm n meta ' + (o.tone || 'mut') + '">' + text + '</span>' : ''
+    var acts = o.actions ? '<span class="acts">' + o.actions + '</span>' : ''
+    return '<div class="hd">' + dot + '<span class="lb ell">' + o.label + '</span>' + (o.after || '') + '<span class="f1"></span>' + (o.extra || '') + meta + acts + '</div>'
+  }
+
+  // Header status for a content view: a live dot, a 'synced' time, or stale.
+  function status(d, stale) {
+    if (stale) return { dot: 'stale', meta: STALE, tone: 'warn' }
+    return { dot: d.live ? 'live' : '', meta: d.live ? '' : (d.meta || '') }
+  }
+
+  var buttons = function (labels, on) {
+    return labels.map(function (l, i) { return '<span class="btn' + (i === on ? ' on' : '') + '">' + l + '</span>' }).join('')
+  }
+
+  function niceTicks(lo, hi, n) {
+    var span = hi - lo || Math.abs(hi) || 1
+    var raw = span / n
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)))
+    var step = [1, 2, 2.5, 5, 10].map(function (m) { return m * mag }).filter(function (s) { return s >= raw })[0]
+    var out = []
+    for (var v = Math.floor(lo / step) * step; v <= Math.ceil(hi / step) * step + step / 2; v += step) out.push(Math.round(v * 1e6) / 1e6)
+    return out
+  }
+
+  // A plot row: a stretched svg, HTML end dots and, with ticks, a y gutter.
+  function plot(series, o) {
+    o = o || {}
+    var W = 400
+    var H = 100
+    var pad = 3
+    var lo = Infinity
+    var hi = -Infinity
+    series.forEach(function (s) { s.values.forEach(function (v) { if (v < lo) lo = v; if (v > hi) hi = v }) })
+    var toZero = o.zero !== false && series.some(function (s) { return s.kind === 'area' })
+    if (toZero) lo = Math.min(lo, 0)
+    var ticks = null
+    if (o.ticks) {
+      ticks = niceTicks(lo, hi, 3)
+      lo = ticks[0]
+      hi = ticks[ticks.length - 1]
+    } else {
+      var span = hi - lo || 1
+      hi += span * 0.12
+      if (!toZero) lo -= span * 0.12
+    }
+    var sx = function (i, n) { return pad + (i * (W - 2 * pad)) / Math.max(1, n - 1) }
+    var sy = function (v) { return pad + ((hi - v) / (hi - lo || 1)) * (H - 2 * pad) }
+    var f = function (n) { return n.toFixed(1) }
+    var svg = ''
+    if (ticks) ticks.forEach(function (t) { if (t !== 0) svg += '<line class="gl" x1="0" x2="' + W + '" y1="' + f(sy(t)) + '" y2="' + f(sy(t)) + '"></line>' })
+    if (lo <= 0 && hi >= 0) svg += '<line class="zl" x1="0" x2="' + W + '" y1="' + f(sy(0)) + '" y2="' + f(sy(0)) + '"></line>'
+    var shapes = series.map(function (s) {
+      var n = s.values.length
+      var pts = s.values.map(function (v, i) { return [sx(i, n), sy(v)] })
+      return { s: s, pts: pts, line: 'M' + pts.map(function (p) { return f(p[0]) + ' ' + f(p[1]) }).join('L') }
+    })
+    var base = f(toZero ? sy(Math.max(lo, 0)) : H)
+    shapes.forEach(function (sh) {
+      if (sh.s.kind !== 'area') return
+      var last = sh.pts[sh.pts.length - 1]
+      svg += '<path class="sa c-' + sh.s.c + '" d="' + sh.line + 'L' + f(last[0]) + ' ' + base + 'L' + f(sh.pts[0][0]) + ' ' + base + 'Z"></path>'
+    })
+    var dots = ''
+    shapes.forEach(function (sh) {
+      svg += '<path class="sl c-' + sh.s.c + '" d="' + sh.line + '"></path>'
+      var end = sh.pts[sh.pts.length - 1]
+      dots += '<span class="sd c-' + sh.s.c + '" style="left:' + f((end[0] / W) * 100) + '%;top:' + f((end[1] / H) * 100) + '%"></span>'
+    })
+    var yax = ''
+    if (ticks) {
+      yax = '<div class="yax n" aria-hidden="true">' + ticks.map(function (t) {
+        return '<span style="top:' + f((sy(t) / H) * 100) + '%">' + (o.tick ? o.tick(t) : compact.format(t)) + '</span>'
+      }).join('') + '</div>'
+    }
+    return '<div class="prow"><div class="plot"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' + svg + '</svg>' + dots + '</div>' + yax + '</div>'
+  }
+
+  var xax = function (labels, gutter) {
+    return '<div class="xax n' + (gutter ? ' gut' : '') + '"><span>' + labels[0] + '</span><span>' + (labels[1] || '') + '</span><span>' + (labels[2] || '') + '</span></div>'
+  }
+
+  // ── <ts-metric> ───────────────────────────────────────────────────────
+  var MD = {
+    signups: { label: 'Signups', value: '1,204', abs: '+130', pct: '+12.1%', dir: 'up', tone: 'pos', compare: 'vs last week', meta: 'synced 14:05', series: walk(11, 28, 820, 1204, 120), xs: ['15 Sep', '12 Oct'], target: { pct: 80, text: '80% of 1,500' }, caption: 'New accounts on every plan, this week' },
+    revenue: { label: 'Revenue', value: '$48,210', abs: MINUS + '$3,320', pct: MINUS + '6.4%', dir: 'down', tone: 'neg', compare: 'vs last month', meta: 'synced 14:05', series: walk(12, 28, 51530, 48210, 3200), xs: ['15 Sep', '12 Oct'], target: { pct: 80, text: '80% of $60,000' }, caption: 'Recognised revenue, month to date' },
+    latency: { label: 'p95 latency', value: '182 ms', abs: MINUS + '14 ms', pct: MINUS + '7.1%', dir: 'down', tone: 'pos', compare: 'vs yesterday', live: true, series: walk(13, 24, 196, 182, 16), xs: ['00:00', '14:00'], target: { pct: 91, text: '182 of a 200 ms budget' }, caption: 'Lower is better. All regions, last 24 hours' },
+    seats: { label: 'Active seats', value: '312', abs: '+4', pct: '+1.3%', dir: 'up', tone: 'mut', compare: 'vs last week', meta: 'synced 14:05', series: walk(14, 28, 304, 312, 6), xs: ['15 Sep', '12 Oct'], target: { pct: 62, text: '62% of 500' }, caption: 'Seats used at least once this week' },
+    tickets: { label: 'Open tickets', value: '86', abs: '+15', pct: '+21.1%', dir: 'up', tone: 'neg', compare: 'vs yesterday', meta: 'synced 14:05', series: walk(15, 24, 71, 86, 9), xs: ['00:00', '14:00'], target: { pct: 86, text: '86 of a 100 limit' }, caption: 'Lower is better. Waiting on the support team' },
+    errors: { label: 'Error rate', value: '0.42%', abs: MINUS + '0.08 pts', pct: MINUS + '16.0%', dir: 'down', tone: 'pos', compare: 'vs last week', meta: 'synced 14:05', series: walk(16, 24, 0.5, 0.42, 0.08) },
+    uptime: { label: 'Uptime', value: '99.95%', abs: '+0.02 pts', pct: '+0.02%', dir: 'up', tone: 'pos', compare: 'vs last month', meta: 'synced 14:05', series: walk(17, 24, 99.93, 99.95, 0.02) },
+  }
+
+  function metricTile(d, v, stale) {
+    var st = status(d, stale)
+    var head = hd({ label: d.label, dot: st.dot, meta: st.meta, tone: st.tone })
+    var change = v === 'S' ? d.pct : d.abs + ' (' + d.pct + ')'
+    var delta = '<span class="delta"><span class="n ' + d.tone + '"><span aria-hidden="true">' + (d.dir === 'up' ? UP : DOWN) + '</span> ' + change + '</span><span class="mut ell">' + d.compare + '</span></span>'
+    if (v === 'S') return tile(head + '<span class="big">' + d.value + '</span><span class="f1"></span>' + delta)
+    var spark = plot([{ values: d.series, kind: 'area', c: d.tone }], { zero: false })
+    if (v === 'Wide') {
+      return tile('<div class="cols"><div class="col lhs">' + head + '<span class="xbig">' + d.value + '</span>' + delta + '</div><div class="rhs">' + spark + '</div></div>')
+    }
+    return tile(
+      head +
+      '<div class="rowb wrap"><span class="xbig">' + d.value + '</span>' + delta + '</div>' +
+      '<div class="chartcol">' + spark + xax([d.xs[0], '', d.xs[1]]) + '</div>' +
+      '<div class="target"><div class="rowb"><span class="lb f1">Target</span><span class="sm n">' + d.target.text + '</span></div><div class="tbar" aria-hidden="true"><i style="width:' + d.target.pct + '%"></i></div></div>' +
+      '<span class="sm mut ell">' + d.caption + '</span>'
+    )
+  }
+
+  // ── <ts-chart> ────────────────────────────────────────────────────────
+  var CD = {
+    signups: { label: 'Daily signups', meta: 'synced 14:05', x: ['13 Sep', '28 Sep', '13 Oct'], fmt: count, series: [{ name: 'Signups', kind: 'area', values: walk(21, 31, 96, 212, 40) }] },
+    latency: { label: 'p95 latency', live: true, x: ['00:00', '07:00', '14:00'], fmt: function (v) { return Math.round(v) + ' ms' }, series: [{ name: 'p95', kind: 'line', values: walk(22, 29, 204, 182, 26) }] },
+    revcost: {
+      label: 'Revenue and cost', meta: 'synced 14:05', x: ['Apr', 'Jul', 'Oct'], fmt: money, tick: money,
+      series: [{ name: 'Revenue', kind: 'area', values: walk(23, 27, 31400, 48210, 4200) }, { name: 'Cost', kind: 'line', values: walk(24, 27, 23800, 29870, 2600) }],
+    },
+    regions: {
+      label: 'Requests per minute', live: true, x: ['00:00', '07:00', '14:00'], fmt: count,
+      series: [
+        { name: 'North America', kind: 'line', values: walk(31, 29, 2600, 4210, 700) },
+        { name: 'Europe', kind: 'line', values: walk(32, 29, 3400, 3180, 600) },
+        { name: 'Asia Pacific', kind: 'line', values: walk(33, 29, 1500, 2050, 500) },
+        { name: 'South America', kind: 'line', values: walk(34, 29, 380, 640, 180) },
+      ],
+    },
+    users: (function () {
+      var daily = walk(41, 91, 3800, 5120, 900)
+      var avg = average(daily, 7)
+      return {
+        label: 'Active users', meta: 'synced 14:05', x: ['15 Jul', '29 Aug', '13 Oct'], fmt: count,
+        series: [{ name: 'Daily', kind: 'area', values: daily }, { name: '7-day average', kind: 'line', values: avg }],
+      }
+    })(),
+    channels: {
+      label: 'Signups by channel', meta: 'synced 14:05', x: ['13 Sep', '28 Sep', '13 Oct'], fmt: count, actions: buttons(['30D', '90D', '1Y'], 0),
+      series: [
+        { name: 'Organic', kind: 'area', values: walk(51, 31, 62, 118, 26) },
+        { name: 'Paid', kind: 'line', values: walk(52, 31, 30, 54, 16) },
+        { name: 'Referral', kind: 'line', values: walk(53, 31, 14, 31, 10) },
+        { name: 'Partners', kind: 'line', values: walk(54, 31, 6, 9, 5) },
+      ],
+    },
+  }
+
+  var swatch = function (s) { return '<span class="sw c-' + s.c + (s.kind === 'area' ? ' area' : '') + '" aria-hidden="true"></span>' }
+  var lastOf = function (s) { return s.values[s.values.length - 1] }
+
+  function chartTile(d, v, stale) {
+    var ser = d.series.map(function (s, i) { return { name: s.name, kind: s.kind, values: s.values, c: i + 1 } })
+    var st = status(d, stale)
+    var after = v === 'Wide' ? '<span class="sname sm">' + swatch(ser[0]) + '<span class="ell">' + ser[0].name + '</span></span>' : ''
+    var head = hd({ label: d.label, dot: st.dot, meta: st.meta, tone: st.tone, after: after, actions: v === 'XL' ? d.actions : '' })
+    var big = v !== 'Wide'
+    var chart = '<div class="chartcol">' + plot(ser, { ticks: big, tick: d.tick }) + xax(d.x, big) + '</div>'
+    if (v === 'Wide') return tile(head + chart)
+    if (v === 'M') {
+      var legend = '<div class="legend">' + ser.map(function (s) { return '<span class="li">' + swatch(s) + '<span>' + s.name + '</span><span class="n sm">' + d.fmt(lastOf(s)) + '</span></span>' }).join('') + '</div>'
+      return tile(head + legend + chart)
+    }
+    var rail = '<div class="rail">' + ser.map(function (s) { return '<div class="ri"><span class="li">' + swatch(s) + '<span class="ell">' + s.name + '</span></span><span class="n md">' + d.fmt(lastOf(s)) + '</span></div>' }).join('') + '</div>'
+    return tile(head + '<div class="crow">' + chart + rail + '</div>')
+  }
+
+  // ── <ts-card> ─────────────────────────────────────────────────────────
+  function slotted(heights) {
+    return '<div class="slotted"><span class="cap">slotted chart ' + MID + ' height: 100%</span><span class="ht" aria-hidden="true"></span>' +
+      heights.map(function (h) { return '<i style="height:' + h + '%"></i>' }).join('') + '</div>'
+  }
+
+  function list(rows) {
+    return '<ul class="list">' + rows.map(function (r) {
+      return '<li>' + (r.shape ? '<span class="shape ' + r.shape + '" aria-hidden="true"></span>' : '') + '<span class="ell f1">' + r.name + '</span>' +
+        (r.note ? '<span class="sm mut wide-only">' + r.note + '</span>' : '') + '<span class="sm mut n">' + r.time + '</span></li>'
+    }).join('') + '</ul>'
+  }
+
+  var KD = {
+    sources: { label: 'Sessions by source', meta: '', actions: buttons(['7D', '30D', '90D'], 1), body: function () { return slotted([34, 52, 41, 63, 58, 72, 49, 66, 81, 70, 77, 88, 62, 74, 92, 84]) }, footer: 'Sampled at 10% ' + MID + ' web analytics' },
+    recent: {
+      label: 'Recent signups', live: true, scroll: true, footer: 'Newest first',
+      body: function () {
+        return list([
+          { name: 'Northgate Labs', note: 'Team', time: '2 min' },
+          { name: 'Bluefin Studio', note: 'Pro', time: '9 min' },
+          { name: 'Acre &amp; Oak', note: 'Free', time: '14 min' },
+          { name: 'Quillfeather', note: 'Team', time: '31 min' },
+          { name: 'Harbor Nine', note: 'Pro', time: '48 min' },
+          { name: 'Larkspur Co', note: 'Free', time: '1 h' },
+          { name: 'Tinsel Analytics', note: 'Team', time: '2 h' },
+          { name: 'Ovalworks', note: 'Pro', time: '3 h' },
+        ])
+      },
+    },
+    status: {
+      label: 'Service status', meta: 'synced 14:05',
+      body: function () {
+        var svc = function (name, shape, text) { return '<div class="svc"><span class="nm">' + name + '</span><span class="sv"><span class="shape ' + shape + '" aria-hidden="true"></span>' + text + '</span></div>' }
+        return '<div class="stat4">' + svc('API', 'ok', 'Operational') + svc('Dashboard', 'ok', 'Operational') + svc('Webhooks', 'degraded', 'Degraded since 13:20') + svc('Email delivery', 'ok', 'Operational') + '</div>'
+      },
+    },
+    wau: { label: 'Weekly active users', meta: 'synced 14:05', value: '23,580', body: function () { return slotted([46, 51, 49, 57, 55, 61, 64, 60, 68, 71, 69, 76]) }, footer: 'Last 12 weeks ' + MID + ' product analytics' },
+    incidents: {
+      label: 'Open incidents', meta: 'synced 14:05', actions: buttons(['View all']),
+      body: function () {
+        return list([
+          { shape: 'major', name: 'Checkout timeouts', note: 'Major', time: '18 min' },
+          { shape: 'minor', name: 'Slow search results', note: 'Minor', time: '2 h' },
+        ])
+      },
+    },
+    deploys: { label: 'Deploys today', live: true, value: '14', footer: 'Last at 13:52' },
+    queue: { label: 'Support queue', meta: 'synced 14:05', value: '37', footer: 'Oldest waiting 26 min' },
+    plans: { label: 'Revenue by plan', meta: 'synced 14:05', value: '$184,600', actions: buttons(['Month', 'Quarter'], 0), body: function () { return slotted([22, 30, 27, 36, 41, 38, 47, 52, 49, 58, 63, 60, 68, 72, 70, 79, 84, 81, 88, 93]) }, footer: 'From the billing export, refreshed hourly' },
+  }
+
+  function cardTile(d, v, stale) {
+    var st = status(d, stale)
+    var head = hd({ label: d.label, dot: st.dot, meta: st.meta, tone: st.tone, actions: d.actions })
+    var value = d.value ? '<span class="big">' + d.value + '</span>' : ''
+    var body = d.body ? '<div class="body' + (d.scroll ? ' scroll' : '') + '">' + d.body(v) + '</div>' : '<span class="f1"></span>'
+    var foot = d.footer ? '<div class="foot">' + d.footer + '</div>' : ''
+    return tile(head + value + body + foot)
+  }
+
+  // ── Today's P&L (existing widget), M content ──────────────────────────
+  var clipId = 0
+  function pnlM(stale) {
+    var r = rng(61)
+    var n = 61
+    var vals = []
+    var w = 0
+    for (var i = 0; i < n; i++) {
+      var t = i / (n - 1)
+      var rise = t < 0.18 ? 0 : t > 0.95 ? 1 : (function (u) { return u * u * (3 - 2 * u) })((t - 0.18) / 0.77)
+      w = w * 0.6 + (r() - 0.5) * 70
+      vals.push(1284.5 * rise - 212 * Math.exp(-Math.pow((t - 0.11) / 0.06, 2)) + w * Math.sin(Math.PI * t))
+    }
+    vals[n - 1] = 1284.5
+    var W = 375
+    var H = 100
+    var pad = 4
+    var lo = Math.min.apply(null, vals.concat([0]))
+    var hi = Math.max.apply(null, vals.concat([0]))
+    var span = hi - lo
+    hi += span * 0.08
+    lo -= span * 0.08
+    var sx = function (k) { return pad + (k * (W - 2 * pad)) / (n - 1) }
+    var sy = function (v) { return pad + ((hi - v) / (hi - lo)) * (H - 2 * pad) }
+    var line = 'M' + vals.map(function (v, k) { return sx(k).toFixed(1) + ' ' + sy(v).toFixed(1) }).join('L')
+    var zy = sy(0).toFixed(1)
+    var area = line + 'L' + sx(n - 1).toFixed(1) + ' ' + zy + 'L' + sx(0).toFixed(1) + ' ' + zy + 'Z'
+    var id = ++clipId
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true"><defs>' +
+      '<clipPath id="pnl-up-' + id + '"><rect x="0" y="0" width="' + W + '" height="' + zy + '"></rect></clipPath>' +
+      '<clipPath id="pnl-dn-' + id + '"><rect x="0" y="' + zy + '" width="' + W + '" height="' + (H - zy) + '"></rect></clipPath></defs>' +
+      '<line class="lz" x1="0" x2="' + W + '" y1="' + zy + '" y2="' + zy + '"></line>' +
+      '<path class="ap" clip-path="url(#pnl-up-' + id + ')" d="' + area + '"></path><path class="an" clip-path="url(#pnl-dn-' + id + ')" d="' + area + '"></path>' +
+      '<path class="lp" clip-path="url(#pnl-up-' + id + ')" d="' + line + '"></path><path class="ln" clip-path="url(#pnl-dn-' + id + ')" d="' + line + '"></path></svg>'
+    var head = '<div class="hd"><span class="dot ' + (stale ? 'stale' : 'live') + '" aria-hidden="true"></span><span class="lb ell">Today’s P&amp;L</span><span class="f1"></span><span class="sm mut">5 closed ' + MID + ' 2 open</span>' +
+      (stale ? '<span class="sm n warn">' + STALE + '</span>' : '') + '</div>'
+    return tile(
+      head +
+      '<div class="rowb wrap"><span class="xbig pos">+$1,284.50</span><span class="sm mut">low ' + MINUS + '$212 at 10:05 ' + MID + ' high now</span></div>' +
+      '<div class="chartcol"><div class="prow"><div class="plot">' + svg + '</div></div>' + xax(['09:30', '12:00', '14:30']) + '</div>' +
+      '<div class="g3 sep" style="padding-top:10px"><div class="col"><span class="lb">Realised</span><span class="n md pos">+$902.00</span></div>' +
+      '<div class="col"><span class="lb">Unrealised</span><span class="n md pos">+$431.25</span></div>' +
+      '<div class="col"><span class="lb">Fees</span><span class="n md mut">' + MINUS + '$48.75</span></div></div>'
+    )
+  }
+
+  // ── Skeletons ─────────────────────────────────────────────────────────
+  var sk = function (w, h) { return '<span class="sk" style="width:' + w + ';height:' + h + 'px"></span>' }
+  var grow = '<span class="sk grow"></span>'
+  var busy = function (inner) { return tile(inner, 'busy" aria-busy="true') }
+  var skAxis = function (gutter) { return '<div class="xax' + (gutter ? ' gut' : '') + '">' + sk('38px', 9) + sk('38px', 9) + sk('38px', 9) + '</div>' }
+
+  function skMetric(label, v) {
+    var head = hd({ label: label })
+    if (v === 'S') return busy(head + sk('58%', 30) + '<span class="f1"></span>' + sk('72%', 11))
+    if (v === 'Wide') return busy('<div class="cols"><div class="col lhs">' + head + sk('70%', 40) + sk('86%', 11) + '</div><div class="rhs">' + grow + '</div></div>')
+    return busy(
+      head + '<div class="rowb wrap">' + sk('34%', 44) + sk('38%', 12) + '</div>' +
+      '<div class="chartcol">' + grow + '<div class="xax">' + sk('40px', 9) + '<span></span>' + sk('40px', 9) + '</div></div>' +
+      '<div class="target"><div class="rowb">' + sk('18%', 9) + '<span class="f1"></span>' + sk('30%', 10) + '</div>' + sk('100%', 6) + '</div>' + sk('64%', 10)
+    )
+  }
+
+  function skPnl(v) {
+    if (v === 'S') return busy(hd({ label: 'Today' }) + sk('64%', 30) + '<span class="f1"></span>' + sk('82%', 11))
+    if (v === 'Wide') {
+      var line = '<div class="rowb">' + sk('38%', 9) + '<span class="f1"></span>' + sk('34%', 13) + '</div>'
+      return busy('<div class="cols"><div class="col lhs">' + hd({ label: 'Today’s P&amp;L' }) + sk('76%', 44) + sk('58%', 11) + '</div><div class="rhs" style="justify-content:center;gap:12px">' + line + line + line + '</div></div>')
+    }
+    var cell = '<div class="col">' + sk('62%', 9) + sk('74%', 16) + '</div>'
+    return busy(hd({ label: 'Today’s P&amp;L' }) + '<div class="rowb wrap">' + sk('40%', 44) + sk('32%', 11) + '</div><div class="chartcol">' + grow + skAxis() + '</div><div class="g3 sep" style="padding-top:10px">' + cell + cell + cell + '</div>')
+  }
+
+  function skChart(d, v) {
+    var head = hd({ label: d.label, actions: v === 'XL' ? d.actions : '' })
+    if (v === 'Wide') return busy(head + '<div class="chartcol">' + grow + skAxis() + '</div>')
+    if (v === 'M') return busy(head + '<div class="legend">' + sk('92px', 10) + sk('74px', 10) + '</div><div class="chartcol">' + grow + skAxis() + '</div>')
+    var item = '<div class="ri">' + sk('70%', 9) + sk('48%', 16) + '</div>'
+    var items = d.series.map(function () { return item }).join('')
+    return busy(head + '<div class="crow"><div class="chartcol">' + grow + skAxis() + '</div><div class="rail">' + items + '</div></div>')
+  }
+
+  function skCard(d, kind) {
+    var head = hd({ label: d.label, actions: d.actions })
+    var rows = ''
+    for (var i = 0; i < 6; i++) rows += '<div class="skrow">' + sk((54 + ((i * 17) % 30)) + '%', 10) + '<span class="f1"></span>' + sk('18%', 10) + '</div>'
+    var body = kind === 'list' ? '<div class="body">' + rows + '</div>' : '<div class="body">' + grow + '</div>'
+    return busy(head + body + (d.footer ? '<div class="foot">' + d.footer + '</div>' : ''))
+  }
+
+  // ── Empty and error views ─────────────────────────────────────────────
+  function stateTile(label, mode, o) {
+    var head = hd({ label: label })
+    if (mode === 'empty') return tile(head + '<div class="empty">' + o.empty + '</div>')
+    if (mode === 'cta') return tile(head + '<div class="empty"><span>' + o.cta[0] + '</span><span class="btn cta">' + o.cta[1] + '</span></div>')
+    return tile(head + '<div class="err"><span class="err-msg">' + ICON.warn + '<span>' + o.error + '</span></span>' + (mode === 'retry' ? '<span class="btn retry">Retry</span>' : '') + '</div>')
+  }
+
+  function stateSet(mode) {
+    var stale = mode === 'stale'
+    return [
+      { size: 'M', sizes: PNL, render: function () { return stale ? pnlM(true) : stateTile('Today’s P&amp;L', mode, { empty: 'No trades today', cta: ['No trades yet today', 'View strategies'], error: 'Feed disconnected' }) } },
+      { size: 'Wide', sizes: CHART, render: function (v) { return stale ? chartTile(CD.signups, v, true) : stateTile(CD.signups.label, mode, { empty: 'No data yet', cta: ['Nothing in this range', 'Show 90 days'], error: 'Couldn’t display this data' }) } },
+      { size: 'S', sizes: METRIC, render: function (v) { return stale ? metricTile(MD.signups, v, true) : stateTile('Signups', mode, { empty: 'No data yet', cta: ['Not tracked yet', 'Set up'], error: 'Couldn’t display this data' }) } },
+      { size: 'S', sizes: ALL, render: function (v) { return stale ? cardTile(KD.deploys, v, true) : stateTile(KD.deploys.label, mode, { empty: 'No data', cta: ['No deploys yet', 'Deploy log'], error: 'Feed disconnected' }) } },
+    ]
+  }
+
+  // ── Boards ────────────────────────────────────────────────────────────
+  var m = function (d, size) { return { size: size, sizes: METRIC, render: function (v) { return metricTile(d, v) } } }
+  var c = function (d, size) { return { size: size, sizes: CHART, render: function (v) { return chartTile(d, v) } } }
+  var k = function (d, size) { return { size: size, sizes: ALL, render: function (v) { return cardTile(d, v) } } }
+
+  var CARD_ITEMS = [k(KD.sources, 'L'), k(KD.recent, 'Tall'), k(KD.status, 'Banner'), k(KD.wau, 'M'), k(KD.incidents, 'Wide'), k(KD.deploys, 'S'), k(KD.queue, 'S'), k(KD.plans, 'XL')]
+  var METRIC_ITEMS = [
+    m(MD.signups, 'S'), m(MD.revenue, 'S'), m(MD.latency, 'S'), m(MD.seats, 'S'),
+    m(MD.signups, 'Wide'), m(MD.revenue, 'Wide'),
+    m(MD.signups, 'M'), m(MD.revenue, 'M'),
+    m(MD.latency, 'M'), m(MD.latency, 'Wide'), m(MD.tickets, 'Wide'),
+  ]
+  var CHART_ITEMS = [c(CD.signups, 'Wide'), c(CD.latency, 'Wide'), c(CD.revcost, 'M'), c(CD.regions, 'M'), c(CD.users, 'L'), m(MD.errors, 'S'), m(MD.uptime, 'S'), c(CD.channels, 'XL')]
+  var LOADING_ITEMS = [
+    { size: 'S', sizes: METRIC, render: function (v) { return skMetric('Signups', v) } },
+    { size: 'S', sizes: PNL, render: skPnl },
+    { size: 'Wide', sizes: METRIC, render: function (v) { return skMetric('Revenue', v) } },
+    { size: 'Wide', sizes: PNL, render: skPnl },
+    { size: 'Wide', sizes: CHART, render: function (v) { return skChart(CD.signups, v) } },
+    { size: 'M', sizes: METRIC, render: function (v) { return skMetric('p95 latency', v) } },
+    { size: 'M', sizes: PNL, render: skPnl },
+    { size: 'M', sizes: CHART, render: function (v) { return skChart(CD.revcost, v) } },
+    { size: 'M', sizes: ALL, render: function () { return skCard(KD.sources, 'block') } },
+    { size: 'L', sizes: CHART, render: function (v) { return skChart(CD.users, v) } },
+    { size: 'XL', sizes: CHART, render: function (v) { return skChart(CD.channels, v) } },
+    { size: 'Tall', sizes: ALL, render: function () { return skCard(KD.recent, 'list') } },
+  ]
+
+  // A small dashboard for the editing frames.
+  var E = {
+    signups: m(MD.signups, 'S'),
+    revenue: m(MD.revenue, 'S'),
+    latency: c(CD.latency, 'Wide'),
+    incidents: k(KD.incidents, 'Wide'),
+    tickets: m(MD.tickets, 'S'),
+    seats: m(MD.seats, 'S'),
+  }
+  var EDIT_ALL = [E.signups, E.revenue, E.latency, E.incidents, E.tickets, E.seats]
+  var EDIT_ONE_GONE = [E.signups, E.latency, E.incidents, E.tickets, E.seats]
+  var EDIT_TWO_GONE = [E.signups, E.latency, E.incidents, E.tickets]
+
+  var toast = function (label) { return '<div class="toast"><span>' + label + ' removed</span><span class="act">Undo</span></div>' }
+
+  function pill(hidden, open) {
+    var add = hidden && hidden.length ? '<span class="pb' + (open ? ' open' : '') + '">' + ICON.plus + 'Add back (' + hidden.length + ')</span>' : ''
+    var menu = open
+      ? '<div class="menu"><span class="menu-h">Hidden from this layout</span>' + hidden.map(function (h, i) {
+        return '<div class="mi' + (i === 0 ? ' focus' : '') + '"><span>' + h[0] + '</span><span class="ty">' + h[1] + '</span>' + ICON.plus + '</div>'
+      }).join('') + '</div>'
+      : ''
+    return '<div class="pill">' + add + '<span class="pb primary">Done</span>' + menu + '</div>'
+  }
+
+  // Desktop: the whole grid fits, so the pill rests below it. Phone: the
+  // grid runs past the screen, so the pill floats over the tiles.
+  function editPair(items, dock) {
+    return pair(
+      frame('desk', board(items, GEO.desk, { editing: true }) + '<div class="dock flow">' + dock + '</div>'),
+      frame('phone', board(items, GEO.phone, { editing: true }) + '<div class="dock float">' + dock + '</div>', { height: 620 })
+    )
+  }
+
+  var editButton = '<span class="editbtn">' + ICON.grid + 'Edit layout</span>'
+
+  function emptyBoard(g) {
+    return '<div class="board" style="width:' + g.width + 'px"><div class="emptyboard" style="height:' + g.row + 'px"><p>No widgets on this layout yet</p><span class="ghost">' + ICON.plus + 'Add back (3)</span></div></div>'
+  }
+
+  function picker(kind) {
+    var restores = [['Revenue', 'Metric ' + MID + ' was S'], ['Active seats', 'Metric ' + MID + ' was S']]
+    var groups = [
+      ['General', [
+        ['Card', 'Your own content in a tile: a list, text or another library’s chart', ALL],
+        ['Metric', 'One number with its change, trend and target', METRIC],
+        ['Chart', 'Lines and areas over time, up to four series', CHART],
+      ]],
+      ['Trading', [
+        ['Today’s P&amp;L', 'Net, realised and unrealised P&amp;L for the session', PNL],
+        ['Equity curve', 'Running net P&amp;L with its worst drawdown', ['Wide', 'M', 'XL']],
+        ['Session clock', 'Time to the next open or close', ['S', 'Banner']],
+      ]],
+    ]
+    var rows = '<div class="pgrp">Removed from this layout</div>' + restores.map(function (r) {
+      return '<div class="pick restore"><div class="pname"><span class="nm">' + r[0] + '</span><span class="ds">' + r[1] + '</span></div><div class="chips"><span class="chip add">' + ICON.plus + 'Add back</span></div></div>'
+    }).join('')
+    groups.forEach(function (g) {
+      rows += '<div class="pgrp">' + g[0] + '</div>' + g[1].map(function (w) {
+        return '<div class="pick"><div class="pname"><span class="nm">' + w[0] + '</span><span class="ds">' + w[1] + '</span></div><div class="chips">' +
+          w[2].map(function (s) { return '<span class="chip">' + s + '</span>' }).join('') + '</div></div>'
+      }).join('')
+    })
+    var sheet = kind === 'phone'
+    return '<div class="scrim"></div><div class="dialog ' + (sheet ? 'sheet' : 'center') + '">' + (sheet ? '<span class="grab"></span>' : '') +
+      '<div class="dlg-hd"><span class="dlg-title">Add a widget</span><span class="icon-btn">' + ICON.close + '</span></div>' +
+      '<div class="search">' + ICON.search + '<span>Search widgets</span></div><div class="plist">' + rows + '</div></div>'
+  }
+
+  var MOUNTS = {
+    card: function () { return boards(CARD_ITEMS) },
+    metric: function () { return boards(METRIC_ITEMS) },
+    chart: function () { return boards(CHART_ITEMS) },
+    loading: function () { return boards(LOADING_ITEMS) },
+    empty: function () { return boards(stateSet('empty')) },
+    cta: function () { return boards(stateSet('cta')) },
+    error: function () { return boards(stateSet('error')) },
+    retry: function () { return boards(stateSet('retry')) },
+    stale: function () { return boards(stateSet('stale')) },
+    'edit-done': function () { return editPair(EDIT_ALL, pill()) },
+    'edit-undo': function () { return editPair(EDIT_ONE_GONE, toast('Revenue') + pill([['Revenue', 'Metric']])) },
+    'edit-addback': function () { return editPair(EDIT_TWO_GONE, pill([['Revenue', 'Metric'], ['Active seats', 'Metric']], true)) },
+    'edit-button': function () {
+      return pair(frame('desk', board(EDIT_ALL, GEO.desk, { inside: editButton })), frame('phone', board(EDIT_ALL, GEO.phone, { inside: editButton })))
+    },
+    'edit-empty': function () { return pair(frame('desk', emptyBoard(GEO.desk)), frame('phone', emptyBoard(GEO.phone))) },
+    picker: function () {
+      return pair(
+        frame('desk', board(EDIT_TWO_GONE, GEO.desk, { editing: true }) + picker('desk'), { height: 700 }),
+        frame('phone', board(EDIT_TWO_GONE, GEO.phone, { editing: true }) + picker('phone'), { height: 760 })
+      )
+    },
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-mount]'), function (el) {
+    var build = MOUNTS[el.getAttribute('data-mount')]
+    if (build) el.innerHTML = build()
+  })
+
+  // ── Fitting frames to the page ────────────────────────────────────────
+  // Frames keep their real pixel sizes and are scaled with `zoom`, so the
+  // tiles' container-relative type renders exactly as it would at full size.
+  var scale = 'fit'
+  function fit() {
+    Array.prototype.forEach.call(document.querySelectorAll('.pair'), function (pairEl) {
+      var figs = pairEl.querySelectorAll('.fig')
+      var avail = pairEl.clientWidth - 2
+      var side = (avail - PAIR_GAP) / (FRAME_W.desk + FRAME_W.phone)
+      Array.prototype.forEach.call(figs, function (fig) {
+        var kind = fig.getAttribute('data-kind')
+        var z = 1
+        if (scale === 'fit') z = side >= 0.75 ? Math.min(1, side) : Math.min(1, avail / FRAME_W[kind])
+        z = Math.floor(z * 1000) / 1000
+        fig.querySelector('.frame').style.setProperty('--z', String(z))
+        fig.style.width = Math.ceil(FRAME_W[kind] * z) + 'px'
+      })
+    })
+  }
+  fit()
+  var pending = 0
+  window.addEventListener('resize', function () {
+    cancelAnimationFrame(pending)
+    pending = requestAnimationFrame(fit)
+  })
+
+  // ── Controls ──────────────────────────────────────────────────────────
+  var root = document.documentElement
+  function showTheme() {
+    var t = root.getAttribute('data-theme')
+    var current = t === 'light' || t === 'dark' ? t : 'auto'
+    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'), function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-theme-set') === current))
+    })
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'), function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-theme-set')
+      if (t === 'auto') root.removeAttribute('data-theme')
+      else root.setAttribute('data-theme', t)
+      showTheme()
+    })
+  })
+  // The viewer may set data-theme itself; keep the switch honest.
+  new MutationObserver(showTheme).observe(root, { attributes: true, attributeFilter: ['data-theme'] })
+  showTheme()
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-scale]'), function (b) {
+    b.addEventListener('click', function () {
+      scale = b.getAttribute('data-scale')
+      Array.prototype.forEach.call(document.querySelectorAll('[data-scale]'), function (o) {
+        o.setAttribute('aria-pressed', String(o === b))
+      })
+      fit()
+    })
+  })
+})()
+</script>

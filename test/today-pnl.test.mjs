@@ -9,20 +9,20 @@ const ctx = { fmt, now: 0, label: "Today's P&L" }
 // 2026-03-02 (a Monday) in IST, built from UTC so the test doesn't depend on the machine's zone.
 const ist = (h, m) => Date.UTC(2026, 2, 2, h, m) - (5 * 60 + 30) * 60000
 const day = {
-  net: 1523.85,
-  realized: 1240,
-  unrealized: 380.25,
-  fees: 96.4,
-  closedCount: 2,
-  openCount: 2,
+  net: 2185.65,
+  realized: 1860,
+  unrealized: 412.95,
+  fees: 87.3,
+  closedCount: 3,
+  openCount: 1,
   asOf: ist(11, 42),
   live: true,
 }
 const intraday = [
   { t: ist(9, 15), v: 0 },
-  { t: ist(9, 45), v: -640 },
+  { t: ist(9, 45), v: -715 },
   { t: ist(10, 30), v: 400 },
-  { t: ist(11, 42), v: 1523.85 },
+  { t: ist(11, 42), v: 2185.65 },
 ]
 const withChart = { ...day, intraday, window: { from: ist(9, 15), to: ist(15, 30) } }
 const model = (data, variant) => todayPnlModel(data, variant, ctx)
@@ -50,16 +50,16 @@ describe('S', () => {
     assert.equal(vm.label, 'Today')
     assert.equal(vm.live, true)
     assert.equal(vm.time, '11:42')
-    assert.equal(vm.net, '+₹1,523.85')
-    assert.equal(vm.footer, '2 closed · 2 open · fees ₹96.40')
+    assert.equal(vm.net, '+₹2,185.65')
+    assert.equal(vm.footer, '3 closed · 1 open · fees ₹87.30')
   })
   test('the tile is named by label and headline', () => {
-    assert.equal(vm.ariaLabel, "Today's P&L, +₹1,523.85")
+    assert.equal(vm.ariaLabel, "Today's P&L, +₹2,185.65")
   })
   test('footer parts that are missing are left out', () => {
-    assert.equal(model({ ...day, closedCount: undefined }, 'S').footer, '2 open · fees ₹96.40')
-    assert.equal(model({ ...day, openCount: undefined, fees: 'x' }, 'S').footer, '2 closed')
-    assert.equal(model({ ...day, closedCount: undefined, openCount: undefined }, 'S').footer, 'fees ₹96.40')
+    assert.equal(model({ ...day, closedCount: undefined }, 'S').footer, '1 open · fees ₹87.30')
+    assert.equal(model({ ...day, openCount: undefined, fees: 'x' }, 'S').footer, '3 closed')
+    assert.equal(model({ ...day, closedCount: undefined, openCount: undefined }, 'S').footer, 'fees ₹87.30')
     assert.equal(model({ net: 1, realized: 1, unrealized: 0, fees: null }, 'S').footer, '')
   })
   test('no live flag and no asOf means no dot and no time', () => {
@@ -81,16 +81,16 @@ describe('Wide', () => {
   test('heading uses the label; the note says net of fees with the time', () => {
     assert.equal(vm.label, "Today's P&L")
     assert.equal(vm.note, 'net of fees · 11:42')
-    assert.equal(vm.net, '+₹1,523.85')
+    assert.equal(vm.net, '+₹2,185.65')
   })
   test('rows are signed and fees are a deduction', () => {
-    assert.equal(vm.realized, '+₹1,240.00')
-    assert.equal(vm.unrealized, '+₹380.25')
-    assert.equal(vm.fees, '−₹96.40')
+    assert.equal(vm.realized, '+₹1,860.00')
+    assert.equal(vm.unrealized, '+₹412.95')
+    assert.equal(vm.fees, '−₹87.30')
   })
   test('fees are a deduction however the host signs them', () => {
-    assert.equal(model({ ...day, fees: -96.4 }, 'Wide').fees, '−₹96.40')
-    assert.equal(model({ ...day, fees: '96.40' }, 'Wide').fees, '−₹96.40')
+    assert.equal(model({ ...day, fees: -87.3 }, 'Wide').fees, '−₹87.30')
+    assert.equal(model({ ...day, fees: '87.30' }, 'Wide').fees, '−₹87.30')
     assert.equal(model({ ...day, fees: 0 }, 'Wide').fees, '₹0.00')
   })
   test('the note drops the time when there is no asOf', () => {
@@ -98,7 +98,7 @@ describe('Wide', () => {
   })
   test('a host label becomes the heading', () => {
     assert.equal(todayPnlModel(day, 'Wide', { ...ctx, label: 'Desk P&L' }).label, 'Desk P&L')
-    assert.equal(todayPnlModel(day, 'Wide', { ...ctx, label: 'Desk P&L' }).ariaLabel, 'Desk P&L, +₹1,523.85')
+    assert.equal(todayPnlModel(day, 'Wide', { ...ctx, label: 'Desk P&L' }).ariaLabel, 'Desk P&L, +₹2,185.65')
   })
   test('fit allows 11 characters, then goes compact', () => {
     assert.deepEqual({ ...HEADLINE_CHARS }, { S: 10, Wide: 11, M: 14 })
@@ -135,15 +135,15 @@ describe('M', () => {
   const vm = model(withChart, 'M')
   test('heading, counts and the low/high summary', () => {
     assert.equal(vm.label, "Today's P&L")
-    assert.equal(vm.counts, '2 closed · 2 open')
-    assert.equal(vm.net, '+₹1,523.85')
-    assert.equal(vm.summary, 'low −₹640 at 09:45 · high now')
-    assert.equal(vm.realized, '+₹1,240.00')
-    assert.equal(vm.fees, '−₹96.40')
+    assert.equal(vm.counts, '3 closed · 1 open')
+    assert.equal(vm.net, '+₹2,185.65')
+    assert.equal(vm.summary, 'low −₹715 at 09:45 · high now')
+    assert.equal(vm.realized, '+₹1,860.00')
+    assert.equal(vm.fees, '−₹87.30')
   })
   test('says where the high was when it is not now', () => {
     const pts = [...intraday.slice(0, 3), { t: ist(11, 42), v: 200 }]
-    assert.equal(model({ ...withChart, intraday: pts }, 'M').summary, 'low −₹640 at 09:45 · high +₹400 at 10:30')
+    assert.equal(model({ ...withChart, intraday: pts }, 'M').summary, 'low −₹715 at 09:45 · high +₹400 at 10:30')
   })
   test('a day that ends at its low says so', () => {
     const pts = [{ t: ist(9, 15), v: 0 }, { t: ist(10, 0), v: 300 }, { t: ist(11, 0), v: -100 }]
@@ -154,7 +154,7 @@ describe('M', () => {
     assert.equal(c.empty, false)
     assert.match(c.line, /^M[\d.]+ [\d.]+( L[\d.]+ [\d.]+){3}$/)
     assert.match(c.area, / Z$/)
-    assert.equal(c.ariaLabel, 'Intraday P&L: low −₹640, now +₹1,523.85')
+    assert.equal(c.ariaLabel, 'Intraday P&L: low −₹715, now +₹2,185.65')
     assert.ok(c.zeroY > 0 && c.zeroY < CHART_BOX.height)
   })
   test('the window is the x domain, so an in-progress day stops short of the right edge', () => {
@@ -216,8 +216,8 @@ describe('M', () => {
       assert.equal(m.chart.message, 'No intraday data yet')
       assert.equal(m.chart.line, '')
       assert.equal(m.summary === '' || intra.length === 1, true)
-      assert.equal(m.net, '+₹1,523.85')
-      assert.equal(m.counts, '2 closed · 2 open')
+      assert.equal(m.net, '+₹2,185.65')
+      assert.equal(m.counts, '3 closed · 1 open')
       assert.deepEqual(m.chart.ticks, ['09:15', '12:30', '15:30'])
     }
     assert.deepEqual(model(day, 'M').chart.ticks, ['', '', ''])
@@ -229,10 +229,10 @@ describe('M', () => {
   test('numeric strings are accepted everywhere', () => {
     const strs = {
       ...withChart,
-      net: '1523.85',
-      realized: '1240.00',
-      unrealized: '380.25',
-      fees: '96.40',
+      net: '2185.65',
+      realized: '1860.00',
+      unrealized: '412.95',
+      fees: '87.30',
       intraday: intraday.map((p) => ({ t: p.t, v: String(p.v) })),
     }
     assert.deepEqual(model(strs, 'M'), vm)
