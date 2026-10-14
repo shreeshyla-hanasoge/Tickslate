@@ -6,7 +6,7 @@
 | Written | 13 Oct 2026 |
 | Amends | [RFC 0001](0001-api.md) §2, §3, §4.3–§4.5, §5, §6, §8.1–§8.6, §9, §11, §13 and §14 |
 | Covers | Every public name 0.1.0 adds: markup-only grids, saving layouts, the widget contract and its data states, `<ts-card>`, `<ts-metric>` and `<ts-chart>`, the data shapes real APIs send, safe and accessible editing, theming, development warnings, packaging and size budgets |
-| Amended by | [RFC 0003](0003-p1-surfaces.md) (Proposed): the P1 surfaces. Sections it changes are listed in its header; RFC 0003 wins where the two differ once it is approved. |
+| Amended by | [RFC 0003](0003-p1-surfaces.md) (Approved 14 Oct 2026): the P1 surfaces. Sections it changes are listed in its header; RFC 0003 wins where the two differ. |
 | Sources | RFC 0001, [docs/BRIEF.md](../BRIEF.md), the P0 stories of the build plan, the design sheet `docs/design/generic-widgets.html`, and size measurements made for this RFC (§9) |
 | Approval | Approved by the maintainer in chat on 13 Oct 2026, with all recommendations in the Decisions table (§13) accepted. |
 
@@ -1394,7 +1394,7 @@ differently in these ways, which the changelog lists as breaking:
 
 ## 12. Next
 
-[RFC 0003](0003-p1-surfaces.md) (Proposed) specifies every P1 surface for a single approval. By name only:
+[RFC 0003](0003-p1-surfaces.md) (Approved 14 Oct 2026) specifies every P1 surface. By name only:
 
 - messages (overridable strings and size names)
 - per-widget entry points, the one-script CDN bundle and the dev tree
