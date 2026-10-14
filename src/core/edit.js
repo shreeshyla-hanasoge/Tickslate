@@ -10,7 +10,7 @@
  */
 
 import { WIDGETS, specFor } from './catalog.js'
-import { checkColumns, isSize, nearestSize, sizeOrder, snapSize } from './sizes.js'
+import { checkColumns, footprint, isSize, nearestSize, sizeOrder, snapSize } from './sizes.js'
 import { placeFirst } from './place.js'
 import { TOP_STRIP_MAX } from './layout.js'
 
@@ -62,9 +62,26 @@ export function stepSize(spec, current, dir) {
   return order[Math.max(0, Math.min(order.length - 1, at + (dir < 0 ? -1 : 1)))]
 }
 
-/** The supported size nearest to an extent a resize handle has been dragged to. */
-export function sizeForExtent(spec, cols, rows) {
-  return nearestSize(spec.sizes, cols, rows)
+/**
+ * The supported size nearest to an extent a resize handle has been dragged
+ * to. With `columns`, sizes are compared by the footprint they would have on
+ * that grid, which is what the user sees while dragging on a phone or tablet.
+ * There, several sizes can share a footprint (XL and L are both 3×2 on three
+ * columns), so a tie keeps `current` and otherwise takes the smaller size.
+ */
+export function sizeForExtent(spec, cols, rows, columns, current) {
+  if (columns === undefined) return nearestSize(spec.sizes, cols, rows)
+  let best = null
+  let bestDistance = Infinity
+  for (const size of sizeOrder(spec.sizes)) {
+    const fp = footprint(size, columns, spec.sizes)
+    const distance = Math.abs(fp.cols - cols) + Math.abs(fp.rows - rows)
+    if (distance < bestDistance || (distance === bestDistance && size === current)) {
+      best = size
+      bestDistance = distance
+    }
+  }
+  return best
 }
 
 /**

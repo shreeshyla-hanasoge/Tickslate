@@ -385,6 +385,17 @@ describe('editing', () => {
     assert.equal(sizeForExtent(cal, 1, 1), 'Tall')
   })
 
+  test('sizeForExtent compares footprints on the current grid', () => {
+    const chart = WIDGETS.miniChart
+    // On three columns, L and XL are both 3×2: keep whichever the tile has.
+    assert.equal(sizeForExtent(chart, 3, 2, 3, 'XL'), 'XL')
+    assert.equal(sizeForExtent(chart, 3, 2, 3, 'L'), 'L')
+    assert.equal(sizeForExtent(chart, 3, 2, 3, 'M'), 'L')
+    // On a phone, a full-width Banner calendar renders as M.
+    assert.equal(sizeForExtent(WIDGETS.pnlCalendar, 2, 2, 2, 'Tall'), 'M')
+    assert.equal(sizeForExtent(WIDGETS.pnlCalendar, 1, 2, 2, 'M'), 'Tall')
+  })
+
   test('withProfile replaces one profile and prunes the top strip', () => {
     const layout = { version: 1, device: 'phone', profiles: { market: items, closed: [] }, topStrip: ['todayPnl', 'sessionClock'] }
     const next = withProfile(layout, 'market', removeItem(items, 'sessionClock'))

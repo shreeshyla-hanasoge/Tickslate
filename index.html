@@ -4,23 +4,183 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tickslate playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
 <link rel="stylesheet" href="/src/themes/tokens.css">
 <style>
-  body { margin: 0; padding: 48px 16px; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
-  main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
-  h1 { font-family: var(--ts-font-num); font-weight: 500; font-size: 40px; margin: 0; }
-  p { margin: 0; color: var(--ts-muted); }
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  .page { max-width: 1312px; margin: 0 auto; padding: 24px 24px 96px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding-bottom: 20px; }
+  h1 { font: 500 28px/1 var(--ts-font-num); margin: 0; flex: 1 1 auto; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bar button {
+    min-height: 36px; padding: 0 14px; border-radius: var(--ts-radius-sm); cursor: pointer;
+    border: 1px solid var(--ts-line); background: var(--ts-surface); color: var(--ts-ink); font: 500 13px var(--ts-font-ui);
+  }
+  .bar button[aria-pressed="true"] { background: var(--ts-ink); color: var(--ts-bg); border-color: var(--ts-ink); }
+  .bar button.primary { background: var(--ts-accent); color: var(--ts-surface); border-color: var(--ts-accent); }
+  .hint { color: var(--ts-muted); font-size: 13px; margin: 0 0 16px; }
+  .log { position: fixed; left: 16px; bottom: 16px; max-width: calc(100% - 32px); padding: 8px 12px; border-radius: var(--ts-radius-sm);
+    background: var(--ts-surface); border: 1px solid var(--ts-line); color: var(--ts-muted); font: 12px ui-monospace, monospace; }
+  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } }
 </style>
 </head>
 <body>
-<main>
-  <h1>Tickslate</h1>
-  <p>Playground. No widgets yet — this page will show each widget at every size, in light and dark.</p>
-  <p>Version <span id="version"></span></p>
-</main>
+<div class="page">
+  <header>
+    <h1>Tickslate</h1>
+    <div class="bar" role="group" aria-label="Profile">
+      <button type="button" data-profile="market" aria-pressed="true">Market hours</button>
+      <button type="button" data-profile="closed" aria-pressed="false">After close</button>
+    </div>
+    <div class="bar" role="group" aria-label="Theme">
+      <button type="button" data-theme-pick="light" aria-pressed="false">Paper</button>
+      <button type="button" data-theme-pick="dark" aria-pressed="false">Traed Dark</button>
+    </div>
+    <div class="bar">
+      <button type="button" id="reset">Reset layout</button>
+      <button type="button" id="edit" class="primary">Edit</button>
+    </div>
+  </header>
+  <p class="hint">Long-press a tile (or press Edit) to rearrange. Drag tiles, drag the corner handle to resize, tap − to remove.
+    Keyboard: Tab to a tile in edit mode, Space to pick up, arrows to move, Space to drop, + and − to resize.</p>
+
+  <ts-grid id="grid" locale="en-IN" currency="INR">
+    <play-tile item="todayPnl" label="Today's P&amp;L"></play-tile>
+    <play-tile item="sessionClock" label="Session clock"></play-tile>
+    <play-tile item="openPositions" label="Open positions"></play-tile>
+    <play-tile item="capitalFunding" label="Capital funding"></play-tile>
+    <play-tile item="watchlist" label="Watchlist"></play-tile>
+    <play-tile item="edgeStats" label="Edge stats"></play-tile>
+    <play-tile item="chart-nifty" label="Mini chart · NIFTY"></play-tile>
+    <play-tile item="chart-crude" label="Mini chart · CRUDE"></play-tile>
+    <play-tile item="equityCurve" label="Equity curve"></play-tile>
+    <play-tile item="pnlCalendar" label="Daily P&amp;L calendar"></play-tile>
+  </ts-grid>
+</div>
+<div class="log" id="log" aria-live="off">No edits yet.</div>
+
 <script type="module">
-  import { version } from '/src/elements/index.js'
-  document.getElementById('version').textContent = version
+  import '/src/elements/index.js'
+
+  // A stand-in tile until the real widgets exist: shows its label and the
+  // size the grid asked for, and has a button so you can check a drag never
+  // clicks it.
+  class PlayTile extends HTMLElement {
+    static get observedAttributes() { return ['size', 'label'] }
+    constructor() {
+      super()
+      this.attachShadow({ mode: 'open' }).innerHTML = `
+        <style>
+          :host { display: block; }
+          .tile { box-sizing: border-box; height: 100%; padding: 16px; display: flex; flex-direction: column; gap: 8px;
+            background: var(--ts-surface); border: 1px solid var(--ts-line); border-radius: var(--ts-radius);
+            box-shadow: var(--ts-shadow); color: var(--ts-ink); overflow: hidden; }
+          .hd { display: flex; align-items: center; gap: 8px; }
+          .lb { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--ts-muted); flex: 1; min-width: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .sz { font: 600 10px var(--ts-font-ui); padding: 2px 6px; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); color: var(--ts-muted); }
+          .big { font: var(--ts-num-weight) 34px/1 var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; }
+          .bars { flex: 1; min-height: 0; display: flex; align-items: flex-end; gap: 4px; }
+          .bars[hidden] { display: none; }
+          .bars i { flex: 1; border-radius: 3px 3px 1px 1px; background: color-mix(in srgb, var(--ts-accent) 28%, transparent); }
+          button { align-self: flex-start; font: 500 12px var(--ts-font-ui); min-height: 28px; padding: 0 10px; border-radius: var(--ts-radius-sm);
+            border: 1px solid var(--ts-line); background: transparent; color: var(--ts-accent); cursor: pointer; }
+        </style>
+        <section class="tile" aria-label="">
+          <div class="hd"><span class="lb"></span><span class="sz"></span></div>
+          <span class="big"></span>
+          <div class="bars" aria-hidden="true"></div>
+          <button type="button">Details</button>
+        </section>`
+      const bars = this.shadowRoot.querySelector('.bars')
+      for (let i = 0; i < 14; i++) {
+        const bar = document.createElement('i')
+        bar.style.height = `${20 + ((i * 37) % 70)}%`
+        bars.appendChild(bar)
+      }
+      this.shadowRoot.querySelector('button').addEventListener('click', () => log(`Clicked Details on ${this.getAttribute('label')}`))
+    }
+    attributeChangedCallback() {
+      const label = this.getAttribute('label') || ''
+      const size = this.getAttribute('size') || ''
+      this.shadowRoot.querySelector('.lb').textContent = label
+      this.shadowRoot.querySelector('.sz').textContent = size
+      this.shadowRoot.querySelector('.big').textContent = size
+      this.shadowRoot.querySelector('section').setAttribute('aria-label', label)
+      this.shadowRoot.querySelector('.bars').hidden = size === 'S' || size === 'Wide' || size === 'Banner'
+    }
+  }
+  customElements.define('play-tile', PlayTile)
+
+  const defaults = {
+    version: 1,
+    device: 'desktop',
+    profiles: {
+      market: [
+        { id: 'todayPnl', size: 'Wide' },
+        { id: 'sessionClock', size: 'S' },
+        { id: 'edgeStats', size: 'S' },
+        { id: 'openPositions', size: 'M' },
+        { id: 'capitalFunding', size: 'Tall' },
+        { id: 'watchlist', size: 'Tall' },
+        { id: 'chart-nifty', type: 'miniChart', size: 'M' },
+        { id: 'chart-crude', type: 'miniChart', size: 'M' },
+      ],
+      closed: [
+        { id: 'todayPnl', size: 'Wide' },
+        { id: 'sessionClock', size: 'S' },
+        { id: 'edgeStats', size: 'S' },
+        { id: 'equityCurve', size: 'XL' },
+        { id: 'pnlCalendar', size: 'Banner' },
+        { id: 'capitalFunding', size: 'S' },
+        { id: 'watchlist', size: 'S' },
+      ],
+    },
+  }
+
+  const grid = document.getElementById('grid')
+  const logEl = document.getElementById('log')
+  function log(text) { logEl.textContent = text }
+
+  const KEY = 'tickslate-playground-layout'
+  // Local storage can be missing or blocked; the playground still works.
+  function load() { try { return JSON.parse(localStorage.getItem(KEY)) } catch { return null } }
+  function save(layout) { try { localStorage.setItem(KEY, JSON.stringify(layout)) } catch {} }
+
+  grid.layout = load() || defaults
+  grid.addEventListener('ts-layout-change', (e) => {
+    save(e.detail.layout)
+    const ids = e.detail.layout.profiles[e.detail.profile].map((i) => `${i.id}:${i.size}`).join('  ')
+    log(`${e.detail.reason} ${e.detail.id} → ${ids}`)
+  })
+  grid.addEventListener('ts-layout-issues', (e) => log(`Layout repaired: ${e.detail.issues.map((i) => i.message).join(' ')}`))
+  grid.addEventListener('ts-columns-change', (e) => log(`${e.detail.columns} columns`))
+
+  const edit = document.getElementById('edit')
+  edit.addEventListener('click', () => { grid.editing = !grid.editing })
+  grid.addEventListener('ts-edit-change', (e) => { edit.textContent = e.detail.editing ? 'Done' : 'Edit' })
+
+  document.getElementById('reset').addEventListener('click', () => {
+    grid.layout = defaults
+    save(defaults)
+    log('Layout reset.')
+  })
+
+  for (const button of document.querySelectorAll('[data-profile]')) {
+    button.addEventListener('click', () => {
+      grid.profile = button.dataset.profile
+      for (const b of document.querySelectorAll('[data-profile]')) b.setAttribute('aria-pressed', String(b === button))
+    })
+  }
+
+  const root = document.documentElement
+  function pickTheme(theme) {
+    root.dataset.theme = theme
+    for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === theme))
+  }
+  for (const b of document.querySelectorAll('[data-theme-pick]')) b.addEventListener('click', () => pickTheme(b.dataset.themePick))
+  pickTheme(matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
 </script>
 </body>
 </html>
