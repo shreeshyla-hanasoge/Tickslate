@@ -385,6 +385,8 @@ export interface Messages {
   'session.opensDay': string
   'session.dayTime': string
   'session.ariaOpen': string
+  'session.open247': string
+  'session.ariaOpen247': string
   'session.ariaClosed': string
   'session.ariaNone': string
   'session.aria': string
@@ -443,19 +445,23 @@ export interface SessionSpec {
   label: string
   /** IANA zone, e.g. 'Asia/Kolkata'. */
   timeZone: string
-  /** ISO weekdays it trades, 1 = Monday. */
+  /** ISO weekdays on which it OPENS, 1 = Monday. An overnight window belongs to the weekday it opens on. */
   days: readonly number[]
   /** 'HH:MM' local. */
   open: string
-  /** 'HH:MM' local, after `open`, or date ranges with their own close. */
+  /**
+   * 'HH:MM' local, or date ranges with their own close. A close before `open` is
+   * on the next local day (17:00 to 16:00), and a close equal to it makes a
+   * 24-hour session ('00:00' to '00:00'). '24:00' is not accepted.
+   */
   close: string | { default: string; ranges: ReadonlyArray<{ from: string; to: string; close: string }> }
-  /** Extra sessions on given dates, e.g. a weekend session. They beat weekdays and holidays. */
+  /** Extra sessions keyed by the date they open on, e.g. a weekend session. They beat weekdays and holidays, and may cross midnight too. */
   specialSessions?: Record<string, { open: string; close: string }>
 }
 
 export interface CalendarInput {
   sessions: readonly SessionSpec[]
-  /** Session id → 'YYYY-MM-DD' dates; '*' applies to every session. */
+  /** Session id → 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
 }
 
@@ -463,11 +469,11 @@ export interface SessionState {
   open: boolean
   /** Next open, when closed; null if none within a month. */
   opensAt: number | null
-  /** When open. */
+  /** When open: the end of the run of touching windows. Null while open means no close within a month. */
   closesAt: number | null
-  /** When open. */
+  /** When open: the start of that run. Null when there is no close within a month, or it began more than a month ago. */
   startedAt: number | null
-  /** 0..1 through the session, when open. */
+  /** 0..1 through the run, when open. Null when `closesAt` or `startedAt` is. */
   progress: number | null
 }
 
@@ -475,13 +481,15 @@ export interface Calendar {
   readonly sessions: readonly string[]
   session(id: string): SessionSpec
   isTradingDay(id: string, date: string): boolean
-  /** The session's hours on a date as instants, or null if it doesn't trade. */
+  /** The window that opens on a date as instants (its close is on the next day for an overnight session), or null if it doesn't open. */
   hours(id: string, date: string): { open: number; close: number } | null
+  /** Windows that touch are one: a session open Sunday evening to Friday evening is open all week. */
   state(id: string, now: number): SessionState
+  /** The next open or close, or null when there is none within a month, which includes an open session with no close. */
   nextChange(id: string, now: number): { at: number; to: 'open' | 'closed' } | null
-  /** The next candle close, aligned to the session open; null while closed. */
+  /** The next candle close, aligned to the session open (to the day's window when the session has no known start); null while closed. */
   candleClose(id: string, now: number, timeframeMinutes: number): number | null
-  /** Every session window overlapping [from, to). */
+  /** Every session window overlapping [from, to), touching windows merged. A run still going a month past `to` is cut there. */
   windows(id: string, from: number, to: number): Array<{ open: number; close: number }>
 }
 

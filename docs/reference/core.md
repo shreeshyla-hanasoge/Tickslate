@@ -439,7 +439,7 @@ instant in `timeZone`.
 ```ts
 createCalendar(input: {
   sessions: readonly SessionSpec[]
-  /** Session id -> 'YYYY-MM-DD' dates; '*' applies to every session. */
+  /** Session id -> 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
 }): Calendar
 ```
@@ -451,12 +451,34 @@ interface SessionSpec {
   id: string
   label: string
   timeZone: string                 // IANA, e.g. 'Asia/Kolkata'
-  days: readonly number[]          // ISO weekdays it trades, 1 = Monday
+  days: readonly number[]          // ISO weekdays it OPENS on, 1 = Monday
   open: string                     // 'HH:MM' local
-  close: string | { default: string; ranges: Array<{ from: string; to: string; close: string }> }
-  specialSessions?: Record<string, { open: string; close: string }>   // extra sessions; they beat weekdays and holidays
+  close: string | { default: string; ranges: Array<{ from: string; to: string; close: string }> }   // 'HH:MM' local; may be at or before `open`
+  specialSessions?: Record<string, { open: string; close: string }>   // extra sessions by opening date; they beat weekdays and holidays
 }
 ```
+
+**Overnight and round-the-clock sessions.** A `close` earlier than `open` is on
+the **next local day**, so `open: '17:00', close: '16:00'` is a 23-hour
+session, and `close` equal to `open` makes a 24-hour one. A session that never
+closes is `open: '00:00', close: '00:00'` on every day. `'24:00'` is not
+accepted; midnight is `'00:00'`. `days`, `holidays` and `specialSessions` all go
+by the **opening** date: a holiday on Monday removes the window that opens on
+Monday evening, and Sunday evening's window still runs into Monday.
+
+```js
+// A futures exchange: Sunday to Thursday evening, closing at 16:00 the next day.
+{ id: 'cme', label: 'CME', timeZone: 'America/Chicago', days: [7, 1, 2, 3, 4], open: '17:00', close: '16:00' }
+// Crypto: always open.
+{ id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }
+```
+
+Windows that touch are **one** window: an FX week written as daily 24-hour
+windows from Sunday 17:00 is open until Friday 17:00, and `state` reports that
+close. A run that is still going a month ahead (the same look-ahead as "next
+open") has no close the calendar can name, so `state` returns `open: true` with
+`closesAt`, `startedAt` and `progress` all `null`, `nextChange` returns `null`,
+and `<ts-session-clock>` shows "Open 24/7".
 
 The `Calendar`:
 
@@ -465,11 +487,11 @@ The `Calendar`:
 | `sessions` | The session ids |
 | `session(id)` | The `SessionSpec`. Throws `RangeError` for an unknown id |
 | `isTradingDay(id, date)` | Whether the session trades on `'YYYY-MM-DD'` |
-| `hours(id, date)` | `{ open, close }` as instants, or `null` if it does not trade |
-| `state(id, now)` | `{ open, opensAt, closesAt, startedAt, progress }`: `opensAt` is the next open when closed (`null` if none within a month); the rest apply when open, with `progress` 0 to 1 |
-| `nextChange(id, now)` | `{ at, to: 'open' \| 'closed' }` or `null` |
-| `candleClose(id, now, timeframeMinutes)` | The next candle close, aligned to the session open; `null` while closed |
-| `windows(id, from, to)` | Every session window overlapping `[from, to)` |
+| `hours(id, date)` | The window that opens on `date`, `{ open, close }` as instants (`close` is on the next day for an overnight session), or `null` if it does not open. It is not merged with its neighbours |
+| `state(id, now)` | `{ open, opensAt, closesAt, startedAt, progress }`: `opensAt` is the next open when closed (`null` if none within a month); the rest apply when open, with `progress` 0 to 1. For a session with no close within a month, `closesAt`, `startedAt` and `progress` are `null` while `open` is `true` |
+| `nextChange(id, now)` | `{ at, to: 'open' \| 'closed' }`, or `null` when there is no change within a month (including while open with no close) |
+| `candleClose(id, now, timeframeMinutes)` | The next candle close, aligned to the session open (to the day's window when the session has no known start); `null` while closed |
+| `windows(id, from, to)` | Every session window overlapping `[from, to)`, touching windows merged. A run still going a month past `to` is cut there |
 
 ### `presets`
 
@@ -499,7 +521,7 @@ interface ProfileSchedule { market: { sessions: string[]; leadMinutes?: number; 
 ### `nextProfileChange(calendar, schedule, now)`
 
 `=> number | null`. The next instant `activeProfile` changes, or `null` if none
-within a month. `<ts-grid>` uses both for its `schedule`.
+within a month, as when a session never closes. `<ts-grid>` uses both for its `schedule`.
 
 ## Stats
 

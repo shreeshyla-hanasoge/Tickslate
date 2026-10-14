@@ -22,6 +22,11 @@
  *     and `visibleTicks` (pure) filters them given a width, in update().
  * Ticks sit strictly inside the session, because its start and end are the
  * rail's own ends.
+ *
+ * Overnight sessions (RFC 0003 §12): a lane's window may span two dates, and
+ * then each of its times names the day when it isn't today. A session that is
+ * open with no close the calendar can name is `endless`: a full rail, "Open
+ * 24/7", no hours and no countdown, though its candles still feed the header.
  */
 
 import { TsWidget, sk, header } from './widget.js'
@@ -71,7 +76,29 @@ const round = (v, places) => {
   return Math.round(v * k) / k
 }
 
-const words = (env, ms) => env.fmt.duration(ms, { style: 'words' })
+// A countdown never reads negative: the calendar only reports a close ahead of now, and the clamp keeps a clock that is a tick behind from showing a minus.
+const words = (env, ms) => env.fmt.duration(Math.max(0, ms), { style: 'words' })
+
+/**
+ * "17:00", or "Tue 16:00" when `at` falls on another local date than `now`:
+ * an overnight session's times need the day once they are not today's.
+ */
+function whenText(env, at, now, t) {
+  const zone = env.fmt.timeZone
+  return localDate(at, zone) === localDate(now, zone) ? env.fmt.time(at) : t('session.dayTime', { day: env.weekday(at), time: env.fmt.time(at) })
+}
+
+/**
+ * The two ends of a window as text. A window inside one local date shows
+ * plain times, as an exchange publishes them; one that crosses midnight
+ * names the day of each end that isn't today.
+ */
+function windowTimes(env, win, now, t) {
+  if (!win) return { from: '', to: '' }
+  const zone = env.fmt.timeZone
+  if (localDate(win.open, zone) === localDate(win.close, zone)) return { from: env.fmt.time(win.open), to: env.fmt.time(win.close) }
+  return { from: whenText(env, win.open, now, t), to: whenText(env, win.close, now, t) }
+}
 
 function validCalendar(c) {
   return !!c && ['state', 'session', 'hours', 'candleClose'].every((m) => typeof c[m] === 'function')
@@ -88,18 +115,30 @@ function lookup(calendar, id, t) {
   }
 }
 
-/** The state of one known session: whether it is open, its window (today's or the next one) and how far through it is. */
-function laneState(calendar, id, spec, now) {
+/**
+ * The state of one known session: whether it is open, its window (the one it
+ * is in, or the next one) and how far through it is. A session that is open
+ * with no close in sight (crypto) is `endless`: it has no window to draw and
+ * no countdown, and its rail is full.
+ */
+function laneState(calendar, id, now) {
   const st = calendar.state(id, now)
+  const endless = st.open && st.closesAt === null
   let win = null
-  if (st.open) win = { open: st.startedAt, close: st.closesAt }
-  else if (st.opensAt !== null) win = calendar.hours(id, localDate(st.opensAt, spec.timeZone))
+  if (st.open) {
+    if (st.closesAt !== null && st.startedAt !== null) win = { open: st.startedAt, close: st.closesAt }
+  } else if (st.opensAt !== null) {
+    // Ask what the session will be once open, so windows that touch read as one (an FX week) and an overnight one keeps its next-day close.
+    const next = calendar.state(id, st.opensAt)
+    if (next.open && next.closesAt !== null && next.startedAt !== null) win = { open: next.startedAt, close: next.closesAt }
+  }
   return {
     open: st.open,
+    endless,
     win,
     opensAt: st.opensAt,
     closesAt: st.closesAt,
-    progress: st.open ? round(st.progress * 100, 2) : 0,
+    progress: endless ? 100 : st.open && st.progress !== null ? round(st.progress * 100, 2) : 0,
     // More than a day away, a weekday says more than a duration does.
     far: !st.open && st.opensAt !== null && st.opensAt - now > DAY,
   }
@@ -175,8 +214,9 @@ function opensText(env, st, withTime, t) {
   return t('session.opens', { time: env.fmt.time(st.opensAt) })
 }
 
-function ariaFor(name, env, st, t) {
-  if (st.open) return t('session.ariaOpen', { session: name, time: env.fmt.time(st.closesAt) })
+function ariaFor(name, env, st, now, t) {
+  if (st.endless) return t('session.ariaOpen247', { session: name })
+  if (st.open) return t('session.ariaOpen', { session: name, time: whenText(env, st.closesAt, now, t) })
   if (st.opensAt === null) return t('session.ariaNone', { session: name })
   return t('session.ariaClosed', { session: name, opens: opensText(env, st, true, t) })
 }
@@ -231,11 +271,15 @@ function small(d, ids, first, env, now, ctx) {
   }
   const id = ids[0]
   const spec = first.spec
-  const st = laneState(d.calendar, id, spec, now)
+  const st = laneState(d.calendar, id, now)
+  const times = windowTimes(env, st.win, now, t)
   // The short form is for a phone-width tile: just the duration or the day and time.
   let middle
   let middleShort
-  if (st.open) {
+  if (st.endless) {
+    middle = t('session.open247')
+    middleShort = middle
+  } else if (st.open) {
     middleShort = words(env, st.closesAt - now)
     middle = t('session.toClose', { time: middleShort })
   } else if (st.opensAt === null) {
@@ -257,11 +301,11 @@ function small(d, ids, first, env, now, ctx) {
     time,
     zone,
     progress: st.progress,
-    from: st.win ? env.fmt.time(st.win.open) : '',
-    to: st.win ? env.fmt.time(st.win.close) : '',
+    from: times.from,
+    to: times.to,
     middle,
     middleShort,
-    ariaLabel: t('session.aria', { label: ctx.label, state: ariaFor(spec.label, env, st, t) }),
+    ariaLabel: t('session.aria', { label: ctx.label, state: ariaFor(spec.label, env, st, now, t) }),
   }
 }
 
@@ -279,7 +323,8 @@ function banner(d, ids, first, env, now, ctx) {
       return
     }
     const spec = found.spec
-    const st = laneState(d.calendar, id, spec, now)
+    const st = laneState(d.calendar, id, now)
+    const times = windowTimes(env, st.win, now, t)
     let next = null
     if (st.open && tfs.length) {
       const closes = tfs.map((tf) => d.calendar.candleClose(id, now, tf)).filter((t) => t !== null)
@@ -287,25 +332,27 @@ function banner(d, ids, first, env, now, ctx) {
         // A loop rather than a spread into Math.min: no argument list grows with the data.
         let at = Infinity
         for (const t of closes) at = Math.min(at, t)
-        next = round(((at - st.win.open) / (st.win.close - st.win.open)) * 100, 2)
+        // An endless lane has no rail to place the mark on, but its candle still counts for the header.
+        if (st.win) next = round(((at - st.win.open) / (st.win.close - st.win.open)) * 100, 2)
         if (nextAt === null || at < nextAt) nextAt = at
       }
     }
     let right
-    if (st.open) right = t('session.left', { time: words(env, st.closesAt - now) })
+    if (st.endless) right = t('session.open247')
+    else if (st.open) right = t('session.left', { time: words(env, st.closesAt - now) })
     else right = st.opensAt === null ? t('session.noneShort') : opensText(env, st, false, t)
     lanes.push({
       id,
       name: spec.label,
       error: null,
       open: st.open,
-      hours: st.win ? `${env.fmt.time(st.win.open)}–${env.fmt.time(st.win.close)}` : '',
+      hours: st.win ? `${times.from}–${times.to}` : '',
       progress: st.progress,
       right,
       ticks: st.win ? tickItems(st.win, tfs) : { key: '', items: [], steps: [] },
       next,
     })
-    spoken.push(ariaFor(spec.label, env, st, t))
+    spoken.push(ariaFor(spec.label, env, st, now, t))
   })
   const zone = env.name(now)
   return {

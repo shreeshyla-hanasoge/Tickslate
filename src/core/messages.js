@@ -170,6 +170,8 @@ export const EN = Object.freeze({
   'session.opensDay': 'opens {day}',
   'session.dayTime': '{day} {time}',
   'session.ariaOpen': '{session} open, closes {time}',
+  'session.open247': 'Open 24/7',
+  'session.ariaOpen247': '{session} open 24/7',
   'session.ariaClosed': '{session} closed, {opens}',
   'session.ariaNone': '{session} closed, no session scheduled',
   'session.aria': '{label}: {state}',

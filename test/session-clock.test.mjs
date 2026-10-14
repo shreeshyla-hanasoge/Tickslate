@@ -535,3 +535,110 @@ describe('region name and banner errors', () => {
     assert.equal(m.ariaLabel, 'Session clock: Unknown session nse-x')
   })
 })
+
+// ── Overnight and 24/7 sessions (RFC 0003 §12) ───────────────────────────
+
+describe('overnight and 24/7 sessions', () => {
+  const CHI = 'America/Chicago'
+  const NY = 'America/New_York'
+  const night = createCalendar({
+    sessions: [
+      { id: 'cme', label: 'CME', timeZone: CHI, days: [7, 1, 2, 3, 4], open: '17:00', close: '16:00' },
+      { id: 'fx', label: 'FX', timeZone: NY, days: [7, 1, 2, 3, 4], open: '17:00', close: '17:00' },
+      { id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' },
+    ],
+  })
+  const chi = (date, hhmm) => zonedTime(date, hhmm, CHI)
+  const ny = (date, hhmm) => zonedTime(date, hhmm, NY)
+  const ask = (id, variant, now, extra = {}) => model({ calendar: night, sessions: [id], ...extra }, variant, now)
+
+  test('S: an overnight window opened yesterday shows both ends, with the day of the one that is not today', () => {
+    const m = ask('cme', 'S', chi('2026-10-12', '10:00'))
+    assert.equal(m.live, true)
+    assert.equal(m.middle, '6h to close')
+    assert.equal(m.from, 'Sun 17:00')
+    assert.equal(m.to, '16:00')
+    assert.equal(m.progress, Math.round((17 / 23) * 10000) / 100)
+    assert.equal(m.ariaLabel, 'Session clock: CME open, closes 16:00')
+  })
+
+  test('S: in the evening the close is tomorrow, and the open is today', () => {
+    const m = ask('cme', 'S', chi('2026-10-12', '18:00'))
+    assert.deepEqual([m.from, m.to, m.middle], ['17:00', 'Tue 16:00', '22h to close'])
+    assert.equal(m.ariaLabel, 'Session clock: CME open, closes Tue 16:00')
+  })
+
+  test('S: in the daily break it counts to the open, and names the next window', () => {
+    const m = ask('cme', 'S', chi('2026-10-12', '16:30'))
+    assert.equal(m.live, false)
+    assert.deepEqual([m.middle, m.from, m.to], ['opens in 30m', '17:00', 'Tue 16:00'])
+  })
+
+  test('S: over the weekend the next window is named by day', () => {
+    const m = ask('cme', 'S', chi('2026-10-16', '16:30'))
+    assert.deepEqual([m.middle, m.from, m.to], ['opens Sun 17:00', 'Sun 17:00', 'Mon 16:00'])
+  })
+
+  test('S: an FX week reads as one window', () => {
+    const m = ask('fx', 'S', ny('2026-10-14', '12:00'))
+    assert.deepEqual([m.from, m.to, m.middleShort], ['Sun 17:00', 'Fri 17:00', '53h'])
+    const closed = ask('fx', 'S', ny('2026-10-17', '12:00'))
+    assert.deepEqual([closed.from, closed.to], ['Sun 17:00', 'Fri 17:00'])
+  })
+
+  test('S: a session that never closes says so, with a full track and no times', () => {
+    const m = ask('crypto', 'S', Date.UTC(2026, 9, 12, 10, 7))
+    assert.equal(m.live, true)
+    assert.equal(m.title, 'Market open')
+    assert.deepEqual([m.middle, m.middleShort], ['Open 24/7', 'Open 24/7'])
+    assert.deepEqual([m.from, m.to, m.progress], ['', '', 100])
+    assert.equal(m.ariaLabel, 'Session clock: Crypto open 24/7')
+  })
+
+  test('Banner: the lane names the overnight window across midnight', () => {
+    const lane = ask('cme', 'Banner', chi('2026-10-12', '18:00')).lanes[0]
+    assert.equal(lane.hours, '17:00–Tue 16:00')
+    assert.equal(lane.right, '22h left')
+    assert.equal(lane.progress, Math.round((1 / 23) * 10000) / 100)
+    assert.equal(ask('cme', 'Banner', chi('2026-10-12', '10:00')).lanes[0].hours, 'Sun 17:00–16:00')
+  })
+
+  test('Banner: ticks and the next-close mark sit on the overnight window', () => {
+    const m = ask('cme', 'Banner', chi('2026-10-12', '18:07'), { timeframes: [30] })
+    const lane = m.lanes[0]
+    // 23 hours of 30-minute candles, the last of which is the close itself.
+    assert.equal(lane.ticks.items.length, 23 * 2 - 1)
+    // 18:30 is 90 minutes into 1380.
+    assert.equal(lane.next, Math.round((90 / 1380) * 10000) / 100)
+  })
+
+  test('Banner: a session that never closes is a full lane with no hours, and its candles still count in the header', () => {
+    const m = ask('crypto', 'Banner', Date.UTC(2026, 9, 12, 10, 7), { timeframes: [15] })
+    const lane = m.lanes[0]
+    assert.equal(lane.open, true)
+    assert.deepEqual([lane.hours, lane.right, lane.progress, lane.next], ['', 'Open 24/7', 100, null])
+    assert.deepEqual(lane.ticks.items, [])
+    assert.equal(m.live, true)
+    assert.equal(m.nextClose, 'next close in 8:00')
+    assert.equal(m.ariaLabel, 'Session clock: Crypto open 24/7')
+  })
+
+  test('no countdown or percentage is negative or not a number, for any session, around the clock and across daylight saving', () => {
+    const ids = ['cme', 'fx', 'crypto']
+    const weeks = [Date.UTC(2026, 2, 6), Date.UTC(2026, 9, 30), Date.UTC(2026, 9, 12)]
+    for (const from of weeks) {
+      for (let now = from; now < from + 5 * 86400000; now += 15 * 60000 + 7000) {
+        for (const id of ids) {
+          const s = ask(id, 'S', now)
+          const b = ask(id, 'Banner', now, { timeframes: [5, 60] })
+          const lane = b.lanes[0]
+          const texts = [s.title, s.middle, s.middleShort, s.from, s.to, s.ariaLabel, b.clock, b.nextClose, lane.hours, lane.right, b.ariaLabel]
+          const where = `${id} at ${new Date(now).toISOString()}`
+          for (const text of texts) assert.doesNotMatch(text, /NaN|undefined|Infinity|null|(^|\s)-\d/, `${where}: ${text}`)
+          for (const pct of [s.progress, lane.progress]) assert.ok(Number.isFinite(pct) && pct >= 0 && pct <= 100, `${where}: ${pct}`)
+          if (lane.next !== null) assert.ok(lane.next >= 0 && lane.next <= 100, `${where}: next ${lane.next}`)
+        }
+      }
+    }
+  })
+})

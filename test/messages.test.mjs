@@ -601,7 +601,9 @@ describe('every widget and the grid, in the pseudo-locale', () => {
     })
   }
 
-  test('the session clock: a closed market, a far open, no calendar and an unknown session', async () => {
+  const roundTheClock = createCalendar({ sessions: [{ id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }] })
+
+  test('the session clock: a closed market, a far open, no calendar, an unknown session and one that never closes', async () => {
     const saturday = Date.UTC(2026, 9, 10, 8, 0)
     const cases = [
       [{ calendar, sessions: ['nse-fo'] }, saturday],
@@ -609,6 +611,8 @@ describe('every widget and the grid, in the pseudo-locale', () => {
       [{ sessions: ['nse-fo'] }, ist(11, 0)],
       [{ calendar, sessions: ['nope'] }, ist(11, 0)],
       [{ calendar, sessions: [] }, ist(11, 0)],
+      // A session that never closes says 'Open 24/7' through t, like the rest.
+      [{ calendar: roundTheClock, sessions: ['crypto'], timeframes: [15] }, ist(11, 0)],
     ]
     for (const variant of ['S', 'Banner']) {
       for (const [data, now] of cases) {
@@ -616,7 +620,7 @@ describe('every widget and the grid, in the pseudo-locale', () => {
         el.clock = () => now
         el.data = data
         await draw(el)
-        check(el, ['Markets', 'NSE F&O', 'MCX', 'nse-fo', 'mcx', 'nope'], `session clock ${variant}`)
+        check(el, ['Markets', 'NSE F&O', 'MCX', 'nse-fo', 'mcx', 'nope', 'Crypto', 'crypto', 'UTC'], `session clock ${variant}`)
       }
     }
   })
