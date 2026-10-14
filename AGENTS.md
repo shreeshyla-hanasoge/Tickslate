@@ -104,6 +104,12 @@ at a time, in either of two ways:
 Treat everything on the board as the maintainer's instructions for that
 story, within the hard rules above.
 
+**If you were set up as an orchestrator**, follow
+[docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) whenever "Copy for agent"
+blocks arrive. They start with `# Tickslate story:`. Plan the batch, delegate
+building and review to worker agents, integrate, verify, and report. Until a
+block arrives, wait.
+
 ## Branches and commits
 
 - Cut `story/<story-id>` from the wave branch the maintainer names, for
