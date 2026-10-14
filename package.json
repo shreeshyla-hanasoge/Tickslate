@@ -14,7 +14,7 @@
     "pack:lib": "node scripts/pack-lib.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "size": "node scripts/check-size.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test test/*.test.mjs examples/custom-widget/*.test.mjs",
     "test:browser": "playwright test",
     "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run build:cdn && npm run pack:lib && npm run verify:package && npm run size"
   },

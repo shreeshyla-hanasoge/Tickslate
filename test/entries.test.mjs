@@ -92,6 +92,10 @@ describe('the all-in entry', () => {
       for (const name of ['version', 'persistLayout', 'TsGrid', 'TsWidget', 'TsCard', 'TsMetric', 'TsChart', 'TsTodayPnl', 'TsEquityCurve', 'TsSessionClock']) {
         assert.ok(name in mod, `tickslate/elements no longer exports ${name}`)
       }
+      // The authoring kit (RFC 0003 §3, §3.1): the registration functions and the stable helpers.
+      for (const name of ['defineWidget', 'widgetCatalog', 'onCatalogChange', 'linePaths', 'scale', 'escapeHtml']) {
+        assert.equal(typeof mod[name], 'function', `tickslate/elements does not export ${name}`)
+      }
     } finally {
       delete globalThis.customElements
     }

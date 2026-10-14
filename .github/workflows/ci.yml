@@ -26,6 +26,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # No install on purpose: the suite imports nothing outside src/ and node:*.
+      # Includes the worked example of docs/guide/custom-widgets.md (examples/custom-widget/).
       - run: npm test
 
   build:

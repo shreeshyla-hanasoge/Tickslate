@@ -141,15 +141,20 @@ to `.g4` (columns), `.sep` (a hairline), `.ell` (ellipsis), `.btn`, `.dot.live`
 (the pulsing dot) and the profit and loss line classes `.lp`, `.ln`, `.ap`,
 `.an` and `.lz`.
 
-## Two more things
+## Catalog and registration
 
 - **A catalog entry is optional.** `static spec` is enough for a grid. To give
   hosts a typed key (`type: 'uptime'`), add an entry to your own catalog:
   `grid.catalog = { ...WIDGETS, uptime: { tag: 'ts-uptime', label: 'Uptime', sizes: ['S', 'Wide'] } }`.
-- **Registering twice is safe.** The same class again does nothing. A different
-  class on a tag already taken warns in development and the first one stays.
-  Give your own tags a prefix of your own (`acme-uptime`) so they cannot clash
-  with a future Tickslate widget; the example borrows `ts-` for brevity.
+- **To register and catalog a widget in one call**, use `defineWidget(tag, Class, { type })`;
+  the [custom widgets guide](custom-widgets.md) builds a full one, with tests.
+- **A taken tag.** Tickslate's own registration of its built-in tags only warns in
+  development and keeps the first class. `defineWidget` throws a `TypeError`
+  instead, because it also writes the catalog, and the same class again is
+  the only repeat that does nothing (a module evaluated twice makes a new class,
+  so guard it; the guide shows how). Give your own tags a prefix of your own
+  (`acme-uptime`) so they cannot clash with a future Tickslate widget; the example
+  borrows `ts-` for brevity.
 
 Development warnings come from the `development` export condition (Vite and
 webpack dev mode resolve `tickslate/elements` to a build that has them).
