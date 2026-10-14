@@ -1,10 +1,10 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { TsMetric, metricModel, STRINGS, SPARK_BOX } from '../src/elements/metric.js'
-import { createFormatter } from '../src/core/index.js'
+import { TsMetric, metricModel, SPARK_BOX } from '../src/elements/metric.js'
+import { EN, createFormatter, createMessages } from '../src/core/index.js'
 
 const fmt = createFormatter({ locale: 'en-US', currency: 'USD', timeZone: 'UTC' })
-const ctx = { fmt, now: 0, label: 'Signups' }
+const ctx = { fmt, t: createMessages(), now: 0, label: 'Signups' }
 const model = (data, variant = 'S') => metricModel(data, variant, ctx)
 
 describe('without a DOM', () => {
@@ -330,9 +330,9 @@ describe('header', () => {
     assert.equal(model({ value: 1 }).time, '')
     assert.equal(model({ value: 1, live: 'yes' }).live, false)
   })
-  test('the strings live in one frozen object', () => {
-    assert.ok(Object.isFrozen(STRINGS))
-    assert.equal(STRINGS.empty, 'No data yet')
+  test('the empty text is the EN message', () => {
+    assert.equal(TsMetric.emptyText, EN['widget.metric.empty'])
+    assert.equal(TsMetric.emptyText, 'No data yet')
   })
 })
 

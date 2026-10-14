@@ -1,4 +1,4 @@
-import type { Calendar, Layout, LayoutItem, LayoutIssue, ProfileSchedule, Catalog } from '../core/index.js'
+import type { Calendar, Layout, LayoutItem, LayoutIssue, Messages, ProfileSchedule, Catalog, Translate } from '../core/index.js'
 
 export interface TsLayoutChangeDetail {
   /** The whole layout after the edit; save this. */
@@ -43,7 +43,7 @@ export interface TsLayoutChangeDetail {
  * scheduled profile change that falls due while editing applies after Done.
  *
  * Attributes: `editing`, `profile`, `locked`, `undo-toast="off"`,
- * `edit-controls="off"`.
+ * `edit-controls="off"`, `locale` (for plural forms in its messages).
  * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
  * Slots: the default one for tiles, and `empty`.
  *
@@ -60,6 +60,10 @@ export declare class TsGrid extends HTMLElement {
   set layout(value: Layout | LayoutItem[])
   /** Defaults to WIDGETS. May be a function that resolves one item to its spec. */
   catalog: Catalog
+  /** Overrides for the grid's own strings and for every tile inside it; null clears. Assign a new object to change them. */
+  messages: Partial<Messages> | null
+  /** The grid's own translate function: its messages, then configure()'s, then EN, with plural forms from its `locale` attribute. */
+  readonly t: Translate
   /** The profile shown; reflects the `profile` attribute. Defaults to 'market'. */
   profile: string
   /** Edit mode; reflects the `editing` attribute. */

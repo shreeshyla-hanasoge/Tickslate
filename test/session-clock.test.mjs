@@ -1,23 +1,24 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsSessionClock, sessionClockModel, visibleTicks } from '../src/elements/session-clock.js'
-import { createCalendar, createFormatter, presets, zonedTime } from '../src/core/index.js'
+import { createCalendar, createFormatter, createMessages, presets, zonedTime } from '../src/core/index.js'
 
 // This file is loaded with no DOM: the import above must not throw.
 
 const IST = 'Asia/Kolkata'
 const calendar = createCalendar({ sessions: [presets.nse({ segment: 'derivatives' }), presets.mcx({ years: [2026] })] })
 const fmt = createFormatter({ locale: 'en-IN', currency: 'INR' })
+const t = createMessages()
 // 12 Oct 2026 is a Monday; 16 Oct is the Friday after it.
 const at = (date, hhmm, seconds = 0) => zonedTime(date, hhmm, IST) + seconds * 1000
-const model = (data, variant, now) => sessionClockModel(data, variant, { fmt, now, label: 'Session clock' })
+const model = (data, variant, now) => sessionClockModel(data, variant, { fmt, t, now, label: 'Session clock' })
 const data = { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
 
 describe('the element class', () => {
   test('loads without a DOM and is wired to its catalog entry', () => {
     assert.equal(typeof TsSessionClock, 'function')
     assert.equal(TsSessionClock.catalogKey, 'sessionClock')
-    assert.equal(TsSessionClock.viewModel(data, 'S', { fmt, now: at('2026-10-12', '11:42'), label: '' }).variant, 'S')
+    assert.equal(TsSessionClock.viewModel(data, 'S', { fmt, t, now: at('2026-10-12', '11:42'), label: '' }).variant, 'S')
   })
 
   test('templates are static markup per variant and name every node update() uses', () => {
@@ -115,7 +116,7 @@ describe('S', () => {
 
   test('the short zone name follows the locale', () => {
     const us = createFormatter({ locale: 'en-US' })
-    const m = sessionClockModel(data, 'S', { fmt: us, now: at('2026-10-12', '11:42'), label: '' })
+    const m = sessionClockModel(data, 'S', { fmt: us, t, now: at('2026-10-12', '11:42'), label: '' })
     assert.equal(m.zone, 'GMT+5:30')
     assert.equal(m.time, '11:42')
   })
@@ -522,10 +523,10 @@ describe('dropped', () => {
 describe('region name and banner errors', () => {
   test('the region is named with the host label', () => {
     const now = at('2026-10-12', '11:42')
-    const m = sessionClockModel(data, 'S', { fmt, now, label: 'Markets' })
+    const m = sessionClockModel(data, 'S', { fmt, t, now, label: 'Markets' })
     assert.ok(m.ariaLabel.startsWith('Markets: '))
-    assert.ok(sessionClockModel(data, 'Banner', { fmt, now, label: 'Markets' }).ariaLabel.startsWith('Markets: '))
-    assert.equal(sessionClockModel({ sessions: ['x'] }, 'S', { fmt, now, label: 'Markets' }).ariaLabel, 'Markets: No calendar')
+    assert.ok(sessionClockModel(data, 'Banner', { fmt, t, now, label: 'Markets' }).ariaLabel.startsWith('Markets: '))
+    assert.equal(sessionClockModel({ sessions: ['x'] }, 'S', { fmt, t, now, label: 'Markets' }).ariaLabel, 'Markets: No calendar')
   })
 
   test('an unknown first session gives exactly one error lane', () => {

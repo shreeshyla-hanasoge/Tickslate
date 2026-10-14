@@ -25,7 +25,7 @@
  */
 
 import { TsWidget, sk } from './widget.js'
-import { createFormatter, localDate } from '../core/index.js'
+import { EN, createFormatter, localDate } from '../core/index.js'
 
 const DAY = 86400000
 const MINUTE = 60000
@@ -78,12 +78,12 @@ function validCalendar(c) {
 }
 
 /** { spec } for a known session, else { error } the lane can show. Only a missing name is expected; anything else is a bug and propagates. */
-function lookup(calendar, id) {
-  if (!validCalendar(calendar)) return { error: 'No calendar' }
+function lookup(calendar, id, t) {
+  if (!validCalendar(calendar)) return { error: t('session.noCalendar') }
   try {
     return { spec: calendar.session(id) }
   } catch (err) {
-    if (err instanceof RangeError) return { error: `Unknown session ${id}` }
+    if (err instanceof RangeError) return { error: t('session.unknown', { session: id }) }
     throw err
   }
 }
@@ -161,20 +161,24 @@ function sanitiseTimeframes(list) {
   return list.filter(validTimeframe).slice(0, MAX_TIMEFRAMES)
 }
 
-function timeframeText(tf) {
-  return tf >= 60 && tf % 60 === 0 ? `${tf / 60}h` : `${tf}m`
+function timeframeText(tf, t) {
+  return tf >= 60 && tf % 60 === 0 ? t('session.tfHours', { count: tf / 60 }) : t('session.tfMinutes', { count: tf })
 }
 
 /** "opens 09:15", or "opens Mon 09:15" when it is more than a day away. */
-function opensText(env, st, withTime) {
-  if (st.far) return withTime ? `opens ${env.weekday(st.opensAt)} ${env.fmt.time(st.opensAt)}` : `opens ${env.weekday(st.opensAt)}`
-  return `opens ${env.fmt.time(st.opensAt)}`
+function opensText(env, st, withTime, t) {
+  if (st.far) {
+    return withTime
+      ? t('session.opensOn', { day: env.weekday(st.opensAt), time: env.fmt.time(st.opensAt) })
+      : t('session.opensDay', { day: env.weekday(st.opensAt) })
+  }
+  return t('session.opens', { time: env.fmt.time(st.opensAt) })
 }
 
-function ariaFor(name, env, st) {
-  if (st.open) return `${name} open, closes ${env.fmt.time(st.closesAt)}`
-  if (st.opensAt === null) return `${name} closed, no session scheduled`
-  return `${name} closed, ${opensText(env, st, true)}`
+function ariaFor(name, env, st, t) {
+  if (st.open) return t('session.ariaOpen', { session: name, time: env.fmt.time(st.closesAt) })
+  if (st.opensAt === null) return t('session.ariaNone', { session: name })
+  return t('session.ariaClosed', { session: name, opens: opensText(env, st, true, t) })
 }
 
 /**
@@ -192,7 +196,8 @@ export function sessionClockModel(data, variant, ctx) {
   const given = Array.isArray(d.sessions) ? d.sessions : []
   const ids = given.filter((s) => typeof s === 'string')
   const now = ctx.now
-  const first = ids.length ? lookup(d.calendar, ids[0]) : { error: 'No sessions' }
+  const { t } = ctx
+  const first = ids.length ? lookup(d.calendar, ids[0], t) : { error: t('session.none') }
   const env = zoneEnv(first.spec ? first.spec.timeZone : ctx.fmt.timeZone, ctx.fmt)
   const vm = variant === 'Banner' ? banner(d, ids, first, env, now, ctx) : small(d, ids, first, env, now, ctx)
   // Entries that gave no session to show: ids that aren't strings, and (on
@@ -204,14 +209,15 @@ export function sessionClockModel(data, variant, ctx) {
 }
 
 function small(d, ids, first, env, now, ctx) {
+  const { t } = ctx
   const zone = env.name(now)
   const time = env.fmt.time(now)
   if (first.error) {
     return {
       variant: 'S',
       live: false,
-      title: ctx.label || 'Session clock',
-      titleShort: ctx.label || 'Session clock',
+      title: ctx.label || t('widget.sessionClock.label'),
+      titleShort: ctx.label || t('widget.sessionClock.label'),
       session: ids.length ? ids[0] : '',
       time,
       zone,
@@ -220,7 +226,7 @@ function small(d, ids, first, env, now, ctx) {
       to: '',
       middle: first.error,
       middleShort: first.error,
-      ariaLabel: `${ctx.label}: ${first.error}`,
+      ariaLabel: t('session.aria', { label: ctx.label, state: first.error }),
     }
   }
   const id = ids[0]
@@ -231,22 +237,22 @@ function small(d, ids, first, env, now, ctx) {
   let middleShort
   if (st.open) {
     middleShort = words(env, st.closesAt - now)
-    middle = `${middleShort} to close`
+    middle = t('session.toClose', { time: middleShort })
   } else if (st.opensAt === null) {
-    middle = 'no session scheduled'
-    middleShort = 'no session'
+    middle = t('session.noneScheduled')
+    middleShort = t('session.noneShort')
   } else if (st.far) {
-    middle = opensText(env, st, true)
-    middleShort = `${env.weekday(st.opensAt)} ${env.fmt.time(st.opensAt)}`
+    middle = opensText(env, st, true, t)
+    middleShort = t('session.dayTime', { day: env.weekday(st.opensAt), time: env.fmt.time(st.opensAt) })
   } else {
     middleShort = words(env, st.opensAt - now)
-    middle = `opens in ${middleShort}`
+    middle = t('session.opensIn', { time: middleShort })
   }
   return {
     variant: 'S',
     live: st.open,
-    title: st.open ? 'Market open' : 'Market closed',
-    titleShort: st.open ? 'Open' : 'Closed',
+    title: st.open ? t('session.open') : t('session.closed'),
+    titleShort: st.open ? t('session.openShort') : t('session.closedShort'),
     session: spec.label,
     time,
     zone,
@@ -255,17 +261,18 @@ function small(d, ids, first, env, now, ctx) {
     to: st.win ? env.fmt.time(st.win.close) : '',
     middle,
     middleShort,
-    ariaLabel: `${ctx.label}: ${ariaFor(spec.label, env, st)}`,
+    ariaLabel: t('session.aria', { label: ctx.label, state: ariaFor(spec.label, env, st, t) }),
   }
 }
 
 function banner(d, ids, first, env, now, ctx) {
+  const { t } = ctx
   const tfs = sanitiseTimeframes(d.timeframes)
   const lanes = []
   const spoken = []
   let nextAt = null
   ids.forEach((id, i) => {
-    const found = i === 0 ? first : lookup(d.calendar, id)
+    const found = i === 0 ? first : lookup(d.calendar, id, t)
     if (found.error) {
       lanes.push({ id, name: id, error: found.error, open: false, hours: '', progress: 0, right: '', ticks: { key: '', items: [], steps: [] }, next: null })
       spoken.push(found.error)
@@ -285,8 +292,8 @@ function banner(d, ids, first, env, now, ctx) {
       }
     }
     let right
-    if (st.open) right = `${words(env, st.closesAt - now)} left`
-    else right = st.opensAt === null ? 'no session' : opensText(env, st, false)
+    if (st.open) right = t('session.left', { time: words(env, st.closesAt - now) })
+    else right = st.opensAt === null ? t('session.noneShort') : opensText(env, st, false, t)
     lanes.push({
       id,
       name: spec.label,
@@ -298,19 +305,19 @@ function banner(d, ids, first, env, now, ctx) {
       ticks: st.win ? tickItems(st.win, tfs) : { key: '', items: [], steps: [] },
       next,
     })
-    spoken.push(ariaFor(spec.label, env, st))
+    spoken.push(ariaFor(spec.label, env, st, t))
   })
   const zone = env.name(now)
   return {
     variant: 'Banner',
     now,
     live: lanes.some((l) => l.open),
-    title: 'Sessions',
+    title: t('session.title'),
     clock: `${env.fmt.time(now, { seconds: true })} ${zone}`.trim(),
-    legend: tfs.map((tf, i) => ({ mark: GLYPHS[i], text: `${timeframeText(tf)} close${i === 0 ? ', next hour' : ''}` })),
-    nextClose: nextAt === null ? '' : `next close in ${env.fmt.duration(nextAt - now)}`,
+    legend: tfs.map((tf, i) => ({ mark: GLYPHS[i], text: t(i === 0 ? 'session.legendNext' : 'session.legend', { tf: timeframeText(tf, t) }) })),
+    nextClose: nextAt === null ? '' : t('session.nextClose', { time: env.fmt.duration(nextAt - now) }),
     lanes,
-    ariaLabel: `${ctx.label}: ${spoken.length ? spoken.join('; ') : 'No sessions'}`,
+    ariaLabel: t('session.aria', { label: ctx.label, state: spoken.length ? spoken.join('; ') : t('session.none') }),
   }
 }
 
@@ -325,9 +332,6 @@ const LANE_HTML =
   '<div class="lt"><div class="rail"></div><div class="lf"></div><div class="tks"></div><div class="mk"></div><span class="msg xs mut ell" hidden></span></div>' +
   '<span class="lr n sm mut"></span></div>'
 
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({ empty: 'No sessions set up' })
-
 // Loading shapes follow each variant's layout. A Banner can't know how many
 // sessions it will show, so it draws two lanes.
 const LABEL_HEAD = '<div class="hd"><span class="lb title" data-k="label"></span>'
@@ -339,7 +343,7 @@ const SKELETONS = {
 
 export class TsSessionClock extends TsWidget {
   static catalogKey = 'sessionClock'
-  static emptyText = STRINGS.empty
+  static emptyText = EN['widget.sessionClock.empty']
   static dataShape = {
     calendar: 'object',
     sessions: { kind: 'array', of: 'string' },

@@ -14,7 +14,7 @@
 
 import { TsWidget, sk } from './widget.js'
 import { linePath, linePaths, bandPath } from './chart.js'
-import { WIDGETS, equitySeries, equityStats, toDay, toNumber } from '../core/index.js'
+import { EN, equitySeries, equityStats, toDay, toNumber } from '../core/index.js'
 
 export const RANGES = ['1W', '1M', '3M', 'YTD', 'All']
 
@@ -26,9 +26,6 @@ export const HEADLINE_CHARS = { Wide: 10, M: 12, XL: 12 }
 const DIMS = { Wide: [400, 100], M: [600, 160], XL: [900, 220] }
 
 const DASH = '—'
-
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({ empty: 'No trading days yet' })
 
 // ── Range filtering (pure) ────────────────────────────────────────────────
 
@@ -125,15 +122,14 @@ function monthName(fmt, iso) {
 // Sign of a running sum, ignoring float dust: 0.1 + 0.2 - 0.3 is not a gain.
 const sign = (v) => (v > 1e-9 ? 1 : v < -1e-9 ? -1 : 0)
 const colour = (v) => (sign(v) > 0 ? 'pos' : sign(v) < 0 ? 'neg' : '')
-const plural = (n, word, shown = n) => `${shown} ${word}${n === 1 ? '' : 's'}`
 
 /**
  * data → everything the DOM needs, as strings and numbers. `ctx` is the
  * widget context ({ fmt, label }) plus `range`.
  */
 export function equityCurveModel(data, variant, ctx) {
-  const { fmt } = ctx
-  const label = ctx.label || WIDGETS.equityCurve.label
+  const { fmt, t } = ctx
+  const label = ctx.label || t('widget.equityCurve.label')
   const d = data && typeof data === 'object' ? data : {}
   const range = normalizeRange(ctx.range)
   const v = DIMS[variant] ? variant : 'M'
@@ -160,7 +156,7 @@ export function equityCurveModel(data, variant, ctx) {
   const trades = wholeSeries && Number.isFinite(givenTrades) ? givenTrades : dayTrades ? stats.trades : null
   const givenFees = toNumber(d.fees)
   const fees = wholeSeries && Number.isFinite(givenFees) ? fmt.money(givenFees, { sign: 'negative' }) : ''
-  const tradesText = trades === null ? '' : plural(trades, 'trade', fmt.number(trades, { decimals: 0 }))
+  const tradesText = trades === null ? '' : t('equity.tradeCount', { count: fmt.number(trades, { decimals: 0 }) }, trades)
 
   const net = fmt.money(stats.net)
   const peak = fmt.money(stats.peak)
@@ -170,11 +166,11 @@ export function equityCurveModel(data, variant, ctx) {
   let lowest = n ? Infinity : 0
   for (const s of series) lowest = Math.min(lowest, s.equity)
 
-  const dayWord = plural(n, 'day')
-  const tradingDays = plural(n, 'trading day')
+  const dayWord = t('equity.dayCount', {}, n)
+  const tradingDays = t('equity.tradingDayCount', {}, n)
   const chartLabel = empty
-    ? `${label}: no trading days in this range`
-    : `${label}: peak ${peak}, lowest ${fmt.money(lowest)}, ends at ${net}`
+    ? t('equity.chartEmpty', { label })
+    : t('equity.chartLabel', { label, peak, lowest: fmt.money(lowest), net })
 
   const points = series.map((s, i) => ({ x: i, y: s.equity }))
   const geo = linePaths(points, { width, height })
@@ -205,30 +201,30 @@ export function equityCurveModel(data, variant, ctx) {
     range,
     // Rows the series couldn't use: no readable date or no finite P&L.
     dropped: Array.isArray(d.days) ? d.days.length - all.length : 0,
-    ranges: RANGES.map((value) => ({ value, on: value === range })),
+    ranges: RANGES.map((value) => ({ value, on: value === range, text: t(`equity.range${value}`) })),
     live: d.live === true,
     empty,
     // The short word fits Wide's 170px column; a host's own label is used as given.
-    label: v === 'Wide' ? `${label === WIDGETS.equityCurve.label ? 'Equity' : label} · ${dayWord}` : label,
+    label: v === 'Wide' ? t('equity.wide', { label: label === t('widget.equityCurve.label') ? t('equity.short') : label, days: dayWord }) : label,
     headline: fmt.fit(stats.net, HEADLINE_CHARS[v]),
     net,
     netClass: colour(stats.net),
     peak,
     peakClass: colour(stats.peak),
-    peakNote: `peak ${peak}`,
+    peakNote: t('equity.peakNote', { peak }),
     maxDrawdown,
     maxDrawdownClass: colour(-stats.maxDrawdown),
     tradingDays: n,
-    sub: `over ${tradingDays}`,
+    sub: t('equity.over', { days: tradingDays }),
     daysLine: tradesText ? `${n} · ${tradesText}` : String(n),
     netOfFees: fees !== '',
     third: fees
-      ? { label: 'Fees', value: fees }
-      : { label: 'Trades', value: trades === null ? DASH : fmt.number(trades, { decimals: 0 }) },
+      ? { label: t('equity.fees'), value: fees }
+      : { label: t('equity.trades'), value: trades === null ? DASH : fmt.number(trades, { decimals: 0 }) },
     axis,
     chart: { width, height, line: geo.line, area: geo.area, zeroY: geo.zeroY, peakLine, band },
     chartLabel,
-    ariaLabel: empty ? `${label}, no trading days in this range` : `${label}, ${net} over ${tradingDays}`,
+    ariaLabel: empty ? t('equity.ariaEmpty', { label }) : t('equity.aria', { label, net, days: tradingDays }),
   }
 }
 
@@ -247,13 +243,13 @@ ${xl ? '<path class="dd" data-k="band" d=""></path>' : ''}
 ${xl ? '<path class="lz" data-k="peakLine" fill="none" d=""></path>' : '<path class="ap" data-k="areaUp" d="" clip-path="url(#cu)"></path><path class="an" data-k="areaDn" d="" clip-path="url(#cd)"></path>'}
 <path class="lp" data-k="lineUp" d="" clip-path="url(#cu)"></path><path class="ln" data-k="lineDn" d="" clip-path="url(#cd)"></path>
 </svg>
-<div class="empty" data-k="empty" hidden>No trading days in this range</div>
+<div class="empty" data-k="empty" hidden></div>
 </div>`
 }
 
 function rangeButtons() {
-  const buttons = RANGES.map((r) => `<button type="button" class="btn" data-range="${r}" aria-pressed="false">${r}</button>`).join('')
-  return `<div role="group" aria-label="Range" class="row rng">${buttons}</div>`
+  const buttons = RANGES.map((r) => `<button type="button" class="btn" data-range="${r}" aria-pressed="false"></button>`).join('')
+  return `<div role="group" class="row rng" data-k="rangeGroup">${buttons}</div>`
 }
 
 // Loading shapes follow each variant's layout, so the figures land where the
@@ -269,7 +265,7 @@ const SKELETONS = {
 
 export class TsEquityCurve extends TsWidget {
   static catalogKey = 'equityCurve'
-  static emptyText = STRINGS.empty
+  static emptyText = EN['widget.equityCurve.empty']
   static dataShape = {
     days: { kind: 'array', of: { date: 'time', pnl: 'numeric' } },
     fees: { kind: 'numeric', optional: true },
@@ -314,20 +310,20 @@ ${chartMarkup('XL')}
 <div class="row sm mut"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span><span class="f1"></span><span data-k="ax2"></span></div>
 </div>
 <div class="col sep rail">
-<div class="col"><span class="lb">Net</span><span class="big" data-k="net"></span></div>
-<div class="col"><span class="lb">Peak</span><span class="n md" data-k="peak"></span></div>
-<div class="col"><span class="lb">Max drawdown</span><span class="n md" data-k="maxDrawdown"></span><span class="sm mut">shaded on the chart</span></div>
-<div class="col"><span class="lb">Trading days</span><span class="n md" data-k="daysLine"></span></div>
+<div class="col"><span class="lb" data-k="lbNet"></span><span class="big" data-k="net"></span></div>
+<div class="col"><span class="lb" data-k="lbPeak"></span><span class="n md" data-k="peak"></span></div>
+<div class="col"><span class="lb" data-k="lbDrawdown"></span><span class="n md" data-k="maxDrawdown"></span><span class="sm mut" data-k="shaded"></span></div>
+<div class="col"><span class="lb" data-k="lbDays"></span><span class="n md" data-k="daysLine"></span></div>
 </div>
 </div>`
     }
-    return `<div class="hd"><span class="lb" data-k="label"></span><span class="dot live" data-k="live" hidden></span><span class="f1"></span><span class="sm mut" data-k="fees" hidden>net of fees</span></div>
+    return `<div class="hd"><span class="lb" data-k="label"></span><span class="dot live" data-k="live" hidden></span><span class="f1"></span><span class="sm mut" data-k="fees" hidden></span></div>
 <div class="rowb"><span class="big" data-k="net"></span><span class="sm mut" data-k="sub"></span></div>
 ${chartMarkup('M')}
 <div class="row sm mut"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span></div>
 <div class="g3 sep stats">
-<div class="col"><span class="lb">Peak</span><span class="n md" data-k="peak"></span></div>
-<div class="col"><span class="lb">Max drawdown</span><span class="n md" data-k="maxDrawdown"></span></div>
+<div class="col"><span class="lb" data-k="lbPeak"></span><span class="n md" data-k="peak"></span></div>
+<div class="col"><span class="lb" data-k="lbDrawdown"></span><span class="n md" data-k="maxDrawdown"></span></div>
 <div class="col"><span class="lb" data-k="thirdLabel"></span><span class="n md" data-k="thirdValue"></span></div>
 </div>`
   }
@@ -386,12 +382,16 @@ ${chartMarkup('M')}
     }
     const cls = (key, base, extra) => attr(key, 'class', extra ? `${base} ${extra}` : base)
 
+    const t = this.t
     text('label', vm.label)
     text('net', vm.headline)
     cls('net', 'big', vm.netClass)
+    text('empty', t('equity.noDays'))
 
     if (variant === 'Wide') text('peakNote', vm.peakNote)
     if (variant !== 'Wide') {
+      text('lbPeak', t('equity.peak'))
+      text('lbDrawdown', t('equity.maxDrawdown'))
       text('peak', vm.peak)
       cls('peak', 'n md', vm.peakClass)
       text('maxDrawdown', vm.maxDrawdown)
@@ -402,16 +402,23 @@ ${chartMarkup('M')}
       // Only when the host gave fees: otherwise the figure isn't net of anything.
       const net = this.$(k('fees'))
       if (net) net.toggleAttribute('hidden', !vm.netOfFees)
+      text('fees', t('equity.netOfFees'))
       text('thirdLabel', vm.third.label)
       text('thirdValue', vm.third.value)
       const live = this.$(k('live'))
       if (live) live.toggleAttribute('hidden', !vm.live)
     }
     if (variant === 'XL') {
+      text('lbNet', t('equity.net'))
+      text('lbDays', t('equity.tradingDays'))
+      text('shaded', t('equity.shaded'))
       text('daysLine', vm.daysLine)
+      const group = this.$(k('rangeGroup'))
+      if (group) group.setAttribute('aria-label', t('equity.rangeLabel'))
       for (const r of vm.ranges) {
         const button = this.$(`button[data-range="${r.value}"]`)
         if (!button) continue
+        if (button.textContent !== r.text) button.textContent = r.text
         button.setAttribute('class', r.on ? 'btn on' : 'btn')
         button.setAttribute('aria-pressed', r.on ? 'true' : 'false')
       }

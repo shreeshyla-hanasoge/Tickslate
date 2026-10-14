@@ -183,7 +183,7 @@ describe('rendering', () => {
     await tick()
     el.data = null
     await tick()
-    assert.match(section(el).html, /No data/)
+    assert.equal(section(el).querySelector('[data-k="empty"]').textContent, 'No data')
     el.data = { n: 2 }
     await tick()
     // template() itself is cached per variant, but the markup is written again.

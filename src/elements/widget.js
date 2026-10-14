@@ -36,8 +36,9 @@
  *
  *   static viewModel(data, variant, ctx) → object
  *     Pure: data in, plain display strings and numbers out. `ctx` is
- *     `{ fmt, now, label }`: the formatter, the current time in ms (from
- *     `clock` if set) and the effective label. Return `ariaLabel` to name the
+ *     `{ fmt, t, now, label }`: the formatter, the translate function for this
+ *     element's messages, the current time in ms (from `clock` if set) and the
+ *     effective label. Return `ariaLabel` to name the
  *     tile with its headline result ("Today's P&L, +₹2,185.65"); without it
  *     the tile is named by the label. `data` is never null here, and is `{}`
  *     for a `static dataOptional` widget that has none yet. If this throws,
@@ -49,9 +50,10 @@
  *     undefined, with viewModel getting `{}`; the skeleton then shows only
  *     for state="loading".
  *
- *   static emptyText = 'No data'
+ *   static emptyText = EN['widget.empty']
  *     What the empty state says (data === null), unless the host slots its own
- *     content into `slot="empty"`.
+ *     content into `slot="empty"`. A host that overrides `widget.<catalogKey>.empty`
+ *     in its messages wins over it, and a built-in's default is the EN value.
  *
  *   static skeleton(variant) → string
  *     The loading view's markup: `.sk` blocks shaped like that variant's
@@ -64,7 +66,7 @@
  *     Extra keys for viewModel's `ctx`, for what the pure view model needs
  *     from the element itself, such as an attribute:
  *       viewContext() { return { range: this.getAttribute('range') || 'All' } }
- *     The base's own keys (fmt, now, label) are added after these and win.
+ *     The base's own keys (fmt, t, now, label) are added after these and win.
  *     Default: {}.
  *
  *   update(vm, variant)
@@ -104,13 +106,20 @@
  *                   supported size. <ts-grid> sets it.
  *   variant         Read-only: the size actually rendered (the snapped size).
  *   label           Attribute and property. Effective label: the attribute,
- *                   else the spec's label. With neither, a development
- *                   warning, and the tile is named by the tag.
+ *                   else t('widget.<catalogKey>.label') for a catalog widget,
+ *                   else the spec's label. With none, a development warning,
+ *                   and the tile is named by the tag.
  *   locale, currency, time-zone
  *                   Attributes. Each resolves: own attribute → nearest
  *                   ancestor <ts-grid>'s attribute → configure() defaults.
  *   formatter       The Formatter for those. Cached; rebuilt when any of its
  *                   inputs change.
+ *   messages        Property. Overrides for this widget's strings; null clears.
+ *   t               The translate function: messages on this element, then the
+ *                   nearest <ts-grid>'s, then configure(), then EN. Cached like
+ *                   the formatter. Static template text is never written
+ *                   here: put it in a `data-k` node and fill it in update()
+ *                   with this.t, so a template stays a pure function of its variant.
  *   clock           Settable `() => number`; tests and demos freeze time.
  *   now()           clock() or Date.now().
  *   $(selector)     querySelector in the shadow root, cached until the
@@ -145,18 +154,9 @@
  * server-side rendering); only constructing a widget does.
  */
 
-import { WIDGETS, createFormatter, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
+import { WIDGETS, EN, createFormatter, createMessages, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
-
-// Every English string the base shows, in one place so messages can be made
-// overridable later (RFC 0002 §2.4). `{label}` and `{message}` are filled in.
-export const STRINGS = Object.freeze({
-  noData: 'No data',
-  errorDefault: "Couldn't display this data",
-  errorRegion: '{label}, error: {message}',
-  retry: 'Retry',
-})
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -208,6 +208,18 @@ export function standaloneCss() {
 export function describeElement(el) {
   const item = el && typeof el.getAttribute === 'function' ? el.getAttribute('item') : null
   return `<${el.localName}${item ? ` item="${item}"` : ''}>`
+}
+
+// A character no translation contains, to find where the time goes in "synced {time}".
+const TIME_MARK = '\uE000'
+
+/**
+ * The words either side of the time in `time.synced`, so a tile can hide them
+ * when it is narrow, and a translation that puts the time first still works.
+ */
+export function syncedParts(t) {
+  const [pre = '', post = ''] = t('time.synced', { time: TIME_MARK }).split(TIME_MARK)
+  return { pre, post }
 }
 
 export function escapeHtml(s) {
@@ -396,6 +408,9 @@ export class TsWidget extends Base {
     this._refs = new Map()
     this._fmt = null
     this._fmtKey = ''
+    this._messages = null
+    this._tCache = null
+    this._renderT = null
     this._every = 0
     this._timer = 0
     this._failed = false
@@ -492,6 +507,13 @@ export class TsWidget extends Base {
   get label() {
     const own = this.getAttribute('label')
     if (own) return own
+    // A catalog widget's label is a message, so a translated app never shows the English one.
+    const key = this.constructor.catalogKey
+    if (key && Object.prototype.hasOwnProperty.call(WIDGETS, key)) {
+      const id = `widget.${key}.label`
+      const text = this.t(id)
+      if (text !== id) return text
+    }
     return this.spec.label
   }
 
@@ -536,12 +558,44 @@ export class TsWidget extends Base {
   get formatter() {
     const options = resolveFormatOptions(this, findGrid(this))
     // configure() can change after we connect, so its values are part of the key.
-    const key = JSON.stringify([options, currentConfig()])
+    // The messages are not: they are a large table the formatter never reads.
+    const config = currentConfig()
+    delete config.messages
+    const key = JSON.stringify([options, config])
     if (!this._fmt || key !== this._fmtKey) {
       this._fmt = createFormatter(options)
       this._fmtKey = key
     }
     return this._fmt
+  }
+
+  /** Overrides for this widget's strings; null clears. */
+  get messages() {
+    return this._messages
+  }
+
+  set messages(value) {
+    this._messages = value && typeof value === 'object' ? value : null
+    this.requestRender()
+  }
+
+  /**
+   * Resolved per key: this element's messages, then the nearest grid's, then
+   * configure()'s, then EN. Rebuilt when any layer or the locale changes, which
+   * is an identity check: assign a new object to change a table.
+   */
+  get t() {
+    // Inside a render the answer is already known, and update() asks many times.
+    if (this._renderT) return this._renderT
+    const grid = findGrid(this)
+    const config = currentConfig()
+    const layers = [config.messages || null, (grid && grid.messages) || null, this._messages]
+    const locale = resolveFormatOptions(this, grid).locale || config.locale
+    const c = this._tCache
+    if (c && c.locale === locale && c.layers.every((l, i) => l === layers[i])) return c.t
+    const merged = { ...layers[0], ...layers[1], ...layers[2] }
+    this._tCache = { locale, layers, t: createMessages(merged, locale) }
+    return this._tCache.t
   }
 
   /** The first match for `selector` in the shadow root, remembered until the template is rebuilt. */
@@ -616,7 +670,7 @@ export class TsWidget extends Base {
   connectedCallback() {
     // Before the first render, so the tile never paints unstyled; cheap after the first call.
     ensureTokens()
-    this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions')
+    this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions', 'messages')
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
@@ -769,7 +823,18 @@ export class TsWidget extends Base {
   }
 
   _render() {
+    this._renderT = null
+    this._renderT = this.t
+    try {
+      this._draw()
+    } finally {
+      this._renderT = null
+    }
+  }
+
+  _draw() {
     const Ctor = this.constructor
+    const t = this._renderT
     const label = this._name()
     const variant = this.variant
     const state = this.state
@@ -792,7 +857,7 @@ export class TsWidget extends Base {
         this._checkFormatter(fmt)
         this._checkShape(this._data)
       }
-      const vm = Ctor.viewModel(this._data === undefined ? {} : this._data, variant, { ...this.viewContext(), fmt, now: this.now(), label }) || {}
+      const vm = Ctor.viewModel(this._data === undefined ? {} : this._data, variant, { ...this.viewContext(), fmt, t, now: this.now(), label }) || {}
       if (DEV) this._checkDropped(vm)
       if (this._shown !== variant) {
         this._section.innerHTML = templateFor(Ctor, variant)
@@ -813,7 +878,7 @@ export class TsWidget extends Base {
   }
 
   /** Swap in a non-content view's markup, and write the real label into it. */
-  _show(key, html, label, name, busy) {
+  _show(key, html, label, name, busy, skeletonLabel = label) {
     if (this._shown !== key) {
       this._section.innerHTML = html
       this._refs.clear()
@@ -821,32 +886,56 @@ export class TsWidget extends Base {
     }
     // A skeleton may carry its own words (Today's P&L S says "Today"), so the hook is optional.
     const slot = this._section.querySelector('[data-k="label"]')
-    if (slot) slot.textContent = label
+    if (slot) slot.textContent = skeletonLabel
     this._section.setAttribute('aria-label', name)
     if (busy) this._section.setAttribute('aria-busy', 'true')
     else this._section.removeAttribute('aria-busy')
   }
 
+  /** What the skeleton's label node says. A widget whose small loading view uses a shorter word overrides this. */
+  _skeletonLabel(variant, label) {
+    return label
+  }
+
   _showLoading(label, variant) {
-    this._show(`view:loading:${variant}`, skeletonFor(this.constructor, variant), label, label, true)
+    this._show(`view:loading:${variant}`, skeletonFor(this.constructor, variant), label, label, true, this._skeletonLabel(variant, label))
+  }
+
+  /**
+   * The empty view's words: the host's `widget.<catalogKey>.empty` message
+   * first, then the class's own `emptyText` (a widget author's choice, which
+   * for a built-in is the EN value), then `widget.empty`.
+   */
+  _emptyText() {
+    const t = this.t
+    const own = this.constructor.emptyText
+    const key = this.constructor.catalogKey
+    if (key) {
+      const id = `widget.${key}.empty`
+      const text = t(id)
+      if (text !== id && (text !== EN[id] || own === EN[id])) return text
+    }
+    return own === EN['widget.empty'] ? t('widget.empty') : own
   }
 
   _showEmpty(label) {
-    const text = escapeHtml(this.constructor.emptyText)
-    this._show('view:empty', `<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="empty"><slot name="empty">${text}</slot></div>`, label, label, false)
+    this._show('view:empty', '<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="empty"><slot name="empty"><span data-k="empty"></span></slot></div>', label, label, false)
+    this._section.querySelector('[data-k="empty"]').textContent = this._emptyText()
   }
 
   _showError(label, message) {
-    const text = message || STRINGS.errorDefault
-    const retry = this.actionEnabled('retry') ? `<button type="button" class="btn retry" data-action="retry">${escapeHtml(STRINGS.retry)}</button>` : ''
+    const t = this.t
+    const text = message || t('widget.error')
+    const retry = this.actionEnabled('retry') ? '<button type="button" class="btn retry" data-action="retry" data-k="retry"></button>' : ''
     this._show(
       retry ? 'view:error:retry' : 'view:error',
       `<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="err" part="error"><span class="err-msg">${WARN_GLYPH}<span data-k="message"></span></span>${retry}</div>`,
       label,
-      STRINGS.errorRegion.replace('{label}', label).replace('{message}', text),
+      t('widget.error.region', { label, message: text }),
       false,
     )
     this._section.querySelector('[data-k="message"]').textContent = text
+    if (retry) this._section.querySelector('[data-k="retry"]').textContent = t('action.retry')
   }
 }
 
@@ -857,4 +946,4 @@ TsWidget.spec = null
 TsWidget.styles = ''
 TsWidget.dataOptional = false
 TsWidget.dataShape = null
-TsWidget.emptyText = STRINGS.noData
+TsWidget.emptyText = EN['widget.empty']

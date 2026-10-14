@@ -13,10 +13,7 @@
 
 import { TsWidget, sk } from './widget.js'
 import { linePaths } from './chart.js'
-import { toNumber, toTime } from '../core/index.js'
-
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({ empty: 'No trades today', shortLabel: 'Today', realised: 'Realised', unrealised: 'Unrealised', fees: 'Fees' })
+import { EN, toNumber, toTime } from '../core/index.js'
 
 // Characters the headline holds per variant before fmt.fit() switches it to
 // the compact form. Sized for the 34px / 48px figures in a tile that never
@@ -107,7 +104,7 @@ function midTick([from, to], fmt) {
 }
 
 /** "low −₹640 at 09:45 · high now": the day's extremes, from the readings. */
-function summaryOf(pts, fmt) {
+function summaryOf(pts, fmt, t) {
   if (!pts.length) return ''
   const last = pts[pts.length - 1]
   let lo = pts[0]
@@ -118,11 +115,14 @@ function summaryOf(pts, fmt) {
   }
   // "now" rather than a clock time when the extreme is the latest reading,
   // because that is the more useful thing to know.
-  const at = (p) => (p.y === last.y ? 'now' : `at ${fmt.time(p.x)}`)
-  return joined([`low ${fmt.money(lo.y, { decimals: 0 })} ${at(lo)}`, `high ${hi.y === last.y ? '' : `${fmt.money(hi.y, { decimals: 0 })} `}${at(hi)}`])
+  const at = (p) => (p.y === last.y ? t('pnl.now') : t('pnl.at', { time: fmt.time(p.x) }))
+  return joined([
+    t('pnl.low', { amount: fmt.money(lo.y, { decimals: 0 }), when: at(lo) }),
+    hi.y === last.y ? t('pnl.highNow', { when: at(hi) }) : t('pnl.high', { amount: fmt.money(hi.y, { decimals: 0 }), when: at(hi) }),
+  ])
 }
 
-function chartOf(data, pts, fmt) {
+function chartOf(data, pts, fmt, t) {
   const domain = domainOf(data.window, pts)
   const mid = domain ? midTick(domain, fmt) : NaN
   const ticks = domain ? [domain[0], mid, domain[1]].map((t) => fmt.time(t)) : ['', '', '']
@@ -134,7 +134,7 @@ function chartOf(data, pts, fmt) {
   // One reading is not a curve; the chart says so instead of drawing a line
   // that implies a trend.
   if (pts.length < 2) {
-    return { empty: true, message: 'No intraday data yet', ariaLabel: 'Intraday P&L: no data yet', ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [] }
+    return { empty: true, message: t('pnl.noIntraday'), ariaLabel: t('pnl.chartEmpty'), ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [] }
   }
   const { line, area, zeroY, x, y } = linePaths(pts, { ...CHART_BOX, pad: PAD, xDomain: domain })
   const first = pts[0]
@@ -145,29 +145,29 @@ function chartOf(data, pts, fmt) {
   const marks = []
   let dropped = 0
   for (const m of Array.isArray(data.marks) ? data.marks : []) {
-    const t = toTime(m && m.t)
-    if (!Number.isFinite(t)) {
+    const at = toTime(m && m.t)
+    if (!Number.isFinite(at)) {
       dropped++
       continue
     }
     // A mark sits on the curve, so one outside the readings has nowhere to go.
-    if (t < first.x || t > last.x) continue
+    if (at < first.x || at > last.x) continue
     const kind = m.kind === 'exit' ? 'exit' : 'entry'
-    const px = x(t)
+    const px = x(at)
     if (px < 0 || px > CHART_BOX.width) continue // outside the session window
-    const name = m.label ? String(m.label) : kind === 'exit' ? 'Exit' : 'Entry'
+    const name = m.label ? String(m.label) : kind === 'exit' ? t('pnl.exit') : t('pnl.entry')
     marks.push({
       kind,
       left: Math.round((px / CHART_BOX.width) * 1000) / 10,
-      top: Math.round((y(valueAt(pts, t)) / CHART_BOX.height) * 1000) / 10,
-      title: `${name} · ${fmt.time(t)}`,
+      top: Math.round((y(valueAt(pts, at)) / CHART_BOX.height) * 1000) / 10,
+      title: t('pnl.markTitle', { name, time: fmt.time(at) }),
     })
   }
 
   return {
     empty: false,
     message: '',
-    ariaLabel: `Intraday P&L: low ${fmt.money(low.y, { decimals: 0 })}, now ${fmt.money(last.y)}`,
+    ariaLabel: t('pnl.chartLabel', { low: fmt.money(low.y, { decimals: 0 }), now: fmt.money(last.y) }),
     ticks,
     midAt,
     line,
@@ -184,14 +184,14 @@ function chartOf(data, pts, fmt) {
  * missing or garbled field shows as a dash or is left out.
  */
 export function todayPnlModel(data, variant, ctx) {
-  const fmt = ctx.fmt
+  const { fmt, t } = ctx
   const d = data || {}
   const net = toNumber(d.net)
   const asOf = toTime(d.asOf)
   const time = Number.isFinite(asOf) ? fmt.time(asOf) : ''
   const closed = count(d.closedCount, fmt)
   const open = count(d.openCount, fmt)
-  const counts = joined([closed !== null && `${closed} closed`, open !== null && `${open} open`])
+  const counts = joined([closed !== null && t('pnl.closed', { count: closed }), open !== null && t('pnl.open', { count: open })])
 
   // Fees reduce P&L, so they read as a deduction whichever way the host
   // signs them.
@@ -202,7 +202,7 @@ export function todayPnlModel(data, variant, ctx) {
   const vm = {
     ariaLabel: Number.isFinite(net) ? `${ctx.label}, ${fmt.money(net)}` : ctx.label,
     live: d.live === true,
-    label: variant === 'S' ? 'Today' : ctx.label,
+    label: variant === 'S' ? t('pnl.today') : ctx.label,
     time,
     net: fmt.fit(d.net, HEADLINE_CHARS[variant] || HEADLINE_CHARS.Wide),
     netTone: tone(d.net),
@@ -217,14 +217,14 @@ export function todayPnlModel(data, variant, ctx) {
   }
 
   if (variant === 'S') {
-    vm.footer = joined([counts, feesPlain && `fees ${feesPlain}`])
+    vm.footer = joined([counts, feesPlain && t('pnl.feesNote', { amount: feesPlain })])
   } else if (variant === 'Wide') {
-    vm.note = joined(['net of fees', time])
+    vm.note = joined([t('pnl.netOfFees'), time])
   } else if (variant === 'M') {
     const { pts, dropped } = readings(d.intraday)
     vm.counts = counts
-    vm.summary = summaryOf(pts, fmt)
-    vm.chart = chartOf(d, pts, fmt)
+    vm.summary = summaryOf(pts, fmt, t)
+    vm.chart = chartOf(d, pts, fmt, t)
     vm.dropped = dropped + (vm.chart.droppedMarks || 0)
   }
   return vm
@@ -248,9 +248,9 @@ const TEMPLATES = {
     <span class="sm mut" data-k="note"></span>
   </div>
   <div class="col rhs">
-    <div class="rowb"><span class="lb f1">${STRINGS.realised}</span><span class="n" data-k="realized"></span></div>
-    <div class="rowb"><span class="lb f1">${STRINGS.unrealised}</span><span class="n" data-k="unrealized"></span></div>
-    <div class="rowb"><span class="lb f1">${STRINGS.fees}</span><span class="n mut" data-k="fees"></span></div>
+    <div class="rowb"><span class="lb f1" data-k="lbRealised"></span><span class="n" data-k="realized"></span></div>
+    <div class="rowb"><span class="lb f1" data-k="lbUnrealised"></span><span class="n" data-k="unrealized"></span></div>
+    <div class="rowb"><span class="lb f1" data-k="lbFees"></span><span class="n mut" data-k="fees"></span></div>
   </div>
 </div>`,
   M: `
@@ -274,16 +274,17 @@ const TEMPLATES = {
 </div>
 <div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
-  <div class="col"><span class="lb">${STRINGS.realised}</span><span class="n md" data-k="realized"></span></div>
-  <div class="col"><span class="lb">${STRINGS.unrealised}</span><span class="n md" data-k="unrealized"></span></div>
-  <div class="col"><span class="lb">${STRINGS.fees}</span><span class="n md mut" data-k="fees"></span></div>
+  <div class="col"><span class="lb" data-k="lbRealised"></span><span class="n md" data-k="realized"></span></div>
+  <div class="col"><span class="lb" data-k="lbUnrealised"></span><span class="n md" data-k="unrealized"></span></div>
+  <div class="col"><span class="lb" data-k="lbFees"></span><span class="n md mut" data-k="fees"></span></div>
 </div>`,
 }
 
 // Loading shapes follow each variant's layout block for block, so the figures
-// land where the blocks were. S says "Today" as its content does.
+// land where the blocks were. S says "Today" as its content does, through
+// _skeletonLabel.
 const SKELETONS = {
-  S: `<div class="hd"><span class="lb ell">${STRINGS.shortLabel}</span></div>${sk(65, 30)}<span class="f1"></span>${sk(80, 11)}`,
+  S: `<div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(65, 30)}<span class="f1"></span>${sk(80, 11)}`,
   Wide: `<div class="cols">
   <div class="col lhs"><div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(75, 44)}${sk(60, 11)}</div>
   <div class="col rhs">${`<div class="rowb">${sk(40, 9)}<span class="f1"></span>${sk(35, 13)}</div>`.repeat(3)}</div>
@@ -297,7 +298,7 @@ const SKELETONS = {
 
 export class TsTodayPnl extends TsWidget {
   static catalogKey = 'todayPnl'
-  static emptyText = STRINGS.empty
+  static emptyText = EN['widget.todayPnl.empty']
   // The headline figures are required: a tile without them has nothing to say,
   // and naming them is what lets a wrong-shape object be explained (RFC 0002 §2.7).
   static dataShape = {
@@ -357,6 +358,10 @@ export class TsTodayPnl extends TsWidget {
     return SKELETONS[variant] || SKELETONS.Wide
   }
 
+  _skeletonLabel(variant, label) {
+    return variant === 'S' ? this.t('pnl.today') : label
+  }
+
   static viewModel(data, variant, ctx) {
     return todayPnlModel(data, variant, ctx)
   }
@@ -383,6 +388,9 @@ export class TsTodayPnl extends TsWidget {
     }
 
     toned('net', 'xbig nv', vm.net, vm.netTone)
+    text('lbRealised', this.t('pnl.realised'))
+    text('lbUnrealised', this.t('pnl.unrealised'))
+    text('lbFees', this.t('pnl.fees'))
     toned('realized', variant === 'M' ? 'n md' : 'n', vm.realized, vm.realizedTone)
     toned('unrealized', variant === 'M' ? 'n md' : 'n', vm.unrealized, vm.unrealizedTone)
     text('fees', vm.fees)

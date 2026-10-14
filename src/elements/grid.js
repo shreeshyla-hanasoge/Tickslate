@@ -22,10 +22,13 @@
 
 import {
   DEFAULT_PROFILE,
+  EN,
   WIDGETS,
   addItem,
   activeProfile,
   columnsFor,
+  createMessages,
+  currentConfig,
   dropIndex,
   emptyLayout,
   footprint,
@@ -38,6 +41,7 @@ import {
   sizeForExtent,
   stepSize,
   typeForTag,
+  typeOf,
   withProfile,
 } from '../core/index.js'
 import {
@@ -87,36 +91,8 @@ const NO_SPECS = new Map()
 const REMOVE_GUARD_MS = 400
 // How long the undo toast stays, unless the pointer or focus is on it.
 const TOAST_MS = 6000
-// English in one place, so a messages option can replace it later.
-const TEXT = {
-  removed: (label) => `${label} removed`,
-  undo: 'Undo',
-  editLayout: 'Edit layout',
-  done: 'Done',
-  addBack: (n) => `Add back (${n})`,
-  addBackItem: (label) => `Add back ${label}`,
-  addedBack: (label) => `${label} added back.`,
-  hiddenHeading: 'Hidden from this layout',
-  editingGroup: 'Editing layout',
-  emptyBoard: 'No widgets on this layout yet',
-  dashboard: 'Dashboard',
-  editStart: (n) => `Editing layout, ${n} ${n === 1 ? 'tile' : 'tiles'}. Tab to a tile, Space to pick it up.`,
-  editDone: 'Done editing layout.',
-  handle: (label, size, n, total) => `${label}, ${size}, position ${n} of ${total}`,
-  instructions: 'Space or Enter picks the tile up, then the arrow keys move it and Space drops it. Plus and minus resize it. Delete removes it. You can also tap the tile, then tap where it should go.',
-  removeLabel: (label) => `Remove ${label}`,
-  resizeLabel: (label, size) => `Resize ${label}, now ${size}`,
-  pickedUp: (label) => `${label}, picked up. Use the arrow keys to move it, Space to drop, Escape to cancel.`,
-  moved: (label, n, total) => `${label}, moved to position ${n} of ${total}.`,
-  dropped: (label) => `${label}, dropped.`,
-  droppedAt: (label, n, total) => `${label}, dropped at position ${n} of ${total}.`,
-  cancelled: (label) => `${label}, move cancelled.`,
-  blocked: "Can't move further.",
-  resized: (label, size) => `${label}, size ${size}.`,
-  profile: (name) => `Showing the ${name} layout.`,
-  undone: 'Undone.',
-  lockedWarning: '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.',
-}
+// A developer's warning, not interface text, so it stays out of the messages.
+const LOCKED_WARNING = '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.'
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 
 // Built on first use, so importing this module where there is no DOM (Node,
@@ -296,7 +272,7 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale']
   }
 
   constructor() {
@@ -314,15 +290,14 @@ export class TsGrid extends Base {
     this._toast = root.querySelector('.toast')
     this._toastText = root.querySelector('.toast .msg')
     this._toastUndo = root.querySelector('.toast .undo')
-    this._toastUndo.textContent = TEXT.undo
     this._editBtn = root.querySelector('.edit-btn')
-    this._editBtn.textContent = TEXT.editLayout
     this._dock = root.querySelector('.dock')
     this._pill = root.querySelector('.pill')
-    this._pill.setAttribute('aria-label', TEXT.editingGroup)
-    this._pill.querySelector('.done').textContent = TEXT.done
     this._emptyPanel = root.querySelector('.empty')
-    this._emptyPanel.querySelector('.note').textContent = TEXT.emptyBoard
+    this._hint = root.querySelector('.hint')
+    this._messages = null
+    this._tCache = null
+    this._tText = null // the translate function the static texts were last written with
     // Each place Add back appears: its button, its list, and what counts as inside it.
     this._addBack = {
       pill: { add: this._pill.querySelector('.add'), menu: this._pill.querySelector('.menu'), wrap: this._pill },
@@ -335,7 +310,6 @@ export class TsGrid extends Base {
     this._history = createHistory()
     this._removing = new Set() // ids fading out, so a second click or Delete does nothing
     this._removedAt = -Infinity // when a remove last began, for the double-click guard
-    root.querySelector('.hint').textContent = TEXT.instructions
     this._inertWas = new Map() // tile → whether the host had set inert, restored exactly when editing ends
     this._deferred = false // a scheduled profile change waiting for Done
     this._said = [] // announcements waiting for the next frame
@@ -387,6 +361,7 @@ export class TsGrid extends Base {
     this._onMenuPointerDown = this._onMenuPointerDown.bind(this)
     this._onResizeLost = this._onResizeLost.bind(this)
     this._frame = this._frame.bind(this)
+    this._syncText()
 
     // The document sees a press inside a closed shadow root with a path that
     // stops at the closed host, so the grid notes the presses that reached it
@@ -496,6 +471,51 @@ export class TsGrid extends Base {
     this._apply(this._layout)
   }
 
+  /** Overrides for the grid's own strings and for every tile inside it; null clears. */
+  get messages() {
+    return this._messages
+  }
+
+  set messages(value) {
+    this._messages = value && typeof value === 'object' ? value : null
+    this._syncText()
+    // Tiles resolve their strings through this grid, so they draw again.
+    if (typeof this.querySelectorAll === 'function') {
+      for (const el of this.querySelectorAll('*')) if (typeof el.requestRender === 'function') el.requestRender()
+    }
+  }
+
+  /**
+   * The grid's translate function: its messages, then configure(), then EN,
+   * with plural forms from its `locale` attribute. Rebuilt when either table
+   * or the locale changes, so assign a new object to change a table.
+   */
+  get t() {
+    const config = currentConfig()
+    const layers = [config.messages || null, this._messages]
+    const locale = this.getAttribute('locale') || config.locale
+    const c = this._tCache
+    if (c && c.locale === locale && c.layers[0] === layers[0] && c.layers[1] === layers[1]) return c.t
+    this._tCache = { locale, layers, t: createMessages({ ...layers[0], ...layers[1] }, locale) }
+    return this._tCache.t
+  }
+
+  /** Write the texts that sit in the static markup, and redo the ones built from messages, when the translate function changed. */
+  _syncText() {
+    const t = this.t
+    if (t === this._tText) return
+    this._tText = t
+    this._toastUndo.textContent = t('grid.undo')
+    this._editBtn.textContent = t('grid.editLayout')
+    this._pill.setAttribute('aria-label', t('grid.editingGroup'))
+    this._pill.querySelector('.done').textContent = t('grid.done')
+    this._emptyPanel.querySelector('.note').textContent = t('grid.emptyBoard')
+    this._hint.textContent = t('grid.instructions')
+    // The Add back list and each tile's chrome names were built from the old table.
+    this._menuSig = ''
+    for (const id of this._chromes.keys()) this._chrome(id)
+  }
+
   _setCatalog(catalog) {
     this._catalog = catalog
     this._resolve = specResolver(this._elementSpecs, catalog, WIDGETS)
@@ -560,7 +580,7 @@ export class TsGrid extends Base {
       if (!id || shown.has(id) || seen.has(id)) continue
       seen.add(id)
       const type = this._typeFor(el.localName).type
-      list.push({ id, type, label: this._labelFor(el, this._resolve({ id, type })) })
+      list.push({ id, type, label: this._labelFor(el, this._resolve({ id, type }), id, type) })
     }
     return list
   }
@@ -727,7 +747,7 @@ export class TsGrid extends Base {
       if (on === this._editing) return
       if (on && this.locked) {
         // Revert rather than ignore, so the attribute never lies about the state.
-        if (DEV) warnOnce('grid-locked-editing', TEXT.lockedWarning)
+        if (DEV) warnOnce('grid-locked-editing', LOCKED_WARNING)
         this.removeAttribute('editing')
         return
       }
@@ -738,7 +758,9 @@ export class TsGrid extends Base {
     } else if (name === 'profile') {
       this._cancelGesture()
       this._sync(false)
-      if (this._rendered && old !== value) this._announce(TEXT.profile(this.profile))
+      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: this.profile }))
+    } else if (name === 'locale') {
+      this._syncText()
     }
   }
 
@@ -779,7 +801,7 @@ export class TsGrid extends Base {
     this._cancelGesture()
     this._sync(false)
     // Not on load, when nothing has changed from the user's point of view.
-    if (!quiet) this._announce(TEXT.profile(profile))
+    if (!quiet) this._announce(this.t('grid.profile', { profile }))
     this._emit('ts-profile-change', { profile, reason })
   }
 
@@ -1005,11 +1027,13 @@ export class TsGrid extends Base {
     }
     const label = this._label(id)
     const item = this._item(id)
+    // The size is read as its token ("M") for now, which keeps what a screen reader says the same as before messages; size.name gives a full name when the picker needs one.
     const size = item ? item.size : ''
+    const t = this.t
     const handle = chrome.querySelector('.handle')
-    setAttr(handle, 'aria-label', TEXT.handle(label, size, this._position(id), this._order.length))
-    setAttr(chrome.querySelector('.remove'), 'aria-label', TEXT.removeLabel(label))
-    setAttr(chrome.querySelector('.resize'), 'aria-label', TEXT.resizeLabel(label, size))
+    setAttr(handle, 'aria-label', t('grid.handle', { label, size, position: this._position(id), total: this._order.length }))
+    setAttr(chrome.querySelector('.remove'), 'aria-label', t('grid.remove', { label }))
+    setAttr(chrome.querySelector('.resize'), 'aria-label', t('grid.resize', { label, size }))
     handle.tabIndex = this._editing ? 0 : -1
     if (this._editing) chrome.removeAttribute('aria-hidden')
     else chrome.setAttribute('aria-hidden', 'true')
@@ -1069,11 +1093,25 @@ export class TsGrid extends Base {
   }
 
   _label(id) {
-    return this._labelFor(this._tiles.get(id), this._spec(id), id)
+    const item = this._item(id)
+    return this._labelFor(this._tiles.get(id), this._spec(id), id, item ? typeOf(item) : id)
   }
 
-  _labelFor(el, spec, id = el && el.getAttribute('item')) {
-    return (el && (el.getAttribute('label') || el.getAttribute('aria-label'))) || (spec && spec.label) || id
+  _labelFor(el, spec, id = el && el.getAttribute('item'), type = id) {
+    return (el && (el.getAttribute('label') || el.getAttribute('aria-label'))) || this._catalogLabel(spec, type) || id
+  }
+
+  /**
+   * The catalog's label for a type: the host's own spec label as given, else
+   * t('widget.<type>.label'). A spec that carries only the English default
+   * (the built-in catalog does) gives way to the message, so a translation is seen.
+   */
+  _catalogLabel(spec, type) {
+    const given = spec && spec.label
+    const key = `widget.${type}.label`
+    if (given && given !== EN[key]) return given
+    const text = this.t(key)
+    return text !== key ? text : given || ''
   }
 
   _motion() {
@@ -1097,7 +1135,7 @@ export class TsGrid extends Base {
     document.addEventListener('keydown', this._onDocKeyDown)
     document.addEventListener('pointerdown', this._onDocPointerDown, true)
     this._syncControls()
-    this._announce(TEXT.editStart(this._order.length))
+    this._announce(this.t('grid.editStart', {}, this._order.length))
   }
 
   _stopEditing() {
@@ -1117,7 +1155,7 @@ export class TsGrid extends Base {
     clearTimeout(this._outsideTimer)
     this._editOrigin = null
     this._syncControls()
-    if (this.isConnected) this._announce(TEXT.editDone)
+    if (this.isConnected) this._announce(this.t('grid.editDone'))
     this._applyDeferred()
   }
 
@@ -1159,7 +1197,7 @@ export class TsGrid extends Base {
   _focus(target) {
     if (target === this) {
       if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '-1')
-      if (!this.hasAttribute('aria-label') && !this.hasAttribute('aria-labelledby')) this.setAttribute('aria-label', TEXT.dashboard)
+      if (!this.hasAttribute('aria-label') && !this.hasAttribute('aria-labelledby')) this.setAttribute('aria-label', this.t('grid.dashboard'))
       if (!this.hasAttribute('role')) this.setAttribute('role', 'group')
     }
     target.focus()
@@ -1172,6 +1210,8 @@ export class TsGrid extends Base {
   // ── Edit controls: the Edit layout button, the pill, Add back, the empty board ──
 
   _syncControls() {
+    this._syncText()
+    const t = this.t
     const on = this._controlsOn()
     const editing = this._editing
     const pillOn = on && editing
@@ -1186,7 +1226,7 @@ export class TsGrid extends Base {
     for (const [owner, show] of [['pill', pillOn && hidden.length > 0], ['empty', empty && on && hidden.length > 0]]) {
       const c = this._addBack[owner]
       c.add.hidden = !show
-      if (show) c.add.querySelector('.t').textContent = TEXT.addBack(hidden.length)
+      if (show) c.add.querySelector('.t').textContent = t('grid.addBack', { count: hidden.length })
       if (!show && this._menuOwner === owner) this._closeMenu(false)
     }
     // Rebuilt only when the list changed, so an open list isn't torn down under the pointer.
@@ -1197,14 +1237,14 @@ export class TsGrid extends Base {
         menu.textContent = ''
         const heading = document.createElement('span')
         heading.className = 'menu-h'
-        heading.textContent = TEXT.hiddenHeading
+        heading.textContent = t('grid.hiddenHeading')
         menu.appendChild(heading)
         for (const h of hidden) {
           const item = document.createElement('button')
           item.type = 'button'
           item.className = 'mi'
           item.dataset.id = h.id
-          item.setAttribute('aria-label', TEXT.addBackItem(h.label))
+          item.setAttribute('aria-label', t('grid.addBackItem', { label: h.label }))
           const name = document.createElement('span')
           name.textContent = h.label
           const plus = document.createElement('span')
@@ -1260,7 +1300,7 @@ export class TsGrid extends Base {
     const hidden = this.hiddenItems.find((h) => h.id === id)
     this._closeMenu(false)
     if (!hidden || !this.restore(id)) return
-    this._announce(TEXT.addedBack(hidden.label))
+    this._announce(this.t('grid.addedBack', { label: hidden.label }))
     const el = this._tiles.get(id)
     const chrome = this._chromes.get(id)
     // Edit mode: the tile's handle. Otherwise its tile if it can take focus, else the grid.
@@ -1520,15 +1560,16 @@ export class TsGrid extends Base {
     this._settle(g)
     const moved = !sameOrder(g.from, this._order)
     if (moved) this._commit('move', g.id)
+    const t = this.t
     const label = this._label(g.id)
-    const at = [this._position(g.id), this._order.length]
+    const at = { label, position: this._position(g.id), total: this._order.length }
     if (g.pointerType !== 'keyboard') {
-      if (moved) this._announce(TEXT.moved(label, ...at))
+      if (moved) this._announce(t('grid.moved', at))
     } else if (placed && moved) {
-      this._announce(TEXT.droppedAt(label, ...at))
+      this._announce(t('grid.droppedAt', at))
     } else {
       // Each arrow press already said where the tile went.
-      this._announce(TEXT.dropped(label))
+      this._announce(t('grid.dropped', { label }))
     }
   }
 
@@ -1570,7 +1611,7 @@ export class TsGrid extends Base {
       this._order = g.from
       this._render(true, g.id)
       this._settle(g)
-      if (g.pointerType === 'keyboard') this._announce(TEXT.cancelled(this._label(g.id)))
+      if (g.pointerType === 'keyboard') this._announce(this.t('grid.cancelled', { label: this._label(g.id) }))
     } else {
       this._end()
     }
@@ -1670,7 +1711,7 @@ export class TsGrid extends Base {
     const size = this._item(g.id).size
     if (size !== g.size0) {
       this._commit('resize', g.id)
-      this._announce(TEXT.resized(this._label(g.id), size))
+      this._announce(this.t('grid.resized', { label: this._label(g.id), size }))
     }
   }
 
@@ -1712,7 +1753,7 @@ export class TsGrid extends Base {
       if (hadFocus) this._focusAfterRemove(near)
       // The toast is a live region, so it speaks for itself; the grid's own
       // status region would say the same thing twice.
-      if (!this._showToast(TEXT.removed(label))) this._announce(TEXT.removed(label) + '.')
+      if (!this._showToast(this.t('grid.removed', { label }))) this._announce(this.t('grid.removedSaid', { label }))
     }
     if (!this._motion()) return finish()
     this._unwiggle(id)
@@ -1807,7 +1848,7 @@ export class TsGrid extends Base {
       const origin = e.composedPath()[0]
       if (origin && (origin.isContentEditable || /^(input|textarea|select)$/i.test(origin.localName || ''))) return
       if (!this._gesture && this.undo()) {
-        this._announce(TEXT.undone)
+        this._announce(this.t('grid.undone'))
         e.preventDefault()
       }
       return
@@ -1865,7 +1906,7 @@ export class TsGrid extends Base {
       if (g || !this._placements.has(id)) return
       this._gesture = { kind: 'pending', pointerType: 'keyboard', id, x: 0, y: 0 }
       this._lift(this._gesture)
-      if (this._gesture) this._announce(TEXT.pickedUp(this._label(id)))
+      if (this._gesture) this._announce(this.t('grid.pickedUp', { label: this._label(id) }))
     } else if (a.type === 'moveBy') {
       if (g && this._heldId() === id) this._keyMove(g, a.dCol, a.dRow)
     } else if (a.type === 'placeAt') {
@@ -1917,7 +1958,7 @@ export class TsGrid extends Base {
     this._order = resizeItem(this._order, id, size, this._resolve)
     this._render(true)
     this._commit('resize', id)
-    this._announce(TEXT.resized(this._label(id), size))
+    this._announce(this.t('grid.resized', { label: this._label(id), size }))
     this._reveal(id)
   }
 
@@ -1947,12 +1988,12 @@ export class TsGrid extends Base {
         this._order = moveItem(this._order, g.id, target)
         this._render(true)
         this._showPlaceholder(this._boxes.get(g.id), true)
-        this._announce(TEXT.moved(this._label(g.id), this._position(g.id), this._order.length))
+        this._announce(this.t('grid.moved', { label: this._label(g.id), position: this._position(g.id), total: this._order.length }))
         this._reveal(g.id)
         return
       }
     }
-    this._announce(TEXT.blocked)
+    this._announce(this.t('grid.blocked'))
   }
 
   // ── Output ─────────────────────────────────────────────────────────────

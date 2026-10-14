@@ -17,11 +17,8 @@
  * nothing slotted into it.
  */
 
-import { TsWidget } from './widget.js'
+import { TsWidget, syncedParts } from './widget.js'
 import { SIZE_NAMES, isSize, toTime } from '../core/index.js'
-
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({ synced: 'synced ' })
 
 // Rendered by every variant: the card has no layouts of its own per size, so
 // its slotted content reflows into the box it is given.
@@ -30,7 +27,7 @@ const TEMPLATE = `
   <span class="dot live" data-k="dot" hidden></span>
   <span class="lb ell" data-k="label"></span>
   <span class="f1"></span>
-  <span class="sm mut n meta" data-k="meta" hidden><span class="pre">${STRINGS.synced}</span><span data-k="time"></span></span>
+  <span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>
   <slot name="actions"></slot>
 </div>
 <slot name="value"></slot>
@@ -66,6 +63,7 @@ export function cardModel(data, variant, ctx) {
     ariaLabel: ctx.valueText ? `${ctx.label}, ${ctx.valueText}` : ctx.label,
     live: typeof d.live === 'boolean' ? d.live : ctx.live === true,
     time,
+    synced: syncedParts(ctx.t),
     scrollable: ctx.scrollable === true,
   }
 }
@@ -220,7 +218,9 @@ slot[name="footer"]::slotted(*) {
     text('label', vm.label)
     flag(this.$('[data-k="dot"]'), 'hidden', !vm.live)
     flag(this.$('[data-k="meta"]'), 'hidden', !vm.time)
+    text('pre', vm.synced.pre)
     text('time', vm.time)
+    text('post', vm.synced.post)
 
     const body = this.$('[data-k="body"]')
     body.setAttribute('class', vm.scrollable ? 'body scroll' : 'body')

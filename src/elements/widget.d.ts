@@ -1,4 +1,4 @@
-import type { Formatter, SizeName, WidgetSpec } from '../core/index.js'
+import type { Formatter, Messages, SizeName, Translate, WidgetSpec } from '../core/index.js'
 
 /** 'loading' covers a re-fetch over existing data; 'error' shows the error view. */
 export type WidgetState = 'loading' | 'error' | null
@@ -22,6 +22,8 @@ export interface ViewModelContext {
   /** Whatever the element's viewContext() adds. */
   [extra: string]: unknown
   fmt: Formatter
+  /** This element's messages: its own, then its grid's, then configure()'s, then EN. */
+  t: Translate
   /** The time in ms: `clock()` if set, else `Date.now()`. */
   now: number
   /** The effective label: the `label` attribute, else the spec's label, else the tag. */
@@ -42,7 +44,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   static dataShape: DataShape | null
   /** Render the template while data is undefined (viewModel then gets `{}`); the skeleton shows only for state="loading". Default false. */
   static dataOptional: boolean
-  /** What the empty state says. Default 'No data'. */
+  /** What the empty state says. Default: the EN value of `widget.empty`; a built-in's is the EN value of its `widget.<key>.empty`, which a host's messages override. */
   static emptyText: string
   /** Loading markup for one variant, built once: `.sk` blocks shaped like the content. Default: a header, a headline bar and two text lines. */
   static skeleton(variant: SizeName): string
@@ -64,7 +66,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   size: SizeName
   /** The size actually rendered. */
   readonly variant: SizeName
-  /** The `label` attribute, else the spec's label ('' when neither; the tile is then named by its tag). */
+  /** The `label` attribute, else the `widget.<catalogKey>.label` message for a catalog widget, else the spec's label ('' when none; the tile is then named by its tag). */
   label: string
   /** Catalog entry, else the validated static spec, else `{ label: '', sizes: [] }`. Subclasses may override. */
   readonly spec: Omit<WidgetSpec, 'tag'>
@@ -73,6 +75,10 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   now(): number
   /** Resolved from own attributes, then the nearest <ts-grid>, then configure(); cached. */
   readonly formatter: Formatter
+  /** Overrides for this widget's strings; null clears. Assign a new object to change them. */
+  messages: Partial<Messages> | null
+  /** Resolved for this element: element → nearest <ts-grid> → configure() → EN. Cached; rebuilt when a table or the locale changes. */
+  readonly t: Translate
 
   /** The first match in the shadow root, cached until the template is rebuilt. */
   $<T extends Element = HTMLElement>(selector: string): T | null
@@ -84,7 +90,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   /** Re-apply properties set before the element was defined. */
   upgrade(...names: string[]): void
 
-  /** Extra keys for the view model's ctx (an attribute, say). fmt, now and label can't be replaced. */
+  /** Extra keys for the view model's ctx (an attribute, say). fmt, t, now and label can't be replaced. */
   viewContext(): Record<string, unknown>
 
   /** Write the view model into the DOM template() built. Called on every render. */
@@ -103,8 +109,8 @@ export declare function escapeHtml(s: unknown): string
 export declare const SHARED_CSS: string
 /** One skeleton block: width in percent (snapped to 5) or 'x' for an axis label, height in px. */
 export declare function sk(width: number | 'x', height: number): string
-/** The base's English strings; `{label}` and `{message}` are filled in. */
-export declare const STRINGS: Readonly<{ noData: string; errorDefault: string; errorRegion: string; retry: string }>
+/** The words either side of the time in `time.synced`, for a tile that hides them when narrow. */
+export declare function syncedParts(t: Translate): { pre: string; post: string }
 
 declare global {
   interface HTMLElementEventMap {

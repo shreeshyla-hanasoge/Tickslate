@@ -11,9 +11,17 @@ const MINUS = '−'
 
 let defaults = {}
 
-/** Sets the default locale, currency and time zone for formatters made without their own. */
+/**
+ * Sets the default locale, currency and time zone for formatters made without
+ * their own, and the messages every widget reads (null clears them).
+ */
 export function configure(options = {}) {
   defaults = { ...defaults, ...pick(options) }
+  if (options.messages !== undefined) {
+    const m = options.messages
+    if (m && typeof m === 'object') defaults.messages = m
+    else delete defaults.messages
+  }
 }
 
 /** The defaults configure() has set. */

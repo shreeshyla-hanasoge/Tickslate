@@ -240,11 +240,170 @@ export interface Formatter {
 }
 
 export declare function createFormatter(options?: FormatOptions): Formatter
-/** Sets defaults for formatters (and widgets) created without their own. */
-export declare function configure(options: FormatOptions): void
-export declare function currentConfig(): FormatOptions
+/** Sets defaults for formatters (and widgets) created without their own. `messages` is the table every widget and grid reads; null clears it. */
+export declare function configure(options: FormatOptions & { messages?: Partial<Messages> | null }): void
+export declare function currentConfig(): FormatOptions & { messages?: Partial<Messages> }
 /** A finite number from a number, a decimal string or a decimal-library object; else NaN. */
 export declare function toNumber(v: unknown): number
+
+// ── Messages ───────────────────────────────────────────────────────────
+
+/** One entry per key, each a string. A key with plural forms is listed by its forms, `time.days.one`, `time.days.other` and so on. */
+export interface Messages {
+  'widget.empty': string
+  'widget.error': string
+  'widget.error.region': string
+  'action.retry': string
+  'widget.todayPnl.label': string
+  'widget.equityCurve.label': string
+  'widget.pnlCalendar.label': string
+  'widget.edgeStats.label': string
+  'widget.capitalFunding.label': string
+  'widget.openPositions.label': string
+  'widget.watchlist.label': string
+  'widget.sessionClock.label': string
+  'widget.miniChart.label': string
+  'widget.card.label': string
+  'widget.metric.label': string
+  'widget.chart.label': string
+  'widget.todayPnl.empty': string
+  'widget.equityCurve.empty': string
+  'widget.sessionClock.empty': string
+  'widget.metric.empty': string
+  'widget.chart.empty': string
+  'size.S': string
+  'size.Wide': string
+  'size.Tall': string
+  'size.M': string
+  'size.L': string
+  'size.Banner': string
+  'size.XL': string
+  'size.name': string
+  'time.synced': string
+  'time.days.one': string
+  'time.days.other': string
+  'grid.dashboard': string
+  'grid.editLayout': string
+  'grid.editingGroup': string
+  'grid.done': string
+  'grid.undo': string
+  'grid.emptyBoard': string
+  'grid.addBack': string
+  'grid.addBackItem': string
+  'grid.hiddenHeading': string
+  'grid.instructions': string
+  'grid.handle': string
+  'grid.remove': string
+  'grid.resize': string
+  'grid.removed': string
+  'grid.removedSaid': string
+  'grid.addedBack': string
+  'grid.editStart.one': string
+  'grid.editStart.other': string
+  'grid.editDone': string
+  'grid.pickedUp': string
+  'grid.moved': string
+  'grid.dropped': string
+  'grid.droppedAt': string
+  'grid.cancelled': string
+  'grid.blocked': string
+  'grid.resized': string
+  'grid.profile': string
+  'grid.undone': string
+  'pnl.today': string
+  'pnl.realised': string
+  'pnl.unrealised': string
+  'pnl.fees': string
+  'pnl.closed': string
+  'pnl.open': string
+  'pnl.feesNote': string
+  'pnl.netOfFees': string
+  'pnl.now': string
+  'pnl.at': string
+  'pnl.low': string
+  'pnl.high': string
+  'pnl.highNow': string
+  'pnl.noIntraday': string
+  'pnl.chartEmpty': string
+  'pnl.chartLabel': string
+  'pnl.entry': string
+  'pnl.exit': string
+  'pnl.markTitle': string
+  'equity.short': string
+  'equity.wide': string
+  'equity.net': string
+  'equity.peak': string
+  'equity.maxDrawdown': string
+  'equity.tradingDays': string
+  'equity.shaded': string
+  'equity.fees': string
+  'equity.trades': string
+  'equity.netOfFees': string
+  'equity.noDays': string
+  'equity.rangeLabel': string
+  'equity.range1W': string
+  'equity.range1M': string
+  'equity.range3M': string
+  'equity.rangeYTD': string
+  'equity.rangeAll': string
+  'equity.peakNote': string
+  'equity.over': string
+  'equity.dayCount.one': string
+  'equity.dayCount.other': string
+  'equity.tradingDayCount.one': string
+  'equity.tradingDayCount.other': string
+  'equity.tradeCount.one': string
+  'equity.tradeCount.other': string
+  'equity.chartEmpty': string
+  'equity.chartLabel': string
+  'equity.ariaEmpty': string
+  'equity.aria': string
+  'session.title': string
+  'session.open': string
+  'session.closed': string
+  'session.openShort': string
+  'session.closedShort': string
+  'session.noCalendar': string
+  'session.none': string
+  'session.unknown': string
+  'session.noneScheduled': string
+  'session.noneShort': string
+  'session.toClose': string
+  'session.left': string
+  'session.opens': string
+  'session.opensIn': string
+  'session.opensOn': string
+  'session.opensDay': string
+  'session.dayTime': string
+  'session.ariaOpen': string
+  'session.ariaClosed': string
+  'session.ariaNone': string
+  'session.aria': string
+  'session.tfHours': string
+  'session.tfMinutes': string
+  'session.legend': string
+  'session.legendNext': string
+  'session.nextClose': string
+  'metric.target': string
+  'metric.up': string
+  'metric.down': string
+  'metric.unchanged': string
+  'metric.trend': string
+  'chart.series': string
+  'chart.last': string
+  'chart.noData': string
+}
+
+export type MessageKey = keyof Messages
+
+/** `{param}` interpolation and plural forms; a missing key falls back to EN, then to the key itself. A `count` selects `key.<category>`, then `key.other`, then `key`. */
+export type Translate = (key: MessageKey, params?: Record<string, string | number>, count?: number) => string
+
+/** Every key and its English text. Frozen; keys are flat and dotted. */
+export declare const EN: Readonly<Messages>
+
+/** Builds a `t` from a table of overrides (missing keys fall back to EN) and the locale that picks plural forms. */
+export declare function createMessages(overrides?: Partial<Messages> | null, locale?: string): Translate
 
 /** An instant: ms or seconds since the epoch, a Date, an ISO 8601 string or a numeric string. */
 export type Time = number | string | Date

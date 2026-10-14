@@ -11,19 +11,10 @@
  * unused, which is what lets new data never need new markup.
  */
 
-import { TsWidget, sk, describeElement } from './widget.js'
+import { TsWidget, sk, describeElement, syncedParts } from './widget.js'
 import { areaPaths, scale, seriesDomain } from './chart.js'
 import { DEV, warnOnce } from './dev.js'
-import { toNumber, toTime } from '../core/index.js'
-
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({
-  empty: 'No data yet',
-  synced: 'synced ',
-  last: 'last',
-  noData: 'no data',
-  series: 'Series',
-})
+import { EN, toNumber, toTime } from '../core/index.js'
 
 export const MAX_SERIES = 4
 
@@ -64,7 +55,7 @@ const byX = (a, b) => a.x - b.x
  * points, and how many rows or points couldn't be read. Sorted because a line
  * drawn through points out of order doubles back on itself.
  */
-function readSeries(d, readX) {
+function readSeries(d, readX, t) {
   const out = []
   let dropped = 0
   if (Array.isArray(d.series)) {
@@ -79,7 +70,7 @@ function readSeries(d, readX) {
           else dropped++
         }
       }
-      out.push({ name: str(item.name) || `${STRINGS.series} ${i + 1}`, kind: item.kind === 'area' ? 'area' : 'line', points: points.sort(byX) })
+      out.push({ name: str(item.name) || t('chart.series', { index: i + 1 }), kind: item.kind === 'area' ? 'area' : 'line', points: points.sort(byX) })
     })
   } else if (Array.isArray(d.rows)) {
     const cols = yColumns(d.y)
@@ -166,14 +157,14 @@ function places(n) {
  * dash.
  */
 export function chartModel(data, variant, ctx) {
-  const fmt = ctx.fmt
+  const { fmt, t } = ctx
   const d = isObj(data) && !Array.isArray(data) ? data : {}
   const format = ['money', 'percent', 'duration'].includes(d.format) ? d.format : 'number'
   const decimals = Number.isInteger(d.decimals) && d.decimals >= 0 && d.decimals <= 20 ? d.decimals : undefined
   const unit = str(d.unit)
   const timeAxis = d.xType !== 'number'
 
-  const { all, dropped } = readSeries(d, timeAxis ? toTime : toNumber)
+  const { all, dropped } = readSeries(d, timeAxis ? toTime : toNumber, t)
   const series = []
   for (let i = 0; i < all.length && i < MAX_SERIES; i++) series.push(all[i])
 
@@ -283,14 +274,15 @@ export function chartModel(data, variant, ctx) {
 
   // The summary a listener gets instead of the picture (docs/ACCESSIBILITY.md).
   const summary = outSeries.length
-    ? outSeries.map((s) => `${s.name}, ${s.empty ? STRINGS.noData : `${STRINGS.last} ${s.last}`}`).join('; ')
-    : `${ctx.label}, ${STRINGS.noData}`
+    ? outSeries.map((s) => (s.empty ? t('chart.noData', { name: s.name }) : t('chart.last', { name: s.name, value: s.last }))).join('; ')
+    : t('chart.noData', { name: ctx.label })
 
   const vm = {
     ariaLabel: summary,
     label: ctx.label,
     live: d.live === true,
     time: '',
+    synced: syncedParts(t),
     series: outSeries,
     legend: outSeries.map((s, i) => ({ name: s.name, index: i + 1 })),
     axis,
@@ -312,7 +304,7 @@ export function chartModel(data, variant, ctx) {
 const SLOTS = [1, 2, 3, 4]
 
 const dot = '<span class="dot live" data-k="dot" hidden></span>'
-const meta = `<span class="sm mut n meta" data-k="meta" hidden><span class="pre">${STRINGS.synced}</span><span data-k="time"></span></span>`
+const meta = '<span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>'
 
 // Wide names the first series up in the header, where the other sizes have a legend.
 const head = (wide) =>
@@ -360,7 +352,7 @@ SKELETONS.XL = SKELETONS.L
 
 export class TsChart extends TsWidget {
   static catalogKey = 'chart'
-  static emptyText = STRINGS.empty
+  static emptyText = EN['widget.chart.empty']
   // Both forms are optional here because either alone is enough; naming the
   // series items' points is what lets a wrong-shape one be explained.
   static dataShape = {
@@ -456,7 +448,9 @@ export class TsChart extends TsWidget {
     hide('dot', !vm.live)
     text('label', vm.label)
     hide('meta', !vm.time)
+    text('pre', vm.synced.pre)
     text('time', vm.time)
+    text('post', vm.synced.post)
     attr('svg', 'aria-label', vm.chartLabel === undefined ? vm.ariaLabel : vm.chartLabel)
 
     for (const i of SLOTS) {

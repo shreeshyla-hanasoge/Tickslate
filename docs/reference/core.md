@@ -15,7 +15,7 @@ in `index.d.ts` beside the package.
 
 Contents: [sizes](#sizes-and-breakpoints) · [catalog](#widget-catalog) ·
 [layouts](#layouts) · [placement](#placement) · [editing](#editing) ·
-[formatting](#formatting) · [time](#time) · [calendars](#session-calendars) ·
+[formatting](#formatting) · [messages](#messages) · [time](#time) · [calendars](#session-calendars) ·
 [stats](#stats)
 
 Amounts are in major units (rupees, dollars). Anywhere a number is read, the
@@ -325,10 +325,11 @@ A value that is not readable as a number formats as a dash.
 
 ### `configure(options)`
 
-`(options: { locale?, currency?, timeZone? }) => void`. Sets defaults for
-formatters (and widgets) created without their own. Later calls merge. A widget
-resolves each option from its own attribute, then its `<ts-grid>`'s attribute,
-then these.
+`(options: { locale?, currency?, timeZone?, messages? }) => void`. Sets defaults
+for formatters (and widgets) created without their own. Later calls merge. A
+widget resolves each option from its own attribute, then its `<ts-grid>`'s
+attribute, then these. `messages` replaces the whole table every widget and grid
+reads (see [Messages](#messages)); `null` clears it.
 
 ```js
 configure({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
@@ -336,8 +337,8 @@ configure({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 
 ### `currentConfig()`
 
-`() => { locale?, currency?, timeZone? }`. A copy of the defaults `configure()`
-has set.
+`() => { locale?, currency?, timeZone?, messages? }`. A copy of the defaults
+`configure()` has set.
 
 ### `toNumber(v)`
 
@@ -345,6 +346,45 @@ has set.
 (`"12.50"`, `" 3e2 "`) or a decimal-library object, else `NaN`. Booleans, `null`,
 hex and binary strings, `'Infinity'` and objects whose `toNumber()` throws are
 `NaN`, because they are never what a P&L field means.
+
+## Messages
+
+Every visible and every spoken string, in one table, so a host can translate
+Tickslate or reword it. A table that leaves a key out falls back to English for
+that key.
+
+```js
+configure({ messages: { 'widget.empty': 'Keine Daten' } })   // every widget, from now on
+```
+
+A `messages` property on a widget overrides this for that widget, and one on a
+`<ts-grid>` for every tile inside it. Resolution is per key: the element, then
+the nearest grid, then `configure()`, then `EN`. Assign a new object to change a
+table; changing one in place is not noticed.
+
+### `EN`
+
+`Readonly<Messages>`. Every key and its English text, frozen. Keys are flat and
+dotted (`grid.undo`, `equity.rangeAll`), and the `Messages` interface in
+`index.d.ts` types every one. A text holds `{name}` placeholders; a placeholder
+with no parameter stays as written. A key with plural forms is listed by its
+forms, for example `equity.dayCount.one` and `equity.dayCount.other`.
+
+### `createMessages(overrides?, locale?)`
+
+`(overrides?: Partial<Messages> | null, locale?: string) => Translate`, where
+`Translate` is `(key, params?, count?) => string`. Builds a function that reads
+`overrides`, then `EN`, then returns the key itself. With a `count` it reads
+`key.<category>` (the category comes from `Intl.PluralRules(locale)`: `zero`,
+`one`, `two`, `few`, `many` or `other`), then `key.other`, then `key`, and `{count}`
+is available as a parameter. The locale only chooses plural forms; the table is
+not matched against it. It never formats, so pass numbers and times already
+formatted by [`createFormatter`](#createformatteroptions).
+
+```js
+const t = createMessages({ 'time.days.one': '{count} dzień', 'time.days.few': '{count} dni', 'time.days.many': '{count} dni' }, 'pl')
+t('time.days', {}, 22)   // '22 dni'
+```
 
 ## Time
 

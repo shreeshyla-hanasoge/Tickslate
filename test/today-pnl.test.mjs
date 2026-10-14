@@ -1,10 +1,10 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsTodayPnl, todayPnlModel, HEADLINE_CHARS, CHART_BOX } from '../src/elements/today-pnl.js'
-import { createFormatter } from '../src/core/index.js'
+import { createFormatter, createMessages } from '../src/core/index.js'
 
 const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
-const ctx = { fmt, now: 0, label: "Today's P&L" }
+const ctx = { fmt, t: createMessages(), now: 0, label: "Today's P&L" }
 
 // 2026-03-02 (a Monday) in IST, built from UTC so the test doesn't depend on the machine's zone.
 const ist = (h, m) => Date.UTC(2026, 2, 2, h, m) - (5 * 60 + 30) * 60000

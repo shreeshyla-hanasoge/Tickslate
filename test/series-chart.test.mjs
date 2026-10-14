@@ -1,11 +1,11 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { TsChart, chartModel, niceDomain, STRINGS, BOX, MAX_SERIES } from '../src/elements/series-chart.js'
-import { createFormatter } from '../src/core/index.js'
+import { TsChart, chartModel, niceDomain, BOX, MAX_SERIES } from '../src/elements/series-chart.js'
+import { EN, createFormatter, createMessages } from '../src/core/index.js'
 import { checkShape, shapeMessage, resetWarnings } from '../src/elements/dev.js'
 
 const fmt = createFormatter({ locale: 'en-US', currency: 'USD', timeZone: 'UTC' })
-const ctx = { fmt, now: 0, label: 'Revenue and cost' }
+const ctx = { fmt, t: createMessages(), now: 0, label: 'Revenue and cost' }
 const model = (data, variant = 'M') => chartModel(data, variant, ctx)
 
 const D = (day) => Date.UTC(2026, 8, day)
@@ -80,9 +80,9 @@ describe('without a DOM', () => {
     assert.equal(shapeMessage(bad), 'data.series[2].points should be array (got object)')
   })
 
-  test('strings live in one frozen object', () => {
-    assert.ok(Object.isFrozen(STRINGS))
-    assert.equal(STRINGS.empty, 'No data yet')
+  test('the empty text is the EN message', () => {
+    assert.equal(TsChart.emptyText, EN['widget.chart.empty'])
+    assert.equal(TsChart.emptyText, 'No data yet')
   })
 })
 

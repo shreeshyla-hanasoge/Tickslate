@@ -1,10 +1,10 @@
 import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { SHARED_CSS, STRINGS, sk } from '../src/elements/widget.js'
+import { SHARED_CSS, sk } from '../src/elements/widget.js'
 import { TsTodayPnl } from '../src/elements/today-pnl.js'
 import { TsEquityCurve } from '../src/elements/equity-curve.js'
 import { TsSessionClock } from '../src/elements/session-clock.js'
-import { WIDGETS } from '../src/core/index.js'
+import { EN, WIDGETS } from '../src/core/index.js'
 import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 
 // Loading, empty and error views (RFC 0002 §2.3, §2.4). Importing the modules
@@ -63,9 +63,9 @@ describe('static contract, no DOM', () => {
     assert.match(SHARED_CSS, /\.sk\.grow \{ flex: 1; min-height: 0;/)
   })
 
-  test('the base strings live in one frozen object', () => {
-    assert.ok(Object.isFrozen(STRINGS))
-    assert.equal(STRINGS.errorDefault, "Couldn't display this data")
+  test('the base strings are EN messages', () => {
+    assert.ok(Object.isFrozen(EN))
+    assert.equal(EN['widget.error'], "Couldn't display this data")
   })
 })
 
@@ -229,7 +229,8 @@ describe('the views', () => {
       const el = await connect(make({ statics: { dataOptional: true } }))
       el.data = null
       await tick()
-      assert.match(section(el).html, /<slot name="empty">No data<\/slot>/)
+      assert.match(section(el).html, /<slot name="empty"><span data-k="empty"><\/span><\/slot>/)
+      assert.equal(text(el, '[data-k="empty"]'), 'No data')
     })
   })
 
@@ -238,7 +239,8 @@ describe('the views', () => {
       const el = await connect(make())
       el.data = null
       await tick()
-      assert.match(section(el).html, /<div class="empty"><slot name="empty">No data<\/slot><\/div>/)
+      assert.match(section(el).html, /<div class="empty"><slot name="empty"><span data-k="empty"><\/span><\/slot><\/div>/)
+      assert.equal(text(el, '[data-k="empty"]'), 'No data')
       assert.equal(text(el, '[data-k="label"]'), 'Signups')
       assert.equal(section(el).getAttribute('aria-label'), 'Signups')
       assert.equal(section(el).getAttribute('aria-busy'), null)
@@ -248,7 +250,9 @@ describe('the views', () => {
       const el = await connect(make({ statics: { emptyText: 'No <b>trades</b> & more' } }))
       el.data = null
       await tick()
-      assert.match(section(el).html, /<slot name="empty">No &lt;b&gt;trades&lt;\/b&gt; &amp; more<\/slot>/)
+      // Written as text, so markup in it is never parsed.
+      assert.equal(text(el, '[data-k="empty"]'), 'No <b>trades</b> & more')
+      assert.doesNotMatch(section(el).html, /trades/)
       // The slot is in the shadow tree, so a light-DOM child with slot="empty"
       // is projected there and keeps its own events: nothing here wraps it.
       assert.doesNotMatch(section(el).html, /pointer-events/)
@@ -270,7 +274,7 @@ describe('the views', () => {
         await connect(el)
         el.data = null
         await tick()
-        assert.match(section(el).html, new RegExp(`<slot name="empty">${text}</slot>`))
+        assert.equal(section(el).querySelector('[data-k="empty"]').textContent, text)
       }
     })
   })
@@ -383,7 +387,8 @@ describe('the views', () => {
       assert.doesNotMatch(section(el).html, /<button/)
       el.actions = ['exit-all', 'retry']
       await tick()
-      assert.match(section(el).html, /<button type="button" class="btn retry" data-action="retry">Retry<\/button>/)
+      assert.match(section(el).html, /<button type="button" class="btn retry" data-action="retry" data-k="retry"><\/button>/)
+      assert.equal(text(el, '[data-k="retry"]'), 'Retry')
       el.actions = []
       await tick()
       assert.doesNotMatch(section(el).html, /<button/)

@@ -1,6 +1,6 @@
 import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { SIZE_NAMES, createFormatter } from '../src/core/index.js'
+import { SIZE_NAMES, createFormatter, createMessages } from '../src/core/index.js'
 import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 
 // <ts-card> (RFC 0002 §3.1). The module under test needs a base class, so it
@@ -81,7 +81,7 @@ describe('static contract', () => {
 
 describe('cardModel', () => {
   const fmt = createFormatter({ timeZone: 'UTC' })
-  const base = { fmt, label: 'News', live: false, asOf: null, scrollable: false, valueText: '' }
+  const base = { fmt, t: createMessages(), label: 'News', live: false, asOf: null, scrollable: false, valueText: '' }
 
   test('data wins over the attributes, and bad times show nothing', () => {
     const at = Date.UTC(2026, 0, 5, 14, 5)
@@ -173,7 +173,7 @@ describe('slots are kept in every state', () => {
     none.data = null
     await tick()
     assert.deepEqual(slotsIn(html(none)), ['empty'])
-    assert.match(html(none), /No data/)
+    assert.equal(none.shadowRoot.section.querySelector('[data-k="empty"]').textContent, 'No data')
   })
 
   test('nothing slotted and data = null shows the empty view, and a slot="empty" child can replace its text', async () => {
@@ -251,7 +251,8 @@ describe('header, live and as-of', () => {
     assert.equal(s.querySelector('[data-k="dot"]').getAttribute('hidden'), null)
     assert.equal(s.querySelector('[data-k="meta"]').getAttribute('hidden'), null)
     assert.equal(s.querySelector('[data-k="time"]').textContent, '14:05')
-    assert.match(html(card), /synced <\/span><span data-k="time">/)
+    assert.equal(s.querySelector('[data-k="pre"]').textContent, 'synced ')
+    assert.equal(s.querySelector('[data-k="post"]').textContent, '')
   })
 
   test('without them the dot and meta are hidden', async () => {
