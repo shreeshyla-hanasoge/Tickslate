@@ -84,15 +84,23 @@ const BUDGETS = {
  * 17,994 B, session-clock 16,905 B, today-pnl 17,812 B. Only the four that no
  * longer fitted were raised; card, metric and chart still sit under theirs.
  * The grid's figure includes the default tokens it now injects, about 1.4 kB.
+ *
+ * Re-measured 2026-10-14 after overnight-sessions, theme-presets and
+ * reading-order: card 14,855 B (7 B over its figure) and chart 17,834 B (86 B
+ * of headroom, under 1 %), both reset to measured + 10 % so ordinary follow-up
+ * work does not fail on noise. The rest still fit with room: grid 26,127 B,
+ * metric 16,655 B, today-pnl 18,063 B, equity-curve 18,184 B, session-clock
+ * 17,179 B, core 11,080 B, UMD 11,211 B.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
 const remeasuredAgain = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-chrome and persist-attribute, RFC 0003 §25' })
+const remeasuredThird = (maxKb) => ({ ...entry(maxKb), target: 're-measured after overnight-sessions, theme-presets and reading-order, RFC 0003 §25' })
 const ENTRY_BUDGETS = {
   grid: remeasuredAgain(27),
-  card: remeasured(14.5),
+  card: remeasuredThird(16),
   metric: remeasured(16.5),
-  chart: remeasured(17.5),
+  chart: remeasuredThird(19.5),
   'today-pnl': remeasuredAgain(19.5),
   'equity-curve': remeasuredAgain(19.5),
   'session-clock': remeasuredAgain(18.5),

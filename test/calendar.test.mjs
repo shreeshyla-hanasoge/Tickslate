@@ -166,14 +166,26 @@ describe('layout profile', () => {
   })
 })
 
+// Milliseconds per call of `fn(i)`, from the fastest of several batches. Load
+// on the machine only ever adds time to a batch, so the best one is the
+// closest to what the code costs, and a ceiling on it does not flake.
+function bestBatchMs(fn, calls = 200, batches = 10) {
+  for (let i = 0; i < calls; i++) fn(i) // warm up
+  let best = Infinity
+  for (let b = 0; b < batches; b++) {
+    const start = performance.now()
+    for (let i = 0; i < calls; i++) fn(i)
+    best = Math.min(best, (performance.now() - start) / calls)
+  }
+  return best
+}
+
 test('state and profile are quick enough to call every second', () => {
   const both = { market: { sessions: ['nse', 'mcx'], leadMinutes: 15, lagMinutes: 5 } }
-  const start = performance.now()
-  for (let i = 0; i < 200; i++) {
+  const each = bestBatchMs((i) => {
     cal.state('mcx', ist('2026-10-12', '12:00') + i * MIN)
     activeProfile(cal, both, ist('2026-10-12', '12:00') + i * MIN)
-  }
-  const each = (performance.now() - start) / 200
+  })
   assert.ok(each < 5, `${each.toFixed(2)} ms per tick`)
 })
 
@@ -434,9 +446,7 @@ describe('validation of overnight specs', () => {
 })
 
 test('state is quick enough to call every second for a session that never closes', () => {
-  const start = performance.now()
-  for (let i = 0; i < 200; i++) night.state('crypto', Date.UTC(2026, 9, 12) + i * 60 * MIN)
-  const each = (performance.now() - start) / 200
+  const each = bestBatchMs((i) => night.state('crypto', Date.UTC(2026, 9, 12) + i * 60 * MIN))
   assert.ok(each < 5, `${each.toFixed(2)} ms per call`)
 })
 

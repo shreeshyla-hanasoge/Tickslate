@@ -462,14 +462,43 @@ describe('dropIndex', () => {
     assert.equal(dropIndex(row, 'nope', { col: 0, row: 0 }, 4, {}), -1)
   })
 
-  test('takes under a millisecond for 30 tiles', () => {
-    const items = Array.from({ length: 30 }, (_, i) => s(`t${i}`, SIZE_NAMES[i % SIZE_NAMES.length]))
-    for (let i = 0; i < 50; i++) dropIndex(items, 't0', { col: i % 4, row: i % 9 }, 4, {}) // warm up
-    const runs = 200
-    const start = performance.now()
-    for (let i = 0; i < runs; i++) dropIndex(items, `t${i % 30}`, { col: i % 4, row: i % 12 }, 4, {}, 2)
-    const each = (performance.now() - start) / runs
-    assert.ok(each < 1, `${each.toFixed(3)} ms per call`)
+  // dropIndex tries every slot and lays out the first i + 1 tiles for each, so
+  // it is O(n^3) in the tile count by construction (measured: about 40x from
+  // 30 to 120 tiles). The tests below catch an accidental step beyond that
+  // without a wall-clock threshold that a loaded CI machine can cross: they
+  // compare two sizes timed in the same process, and take the best of several
+  // batches, because load only ever adds time to a batch.
+  const tiles = (n) => Array.from({ length: n }, (_, i) => s(`t${i}`, SIZE_NAMES[i % SIZE_NAMES.length]))
+  const bestBatchMs = (n, calls, batches) => {
+    const items = tiles(n)
+    const run = (i) => dropIndex(items, `t${i % n}`, { col: i % 4, row: i % 12 }, 4, {}, 2)
+    for (let i = 0; i < calls; i++) run(i) // warm up
+    let best = Infinity
+    for (let b = 0; b < batches; b++) {
+      const start = performance.now()
+      for (let i = 0; i < calls; i++) run(i)
+      best = Math.min(best, (performance.now() - start) / calls)
+    }
+    return best
+  }
+
+  test('does not grow faster than cubically with the tile count', () => {
+    const small = bestBatchMs(30, 20, 15)
+    const large = bestBatchMs(120, 3, 15)
+    // 4x the tiles is 64x the work at O(n^3), measured about 40x. An extra
+    // factor of n would be 256x or more, so 150 leaves room for noise on the
+    // small side (a 30 tile call takes tens of microseconds) and still fails
+    // on that.
+    const ratio = large / small
+    assert.ok(ratio < 150, `120 tiles took ${ratio.toFixed(0)}x as long as 30 (${small.toFixed(3)} ms and ${large.toFixed(3)} ms per call)`)
+  })
+
+  test('stays far inside a frame for 30 tiles', () => {
+    // It runs on every pointer move while dragging. It takes well under a
+    // tenth of a millisecond alone, so 5 ms is a ceiling that only a real
+    // regression, not a busy machine, reaches in the best of 15 batches.
+    const each = bestBatchMs(30, 20, 15)
+    assert.ok(each < 5, `${each.toFixed(3)} ms per call`)
   })
 })
 
