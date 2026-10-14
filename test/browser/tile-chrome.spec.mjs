@@ -356,3 +356,83 @@ test.describe('right-to-left pages', () => {
     expect(after).toEqual(heights)
   })
 })
+
+// A signed figure is the arrow, the sign and the number, and it never breaks between them (RFC 0003 §5.5). The terminal
+// and calm presets set the figures in a monospace face, the widest a figure gets, so a tile that fits them fits any.
+// The fixture puts each tile at the width a 2-column phone gives it, the narrowest it is drawn: 170px for S, 351px for
+// the others.
+test.describe('signed figures on a phone', () => {
+  const PHONE = { S: 170, Wide: 351, M: 351 }
+  const TILES = ['todayPnl:S', 'todayPnl:Wide', 'todayPnl:M', 'equityCurve:Wide', 'equityCurve:M', 'metric:S', 'metric:Wide', 'metric:M']
+
+  for (const preset of ['terminal', 'calm']) {
+    for (const theme of ['light', 'dark']) {
+      test(`${preset} ${theme}: the arrow and the figure share a line, and nothing overflows`, async ({ page }) => {
+        const errors = []
+        guard(page, errors)
+        await page.goto(`${PAGE}?theme=${theme}&preset=${preset}`)
+        await page.waitForFunction(() => window.__ready === true)
+        const found = await page.evaluate(async ({ tiles, phone }) => {
+          const out = []
+          for (const key of tiles) {
+            const el = window.__fx.tiles.get(key)
+            const size = key.split(':')[1]
+            el.style.width = `${phone[size]}px`
+          }
+          await window.__fx.nextFrame()
+          for (const key of tiles) {
+            const el = window.__fx.tiles.get(key)
+            const root = el.shadowRoot
+            const tile = root.querySelector('.tile')
+            // The tile is the figure's last resort: nothing may push it sideways.
+            out.push({ key, what: 'tile', over: tile.scrollWidth - tile.clientWidth })
+            const signed = [...root.querySelectorAll('.fg, [data-k="change"]')].filter((box) => {
+              const arrow = box.querySelector('.ar, [data-k="arrow"]')
+              return arrow && arrow.textContent
+            })
+            out.push({ key, what: 'signed figures drawn', count: signed.length })
+            for (const box of signed) {
+              const arrow = box.querySelector('.ar, [data-k="arrow"]')
+              const figure = box.classList.contains('fg') ? box.parentElement : box
+              // The first digit of the number, found in its own text node, so a sign or a currency before it is skipped.
+              const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT)
+              let digit = null
+              for (let node = walker.nextNode(); node && !digit; node = walker.nextNode()) {
+                if (arrow.contains(node)) continue
+                const at = node.data.search(/\p{Nd}/u)
+                if (at >= 0) {
+                  const range = document.createRange()
+                  range.setStart(node, at)
+                  range.setEnd(node, at + 1)
+                  digit = range.getBoundingClientRect()
+                }
+              }
+              const a = arrow.getBoundingClientRect()
+              const label = `${key} ${figure.dataset.k || ''} "${box.textContent.trim()}"`
+              // The arrow is a smaller mark raised to the digits' middle, so its box is not top-aligned with the digit's. On the
+              // same line its middle lies within the digit's box; wrapped, it is a whole line above or below it.
+              const mid = (a.top + a.bottom) / 2
+              out.push({ key, what: `${label}: arrow beside the first digit`, off: digit ? Math.max(digit.top - mid, mid - digit.bottom, 0) : null, lines: box.getClientRects().length })
+              out.push({ key, what: `${label}: figure fits its box`, over: figure.scrollWidth - figure.clientWidth, wrapperOver: box.getBoundingClientRect().width - figure.clientWidth })
+            }
+          }
+          return out
+        }, { tiles: TILES, phone: PHONE })
+        expect(errors).toEqual([])
+        for (const r of found) {
+          if (r.what === 'signed figures drawn') {
+            expect(r.count, `${r.key} draws a figure with an arrow`).toBeGreaterThan(0)
+          } else if ('off' in r) {
+            expect(r.off, r.what).not.toBeNull()
+            expect(r.off, r.what).toBeLessThanOrEqual(2)
+            expect(r.lines, `${r.what}: one line box`).toBe(1)
+          } else {
+            expect(r.over, `${r.key} ${r.what}`).toBeLessThanOrEqual(0)
+            // The wrapper is an inline box, which has no scrollWidth of its own, so its drawn width is read instead.
+            if ('wrapperOver' in r) expect(r.wrapperOver, `${r.key} ${r.what}`).toBeLessThanOrEqual(0.5)
+          }
+        }
+      })
+    }
+  }
+})

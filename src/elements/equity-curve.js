@@ -12,7 +12,7 @@
  * DOM its template built.
  */
 
-import { TsWidget, sk, header, arrowFor } from './widget.js'
+import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { linePath, linePaths, bandPath } from './chart.js'
 import { EN, equitySeries, equityStats, toDay, toNumber } from '../core/index.js'
 
@@ -239,11 +239,6 @@ export function equityCurveModel(data, variant, ctx) {
 
 const k = (name) => `[data-k="${name}"]`
 
-// A figure that can be a gain or a loss: the ▲ or ▼ sits inside it, so the figure's own box (and its tone class) covers
-// both, and update() writes the arrow and the text to their own nodes.
-const figure = (cls, k, part = '') =>
-  `<span class="${cls}"${part ? ` part="${part}"` : ''} data-k="${k}"><span class="ar" aria-hidden="true" data-k="${k}Ar"></span><span data-k="${k}V"></span></span>`
-
 function chartMarkup(v) {
   const [w, h] = DIMS[v]
   const xl = v === 'XL'
@@ -287,7 +282,7 @@ export class TsEquityCurve extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `
+  static styles = `${FIGURE_CSS}
 [hidden] { display: none !important; }
 .rowl { flex: 1; min-height: 0; display: flex; flex-direction: row; align-items: stretch; gap: 20px; }
 .rowl.xl { gap: 24px; }
@@ -305,10 +300,11 @@ export class TsEquityCurve extends TsWidget {
 .rail { width: 220px; flex: none; gap: 16px; }
 .rail.sep { border-top: 0; border-inline-start: 1px solid var(--ts-line); padding-inline-start: 24px; }
 .stats { padding-block-start: 10px; }
-/* The arrow takes room beside the net figure, which fills the Wide side column. A roomy tile widens the column by the
-   arrow and its gap and keeps the 34px headline; a narrow one keeps the column and shrinks the figure instead. */
-@container (min-width: 420px) { .side { width: 190px; } }
-@container (not (min-width: 420px)) { .side .big { font-size: min(31px, 17cqi); } }
+/* The net figure and its arrow fill the Wide side column: 10 characters of a monospace face (0.6em each) and the arrow
+   (0.4em) are 6.4em. A narrow tile keeps the 170px column and sizes the figure to it; a roomy one widens the column and
+   keeps the 34px headline. The size is in px because the column's width is, and the figure never wraps or clips. */
+.side .big { font-size: 26px; }
+@container (min-width: 420px) { .side { width: 220px; } .side .big { font-size: 34px; } }
 `
 
   static get observedAttributes() {
@@ -331,8 +327,8 @@ ${chartMarkup('XL')}
 </div>
 <div class="col sep rail">
 <div class="col"><span class="lb" data-k="lbNet"></span>${figure('big', 'net', 'value')}</div>
-<div class="col"><span class="lb" data-k="lbPeak"></span>${figure('n md', 'peak')}</div>
-<div class="col"><span class="lb" data-k="lbDrawdown"></span>${figure('n md', 'maxDrawdown')}<span class="sm mut" data-k="shaded"></span></div>
+<div class="col cell"><span class="lb" data-k="lbPeak"></span>${figure('n md', 'peak')}</div>
+<div class="col cell"><span class="lb" data-k="lbDrawdown"></span>${figure('n md', 'maxDrawdown')}<span class="sm mut" data-k="shaded"></span></div>
 <div class="col"><span class="lb" data-k="lbDays"></span><span class="n md" data-k="daysLine"></span></div>
 </div>
 </div>`
@@ -342,9 +338,9 @@ ${chartMarkup('XL')}
 ${chartMarkup('M')}
 <div class="row sm mut ax"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span></div>
 <div class="g3 sep stats">
-<div class="col"><span class="lb" data-k="lbPeak"></span>${figure('n md', 'peak')}</div>
-<div class="col"><span class="lb" data-k="lbDrawdown"></span>${figure('n md', 'maxDrawdown')}</div>
-<div class="col"><span class="lb" data-k="thirdLabel"></span><span class="n md" data-k="thirdValue"></span></div>
+<div class="col cell"><span class="lb" data-k="lbPeak"></span>${figure('n md', 'peak')}</div>
+<div class="col cell"><span class="lb" data-k="lbDrawdown"></span>${figure('n md', 'maxDrawdown')}</div>
+<div class="col cell"><span class="lb" data-k="thirdLabel"></span><span class="n md" data-k="thirdValue"></span></div>
 </div>`
   }
 
@@ -408,6 +404,8 @@ ${chartMarkup('M')}
       text(`${key}Ar`, arrow)
       text(`${key}V`, value)
       cls(key, base, tone)
+      const el = this.$(k(key))
+      if (el) el.style.setProperty('--fc', String(value.length))
     }
     text('label', vm.label)
     fig('net', 'big', vm.headline, vm.headlineArrow, vm.netClass)

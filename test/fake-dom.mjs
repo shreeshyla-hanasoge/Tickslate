@@ -30,6 +30,8 @@ export class FakeNode {
     this.html = ''
     this.kids = new Map()
     this.listeners = new Map()
+    // A widget writes inline custom properties (a figure's length) and positions; a test reads them back by name.
+    this.style = { setProperty: (k, v) => { this.style[k] = v } }
   }
   setAttribute(k, v) {
     this.attrs.set(k, String(v))

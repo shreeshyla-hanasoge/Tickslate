@@ -317,7 +317,7 @@ class Node {
     this._text = ''
     this.title = ''
     this.hidden = false
-    this.style = {}
+    this.style = { setProperty: (k, v) => { this.style[k] = v } }
     this.className = ''
     this.tabIndex = 0
     this.dataset = {}

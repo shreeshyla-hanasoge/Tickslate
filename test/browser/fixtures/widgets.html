@@ -1,7 +1,9 @@
 <!doctype html>
 <!-- Every registered widget at every size it supports, in one theme chosen by
      ?theme=light|dark. It loads nothing from the network. The spec drives it
-     through window.__fx. ?fill=1 puts a height: 100% element in each card. -->
+     through window.__fx. ?fill=1 puts a height: 100% element in each card.
+     ?preset=terminal (or calm, signal...) loads that theme preset (src/themes/presets/)
+     and puts it on the page, beside data-theme, as a host would. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -34,6 +36,19 @@
   const theme = params.get('theme') === 'dark' ? 'dark' : 'light'
   const fill = params.has('fill')
   document.documentElement.dataset.theme = theme
+  // A preset is its own file, and reaches the widgets as tokens through the page's data-ts-theme. The page is ready
+  // only once the file has loaded, or the first measurement would be of the default tokens.
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
   const stage = document.getElementById('stage')
 
   // Widths as a 4-column desktop grid gives them. A narrow viewport shrinks the

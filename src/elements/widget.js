@@ -306,6 +306,25 @@ export function arrowFor(text) {
   return sign ? (sign[1] === '+' ? '▲' : '▼') : ''
 }
 
+// The rules of the signed figures, for the widgets that draw them. `.fg` keeps the arrow, sign and digits on one line.
+// A figure cell (.cell: a stat in a row of three, or the rail's column) is its own size container, and the figure in it
+// is sized to the cell's width and its own length (--fc, set by update()). 0.62em a character is wider than any
+// proportional face and covers a monospace one; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
+export const FIGURE_CSS = `
+.fg { white-space: nowrap; }
+.cell { container-type: inline-size; }
+.cell .md { font-size: min(17px, calc(100cqi / (var(--fc, 10) * .62 + .65))); }
+`
+
+/**
+ * A figure that can be a gain or a loss: the ▲ or ▼ and the figure's text sit in one `.fg` box that never breaks, so the
+ * arrow, the sign and the digits are one unit at any width ("▲+" over "₹8,104.00" reads as two numbers). The figure's
+ * own box (and its tone class) covers both, and update() writes the arrow and the text to their own nodes, `${k}Ar`
+ * and `${k}V`. A tile too narrow for it shrinks the type (see the figure rules of each widget), it never wraps it.
+ */
+export const figure = (cls, k, part = '') =>
+  `<span class="${cls}"${part ? ` part="${part}"` : ''} data-k="${k}"><span class="fg"><span class="ar" aria-hidden="true" data-k="${k}Ar"></span><span data-k="${k}V"></span></span></span>`
+
 // Headline figures shrink with the tile, capped at the design size.
 //
 // 1cqi is 1% of the tile's content box (its width less padding and border).

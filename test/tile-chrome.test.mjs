@@ -658,17 +658,25 @@ describe('logical properties only', () => {
     assert.match(C.chart.TsChart.styles, /\.xax > \* \{ unicode-bidi: plaintext; \}/)
   })
 
+  test('the arrow and the figure are one nowrap unit, and a figure cell sizes its text to its own width', () => {
+    const html = W.figure('n md', 'peak')
+    assert.match(html, /^<span class="n md" data-k="peak"><span class="fg"><span class="ar" aria-hidden="true" data-k="peakAr"><\/span><span data-k="peakV"><\/span><\/span><\/span>$/)
+    assert.match(W.FIGURE_CSS, /\.fg \{ white-space: nowrap; \}/)
+    assert.match(W.FIGURE_CSS, /\.cell \{ container-type: inline-size; \}/)
+    assert.match(W.FIGURE_CSS, /\.cell \.md \{ font-size: min\(17px, calc\(100cqi \/ \(var\(--fc, 10\) \* \.62 \+ \.65\)\)\); \}/)
+  })
+
   test('the arrow has a gap after it so it reads as a marker apart from the sign', () => {
     const rule = (sel) => W.SHARED_CSS.match(new RegExp(`${sel.replace(/[.]/g, '\\.')} \\{([^}]*)\\}`))[1]
     assert.match(rule('.big .ar, .xbig .ar'), /margin-inline-end: \.375em/)
     assert.match(rule('.n .ar'), /margin-inline-end: \.22em/)
   })
 
-  test('the Wide equity headline keeps its 34px on a roomy tile and shrinks only on a narrow one', () => {
+  test('the Wide equity headline keeps its 34px on a roomy tile, in a wider column that holds its arrow', () => {
     const css = stripComments(C.equity.TsEquityCurve.styles)
-    assert.doesNotMatch(css.replace(/@container[^{]*\{[^{}]*\{[^}]*\}\s*\}/g, ''), /\.side \.big/, 'no unconditional rule shrinks it')
-    assert.match(css, /@container \(not \(min-width: 420px\)\) \{ \.side \.big \{ font-size: min\(31px, 17cqi\); \} \}/)
-    assert.match(css, /@container \(min-width: 420px\) \{ \.side \{ width: 190px; \} \}/)
+    // A narrow tile keeps the 170px column and sizes the figure to it; a roomy one widens the column and keeps 34px.
+    assert.match(css, /\.side \.big \{ font-size: 26px; \}/)
+    assert.match(css, /@container \(min-width: 420px\) \{ \.side \{ width: 220px; \} \.side \.big \{ font-size: 34px; \} \}/)
   })
 })
 

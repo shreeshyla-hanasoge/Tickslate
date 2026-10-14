@@ -11,7 +11,7 @@
  * heading on Wide and M, and the accessible name on every variant.
  */
 
-import { TsWidget, sk, header, arrowFor } from './widget.js'
+import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { linePaths } from './chart.js'
 import { EN, toNumber, toTime } from '../core/index.js'
 
@@ -236,11 +236,6 @@ export function todayPnlModel(data, variant, ctx) {
   return vm
 }
 
-// A figure that can be a gain or a loss: the ▲ or ▼ sits inside it, so the figure's own box (and its tone class) covers both,
-// and update() writes the arrow and the text to their own nodes.
-const figure = (cls, k, part = '') =>
-  `<span class="${cls}"${part ? ` part="${part}"` : ''} data-k="${k}"><span class="ar" aria-hidden="true" data-k="${k}Ar"></span><span data-k="${k}V"></span></span>`
-
 // Variant markup is static; update() fills it. Ids are scoped to the shadow
 // root, so the clip-path ids can be fixed.
 const TEMPLATES = {
@@ -283,9 +278,9 @@ ${header({ dot: true, meta: '<span class="sm mut" data-k="counts"></span>' })}
 </div>
 <div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
-  <div class="col"><span class="lb" data-k="lbRealised"></span>${figure('n md', 'realized')}</div>
-  <div class="col"><span class="lb" data-k="lbUnrealised"></span>${figure('n md', 'unrealized')}</div>
-  <div class="col"><span class="lb" data-k="lbFees"></span><span class="n md mut" data-k="fees"></span></div>
+  <div class="col cell"><span class="lb" data-k="lbRealised"></span>${figure('n md', 'realized')}</div>
+  <div class="col cell"><span class="lb" data-k="lbUnrealised"></span>${figure('n md', 'unrealized')}</div>
+  <div class="col cell"><span class="lb" data-k="lbFees"></span><span class="n md mut" data-k="fees"></span></div>
 </div>`,
 }
 
@@ -324,14 +319,14 @@ export class TsTodayPnl extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `
+  static styles = `${FIGURE_CSS}
 [hidden] { display: none; }
 /* Clip rather than overflow: a headline too wide for its slot must never
    run into the column beside it. fit() and the tile's scaled type make
    that rare; this makes it harmless. */
 .nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; }
 .cols { flex: 1; display: flex; gap: 24px; align-items: stretch; min-height: 0; }
-.lhs { flex: 1.1; min-width: 0; justify-content: space-between; }
+.lhs { flex: 1.15; min-width: 0; justify-content: space-between; }
 .rhs { flex: 1; min-width: 0; justify-content: center; gap: 10px; }
 /* Narrow tile (a 2-column phone): the three figures stack label over value
    and shrink to their content, so the headline gets the rest of the width.
@@ -361,10 +356,12 @@ export class TsTodayPnl extends TsWidget {
 .axis { position: relative; display: flex; justify-content: space-between; min-height: 1.4em; }
 .axis .mid { position: absolute; inset-block-start: 0; transform: translateX(-50%); }
 .trio { padding-block-start: 10px; }
-/* The arrow takes room beside the figure, so the figure is a little smaller than the tile alone would allow, on the
-   narrowest tiles only: 10 characters and the arrow still fit the content box of a 2-column phone's tile. */
-.big.nv { font-size: min(34px, 18cqi); }
-.xbig.nv { font-size: min(48px, 8.7cqi); }
+/* The arrow takes room beside the figure, so the figure is smaller than the tile alone would allow, on the narrowest
+   tiles only: 10 characters of a monospace face (0.6em each) and the arrow (0.4em) still fit the content box of a
+   2-column phone's tile, where the figure never wraps or clips. A roomy tile keeps the 34px cap. The Wide headline sits
+   in the left column (1.15 of 2.15 of the tile less the gap): 6.2em of that, and 48px when the tile is roomy. */
+.big.nv { font-size: min(34px, 15cqi); }
+.xbig.nv { font-size: min(48px, calc(8.6cqi - 2px)); }
 @media (forced-colors: active) {
   .mk.entry { background: Highlight; border-color: ButtonFace; }
   .mk.exit { background: CanvasText; border-color: ButtonFace; }
@@ -398,7 +395,10 @@ export class TsTodayPnl extends TsWidget {
       const el = this.$(`[data-k="${k}"]`)
       text(`${k}Ar`, arrow)
       text(`${k}V`, s)
-      if (el) el.className = t ? `${base} ${t}` : base
+      if (el) {
+        el.className = t ? `${base} ${t}` : base
+        el.style.setProperty('--fc', String(s.length))
+      }
     }
     this.$('[data-k="dot"]').toggleAttribute('hidden', !vm.live)
     text('label', vm.label)
