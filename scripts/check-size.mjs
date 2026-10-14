@@ -47,10 +47,13 @@ const BUDGETS = {
   // min+gz size plus 10 %, rounded up to the next 0.5 kB. They are ceilings
   // against creep, not targets: when a change needs more room, say why in its
   // changes/ fragment and raise the figure here with the new date.
-  // Measured 2026-10-13: core 8,484 B.
-  'dist-lib/index.js': { maxKb: 9.5, mode: 'enforce', target: 'RFC 0002 §9, core, measured + 10 %', date: '2026-10-13' },
-  // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-13: 8,639 B.
-  'dist-lib/umd/tickslate.umd.js': { maxKb: 9.5, mode: 'enforce', target: 'RFC 0002 §9, UMD, measured + 10 %', date: '2026-10-13' },
+  // Measured 2026-10-13: core 8,484 B. The messages story put the EN table in
+  // the core, so both figures below were re-measured on 2026-10-14: core
+  // 10,394 B.
+  'dist-lib/index.js': { maxKb: 11.5, mode: 'enforce', target: 're-measured after messages, RFC 0003 §25, core, measured + 10 %', date: '2026-10-14' },
+  // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-14, after
+  // messages: 10,551 B.
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 11.5, mode: 'enforce', target: 're-measured after messages, RFC 0003 §25, UMD, measured + 10 %', date: '2026-10-14' },
   // The all-in `tickslate/elements` and the two CDN files carry no budget:
   // P1 adds about a dozen widgets to them, so RFC 0002's 50 kB figure belongs
   // to the 0.1.0 widget set. They are reported, and 0.2.0 release preparation
@@ -69,16 +72,22 @@ const BUDGETS = {
  * Measured 2026-10-14 (entries-and-cdn): grid 20,664 B, card 11,168 B,
  * metric 12,910 B, chart 13,865 B, today-pnl 13,567 B, equity-curve 13,720 B,
  * session-clock 12,868 B.
+ *
+ * Re-measured 2026-10-14 after messages put the EN table in the core, which
+ * every entry bundles: card 13,328 B, metric 15,052 B, chart 16,049 B,
+ * today-pnl 15,672 B, equity-curve 15,848 B, session-clock 15,006 B. The grid
+ * (22,429 B) still fits its first figure, so it was not raised.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
+const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
 const ENTRY_BUDGETS = {
   grid: entry(22.5),
-  card: entry(12),
-  metric: entry(14),
-  chart: entry(15),
-  'today-pnl': entry(15),
-  'equity-curve': entry(15),
-  'session-clock': entry(14),
+  card: remeasured(14.5),
+  metric: remeasured(16.5),
+  chart: remeasured(17.5),
+  'today-pnl': remeasured(17),
+  'equity-curve': remeasured(17.5),
+  'session-clock': remeasured(16.5),
 }
 
 /**

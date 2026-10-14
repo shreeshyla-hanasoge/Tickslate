@@ -64,5 +64,5 @@ project came from. Branches, waves and changelog fragments follow
 ```bash
 npm test            # unit tests
 npm run dev         # playground (also in .claude/launch.json as "playground")
-npm run release     # test + build:lib + build:umd + pack:lib
+npm run release     # test + build:lib + build:dev + build:umd + build:cdn + pack:lib + verify:package + size
 ```
