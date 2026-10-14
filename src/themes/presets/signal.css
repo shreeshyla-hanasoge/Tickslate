@@ -1,12 +1,13 @@
 /*
  * Tickslate theme preset: signal.
  *
- * Signal: loud and easy to read from across the room. Pure black and white pages,
+ * Signal: loud and easy to read from across the room. A black page in dark and a
+ * pale grey one (#F2F2F5) in light, with white tiles on it,
  * 700-weight figures and labels, a strong 30% area tint, and the brightest sign
  * colours. The reference style also tinted a whole tile green or red by its state;
  * no token expresses that, so the preset leaves it out.
  * The dark mode is the reference style; the light mode keeps its weights and
- * density on a white page, with a lighter 18% tint because the sign colours are
+ * density on the pale page, with a lighter 18% tint because the sign colours are
  * darker there.
  *
  * Opt in with <link rel="stylesheet" href="tickslate/themes/signal.css"> after
@@ -67,11 +68,16 @@
 
 /*
  * Dark mode, under the conditions tokens.css uses for Graphite: data-theme="dark" or
- * a .dark ancestor, and data-theme="auto" inside prefers-color-scheme. data-theme="light"
- * on the element opts it back out, so a light island stays light.
+ * a .dark ancestor, and data-theme="auto" inside prefers-color-scheme. A light island
+ * (data-theme="light") wins, as in tokens.css: on the element, or between it and the
+ * dark ancestor. The three selectors are: a dark ancestor with no light island above
+ * the element, a dark ancestor inside one light island, and the element itself.
+ * Deeper alternation (a light island in a dark one in a light one) is not tracked,
+ * since CSS cannot say "nothing of this kind between" without :has().
  */
 :where(
-  :is([data-theme='dark'], .dark) [data-ts-theme='signal']:not([data-theme='light']),
+  :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *),
+  [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']),
   [data-ts-theme='signal']:is([data-theme='dark'], .dark):not([data-theme='light'])
 ) {
   --ts-bg: #000000;
@@ -87,7 +93,8 @@
 }
 
 :where(
-  :is([data-theme='dark'], .dark) [data-ts-theme='signal']:not([data-theme='light']):not([data-ts-palette]),
+  :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *):not([data-ts-palette]),
+  [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-ts-palette]),
   [data-ts-theme='signal']:is([data-theme='dark'], .dark):not([data-theme='light']):not([data-ts-palette])
 ) {
   --ts-profit: #22C55E;
@@ -104,8 +111,9 @@
 
 @media (prefers-color-scheme: dark) {
   :where(
-    [data-theme='auto'] [data-ts-theme='signal']:not([data-theme='light']),
-    [data-ts-theme='signal'][data-theme='auto']
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']),
+    [data-ts-theme='signal'][data-theme='auto']:not([data-theme='light'])
   ) {
     --ts-bg: #000000;
     --ts-surface: #0D0D10;
@@ -120,8 +128,9 @@
   }
 
   :where(
-    [data-theme='auto'] [data-ts-theme='signal']:not([data-theme='light']):not([data-ts-palette]),
-    [data-ts-theme='signal'][data-theme='auto']:not([data-ts-palette])
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *):not([data-ts-palette]),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-ts-palette]),
+    [data-ts-theme='signal'][data-theme='auto']:not([data-theme='light']):not([data-ts-palette])
   ) {
     --ts-profit: #22C55E;
     --ts-loss: #F43F5E;

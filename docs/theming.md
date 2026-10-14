@@ -81,9 +81,13 @@ injected defaults.
 <ts-grid data-ts-theme="calm">...</ts-grid>
 ```
 
-With a bundler, `import 'tickslate/themes/calm.css'` after `tokens.css`. Load a
-preset after `tokens.css`: the two have the same (zero) specificity, so the
-later file wins on an element that matches both.
+With a bundler, `import 'tickslate/themes/calm.css'` after `tokens.css`.
+
+**Order.** With `tokens.css` linked, link the preset after it: the two have the
+same (zero) specificity, so the later file wins on an element that matches both.
+With only the injected defaults (no `tokens.css`), the order of the preset link
+does not matter, because the defaults are in a cascade layer and any unlayered
+preset beats them.
 
 | `data-ts-theme` | What it is | Modes | Faces |
 |---|---|---|---|
@@ -91,13 +95,18 @@ later file wins on an element that matches both.
 | `paper` | The default light tokens, restated so a grid can be light on a dark page | One: ignores `data-theme` | Geist and Newsreader, as the defaults |
 | `graphite` | The default dark tokens, restated so a grid can be dark on a light page | One: ignores `data-theme` | Geist and Newsreader, as the defaults |
 | `calm` | Soft contrast, 18px corners, sentence-case labels, monospaced figures | Light and dark | Geist, and Geist Mono for figures |
-| `signal` | Black or white pages, 700-weight labels and figures, strong area tints | Light and dark | Geist |
+| `signal` | A black page in dark and a pale grey one (`#F2F2F5`) in light, 700-weight labels and figures, strong area tints | Light and dark | Geist |
 | `terminal` | Dense and monospaced: 3px corners, 12px padding, hairlines, no area fill | Light and dark | Geist Mono |
 
 - **Modes.** `neutral`, `calm`, `signal` and `terminal` are light by default and
   go dark under the same conditions as Graphite: `data-theme="dark"`, a `.dark`
-  ancestor, or `data-theme="auto"` while the OS prefers dark.
-  `data-theme="light"` on the grid keeps it light inside a dark page.
+  ancestor, or `data-theme="auto"` while the OS prefers dark. A light island
+  wins as it does for the default tokens: `data-theme="light"` on the grid, or
+  on an element between the grid and the dark ancestor, keeps it light, and a
+  dark island inside a light page is dark. The nearest one decides, with one
+  gap: a light island inside a dark island inside a light page renders dark
+  under a preset (CSS cannot ask for "nothing of this kind in between" without
+  `:has()`), so put `data-theme="light"` on the grid itself there.
   `paper` and `graphite` ignore `data-theme`: choosing the preset chooses the
   mode. The dark side of `calm`, `signal` and `terminal` follows the design
   references; their light side keeps the same type, corners, density and weight
@@ -112,11 +121,19 @@ later file wins on an element that matches both.
   only. Monospaced figures are wider than proportional ones, so a large figure
   such as the equity curve headline can wrap its sign onto its own line in a
   two-column phone tile under `calm` and `terminal`.
-- **Palettes win.** A preset keeps the tokens a palette owns (`--ts-profit`,
-  `--ts-loss`, `--ts-accent`, `--ts-focus` and the series colours) in a second
-  block scoped `:where([data-ts-theme='calm']:not([data-ts-palette]))`. A grid
-  with a `data-ts-palette` on the same element therefore takes the palette's
-  values for those tokens and the preset's for everything else.
+- **Palettes win, on the same element.** A preset keeps the tokens a palette
+  owns (`--ts-profit`, `--ts-loss`, `--ts-accent`, `--ts-focus` and the series
+  colours) in a second block scoped
+  `:where([data-ts-theme='calm']:not([data-ts-palette]))`. A grid with a
+  `data-ts-palette` on the **same element** as its `data-ts-theme` therefore
+  takes the palette's values for those tokens and the preset's for everything
+  else. A palette on an ancestor does not win: the preset declares on the grid
+  itself, so put `data-ts-palette` beside `data-ts-theme`.
+- **Nested presets and a palette.** When an element with a preset sits inside
+  another element with a preset, and the inner one has a `data-ts-palette`, the
+  inner preset stops declaring the palette-owned tokens. Any of them the
+  palette does not itself set are inherited from the outer element, so they
+  show the outer preset's values, not the inner preset's.
 - **Your own tokens.** Presets have zero specificity like everything else, so
   `:root { --ts-accent: ... }` does not reach a grid that names a preset
   (a preset declares directly on the grid); put your override on the grid's own

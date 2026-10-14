@@ -66,11 +66,16 @@
 
 /*
  * Dark mode, under the conditions tokens.css uses for Graphite: data-theme="dark" or
- * a .dark ancestor, and data-theme="auto" inside prefers-color-scheme. data-theme="light"
- * on the element opts it back out, so a light island stays light.
+ * a .dark ancestor, and data-theme="auto" inside prefers-color-scheme. A light island
+ * (data-theme="light") wins, as in tokens.css: on the element, or between it and the
+ * dark ancestor. The three selectors are: a dark ancestor with no light island above
+ * the element, a dark ancestor inside one light island, and the element itself.
+ * Deeper alternation (a light island in a dark one in a light one) is not tracked,
+ * since CSS cannot say "nothing of this kind between" without :has().
  */
 :where(
-  :is([data-theme='dark'], .dark) [data-ts-theme='neutral']:not([data-theme='light']),
+  :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']):not([data-theme='light'] *),
+  [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']),
   [data-ts-theme='neutral']:is([data-theme='dark'], .dark):not([data-theme='light'])
 ) {
   --ts-bg: #09090B;
@@ -88,7 +93,8 @@
 }
 
 :where(
-  :is([data-theme='dark'], .dark) [data-ts-theme='neutral']:not([data-theme='light']):not([data-ts-palette]),
+  :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']):not([data-theme='light'] *):not([data-ts-palette]),
+  [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']):not([data-ts-palette]),
   [data-ts-theme='neutral']:is([data-theme='dark'], .dark):not([data-theme='light']):not([data-ts-palette])
 ) {
   --ts-profit: #4ADE80;
@@ -105,8 +111,9 @@
 
 @media (prefers-color-scheme: dark) {
   :where(
-    [data-theme='auto'] [data-ts-theme='neutral']:not([data-theme='light']),
-    [data-ts-theme='neutral'][data-theme='auto']
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']):not([data-theme='light'] *),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']),
+    [data-ts-theme='neutral'][data-theme='auto']:not([data-theme='light'])
   ) {
     --ts-bg: #09090B;
     --ts-surface: #18181B;
@@ -123,8 +130,9 @@
   }
 
   :where(
-    [data-theme='auto'] [data-ts-theme='neutral']:not([data-theme='light']):not([data-ts-palette]),
-    [data-ts-theme='neutral'][data-theme='auto']:not([data-ts-palette])
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']):not([data-theme='light'] *):not([data-ts-palette]),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='neutral']:not([data-theme='light']):not([data-ts-palette]),
+    [data-ts-theme='neutral'][data-theme='auto']:not([data-theme='light']):not([data-ts-palette])
   ) {
     --ts-profit: #4ADE80;
     --ts-loss: #F87171;

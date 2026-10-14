@@ -334,7 +334,14 @@
     radio.value = preset.id
     label.append(radio, ` ${preset.name}`)
     presetBox.append(label)
-    radio.addEventListener('change', () => setPreset(preset.id))
+    radio.addEventListener('change', () => {
+      setPreset(preset.id)
+      // Keep the address in step, so the page's link opens the same preset.
+      const url = new URL(location.href)
+      if (preset.id) url.searchParams.set('preset', preset.id)
+      else url.searchParams.delete('preset')
+      history.replaceState(null, '', url)
+    })
   }
   function setPreset(id) {
     const preset = PRESETS.find((p) => p.id === id) || PRESETS[0]

@@ -29,7 +29,7 @@ function parse(css, media = null) {
   while (i < css.length) {
     const open = css.indexOf('{', i)
     if (open < 0) break
-    const prelude = css.slice(i, open).trim().replace(/\s+/g, ' ')
+    const prelude = css.slice(i, open).trim().replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')')
     let depth = 1
     let j = open + 1
     while (depth && j < css.length) {
@@ -42,9 +42,10 @@ function parse(css, media = null) {
     else {
       const vars = {}
       const props = []
-      for (const m of body.matchAll(/([\w-]+)\s*:\s*([^;]+);/g)) {
+      // The last declaration of a block may leave out its semicolon.
+      for (const m of body.matchAll(/([\w-]+)\s*:\s*([^;}]+?)\s*(?:;|$)/g)) {
         props.push(m[1])
-        vars[m[1]] = m[2].trim()
+        vars[m[1]] = m[2]
       }
       out.push({ media, selector: prelude, vars, props })
     }
@@ -64,19 +65,57 @@ const defaultDark = ruleOf(':where([data-theme="dark"], .dark)')
 
 const files = readdirSync(new URL('../src/themes/presets/', import.meta.url)).filter((n) => n.endsWith('.css')).sort()
 
-/** The rules of one preset, split by what they are for. */
+const LIGHT = "[data-theme='light']"
+const DARK_ANCESTOR = `:is([data-theme='dark'], .dark):not(${LIGHT})`
+const AUTO_ANCESTOR = `[data-theme='auto']:not(${LIGHT})`
+
+/**
+ * The blocks a preset file must declare, in order, and nothing else. The mode
+ * follows the island rule of tokens.css (the nearest dark or light element
+ * decides): the element's own data-theme, a dark ancestor with no light island
+ * above the element, and a dark ancestor inside one light island. A stray or a
+ * missing block fails the comparison in load().
+ */
+function expectedRules(name, oneMode) {
+  const el = `[data-ts-theme='${name}']`
+  const where = (alternatives, suffix) => `:where(${alternatives.map((a) => a + suffix).join(', ')})`
+  const modeAlternatives = (ancestor, own) => [
+    `${ancestor} ${el}:not(${LIGHT}):not(${LIGHT} *)`,
+    `${LIGHT} ${ancestor} ${el}:not(${LIGHT})`,
+    `${el}${own}:not(${LIGHT})`,
+  ]
+  const rules = [
+    { kind: 'base', guarded: false, media: null, selector: `:where(${el})` },
+    { kind: 'base', guarded: true, media: null, selector: `:where(${el}${GUARD})` },
+  ]
+  if (oneMode) return rules
+  const dark = modeAlternatives(DARK_ANCESTOR, ":is([data-theme='dark'], .dark)")
+  const auto = modeAlternatives(AUTO_ANCESTOR, "[data-theme='auto']")
+  for (const guarded of [false, true]) rules.push({ kind: 'dark', guarded, media: null, selector: where(dark, guarded ? GUARD : '') })
+  for (const guarded of [false, true]) {
+    rules.push({ kind: 'auto', guarded, media: '@media (prefers-color-scheme: dark)', selector: where(auto, guarded ? GUARD : '') })
+  }
+  return rules
+}
+
+/** The rules of one preset, matched one for one against what it must declare. */
 function load(name) {
   const rules = parse(read(`../src/themes/presets/${name}.css`))
-  const base = `:where([data-ts-theme='${name}'])`
-  const baseGuarded = `:where([data-ts-theme='${name}']${GUARD})`
-  const plain = rules.filter((r) => r.selector === base)
-  const guarded = rules.filter((r) => r.selector === baseGuarded)
-  const darkRules = rules.filter((r) => r.selector !== base && r.selector !== baseGuarded)
+  const expected = expectedRules(name, ONE_MODE.includes(name))
+  assert.deepEqual(
+    rules.map((r) => ({ media: r.media, selector: r.selector })),
+    expected.map((e) => ({ media: e.media, selector: e.selector })),
+    `${name}.css declares other blocks than the expected ones`,
+  )
+  const tagged = rules.map((r, i) => ({ ...r, kind: expected[i].kind, guarded: expected[i].guarded }))
+  const of = (kind, guarded) => tagged.filter((r) => r.kind === kind && r.guarded === guarded)
   const merge = (list) => Object.assign({}, ...list.map((r) => r.vars))
+  const plain = of('base', false)
+  const guarded = of('base', true)
+  const darkOnly = tagged.filter((r) => r.kind === 'dark')
+  const darkAuto = tagged.filter((r) => r.kind === 'auto')
   const light = { ...merge(plain), ...merge(guarded) }
-  const darkOnly = darkRules.filter((r) => !r.media)
-  const darkAuto = darkRules.filter((r) => r.media)
-  return { rules, plain, guarded, darkRules, darkOnly, darkAuto, light, dark: { ...light, ...merge(darkOnly) }, darkVars: merge(darkOnly), autoVars: merge(darkAuto) }
+  return { rules: tagged, plain, guarded, darkRules: [...darkOnly, ...darkAuto], darkOnly, darkAuto, light, dark: { ...light, ...merge(darkOnly) }, darkVars: merge(darkOnly), autoVars: merge(darkAuto) }
 }
 
 // ------------------------------------------------------------- the contrast helper, copied from tokens.test.mjs
@@ -125,13 +164,19 @@ for (const name of NAMES) {
   const oneMode = ONE_MODE.includes(name)
 
   describe(`${name}: scope`, () => {
-    test('declares its tokens inside :where([data-ts-theme]) and a guarded twin, in that order', () => {
+    // load() already compares the selectors with expectedRules() and throws on any
+    // difference, so a stray block, a missing one or a changed alternative fails the file.
+    test('declares exactly the expected blocks: the preset, its palette-guarded twin, and the dark ones', () => {
+      assert.deepEqual(
+        p.rules.map((r) => [r.media, r.selector]),
+        expectedRules(name, oneMode).map((r) => [r.media, r.selector]),
+      )
       assert.equal(p.plain.length, 1)
       assert.equal(p.guarded.length, 1)
-      assert.ok(p.rules.indexOf(p.plain[0]) < p.rules.indexOf(p.guarded[0]))
+      assert.ok(p.rules.indexOf(p.plain[0]) < p.rules.indexOf(p.guarded[0]), 'the guarded block comes after the plain one')
     })
 
-    test('every selector is one :where(), so it has zero specificity, and names this preset', () => {
+    test('every selector is one :where(), so it has zero specificity', () => {
       for (const r of p.rules) {
         assert.ok(r.selector.startsWith(':where(') && r.selector.endsWith(')'), `${r.selector} is not wrapped in :where()`)
         // One :where() only: the closing bracket of the first is the last character.
@@ -140,7 +185,6 @@ for (const name of NAMES) {
           if (r.selector[i] === '(') depth++
           if (r.selector[i] === ')' && --depth === 0) assert.equal(i, r.selector.length - 1, `${r.selector} has more than one top-level group`)
         }
-        assert.ok(r.selector.includes(`[data-ts-theme='${name}']`), `${r.selector} does not name ${name}`)
       }
     })
 
@@ -165,19 +209,33 @@ for (const name of NAMES) {
     })
 
     test('keeps the tokens a palette owns out of every unguarded block, and only those in the guarded ones', () => {
-      for (const r of [...p.plain, ...p.darkOnly.filter((x) => !x.selector.includes(GUARD)), ...p.darkAuto.filter((x) => !x.selector.includes(GUARD))]) {
+      for (const r of p.rules.filter((x) => !x.guarded)) {
         for (const prop of OWNED) assert.ok(!(prop in r.vars), `${r.selector} sets ${prop}, which a palette owns`)
       }
-      for (const r of [...p.guarded, ...p.darkRules.filter((x) => x.selector.includes(GUARD))]) {
+      for (const r of p.rules.filter((x) => x.guarded)) {
+        assert.ok(r.props.length)
         for (const prop of r.props) assert.ok(OWNED.includes(prop), `${prop} is guarded in ${name} but a palette does not own it`)
       }
     })
 
-    test('guards every selector of a guarded block, not just the first', () => {
-      for (const r of p.rules.filter((x) => x.props.some((prop) => OWNED.includes(prop)))) {
+    test('guards every alternative of a guarded block, not just the last', () => {
+      for (const r of p.rules.filter((x) => x.guarded)) {
+        const expectedSelector = expectedRules(name, oneMode).find((e) => e.selector === r.selector)
+        assert.ok(expectedSelector.guarded)
+        // Every top-level alternative of the :where() list ends with the guard.
         const inner = r.selector.slice(':where('.length, -1)
-        const alternatives = inner.split(/,\s*(?=\[|:is\()/)
-        for (const alt of alternatives) assert.ok(alt.trim().endsWith(GUARD), `${alt.trim()} is missing ${GUARD}`)
+        let depth = 0
+        let start = 0
+        const alternatives = []
+        for (let i = 0; i <= inner.length; i++) {
+          if (inner[i] === '(' || inner[i] === '[') depth++
+          if (inner[i] === ')' || inner[i] === ']') depth--
+          if (i === inner.length || (inner[i] === ',' && depth === 0)) {
+            alternatives.push(inner.slice(start, i).trim())
+            start = i + 1
+          }
+        }
+        for (const alt of alternatives) assert.ok(alt.endsWith(GUARD), `${alt} is missing ${GUARD}`)
       }
     })
 
@@ -193,19 +251,11 @@ for (const name of NAMES) {
         assert.ok(!p.rules.some((r) => r.media || r.selector.includes('data-theme') || r.selector.includes('.dark')))
       })
     } else {
-      test('has a dark mode under data-theme="dark", a .dark ancestor and data-theme="auto" in prefers-color-scheme', () => {
-        assert.ok(p.darkOnly.length, 'no dark rule')
-        for (const r of p.darkOnly) {
-          assert.match(r.selector, /\[data-theme='dark'\]/)
-          assert.match(r.selector, /\.dark/)
-          // data-theme="light" on the element keeps an island light.
-          assert.match(r.selector, /:not\(\[data-theme='light'\]\)/)
-        }
-        assert.ok(p.darkAuto.length, 'no data-theme="auto" rule')
-        for (const r of p.darkAuto) {
-          assert.equal(r.media, '@media (prefers-color-scheme: dark)')
-          assert.match(r.selector, /\[data-theme='auto'\]/)
-        }
+      test('has a dark mode: the expected dark and data-theme="auto" blocks, the latter only in prefers-color-scheme: dark', () => {
+        assert.equal(p.darkOnly.length, 2, 'a dark block and its guarded twin')
+        assert.equal(p.darkAuto.length, 2, 'an auto block and its guarded twin')
+        for (const r of p.darkAuto) assert.equal(r.media, '@media (prefers-color-scheme: dark)')
+        for (const r of p.darkOnly) assert.equal(r.media, null)
       })
 
       test('the data-theme="auto" blocks declare the same values as the dark blocks', () => {
