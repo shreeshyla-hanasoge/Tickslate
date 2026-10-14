@@ -1,6 +1,7 @@
 // <ts-grid> editing edge cases in real engines (RFC 0002 §1.5, §5.5, §5.9):
 // implicit-mode reconcile after a framework re-render, the ways tap-to-place
-// ends without a move, and the outside-tap exit through nested shadow roots.
+// ends without a move, the outside-tap exit through nested and closed shadow
+// roots, and a resize gesture whose pointer is taken away.
 // The paths here are the ones a node test can't reach: they need real
 // MutationObserver timing, real focus and real pointer events.
 import { test, expect } from '@playwright/test'
@@ -485,11 +486,13 @@ test.describe('outside tap through nested shadow roots', () => {
     // No tap of any of these was an edit.
     expect(await seen(page, 'ts-layout-change')).toEqual([])
   })
+})
 
-  // KNOWN GAP, reported as a src follow-up (this story touches no src/). The
-  // document-level pointerdown listener sees a composedPath() that stops at the
-  // closed root's host, so isOutside() reads every tap inside the grid as outside.
-  test.fixme('a grid in a closed shadow root: a tap inside it does not end editing', async ({ page }) => {
+// A closed root hides the grid from the document, so the page-level listener
+// sees a press path that stops at the host. Playwright pierces open roots only,
+// so these tests find the controls through a handle the page keeps.
+test.describe('a grid in a closed shadow root', () => {
+  async function loadClosed(page) {
     await page.addInitScript(RECORDER)
     await page.goto(PAGE)
     await page.waitForFunction(() => window.__ready === true && document.getElementById('g').columns > 0)
@@ -497,7 +500,7 @@ test.describe('outside tap through nested shadow roots', () => {
       const host = document.createElement('div')
       host.id = 'closed'
       const root = host.attachShadow({ mode: 'closed' })
-      root.innerHTML = '<ts-grid aria-label="Closed dashboard"><ts-card item="a" label="Alpha" size="S"><span slot="value">1</span></ts-card></ts-grid>'
+      root.innerHTML = '<ts-grid aria-label="Closed dashboard"><ts-card item="a" label="Alpha" size="S"><span slot="value">1</span></ts-card><ts-card item="b" label="Beta" size="S"><span slot="value">2</span></ts-card></ts-grid>'
       document.querySelector('main').append(host)
       window.__closedGrid = root.firstElementChild
       document.getElementById('g').remove()
@@ -506,14 +509,129 @@ test.describe('outside tap through nested shadow roots', () => {
     await settle(page)
     await page.evaluate(() => { window.__closedGrid.editing = true })
     await settle(page)
-    // Playwright pierces open roots only, so the tap goes where the handle is.
-    const box = await page.evaluate(() => {
-      const r = window.__closedGrid.shadowRoot.querySelector('.chrome .handle').getBoundingClientRect()
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
-    })
-    if (test.info().project.use.hasTouch) await page.touchscreen.tap(box.x, box.y)
-    else await page.mouse.click(box.x, box.y)
+  }
+  const closedEditing = (page) => page.evaluate(() => window.__closedGrid.editing)
+  // Scrolled into view first: a tap by coordinates lands on whatever is there, and a phone's viewport is short.
+  const centerOf = (page, selector) => page.evaluate((sel) => {
+    const el = window.__closedGrid.shadowRoot.querySelector(sel)
+    el.scrollIntoView({ block: 'center' })
+    const r = el.getBoundingClientRect()
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+  }, selector)
+  async function tapAt(page, at) {
+    if (test.info().project.use.hasTouch) await page.touchscreen.tap(at.x, at.y)
+    else await page.mouse.click(at.x, at.y)
     await settle(page)
-    expect(await page.evaluate(() => window.__closedGrid.editing)).toBe(true)
+  }
+
+  test('a tap inside it does not end editing, and a tap outside the host does', async ({ page }) => {
+    await loadClosed(page)
+    // Picked up and dropped again: two presses inside, and no move.
+    await tapAt(page, await centerOf(page, '.chrome[data-id="a"] .handle'))
+    expect(await closedEditing(page)).toBe(true)
+    await tapAt(page, await centerOf(page, '.chrome[data-id="a"] .handle'))
+    expect(await closedEditing(page)).toBe(true)
+
+    await press(page, page.locator('#outside'))
+    await expect.poll(() => closedEditing(page)).toBe(false)
+    // Neither the inside taps nor the outside one was an edit.
+    expect(await seen(page, 'ts-layout-change')).toEqual([])
+  })
+
+  test('the Add back list is not closed by a press on its own item', async ({ page }) => {
+    await loadClosed(page)
+    // Remove one tile, so a hidden one is there to add back.
+    await tapAt(page, await centerOf(page, '.chrome[data-id="b"] .remove'))
+    await expect.poll(() => page.evaluate(() => window.__closedGrid.hiddenItems.length)).toBe(1)
+    await settle(page)
+    await tapAt(page, await centerOf(page, '.pill .add'))
+    await expect.poll(() => page.evaluate(() => !window.__closedGrid.shadowRoot.querySelector('.pill .menu').hidden)).toBe(true)
+    await tapAt(page, await centerOf(page, '.pill .menu .mi'))
+    // The item's click ran, so the list was not closed by its own pointerdown.
+    await expect.poll(() => page.evaluate(() => window.__closedGrid.hiddenItems.length)).toBe(0)
+    expect(await closedEditing(page)).toBe(true)
+  })
+})
+
+// A pointerup that never arrives (the pointer is cancelled, or the browser
+// takes capture away) used to leave the tile lifted and its resize button hidden.
+test.describe('a resize whose pointer is lost', () => {
+  const state = (page, id) => page.evaluate((i) => {
+    const g = document.getElementById('g')
+    const chrome = g.shadowRoot.querySelector(`.chrome[data-id="${i}"]`)
+    const button = chrome.querySelector('.resize')
+    return {
+      lifted: chrome.classList.contains('lifted'),
+      buttonShown: getComputedStyle(button).display !== 'none',
+      dragging: g.hasAttribute('dragging'),
+      outlineOn: g.shadowRoot.querySelector('.placeholder').classList.contains('on'),
+      size: g.layout.profiles[g.profile].find((item) => item.id === i).size,
+    }
+  }, id)
+
+  // Press the resize handle and pull it past the slop, so the gesture is a real resize.
+  async function pull(page, id) {
+    const box = await resize(page, id).boundingBox()
+    const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const view = page.viewportSize()
+    // The engines number the mouse differently, so note the id the press carries.
+    await page.evaluate(() => addEventListener('pointerdown', (e) => { window.__pid = e.pointerId }, { capture: true, once: true }))
+    await page.mouse.move(at.x, at.y)
+    await page.mouse.down()
+    await page.mouse.move(Math.min(at.x + 120, view.width - 2), Math.min(at.y + 90, view.height - 2), { steps: 6 })
+    await settle(page)
+    return at
+  }
+
+  for (const how of ['capture is lost', 'the pointer is cancelled']) {
+    test(`${how}: the tile is restored, the handle is back and nothing is committed`, async ({ page }) => {
+      await loadExplicit(page)
+      await startEditing(page)
+      const before = await state(page, 'notes')
+      const at = await pull(page, 'notes')
+      expect((await state(page, 'notes')).lifted).toBe(true)
+
+      if (how === 'capture is lost') {
+        // The gesture holds capture on its handle; take it away without a pointerup.
+        const held = await page.evaluate(() => {
+          const button = document.getElementById('g').shadowRoot.querySelector('.chrome[data-id="notes"] .resize')
+          const had = button.hasPointerCapture(window.__pid)
+          button.releasePointerCapture(window.__pid)
+          return had
+        })
+        expect(held, 'the resize handle captured the pointer').toBe(true)
+        // Chromium reports the loss with the pointer's next event, so give it one.
+        await page.mouse.move(at.x + 130, at.y + 100)
+      } else {
+        await page.evaluate(() => {
+          const button = document.getElementById('g').shadowRoot.querySelector('.chrome[data-id="notes"] .resize')
+          button.dispatchEvent(new PointerEvent('pointercancel', { pointerId: window.__pid, bubbles: true, composed: true }))
+        })
+      }
+      await settle(page)
+      await expect.poll(() => state(page, 'notes')).toEqual(before)
+      expect(await seen(page, 'ts-layout-change')).toEqual([])
+
+      // The button is live again: a tap steps the size, once the stray mouse is up.
+      await page.mouse.up()
+      await settle(page)
+      await resize(page, 'notes').click()
+      await settle(page)
+      expect((await seen(page, 'ts-layout-change')).map((e) => e.reason)).toContain('resize')
+    })
+  }
+
+  test('a resize that ends normally still commits, and releases capture', async ({ page }) => {
+    await loadExplicit(page)
+    await startEditing(page)
+    await pull(page, 'notes')
+    await page.mouse.up()
+    await settle(page)
+    const after = await state(page, 'notes')
+    expect(after.lifted).toBe(false)
+    expect(after.buttonShown).toBe(true)
+    expect(after.dragging).toBe(false)
+    // Notes grew under the pointer, so the release committed that one resize.
+    expect((await seen(page, 'ts-layout-change')).map((e) => e.reason)).toEqual(['resize'])
   })
 })

@@ -31,6 +31,19 @@ describe('isOutside', () => {
     assert.equal(isOutside(undefined, grid), true)
   })
 
+  test('a press the grid saw is inside even when the path never names it, as for a closed shadow root', () => {
+    // The document's composedPath() stops at the closed host, so only the grid knows.
+    const closedHost = { name: 'closed host' }
+    assert.equal(isOutside([button, closedHost, page], grid), true)
+    assert.equal(isOutside([button, closedHost, page], grid, [], true), false)
+    assert.equal(isOutside(undefined, grid, [], true), false)
+  })
+
+  test('a press that never passed through the grid stays outside', () => {
+    assert.equal(isOutside([page], grid, [], false), true)
+    assert.equal(isOutside([page], grid, []), true)
+  })
+
   test('the grid itself can be the extras owner, e.g. a list rendered next to the pill', () => {
     // Used for the menu's own outside test, where the wrapper stands in for the grid.
     assert.equal(isOutside([button, pill, grid], pill), false)

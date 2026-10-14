@@ -8,8 +8,13 @@
  * composedPath(), which, unlike `target`, still names the grid when the
  * press was on something in its shadow root (the pill, its list), and
  * `extras` are other nodes that count as inside, such as a host's own menu.
+ *
+ * `passedThrough` is for a grid in a closed shadow root: the document sees a
+ * path that stops at the closed host, so it never names the grid, but the grid
+ * itself saw the press go by. A press it saw is inside whatever the path says.
  */
-export function isOutside(path, grid, extras = []) {
+export function isOutside(path, grid, extras = [], passedThrough = false) {
+  if (passedThrough) return false
   if (!path) return true
   for (const node of path) {
     if (node === grid || extras.includes(node)) return false

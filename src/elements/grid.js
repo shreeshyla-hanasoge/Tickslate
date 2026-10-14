@@ -385,8 +385,22 @@ export class TsGrid extends Base {
     this._onDocKeyDown = this._onDocKeyDown.bind(this)
     this._onDocPointerDown = this._onDocPointerDown.bind(this)
     this._onMenuPointerDown = this._onMenuPointerDown.bind(this)
+    this._onResizeLost = this._onResizeLost.bind(this)
     this._frame = this._frame.bind(this)
 
+    // The document sees a press inside a closed shadow root with a path that
+    // stops at the closed host, so the grid notes the presses that reached it
+    // (and the menu list) and the document-level handlers defer to that. In
+    // the capture phase, so a widget that stops its own pointerdown is still seen.
+    this._pressesIn = new WeakSet()
+    this._pressesInMenu = new WeakSet()
+    this._outsideTimer = 0
+    this._menuOutsideTimer = 0
+    this.addEventListener('pointerdown', (e) => {
+      this._pressesIn.add(e)
+      const owner = this._menuOwner
+      if (owner && e.composedPath().includes(this._addBack[owner].wrap)) this._pressesInMenu.add(e)
+    }, true)
     this.addEventListener('pointerdown', this._onPointerDown)
     this.addEventListener('keydown', this._onKeyDown)
     // Firefox clicks a button on Space's keyup unless that is cancelled too, and a click would pick the tile up again.
@@ -1100,6 +1114,7 @@ export class TsGrid extends Base {
     }
     document.removeEventListener('keydown', this._onDocKeyDown)
     document.removeEventListener('pointerdown', this._onDocPointerDown, true)
+    clearTimeout(this._outsideTimer)
     this._editOrigin = null
     this._syncControls()
     if (this.isConnected) this._announce(TEXT.editDone)
@@ -1108,7 +1123,15 @@ export class TsGrid extends Base {
 
   /** A press outside the grid ends editing; one in the pill or its list is inside, because the path names the grid. */
   _onDocPointerDown(e) {
-    if (this._editing && isOutside(e.composedPath(), this)) this.editing = false
+    const path = e.composedPath()
+    if (!this._editing || !isOutside(path, this)) return
+    // The path may only look outside because it stops at a closed shadow
+    // root's host. The document hears the press before the grid does, so the
+    // grid is asked once the press has finished travelling.
+    clearTimeout(this._outsideTimer)
+    this._outsideTimer = setTimeout(() => {
+      if (this._editing && isOutside(path, this, [], this._pressesIn.has(e))) this.editing = false
+    }, 0)
   }
 
   /** Put focus back where editing began, but only if it is inside the grid and about to be lost. */
@@ -1213,6 +1236,7 @@ export class TsGrid extends Base {
     if (!owner) return
     const c = this._addBack[owner]
     this._menuOwner = null
+    clearTimeout(this._menuOutsideTimer)
     document.removeEventListener('pointerdown', this._onMenuPointerDown, true)
     c.menu.hidden = true
     c.add.setAttribute('aria-expanded', 'false')
@@ -1220,7 +1244,16 @@ export class TsGrid extends Base {
   }
 
   _onMenuPointerDown(e) {
-    if (this._menuOwner && isOutside(e.composedPath(), this._addBack[this._menuOwner].wrap)) this._closeMenu(false)
+    const owner = this._menuOwner
+    const wrap = owner && this._addBack[owner].wrap
+    const path = e.composedPath()
+    if (!owner || !isOutside(path, wrap)) return
+    // Deferred for the same reason as the edit-mode exit: a press on the list
+    // in a closed shadow root must not close it before the item's click.
+    clearTimeout(this._menuOutsideTimer)
+    this._menuOutsideTimer = setTimeout(() => {
+      if (this._menuOwner === owner && isOutside(path, wrap, [], this._pressesInMenu.has(e))) this._closeMenu(false)
+    }, 0)
   }
 
   _restoreFromMenu(id) {
@@ -1331,6 +1364,7 @@ export class TsGrid extends Base {
     clearTimeout(g.settle)
     cancelAnimationFrame(g.raf)
     this._unsqueeze(g)
+    if (g.captured) g.captured.removeEventListener('lostpointercapture', this._onResizeLost)
     window.removeEventListener('pointermove', this._onPointerMove)
     window.removeEventListener('pointerup', this._onPointerUp)
     window.removeEventListener('pointercancel', this._onPointerCancel)
@@ -1567,6 +1601,23 @@ export class TsGrid extends Base {
     this._tiles.get(g.id).style.zIndex = '5'
     this._chromes.get(g.id).style.zIndex = '6'
     this._suppressClick = true
+    // Capture keeps the gesture's pointer events coming even when the finger
+    // or mouse leaves the window, and tells us when the browser takes it away.
+    // Without it a lost pointerup left the tile lifted and its handle hidden.
+    const handle = this._chromes.get(g.id).querySelector('.resize')
+    try {
+      handle.setPointerCapture(g.pointerId)
+      g.captured = handle
+      handle.addEventListener('lostpointercapture', this._onResizeLost)
+    } catch {
+      // The pointer may already be gone; pointerup and pointercancel still end the gesture.
+    }
+  }
+
+  /** Capture was taken away (an OS gesture, a removed handle) with no pointerup: put the tile back as it was. */
+  _onResizeLost(e) {
+    const g = this._gesture
+    if (g && g.kind === 'resize' && e.pointerId === g.pointerId) this._cancelGesture()
   }
 
   _resizeMove(g) {
