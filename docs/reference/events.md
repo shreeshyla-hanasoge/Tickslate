@@ -1,6 +1,6 @@
 # Events
 
-Tickslate fires six events, all named `ts-*`. Every one is a `CustomEvent`
+Tickslate fires seven events, all named `ts-*`. Every one is a `CustomEvent`
 that **bubbles and is composed**, so one listener on the grid, a wrapper or the
 document hears it, even from inside a shadow root. Only `ts-action` is
 cancelable: `preventDefault()` on it stops the widget's built-in follow-up
@@ -12,6 +12,7 @@ cancelable: `preventDefault()` on it stops the widget's built-in follow-up
 | [`ts-layout-change`](#ts-layout-change) | `<ts-grid>` | `TsLayoutChangeDetail` | yes | yes |
 | [`ts-layout-issues`](#ts-layout-issues) | `<ts-grid>` | `{ issues: LayoutIssue[] }` | yes | yes |
 | [`ts-edit-change`](#ts-edit-change) | `<ts-grid>` | `{ editing: boolean }` | yes | yes |
+| [`ts-reading-order-change`](#ts-reading-order-change) | `<ts-grid>` | `{ order: string[] }` | yes | yes |
 | [`ts-columns-change`](#ts-columns-change) | `<ts-grid>` | `{ columns, device, initial }` | yes | yes |
 | [`ts-profile-change`](#ts-profile-change) | `<ts-grid>` | `{ profile, reason }` | yes | yes |
 
@@ -118,6 +119,44 @@ Escape, an outside tap, or your code setting `editing`.
 ```
 
 Setting `editing = true` on a locked grid is reverted and fires nothing.
+
+## `ts-reading-order-change`
+
+The order of the grid's visible tiles changed, so reading and Tab order, which
+follow it (see [`<ts-grid>`](../widgets/ts-grid.md#accessibility)), now differ
+from before. It fires when the list of ids differs from the last one told of:
+when Done ends an edit that moved or removed tiles, when you set a `layout`
+after the first, when the column count changes, or when a tile appears or goes.
+
+It does not fire for:
+
+- **The first order.** That is the first order with a tile in it after the grid
+  connects, which `grid.readingOrder` already reports. A grid that connects
+  empty and is then given its children has not been rearranged.
+- **The host's first `layout`.** Setting `layout` for the first time, before
+  the user has edited, replaces the order the children made. That is setting
+  up, so the new order is taken without an event. A later `layout` fires it,
+  and so does a first one set after the user's first edit.
+- **The middle of an edit.** While tiles are held and moved the order is not
+  read (tiles are inert and the edit handles carry Tab), so nothing fires
+  until Done. `readingOrder` drops a tile removed meanwhile at once, and a
+  removal still counts as a change, told at Done.
+
+At Done the event fires before `ts-edit-change`.
+
+```ts
+// detail
+{
+  /** The visible tiles' ids, row by row and left to right by each tile's top-left cell. */
+  order: string[]
+}
+```
+
+The grid reports this order even where the browser lacks manual slot
+assignment (below Safari 16.4, or a declarative shadow root without
+`shadowrootslotassignment="manual"`). There the grid keeps one slot, so Tab and
+reading order follow your DOM order, and a tile whose own `slot` attribute is
+anything but `empty` is not rendered.
 
 ## `ts-columns-change`
 

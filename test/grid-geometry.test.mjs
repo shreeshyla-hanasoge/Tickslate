@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes } from '../src/elements/grid-geometry.js'
-import { WIDGETS, typeForTag } from '../src/core/index.js'
+import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes, keepInPlace, visualOrder } from '../src/elements/grid-geometry.js'
+import { WIDGETS, place, typeForTag } from '../src/core/index.js'
 import { TsGrid } from '../src/elements/index.js'
 
 const desktop = metrics(1264, 4, 150, 16)
@@ -131,4 +131,76 @@ test('hostResizes picks only values that differ from what the grid wrote', () =>
     { id: 'e', size: null, written: 'M' },
   ])
   assert.deepEqual([...found], [['b', 'L']])
+})
+
+const at = (id, col, row, cols = 1, rows = 1) => ({ id, col, row, cols, rows })
+
+test('visualOrder reads row by row, left to right, by each tile\'s top-left cell', () => {
+  assert.deepEqual(visualOrder([at('d', 1, 1), at('b', 1, 0), at('c', 0, 1), at('a', 0, 0)]), ['a', 'b', 'c', 'd'])
+  assert.deepEqual(visualOrder([]), [])
+})
+
+test('visualOrder sorts a tile that spans rows by where it starts', () => {
+  // t is two rows tall at column 0; b sits beside its second row, c below both.
+  assert.deepEqual(visualOrder([at('c', 0, 2), at('b', 1, 1), at('t', 0, 0, 1, 2), at('a', 1, 0)]), ['t', 'a', 'b', 'c'])
+  // A wide tile starting left of its neighbour reads first, though it ends to its right.
+  assert.deepEqual(visualOrder([at('r', 2, 0), at('w', 0, 0, 3, 1)]), ['w', 'r'])
+})
+
+test('visualOrder keeps input order for tiles that share a cell, and does not change its input', () => {
+  const placements = [at('x', 0, 0), at('y', 0, 0), at('z', 0, 0)]
+  assert.deepEqual(visualOrder(placements), ['x', 'y', 'z'])
+  assert.deepEqual(placements.map((p) => p.id), ['x', 'y', 'z'])
+})
+
+test('visualOrder follows what place() makes of a rearranged layout, backfill included', () => {
+  const card = (id, size) => ({ id, type: 'card', size })
+  // A tall tile first, so a small tile later in the array backfills beside it.
+  const items = [card('tall', 'Tall'), card('wide', 'Wide'), card('s1', 'S'), card('s2', 'S')]
+  const order = (list, columns) => visualOrder(place(list, columns, WIDGETS).placements)
+  const four = order(items, 4)
+  assert.deepEqual([...four].sort(), ['s1', 's2', 'tall', 'wide'])
+  assert.equal(four[0], 'tall')
+  // Tile 'tall' moved from first to third: the read order moves with it.
+  const moved = [items[1], items[2], items[0], items[3]]
+  const after = order(moved, 4)
+  assert.deepEqual(after.slice(0, 2), ['wide', 's1'])
+  assert.notDeepEqual(after, order(items, 4))
+})
+
+// Apply the moves keepInPlace leaves, from the end, the way the grid does, and count them.
+function reorder(current, wanted) {
+  const keep = keepInPlace(current, wanted)
+  const list = [...current]
+  let moves = 0
+  for (let i = wanted.length - 1; i >= 0; i--) {
+    if (keep.has(wanted[i])) continue
+    list.splice(list.indexOf(wanted[i]), 1)
+    list.splice(i + 1 < wanted.length ? list.indexOf(wanted[i + 1]) : list.length, 0, wanted[i])
+    moves++
+  }
+  return { list, moves }
+}
+
+test('keepInPlace moves one slot when the last goes first, and one when the first goes last', () => {
+  assert.deepEqual(reorder(['a', 'b', 'c', 'd', 'e'], ['e', 'a', 'b', 'c', 'd']), { list: ['e', 'a', 'b', 'c', 'd'], moves: 1 })
+  assert.deepEqual(reorder(['a', 'b', 'c', 'd', 'e'], ['b', 'c', 'd', 'e', 'a']), { list: ['b', 'c', 'd', 'e', 'a'], moves: 1 })
+})
+
+test('keepInPlace moves nothing for an unchanged order and all but one for a reversal', () => {
+  assert.equal(keepInPlace(['a', 'b', 'c'], ['a', 'b', 'c']).size, 3)
+  assert.deepEqual(reorder(['a', 'b', 'c', 'd'], ['d', 'c', 'b', 'a']), { list: ['d', 'c', 'b', 'a'], moves: 3 })
+  assert.equal(keepInPlace([], []).size, 0)
+})
+
+test('keepInPlace reaches the wanted order for any shuffle, moving at most all but one', () => {
+  let seed = 7
+  const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648
+  for (let round = 0; round < 200; round++) {
+    const current = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].slice(0, 1 + Math.floor(next() * 7))
+    const wanted = [...current].sort(() => next() - 0.5)
+    const { list, moves } = reorder(current, wanted)
+    assert.deepEqual(list, wanted)
+    assert.ok(moves <= Math.max(0, current.length - 1))
+  }
 })

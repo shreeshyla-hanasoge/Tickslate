@@ -181,6 +181,7 @@ All events bubble and are composed, so you can listen on the grid or higher up.
 | `ts-layout-change` | `<ts-grid>`, after an edit | `{ layout, items, previous, profile, reason, id, index?, item? }`; `reason` is `move`, `resize`, `remove`, `add` or `undo`. Save `layout` |
 | `ts-layout-issues` | `<ts-grid>`, when a layout you set was repaired | `{ issues }` |
 | `ts-edit-change` | `<ts-grid>` | `{ editing }` |
+| `ts-reading-order-change` | `<ts-grid>`, when the order tiles are read and tabbed in changes; not for the first order | `{ order }` |
 | `ts-columns-change` | `<ts-grid>`, also once after the first measure | `{ columns, device, initial }` |
 | `ts-profile-change` | `<ts-grid>`, when a schedule or override switches profile | `{ profile, reason }` |
 | `ts-action` | any widget | `{ action, ... }`, such as `retry` or an equity curve's `range` |

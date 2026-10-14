@@ -52,11 +52,13 @@ import {
   extentOf,
   hostResizes,
   itemsFromChildren,
+  keepInPlace,
   mergeOrder,
   metrics,
   px,
   reconcile,
   specResolver,
+  visualOrder,
 } from './grid-geometry.js'
 import { ensureTokens } from './default-tokens.js'
 import { DEV, warnOnce } from './dev.js'
@@ -97,6 +99,7 @@ const TOAST_MS = 6000
 // A developer's warning, not interface text, so it stays out of the messages.
 const LOCKED_WARNING = '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.'
 const EMPTY_PERSIST_WARNING = '<ts-grid> persist attribute is empty, so saving is off. Give it a key, for example persist="my-dashboard".'
+const NAMED_ROOT_WARNING = '<ts-grid> reused a shadow root that assigns slots by name, so reading and Tab order follow the DOM order, not the layout. Add shadowrootslotassignment="manual" to its <template shadowrootmode>, or leave the declarative shadow root out.'
 // Wording and link are fixed by RFC 0003 §4.3.
 const UNSAVED_WARNING = '<ts-grid> edits will be lost on reload: add a persist attribute, or call persistLayout(). See docs/guide/saving-layouts.md'
 // Tells one grid's warning from another's: warnOnce keys are global, and each unsaved grid is worth one.
@@ -291,11 +294,30 @@ export class TsGrid extends Base {
       template = document.createElement('template')
       template.innerHTML = TEMPLATE
     }
-    const root = this.attachShadow({ mode: 'open' })
+    // Decided at attach time, since a root can't change how it assigns later.
+    // Where `assign` is missing the root is made as before, with one default
+    // slot, and Tab and reading order follow the host's DOM order (RFC 0003 Decision 27).
+    const canAssign = typeof HTMLSlotElement !== 'undefined' && typeof HTMLSlotElement.prototype.assign === 'function'
+    const root = this.attachShadow(canAssign ? { mode: 'open', slotAssignment: 'manual' } : { mode: 'open' })
+    // Asked of the root, not assumed: a declarative shadow root without shadowrootslotassignment="manual" is reused as it is, and assigns by name.
+    this._manual = root.slotAssignment === 'manual'
+    if (DEV && canAssign && !this._manual) warnOnce('grid-slot-assignment', NAMED_ROOT_WARNING)
     root.appendChild(template.content.cloneNode(true))
     this._board = root.querySelector('.board')
     this._placeholder = root.querySelector('.placeholder')
     this._chromeLayer = root.querySelector('.chromes')
+    // Manual mode only. The default slot keeps what isn't a tile; each visible tile gets a slot of its own.
+    this._restSlot = root.querySelector('.board > slot:not([name])')
+    this._emptySlot = root.querySelector('slot[name="empty"]')
+    this._tileSlots = new Map() // id → its slot
+    this._slotted = new Map() // slot → the tile it was last assigned
+    this._restNodes = [] // what the default and empty slots were last assigned
+    this._emptyNodes = []
+    this._readingOrder = Object.freeze([]) // the visible ids in visual order, as of the last time they were read outside edit mode
+    this._orderKnown = false // false until the first order with a tile in it, which fires no event
+    this._reportedOrder = this._readingOrder // the order the event last told of, which readingOrder runs ahead of in edit mode
+    this._quietOrder = false // true while the host's first layout is applied, which is not a rearrangement
+    this._edited = false // true once a ts-layout-change has fired: the layout is no longer the host's alone
     this._status = root.querySelector('.sr')
     this._toast = root.querySelector('.toast')
     this._toastText = root.querySelector('.toast .msg')
@@ -470,11 +492,17 @@ export class TsGrid extends Base {
 
   /** A Layout or an item array. Setting it ends implicit mode for good. */
   set layout(value) {
+    // The first layout a host gives, before any edit, replaces the one the children made; that is setting up, not rearranging.
+    this._quietOrder = !this._explicit && !this._edited
     this._explicit = true
     // The host's layout is the new truth; an old snapshot would undo into a stranger.
     this._history.clear()
     this._hideToast(false)
-    this._apply(value)
+    try {
+      this._apply(value)
+    } finally {
+      this._quietOrder = false
+    }
   }
 
   get catalog() {
@@ -733,6 +761,8 @@ export class TsGrid extends Base {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
+    // Each time it connects, the first order it settles on is its first.
+    this._orderKnown = false
     // The chrome reads --ts-* tokens with no fallbacks, like the widgets, so a grid of custom tiles still finds them.
     ensureTokens()
     // A messages property set before the element was defined would shadow the accessor.
@@ -1111,9 +1141,121 @@ export class TsGrid extends Base {
       if (this._editing) this._makeInert(el)
     }
     this._orderChromes(placements)
+    this._assignSlots(placements)
     this._board.style.transition = animate ? '' : 'none'
     // An empty board keeps one row, so its message and Add back have somewhere to sit.
     this._board.style.height = `${boardHeight(rows || 1, m)}px`
+  }
+
+  /**
+   * Reading and Tab order follow the layout without a host node ever moving
+   * (RFC 0003 §11): one slot per visible tile, in visual order, each assigned
+   * its tile. Hidden tiles are assigned to none, and what isn't a tile
+   * (text, scripts, `slot="empty"` content) goes to the slots that showed it
+   * before, since named slotting doesn't apply in manual mode.
+   *
+   * While editing, tiles are inert and the chromes carry Tab, so the slots
+   * keep their order and the new one is taken when editing ends. That also
+   * leaves a lifted tile alone while it is dragged.
+   */
+  _assignSlots(placements) {
+    const order = visualOrder(placements)
+    const frozen = this._editing && this._orderKnown
+    if (this._manual) this._slotTiles(order, frozen)
+    if (!frozen) {
+      this._setReadingOrder(order, this._quietOrder)
+      return
+    }
+    // A tile that went is dropped from the list at once, and one that came follows the others, as its slot does.
+    const here = new Set(order)
+    const held = this._readingOrder.filter((id) => here.has(id))
+    const kept = new Set(held)
+    const next = held.concat(order.filter((id) => !kept.has(id)))
+    if (!sameIds(next, this._readingOrder)) this._readingOrder = Object.freeze(next)
+  }
+
+  _slotTiles(order, frozen) {
+    const board = this._board
+    const visible = new Set(order)
+    for (const [id, slot] of this._tileSlots) {
+      if (visible.has(id)) continue
+      // Removing a slot alone can leave its tile claimed by it, so the tile is let go first.
+      slot.assign()
+      slot.remove()
+      this._slotted.delete(slot)
+      this._tileSlots.delete(id)
+    }
+    const slots = order.map((id) => {
+      let slot = this._tileSlots.get(id)
+      if (!slot) {
+        slot = document.createElement('slot')
+        this._tileSlots.set(id, slot)
+        board.insertBefore(slot, this._chromeLayer)
+      }
+      const el = this._tiles.get(id)
+      if (this._slotted.get(slot) !== el) {
+        slot.assign(el)
+        this._slotted.set(slot, el)
+      }
+      return slot
+    })
+    if (!frozen) {
+      // Moving a slot reattaches its tile, and some engines (WebKit, Firefox) drop that tile's slide when it is
+      // reattached, so only the slots outside the longest run already in order move: one for "last goes first".
+      const current = [...board.children].filter((child) => this._slotted.has(child))
+      const keep = keepInPlace(current, slots)
+      const active = this._deepActive()
+      let moved = false
+      let next = this._chromeLayer
+      for (let i = slots.length - 1; i >= 0; i--) {
+        if (!keep.has(slots[i])) {
+          if (typeof board.moveBefore === 'function') board.moveBefore(slots[i], next)
+          else board.insertBefore(slots[i], next)
+          moved = true
+        }
+        next = slots[i]
+      }
+      // Without moveBefore, a tile whose slot moved may lose focus.
+      if (moved && active && active.isConnected && this._deepActive() !== active) active.focus({ preventScroll: true })
+    }
+    const rest = []
+    const empty = []
+    for (const node of this.childNodes) {
+      if (node.nodeType === 3) rest.push(node)
+      else if (node.nodeType !== 1 || isTile(node)) continue
+      else (node.getAttribute('slot') === 'empty' ? empty : rest).push(node)
+    }
+    if (!sameNodes(rest, this._restNodes)) this._restSlot.assign(...rest)
+    if (!sameNodes(empty, this._emptyNodes)) this._emptySlot.assign(...empty)
+    this._restNodes = rest
+    this._emptyNodes = empty
+  }
+
+  /** The element that really has focus, followed through shadow roots, when it is inside this grid. */
+  _deepActive() {
+    let active = document.activeElement
+    if (!active || active === this || !this.contains(active)) return null
+    while (active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement
+    return active
+  }
+
+  /**
+   * `quiet` takes the order without telling anyone, for the host's first layout. The first order is the first that
+   * has a tile in it: a grid that connects empty and is then given children, or a layout, has not been rearranged.
+   */
+  _setReadingOrder(order, quiet) {
+    // Against the last order that was reported, not the list, which drops a tile removed in edit mode at once and says nothing until Done.
+    const changed = !sameIds(order, this._reportedOrder)
+    const first = !this._orderKnown
+    if (!sameIds(order, this._readingOrder)) this._readingOrder = Object.freeze(order)
+    this._reportedOrder = this._readingOrder
+    if (order.length) this._orderKnown = true
+    if (changed && !first && !quiet) this._emit('ts-reading-order-change', { order: [...order] })
+  }
+
+  /** The visible tiles' ids in visual order, row by row and left to right by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
+  get readingOrder() {
+    return this._readingOrder
   }
 
   _chrome(id) {
@@ -1154,7 +1296,7 @@ export class TsGrid extends Base {
    */
   _orderChromes(placements) {
     const layer = this._chromeLayer
-    const want = [...placements].sort((a, b) => a.row - b.row || a.col - b.col).map((p) => this._chromes.get(p.id))
+    const want = visualOrder(placements).map((id) => this._chromes.get(id))
     const active = this.shadowRoot.activeElement
     const moved = []
     for (let i = 0; i < want.length; i++) {
@@ -1247,6 +1389,8 @@ export class TsGrid extends Base {
     if (this._gesture) this._cancelGesture()
     // Tiles can take focus again before it is returned, or the origin tile would refuse it.
     this._restoreInert()
+    // The order the user made is the one read from here on.
+    if (this.isConnected && this._m) this._assignSlots([...this._placements.values()])
     // Before any chrome turns aria-hidden or the pill goes, or focus would be lost with them.
     this._returnFocus()
     this._closeMenu(false)
@@ -2139,6 +2283,7 @@ export class TsGrid extends Base {
   }
 
   _emit(name, detail) {
+    if (name === 'ts-layout-change') this._edited = true
     // DEV: the first edit on a grid nothing saves says so, once (RFC 0003 §4.3).
     // persistLayout sets `_persisted`, and a locked grid never commits.
     if (DEV && name === 'ts-layout-change' && !this._persisted && !this._unsavedWarned && !this.locked) {
@@ -2192,6 +2337,14 @@ function liftStyle(el, chrome, on, animate = true) {
 
 function setAttr(el, name, value) {
   if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+}
+
+function sameIds(a, b) {
+  return a.length === b.length && a.every((id, i) => id === b[i])
+}
+
+function sameNodes(a, b) {
+  return a.length === b.length && a.every((node, i) => node === b[i])
 }
 
 function sameOrder(a, b) {
