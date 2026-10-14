@@ -11,7 +11,7 @@
  * Publishing from dist-lib (rather than the repo root) keeps the private dev
  * package.json, the playground and src/ out of the published package.
  */
-import { copyFile, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { copyFile, readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -83,8 +83,14 @@ for (const f of ['README.md', 'LICENSE', 'CHANGELOG.md']) {
   if (existsSync(resolve(root, f))) await copyFile(resolve(root, f), resolve(out, f))
 }
 
-// 3. theme tokens
+// 3. theme tokens, and the opt-in presets beside them at themes/<name>.css
+// (exported as tickslate/themes/*.css by package.lib.json). They are plain
+// files rather than part of tokens.css so a host that uses none pays nothing.
 await copyFile(resolve(root, 'src/themes/tokens.css'), resolve(out, 'tokens.css'))
+await mkdir(resolve(out, 'themes'), { recursive: true })
+for (const name of (await readdir(resolve(root, 'src/themes/presets'))).filter((n) => n.endsWith('.css'))) {
+  await copyFile(resolve(root, 'src/themes/presets', name), resolve(out, 'themes', name))
+}
 
 // 4. type declarations, flattened to sit beside their entry points. The
 // elements entry points at the core as '../core/index.js'; at the package

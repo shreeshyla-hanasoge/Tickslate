@@ -62,6 +62,20 @@ collect(manifest.typesVersions, 'typesVersions')
 
 const targetFiles = new Set()
 for (const [target, where] of targets) {
+  // A subpath pattern ('./themes/*.css') names every file it matches, and must
+  // match at least one: an empty pattern is a dead export.
+  if (target.includes('*')) {
+    const dir = dirname(target)
+    const re = glob(target.slice(dir.length + 1))
+    const matched = (await readdir(resolve(out, dir)).catch(() => [])).filter((n) => re.test(n))
+    if (!target.startsWith('./') || dir.includes('*')) fail(`${where} is "${target}", but only a pattern in the last path segment of a ./ target is checked`)
+    else if (!matched.length) fail(`${where} is "${target}", which matches no file in dist-lib/`)
+    else {
+      for (const n of matched) targetFiles.add(`${dir.slice(2)}/${n}`)
+      ok(`${where} -> ${target} (${matched.length} files)`)
+    }
+    continue
+  }
   const file = resolve(out, target)
   // Node ignores an exports target without the leading ./, and one that
   // climbs out of the package resolves to nothing once installed.
@@ -73,8 +87,6 @@ for (const [target, where] of targets) {
     targetFiles.add(relative(out, file).split(sep).join('/'))
     ok(`${where} -> ${target}`)
   } else {
-    // A subpath pattern ('*') also ends up here until this check learns to
-    // expand one, which fails safe.
     fail(`${where} points at ${target}, which is not in dist-lib/`)
   }
 }
@@ -121,6 +133,25 @@ for (const field of ['unpkg', 'jsdelivr']) {
 }
 for (const f of ['./cdn/tickslate.js', './cdn/tickslate.iife.js']) {
   if (exportsMap[f] !== f) fail(`exports["${f}"] is ${JSON.stringify(exportsMap[f])}, not the plain path ${f}`)
+}
+
+// ----------------------------------------------------- theme presets (RFC 0003 §13.1)
+//
+// Presets are opt-in files, so nothing else in the package imports them and
+// a lost copy step would pass every other check. Each source preset must ship
+// as the same bytes, and be reachable through the ./themes/*.css export.
+
+const presetsDir = resolve(root, 'src/themes/presets')
+const presetNames = (await readdir(presetsDir)).filter((n) => n.endsWith('.css')).sort()
+if (!presetNames.length) fail('src/themes/presets/ has no preset, so there is nothing to ship')
+if (exportsMap['./themes/*.css'] !== './themes/*.css') {
+  fail(`exports["./themes/*.css"] is ${JSON.stringify(exportsMap['./themes/*.css'])}, not "./themes/*.css", so tickslate/themes/<name>.css does not resolve`)
+}
+for (const name of presetNames) {
+  const shipped = await readFile(resolve(out, 'themes', name), 'utf8').catch(() => null)
+  if (shipped === null) fail(`dist-lib/themes/${name} is missing — pack-lib copies it from src/themes/presets/`)
+  else if (shipped !== (await readFile(resolve(presetsDir, name), 'utf8'))) fail(`dist-lib/themes/${name} differs from src/themes/presets/${name}`)
+  else ok(`themes/${name} ships and matches its source`)
 }
 
 const REQUIRED_SIDE_EFFECTS = ['./elements.js', './elements/*.js', './dev/elements.js', './dev/elements/*.js', '*.css']

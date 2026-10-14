@@ -1,0 +1,140 @@
+/*
+ * Tickslate theme preset: neutral.
+ *
+ * Neutral: the system-font preset (RFC 0002 §6.3). White surfaces on a zinc scale,
+ * system-ui for the labels and the figures alike, so nothing is downloaded and the
+ * tiles look native on every OS. The blue, green and red are the 600 and 700 steps
+ * on white and the 400 steps on zinc-900, so the sign colours keep their floors in
+ * both modes. Light is the default; dark is opt-in like everywhere else.
+ *
+ * Opt in with <link rel="stylesheet" href="tickslate/themes/neutral.css"> after
+ * tokens.css, then <ts-grid data-ts-theme="neutral">. The preset never loads by
+ * itself, so a host that uses none pays nothing (RFC 0003 §13.1, Decision 35).
+ *
+ * Fonts: Neither face is a web font: system-ui resolves to San Francisco, Segoe
+ * UI or Roboto. The figure classes force tabular-nums, so digits stay equal
+ * width.
+ *
+ * Tokens only, and every rule is wrapped in :where() so it has zero specificity:
+ * a host overrides any value with a plain selector. The tokens a palette owns
+ * (profit, loss, accent, focus and the series) sit in a second block that
+ * applies only while the element has no data-ts-palette, so a palette set on the
+ * same element wins over this preset (RFC 0003 §13.2). Layout and motion
+ * (--ts-row, --ts-gap, --ts-motion and friends) are the host's and not set here.
+ * --ts-focus is restated beside the accent because var() resolves where it is
+ * declared, so it would otherwise keep the page's accent.
+ */
+:where([data-ts-theme='neutral']) {
+  --ts-bg: #F4F4F5;
+  --ts-surface: #FFFFFF;
+  --ts-surface-2: #F4F4F5;
+  --ts-line: #E4E4E7;
+  --ts-ink: #18181B;
+  --ts-muted: #52525B;
+  --ts-warn: #B45309;
+  --ts-axis: #71717A;
+  --ts-radius: 8px;
+  --ts-radius-sm: 6px;
+  --ts-shadow: 0 1px 2px rgba(24, 24, 27, .06), 0 6px 14px -8px rgba(24, 24, 27, .14);
+  --ts-fill: 12%;
+  --ts-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-font-num: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-pad: 16px;
+  --ts-num-weight: 600;
+  --ts-num-weight-small: 500;
+  --ts-label-size: 11px;
+  --ts-label-case: none;
+  --ts-label-tracking: 0;
+  --ts-label-weight: 500;
+  --ts-headline-weight: var(--ts-num-weight);
+  --ts-shadow-lift: 0 2px 6px rgba(24, 24, 27, .08), 0 24px 40px -16px rgba(24, 24, 27, .35);
+}
+
+/* Owned by a palette: skipped when data-ts-palette is set on the same element. */
+:where([data-ts-theme='neutral']:not([data-ts-palette])) {
+  --ts-profit: #15803D;
+  --ts-loss: #DC2626;
+  --ts-accent: #2563EB;
+  --ts-series-1: #2563EB;
+  --ts-series-2: #B45309;
+  --ts-series-3: #0F766E;
+  --ts-series-4: #9333EA;
+  --ts-series-5: #BE185D;
+  --ts-series-6: #4D7C0F;
+  --ts-focus: var(--ts-accent);
+}
+
+/*
+ * Dark mode, under the conditions tokens.css uses for Graphite: data-theme="dark" or
+ * a .dark ancestor, and data-theme="auto" inside prefers-color-scheme. data-theme="light"
+ * on the element opts it back out, so a light island stays light.
+ */
+:where(
+  :is([data-theme='dark'], .dark) [data-ts-theme='neutral']:not([data-theme='light']),
+  [data-ts-theme='neutral']:is([data-theme='dark'], .dark):not([data-theme='light'])
+) {
+  --ts-bg: #09090B;
+  --ts-surface: #18181B;
+  --ts-surface-2: #27272A;
+  --ts-line: #27272A;
+  --ts-ink: #FAFAFA;
+  --ts-muted: #A1A1AA;
+  --ts-warn: #FBBF24;
+  --ts-axis: #71717A;
+  --ts-shadow: none;
+  --ts-fill: 16%;
+  --ts-num-weight-small: 600;
+  --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
+}
+
+:where(
+  :is([data-theme='dark'], .dark) [data-ts-theme='neutral']:not([data-theme='light']):not([data-ts-palette]),
+  [data-ts-theme='neutral']:is([data-theme='dark'], .dark):not([data-theme='light']):not([data-ts-palette])
+) {
+  --ts-profit: #4ADE80;
+  --ts-loss: #F87171;
+  --ts-accent: #60A5FA;
+  --ts-series-1: #60A5FA;
+  --ts-series-2: #F59E0B;
+  --ts-series-3: #2DD4BF;
+  --ts-series-4: #C084FC;
+  --ts-series-5: #F472B6;
+  --ts-series-6: #A3E635;
+  --ts-focus: var(--ts-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(
+    [data-theme='auto'] [data-ts-theme='neutral']:not([data-theme='light']),
+    [data-ts-theme='neutral'][data-theme='auto']
+  ) {
+    --ts-bg: #09090B;
+    --ts-surface: #18181B;
+    --ts-surface-2: #27272A;
+    --ts-line: #27272A;
+    --ts-ink: #FAFAFA;
+    --ts-muted: #A1A1AA;
+    --ts-warn: #FBBF24;
+    --ts-axis: #71717A;
+    --ts-shadow: none;
+    --ts-fill: 16%;
+    --ts-num-weight-small: 600;
+    --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
+  }
+
+  :where(
+    [data-theme='auto'] [data-ts-theme='neutral']:not([data-theme='light']):not([data-ts-palette]),
+    [data-ts-theme='neutral'][data-theme='auto']:not([data-ts-palette])
+  ) {
+    --ts-profit: #4ADE80;
+    --ts-loss: #F87171;
+    --ts-accent: #60A5FA;
+    --ts-series-1: #60A5FA;
+    --ts-series-2: #F59E0B;
+    --ts-series-3: #2DD4BF;
+    --ts-series-4: #C084FC;
+    --ts-series-5: #F472B6;
+    --ts-series-6: #A3E635;
+    --ts-focus: var(--ts-accent);
+  }
+}

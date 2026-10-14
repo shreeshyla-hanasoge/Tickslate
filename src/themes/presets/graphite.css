@@ -1,0 +1,65 @@
+/*
+ * Tickslate theme preset: graphite.
+ *
+ * Graphite: the default dark tokens (the design references call it "night"), restated
+ * so a grid can be dark on a light page by preset name. It is one-mode: choosing
+ * the preset chooses the mode, so it ignores data-theme. Every value equals the
+ * dark block of tokens.css over the light defaults it does not change
+ * (test/presets.test.mjs checks that).
+ *
+ * Opt in with <link rel="stylesheet" href="tickslate/themes/graphite.css"> after
+ * tokens.css, then <ts-grid data-ts-theme="graphite">. The preset never loads by
+ * itself, so a host that uses none pays nothing (RFC 0003 §13.1, Decision 35).
+ *
+ * Fonts: Geist and Newsreader are the designed faces and Tickslate does not
+ * ship them (load them yourself, see docs/theming.md); the stacks fall back to
+ * system fonts.
+ *
+ * Tokens only, and every rule is wrapped in :where() so it has zero specificity:
+ * a host overrides any value with a plain selector. The tokens a palette owns
+ * (profit, loss, accent, focus and the series) sit in a second block that
+ * applies only while the element has no data-ts-palette, so a palette set on the
+ * same element wins over this preset (RFC 0003 §13.2). Layout and motion
+ * (--ts-row, --ts-gap, --ts-motion and friends) are the host's and not set here.
+ * --ts-focus is restated beside the accent because var() resolves where it is
+ * declared, so it would otherwise keep the page's accent.
+ */
+:where([data-ts-theme='graphite']) {
+  --ts-bg: #111827;
+  --ts-surface: #1F2937;
+  --ts-surface-2: #374151;
+  --ts-line: #374151;
+  --ts-ink: #F3F4F6;
+  --ts-muted: #9CA3AF;
+  --ts-warn: #FBBF24;
+  --ts-axis: #6B7280;
+  --ts-radius: 12px;
+  --ts-radius-sm: 6px;
+  --ts-shadow: none;
+  --ts-fill: 16%;
+  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-pad: 16px;
+  --ts-num-weight: 500;
+  --ts-num-weight-small: 600;
+  --ts-label-size: 10px;
+  --ts-label-case: uppercase;
+  --ts-label-tracking: .12em;
+  --ts-label-weight: 600;
+  --ts-headline-weight: var(--ts-num-weight);
+  --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
+}
+
+/* Owned by a palette: skipped when data-ts-palette is set on the same element. */
+:where([data-ts-theme='graphite']:not([data-ts-palette])) {
+  --ts-profit: #34D399;
+  --ts-loss: #FB7185;
+  --ts-accent: #818CF8;
+  --ts-series-1: #818CF8;
+  --ts-series-2: #F59E0B;
+  --ts-series-3: #2DD4BF;
+  --ts-series-4: #C084FC;
+  --ts-series-5: #F472B6;
+  --ts-series-6: #A3E635;
+  --ts-focus: var(--ts-accent);
+}
