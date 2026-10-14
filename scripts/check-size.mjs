@@ -91,15 +91,20 @@ const BUDGETS = {
  * work does not fail on noise. The rest still fit with room: grid 26,127 B,
  * metric 16,655 B, today-pnl 18,063 B, equity-curve 18,184 B, session-clock
  * 17,179 B, core 11,080 B, UMD 11,211 B.
+ *
+ * Re-measured 2026-10-15 after locale-formatting (maintainer approved): metric
+ * 17,193 B, reset to measured + 10 % (18,912 B), rounded up to 18.5 kB. No
+ * other row moved.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
 const remeasuredAgain = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-chrome and persist-attribute, RFC 0003 §25' })
 const remeasuredThird = (maxKb) => ({ ...entry(maxKb), target: 're-measured after overnight-sessions, theme-presets and reading-order, RFC 0003 §25' })
+const remeasuredFourth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after locale-formatting, RFC 0003 §25, maintainer approved', date: '2026-10-15' })
 const ENTRY_BUDGETS = {
   grid: remeasuredAgain(27),
   card: remeasuredThird(16),
-  metric: remeasured(16.5),
+  metric: remeasuredFourth(18.5),
   chart: remeasuredThird(19.5),
   'today-pnl': remeasuredAgain(19.5),
   'equity-curve': remeasuredAgain(19.5),
