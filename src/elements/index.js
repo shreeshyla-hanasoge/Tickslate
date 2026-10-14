@@ -10,9 +10,10 @@ import { TsWidget } from './widget.js'
 import { TsTodayPnl } from './today-pnl.js'
 import { TsEquityCurve } from './equity-curve.js'
 import { TsSessionClock } from './session-clock.js'
+import { persistLayout } from './persist.js'
 import { define } from './registry.js'
 
-export { version, TsGrid, TsWidget, TsTodayPnl, TsEquityCurve, TsSessionClock }
+export { version, persistLayout, TsGrid, TsWidget, TsTodayPnl, TsEquityCurve, TsSessionClock }
 
 define('ts-grid', TsGrid)
 define('ts-today-pnl', TsTodayPnl)

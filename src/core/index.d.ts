@@ -223,18 +223,20 @@ export interface Formatter {
   readonly issues: readonly FormatterIssue[]
   /** '+₹2,185.65', '−₹263.00', '₹0.00'. sign defaults to 'always'. */
   money(v: Numeric, o?: { sign?: 'always' | 'negative'; compact?: boolean; decimals?: number }): string
-  /** sign defaults to 'negative'. */
+  /** sign defaults to 'negative'. compact: 1200000 → '1.2M' in en-US, '1,2 Mio.' in de-DE. */
   number(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number; compact?: boolean }): string
   /** Grouped, no currency symbol; decimals default to 2. */
   price(v: Numeric, o?: { decimals?: number }): string
-  /** Takes a ratio: 0.027 → '+2.70%'. sign defaults to 'always'. */
+  /** Takes a fraction, not a percentage: 0.12 → '+12.00%' (sign 'always' by default), '12.00%' with sign 'negative'. */
   percent(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number }): string
   /** 24-hour unless hour12: '11:42', '11:42:20'. */
   time(t: number, o?: { seconds?: boolean; hour12?: boolean }): string
   /** 'clock': '2:40', '1:02:05'. 'words': '3h 48m', '48m', '9s'. */
   duration(ms: number, o?: { style?: 'clock' | 'words' }): string
-  /** The full money form if it fits in maxChars, else the compact one. */
-  fit(v: Numeric, maxChars: number, o?: { sign?: 'always' | 'negative' }): string
+  /** '182 ms' for an ECMA-402 sanctioned unit (or an 'x-per-y' pair of them), '3 seats' for any other. */
+  unit(v: Numeric, unit: string, o?: { decimals?: number; compact?: boolean }): string
+  /** The full form if it fits in maxChars, else without decimals, else compact (only if shorter). style defaults to 'money'. */
+  fit(v: Numeric, maxChars: number, o?: { style?: 'money' | 'number' | 'percent'; sign?: 'always' | 'negative'; decimals?: number }): string
 }
 
 export declare function createFormatter(options?: FormatOptions): Formatter

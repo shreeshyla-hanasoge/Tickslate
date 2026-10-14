@@ -19,6 +19,7 @@
  */
 
 import {
+  DEFAULT_PROFILE,
   WIDGETS,
   activeProfile,
   columnsFor,
@@ -33,9 +34,24 @@ import {
   resizeItem,
   sizeForExtent,
   stepSize,
+  typeForTag,
   withProfile,
 } from '../core/index.js'
-import { boardHeight, boxOf, cellAt, extentOf, mergeOrder, metrics, px } from './grid-geometry.js'
+import {
+  boardHeight,
+  boxOf,
+  cellAt,
+  elementSpec,
+  extentOf,
+  hostResizes,
+  itemsFromChildren,
+  mergeOrder,
+  metrics,
+  px,
+  reconcile,
+  specResolver,
+} from './grid-geometry.js'
+import { DEV, warnOnce } from './dev.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -54,6 +70,12 @@ const SLIDE = 'var(--ts-motion, 220ms) var(--ts-ease, cubic-bezier(.2, .8, .2, 1
 // The profile timer is re-armed at least this often, so a laptop waking
 // from sleep, whose timers were frozen, switches layouts within a minute.
 const MAX_WAIT = 60000
+// A tile whose tag has no definition after this long is probably a missing import.
+const UNDEFINED_TAG_MS = 2000
+// Children that are never tiles, however the markup is written.
+const NOT_TILES = new Set(['script', 'style', 'template', 'link', 'meta', 'noscript'])
+const NO_SPECS = new Map()
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 
 // Built on first use, so importing this module where there is no DOM (Node,
 // server-side rendering) doesn't throw.
@@ -143,6 +165,18 @@ export class TsGrid extends Base {
 
     this._layout = emptyLayout()
     this._catalog = WIDGETS
+    // Implicit mode (RFC 0002 §1.5) lasts until the host sets `layout`.
+    this._explicit = false
+    this._removed = new Map() // profile → ids the user removed, which children can't bring back
+    this._declared = new WeakMap() // element → the size attribute as first read
+    this._written = new WeakMap() // element → the size attribute the grid last wrote
+    this._itemOf = new WeakMap() // element → the item id the grid last saw on it
+    this._columnsSeen = false
+    this._watching = new Set() // timers of the development warnings
+    this._watchedTags = new Set() // tags those timers wait on
+    // Specs resolve when a tile renders, so a child that upgrades late still counts.
+    this._elementSpecs = { get: (id) => elementSpec(this._tiles.get(id)) }
+    this._setCatalog(WIDGETS)
     this._columns = 0
     this._m = null
     this._order = [] // the visible items, in the order being shown
@@ -201,15 +235,15 @@ export class TsGrid extends Base {
   // ── Public API ─────────────────────────────────────────────────────────
 
   get layout() {
+    // A plain read: reconciling here could write `item` attributes. Implicit
+    // mode is kept current by child changes and _sync, so _layout is fresh.
     return this._layout
   }
 
+  /** A Layout or an item array. Setting it ends implicit mode for good. */
   set layout(value) {
-    const { layout, issues } = readLayout(value, { catalog: this._catalog })
-    if (issues.length) this._emit('ts-layout-issues', { issues })
-    this._cancelGesture()
-    this._layout = layout
-    this._sync(this._rendered)
+    this._explicit = true
+    this._apply(value)
   }
 
   get catalog() {
@@ -217,13 +251,35 @@ export class TsGrid extends Base {
   }
 
   set catalog(value) {
-    this._catalog = value || WIDGETS
-    this.layout = this._layout
+    this._setCatalog(value || WIDGETS)
+    this._apply(this._layout)
+  }
+
+  _setCatalog(catalog) {
+    this._catalog = catalog
+    this._resolve = specResolver(this._elementSpecs, catalog, WIDGETS)
+    // For a tag's default spec: no element's own spec, or a tile that happens
+    // to share the type's name would answer for it.
+    this._typeSpec = specResolver(NO_SPECS, catalog, WIDGETS)
+  }
+
+  /** Read a layout from the host and show it. Issues are reported only here, never for the grid's own edits. */
+  _apply(value) {
+    // Tiles first, so a child's own sizes are known while the layout is read.
+    this._matchChildren(false)
+    const columns = this._columns
+    const device = columns ? (columns === 2 ? 'phone' : 'desktop') : undefined
+    // 'keep': a saved layout must not lose a tile because its tag isn't defined yet.
+    const { layout, issues } = readLayout(value, { catalog: this._resolve, unknown: 'keep', device })
+    if (issues.length) this._emit('ts-layout-issues', { issues })
+    this._cancelGesture()
+    this._layout = layout
+    this._sync(this._rendered)
   }
 
   /** The profile shown: the `profile` attribute, else an override, else the schedule, else 'market'. */
   get profile() {
-    return this.getAttribute('profile') || (this._override && this._override.profile) || this._scheduled || 'market'
+    return this.getAttribute('profile') || (this._override && this._override.profile) || this._scheduled || DEFAULT_PROFILE
   }
 
   set profile(value) {
@@ -294,12 +350,12 @@ export class TsGrid extends Base {
     this._resizeObserver = new ResizeObserver(() => this._measure(false))
     this._resizeObserver.observe(this)
     this._mutationObserver = new MutationObserver((records) => {
-      // Only our own children matter; content changing inside a tile doesn't.
-      if (!records.some((r) => (r.type === 'childList' ? r.target === this : r.target.parentElement === this))) return
+      if (!records.some((r) => this._concerns(r))) return
       this._cancelGesture()
       this._sync(true)
     })
-    this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item'] })
+    this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
+    if (!this._explicit) this._reconcile()
     this._measure(true)
     if (this._editing) this._startEditing()
     document.addEventListener('visibilitychange', this._onVisibility)
@@ -313,6 +369,22 @@ export class TsGrid extends Base {
     this._stopEditing()
     document.removeEventListener('visibilitychange', this._onVisibility)
     clearTimeout(this._profileTimer)
+    for (const timer of this._watching) clearTimeout(timer)
+    this._watching.clear()
+    this._watchedTags.clear()
+    if (this._orphanWatch) cancelAnimationFrame(this._orphanWatch)
+    this._orphanWatch = 0
+  }
+
+  /** Whether a mutation is news: our own child list, or a change the grid didn't make itself. */
+  _concerns(r) {
+    // Content changing inside a tile doesn't matter.
+    if (r.type === 'childList') return r.target === this
+    const el = r.target
+    if (el.parentElement !== this) return false
+    // The grid writes `size` on every render, and only a host's value is a resize.
+    if (r.attributeName === 'size') return !this._explicit && el.getAttribute('size') !== this._written.get(el)
+    return el.getAttribute('item') !== this._itemOf.get(el)
   }
 
   attributeChangedCallback(name) {
@@ -379,25 +451,77 @@ export class TsGrid extends Base {
     this._columns = columns
     this._m = metrics(width, columns, row, gap)
     if (force || changed || this._rendered) this._sync(false, !force)
-    if (changed && !force) this._emit('ts-columns-change', { columns, device: columns === 2 ? 'phone' : 'desktop' })
+    // The first measure tells a host which device it has, so it needn't measure the grid itself.
+    const initial = !this._columnsSeen
+    this._columnsSeen = true
+    if (initial || changed) this._emit('ts-columns-change', { columns, device: columns === 2 ? 'phone' : 'desktop', initial })
   }
 
   _profileItems() {
-    return this._layout.profiles[this.profile] || []
+    // Own properties only: profile="toString" is an empty board, not a function.
+    const profiles = this._layout.profiles
+    const name = this.profile
+    return hasOwn(profiles, name) && Array.isArray(profiles[name]) ? profiles[name] : []
+  }
+
+  _removedFor(profile) {
+    let set = this._removed.get(profile)
+    if (!set) this._removed.set(profile, (set = new Set()))
+    return set
+  }
+
+  /**
+   * Implicit mode: bring the active profile in line with the children. The
+   * first pass seeds it; later ones keep the grid's list as the truth, so a
+   * moved or resized tile stays put when a framework re-renders.
+   */
+  _reconcile() {
+    const kids = [...this.children].filter(isTile)
+    const profile = this.profile
+    const prev = this._profileItems()
+    const removed = this._removedFor(profile)
+    const descriptors = kids.map((el) => {
+      // Read once: the grid rewrites `size` itself, so later reads are its own words.
+      if (!this._declared.has(el)) this._declared.set(el, el.getAttribute('size'))
+      return {
+        tag: el.localName,
+        item: el.getAttribute('item') || undefined,
+        declaredSize: this._declared.get(el) || undefined,
+        spec: elementSpec(el),
+      }
+    })
+    const current = itemsFromChildren(descriptors, (tag) => this._typeFor(tag), removed)
+    // Written back so the next read, and a saved layout, find the same ids.
+    kids.forEach((el, i) => {
+      if (el.getAttribute('item') !== current[i].id) el.setAttribute('item', current[i].id)
+    })
+    if (DEV) this._warnGenerated(kids, descriptors, current)
+    this._matchChildren(false)
+
+    let items = reconcile(prev, current, removed)
+    const resized = hostResizes(kids.map((el, i) => ({ id: current[i].id, size: el.getAttribute('size'), written: this._written.get(el) })))
+    for (const [id, size] of resized) items = resizeItem(items, id, size, this._resolve)
+    kids.forEach((el) => {
+      if (resized.has(el.getAttribute('item'))) this._written.set(el, el.getAttribute('size'))
+    })
+    if (items.length !== prev.length || items.some((item, i) => item !== prev[i])) {
+      this._layout = withProfile(this._layout, profile, items)
+    }
+  }
+
+  /** The type of a child tag and the spec the catalogs give it. */
+  _typeFor(tag) {
+    const type = typeForTag(this._catalog, tag) ?? typeForTag(WIDGETS, tag) ?? tag
+    return { type, spec: this._typeSpec({ id: type }) }
   }
 
   /** Match children to layout items, hide the rest, and lay out. */
   _sync(animate, keepTiles) {
-    if (!this.isConnected || !this._m) return
+    if (!this.isConnected) return
+    if (!keepTiles && !this._explicit) this._reconcile()
+    if (!this._m) return
     const before = new Set(this._tiles.keys())
-    if (!keepTiles) {
-      this._tiles.clear()
-      for (const el of this.children) {
-        const id = el.getAttribute('item')
-        if (id && !this._tiles.has(id)) this._tiles.set(id, el)
-        else el.style.display = 'none'
-      }
-    }
+    if (!keepTiles) this._matchChildren(true)
     const items = this._profileItems()
     this._order = items.filter((item) => this._tiles.has(item.id))
     const shown = new Set(this._order.map((item) => item.id))
@@ -415,13 +539,76 @@ export class TsGrid extends Base {
     }
     this._wasShown = shown
     this._rendered = true
+    if (DEV && !keepTiles) this._watchOrphans()
+  }
+
+  /** Match children to items by their item attribute. `hide` also hides the ones that match nothing. */
+  _matchChildren(hide) {
+    this._tiles.clear()
+    for (const el of this.children) {
+      if (!isTile(el)) continue
+      const id = el.getAttribute('item')
+      this._itemOf.set(el, id)
+      if (id && !this._tiles.has(id)) this._tiles.set(id, el)
+      else if (hide) {
+        el.style.display = 'none'
+        if (DEV && !id && this._explicit) warnOnce(`grid-noitem:${el.localName}`, `<ts-grid> child <${el.localName}> has no item attribute, so no layout item can place it.`)
+      }
+      if (DEV && hide) this._watchDefined(el)
+    }
+  }
+
+  /** DEV: a dashed tag that is still undefined after a while is usually a missing import. */
+  _watchDefined(el) {
+    const tag = el.localName
+    if (!tag.includes('-') || typeof customElements === 'undefined' || customElements.get(tag) || this._watchedTags.has(tag)) return
+    this._watchedTags.add(tag)
+    const timer = setTimeout(() => {
+      this._watching.delete(timer)
+      this._watchedTags.delete(tag)
+      if (DEV && !customElements.get(tag)) warnOnce(`grid-undefined:${tag}`, `<ts-grid> child <${tag}> is still undefined after 2 s. Did you import 'tickslate/elements'?`)
+    }, UNDEFINED_TAG_MS)
+    this._watching.add(timer)
+  }
+
+  /** DEV: a layout item whose child hasn't appeared after two frames is kept but not shown. */
+  _watchOrphans() {
+    if (!this._explicit || this._orphanWatch || typeof requestAnimationFrame !== 'function') return
+    let frames = 2
+    const step = () => {
+      if (--frames > 0) {
+        this._orphanWatch = requestAnimationFrame(step)
+        return
+      }
+      this._orphanWatch = 0
+      for (const item of this._profileItems()) {
+        if (DEV && !this._tiles.has(item.id)) warnOnce(`grid-orphan:${item.id}`, `<ts-grid> layout item "${item.id}" has no child with item="${item.id}"; it is kept in the layout but not shown.`)
+      }
+    }
+    this._orphanWatch = requestAnimationFrame(step)
+  }
+
+  /** DEV: generated ids for a repeated type are fragile across reorders. */
+  _warnGenerated(kids, descriptors, current) {
+    const byTag = new Map()
+    kids.forEach((el, i) => {
+      const entry = byTag.get(el.localName) || { instances: 0, generated: [] }
+      entry.instances++
+      if (!descriptors[i].item || descriptors[i].item !== current[i].id) entry.generated.push(current[i].id)
+      byTag.set(el.localName, entry)
+    })
+    for (const [tag, { instances, generated }] of byTag) {
+      if (DEV && instances >= 2 && generated.length) {
+        warnOnce(`grid-generated:${tag}`, `<ts-grid> generated ids ${generated.join(', ')} for repeated <${tag}> children. Give each an item attribute so saved layouts survive reordering.`)
+      }
+    }
   }
 
   _render(animate, skipId) {
     const m = this._m
     if (!m) return
     animate = animate && this._motion()
-    const { placements, rows } = place(this._order, this._columns, this._catalog)
+    const { placements, rows } = place(this._order, this._columns, this._resolve)
     this._placements = new Map(placements.map((p) => [p.id, p]))
     for (const p of placements) {
       const box = boxOf(p, m)
@@ -431,6 +618,7 @@ export class TsGrid extends Base {
       const slide = animate && this._boxes.has(p.id) && el.style.display !== 'none'
       this._boxes.set(p.id, box)
       if (el.getAttribute('size') !== p.variant) el.setAttribute('size', p.variant)
+      this._written.set(el, p.variant)
       const chrome = this._chrome(p.id)
       if (p.id === skipId) continue
       setBox(el, box, slide)
@@ -477,9 +665,7 @@ export class TsGrid extends Base {
 
   _spec(id) {
     const item = this._item(id)
-    if (!item) return null
-    const type = item.type === undefined ? item.id : item.type
-    return Object.prototype.hasOwnProperty.call(this._catalog, type) ? this._catalog[type] : null
+    return item ? this._resolve(item) : null
   }
 
   _label(id) {
@@ -730,7 +916,7 @@ export class TsGrid extends Base {
     const scroll = scrollPos(g.scroller)
     const x = g.x - g.offsetX - (g.board0.left - (scroll.x - g.scroll0.x))
     const y = g.y - g.offsetY - (g.board0.top - (scroll.y - g.scroll0.y))
-    const target = dropIndex(this._order, g.id, cellAt(x, y, g.cols, m), this._columns, this._catalog, m.pitchX / m.pitchY)
+    const target = dropIndex(this._order, g.id, cellAt(x, y, g.cols, m), this._columns, this._resolve, m.pitchX / m.pitchY)
     return { x, y, target }
   }
 
@@ -845,7 +1031,7 @@ export class TsGrid extends Base {
     const item = this._item(g.id)
     const size = sizeForExtent(spec, extent.cols, extent.rows, this._columns, item.size)
     if (size !== item.size) {
-      this._order = resizeItem(this._order, g.id, size, this._catalog)
+      this._order = resizeItem(this._order, g.id, size, this._resolve)
       this._render(true)
     }
   }
@@ -856,7 +1042,7 @@ export class TsGrid extends Base {
       // A tap steps to the next size, wrapping from the largest to the smallest.
       let next = stepSize(spec, g.size0, 1)
       if (next === g.size0) next = stepSize(spec, g.size0, -1) === g.size0 ? g.size0 : smallest(spec)
-      this._order = resizeItem(this._order, g.id, next, this._catalog)
+      this._order = resizeItem(this._order, g.id, next, this._resolve)
       this._render(true)
     }
     this._hidePlaceholder()
@@ -894,8 +1080,14 @@ export class TsGrid extends Base {
       this._dropChrome(id)
       this._placements.delete(id)
       this._render(true)
-      this._layout = withProfile(this._layout, this.profile, removeItem(this._profileItems(), id))
-      this._emit('ts-layout-change', { layout: this._layout, profile: this.profile, reason: 'remove', id })
+      const profile = this.profile
+      const previous = this._layout
+      const list = this._profileItems()
+      const index = list.findIndex((item) => item.id === id)
+      // Children can't bring a removed tile back; only a restore can.
+      this._removedFor(profile).add(id)
+      this._layout = withProfile(this._layout, profile, removeItem(list, id))
+      this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'remove', id, index, item: list[index] })
       this._announce(`${label} removed.`)
     }
     if (!this._motion()) return finish()
@@ -946,7 +1138,7 @@ export class TsGrid extends Base {
       const item = this._item(id)
       const next = stepSize(spec, item.size, key === '-' || key === '_' ? -1 : 1)
       if (next === item.size) return
-      this._order = resizeItem(this._order, id, next, this._catalog)
+      this._order = resizeItem(this._order, id, next, this._resolve)
       this._render(true)
       this._commit('resize', id)
       this._announce(`${this._label(id)}, size ${next}.`)
@@ -970,7 +1162,7 @@ export class TsGrid extends Base {
       const col = p.col + dx * step
       const row = p.row + dy * step
       if (col < 0 || row < 0 || col > this._columns - p.cols) break
-      const target = dropIndex(this._order, g.id, { col, row }, this._columns, this._catalog)
+      const target = dropIndex(this._order, g.id, { col, row }, this._columns, this._resolve)
       if (target !== current) {
         this._order = moveItem(this._order, g.id, target)
         this._render(true)
@@ -984,9 +1176,10 @@ export class TsGrid extends Base {
   // ── Output ─────────────────────────────────────────────────────────────
 
   _commit(reason, id) {
+    const previous = this._layout
     const items = mergeOrder(this._profileItems(), this._order)
     this._layout = withProfile(this._layout, this.profile, items)
-    this._emit('ts-layout-change', { layout: this._layout, profile: this.profile, reason, id })
+    this._emit('ts-layout-change', { layout: this._layout, items, previous, profile: this.profile, reason, id })
   }
 
   _position(id) {
@@ -1001,6 +1194,11 @@ export class TsGrid extends Base {
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }))
   }
+}
+
+/** Anything but the grid's own furniture: scripts, styles and the empty-board slot are never tiles. */
+function isTile(el) {
+  return !NOT_TILES.has(el.localName) && el.getAttribute('slot') !== 'empty'
 }
 
 function setBox(el, box, animate, lifted) {

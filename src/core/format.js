@@ -110,6 +110,20 @@ function resolve(options) {
 
 const DASH = '—'
 
+// The ECMA-402 sanctioned simple units. Intl.NumberFormat throws on anything
+// else, so membership is checked here rather than caught after the fact.
+const UNITS = Object.freeze(new Set((
+  'acre bit byte celsius centimeter day degree fahrenheit fluid-ounce foot gallon gigabit gigabyte gram hectare hour inch ' +
+  'kilobit kilobyte kilogram kilometer liter megabit megabyte meter microsecond mile mile-scandinavian milliliter millimeter ' +
+  'millisecond minute month nanosecond ounce percent petabyte pound second stone terabit terabyte week yard year'
+).split(' ')))
+
+const sanctioned = (u) => {
+  if (UNITS.has(u)) return true
+  const i = u.indexOf('-per-')
+  return i > 0 && UNITS.has(u.slice(0, i)) && UNITS.has(u.slice(i + 5))
+}
+
 export function createFormatter(options = {}) {
   const { values, issues } = resolve(options)
   const { locale, currency, timeZone } = values
@@ -168,6 +182,19 @@ export function createFormatter(options = {}) {
     return signed(nf({ minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: 'exceptZero' }), v, 'negative')
   }
 
+  // A number with a unit: '182 ms' for a sanctioned unit, '3 seats' otherwise.
+  const unit = (value, u, o = {}) => {
+    const v = toNumber(value)
+    if (!Number.isFinite(v)) return DASH
+    if (typeof u !== 'string' || !u) return number(value, o)
+    if (!sanctioned(u)) return `${number(value, o)} ${u}`
+    const opts = o.compact
+      ? { notation: 'compact', maximumFractionDigits: o.decimals === undefined ? 1 : o.decimals }
+      : fractions(o.decimals)
+    return signed(nf({ ...opts, style: 'unit', unit: u, unitDisplay: 'short', signDisplay: 'exceptZero' }), v, 'negative')
+  }
+
+  // Takes a fraction, not a percentage: 0.12 is '+12.00%'.
   const percent = (value, o = {}) => {
     const v = toNumber(value)
     if (!Number.isFinite(v)) return DASH
@@ -197,10 +224,24 @@ export function createFormatter(options = {}) {
     return `${h ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
   }
 
+  // Full form, then without decimals, then compact; a compact form that is no
+  // shorter than the best so far (a short number, or a locale with a long
+  // suffix) is not worth the lost precision. Money skips the no-decimals step:
+  // headlines have always gone straight from full to compact, and dropping the
+  // paise silently would change what existing dashboards show.
   const fit = (value, maxChars, o = {}) => {
-    const full = money(value, o)
-    return full.length <= maxChars ? full : money(value, { ...o, compact: true })
+    const { style = 'money', ...rest } = o
+    const f = style === 'percent' ? percent : style === 'number' ? number : money
+    let best = f(value, rest)
+    if (best.length <= maxChars) return best
+    if (f !== money) {
+      const plain = f(value, { ...rest, decimals: 0 })
+      if (plain.length < best.length) best = plain
+      if (best.length <= maxChars) return best
+    }
+    const compact = f(value, { ...rest, compact: true })
+    return compact.length < best.length ? compact : best
   }
 
-  return Object.freeze({ locale, currency, timeZone, issues, money, number, price, percent, time, duration, fit })
+  return Object.freeze({ locale, currency, timeZone, issues, money, number, price, percent, unit, time, duration, fit })
 }

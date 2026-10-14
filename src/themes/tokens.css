@@ -1,6 +1,11 @@
 /*
  * Tickslate theme tokens.
  *
+ * This file is canonical. src/elements/default-tokens.js repeats every block
+ * below inside @layer tickslate.defaults so tiles are styled without it, and
+ * test/default-tokens.test.mjs fails unless the two declare the same
+ * properties with the same values. Change a value here, then there.
+ *
  * Paper is the light default. Graphite, the dark default, uses the Tailwind
  * gray scale (gray-900/800/700) with emerald, rose, amber and indigo 400, so a
  * Tailwind app whose dark mode uses that palette needs no overrides for dark.
@@ -8,9 +13,13 @@
  * Every rule is wrapped in :where() so it has zero specificity: a host app
  * overrides any --ts-* variable with a plain selector, no !important.
  *
- * Dark applies when the host sets data-theme="dark" or a .dark class on an
- * ancestor (Tailwind's class strategy), or when the OS prefers dark and the
- * host has not pinned data-theme="light".
+ * Which theme applies (dark is opt-in, RFC 0002 §6.2):
+ *   nothing                        Paper, whatever the OS prefers
+ *   data-theme="auto"              follows the OS preference
+ *   data-theme="dark" or .dark     Graphite
+ *   data-theme="light"             Paper again, so it can be an island inside
+ *                                  a dark page (and "dark" one inside a light
+ *                                  page). It comes last so it beats .dark.
  */
 :where(:root) {
   --ts-bg: #F3EFE6;
@@ -23,12 +32,22 @@
   --ts-loss: #C0362C;
   --ts-warn: #A85A06;
   --ts-accent: #2C52C4;
+  /* The chart zero line. --ts-line is too faint for a mark that carries meaning. */
+  --ts-axis: #948C7C;
+  /* Focus rings follow the accent unless a host sets their own. */
+  --ts-focus: var(--ts-accent);
   --ts-radius: 10px;
   --ts-radius-sm: 6px;
   --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
   --ts-fill: 12%;
   --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --ts-font-num: 'Newsreader', Georgia, 'Times New Roman', serif;
+  /*
+   * Newsreader is the designed face. The fallback is a sans stack, not Georgia:
+   * Georgia's digits are old-style and proportional, so live figures would
+   * jitter and sit at uneven heights without the web font. System sans digits
+   * are lining, and tabular-nums on the figure classes makes them equal width.
+   */
+  --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --ts-row: 150px;
   --ts-gap: 16px;
   /* Padding inside a tile. The dark designs are tighter. */
@@ -45,7 +64,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :where(:root:not([data-theme="light"])) {
+  :where([data-theme="auto"]) {
     --ts-bg: #111827;
     --ts-surface: #1F2937;
     --ts-surface-2: #374151;
@@ -56,6 +75,8 @@
     --ts-loss: #FB7185;
     --ts-warn: #FBBF24;
     --ts-accent: #818CF8;
+    --ts-axis: #6B7280;
+    --ts-focus: var(--ts-accent);
     --ts-radius: 12px;
     --ts-pad: 16px;
     --ts-shadow: none;
@@ -76,10 +97,57 @@
   --ts-loss: #FB7185;
   --ts-warn: #FBBF24;
   --ts-accent: #818CF8;
+  --ts-axis: #6B7280;
+  --ts-focus: var(--ts-accent);
   --ts-radius: 12px;
   --ts-pad: 16px;
   --ts-shadow: none;
   --ts-fill: 16%;
   --ts-num-weight-small: 600;
   --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7);
+}
+
+/* The light island. Only what the dark blocks change is restated. */
+:where([data-theme="light"]) {
+  --ts-bg: #F3EFE6;
+  --ts-surface: #FFFDF8;
+  --ts-surface-2: #F1EBDE;
+  --ts-line: #E2DACB;
+  --ts-ink: #1C1A16;
+  --ts-muted: #6A655B;
+  --ts-profit: #0E7A4E;
+  --ts-loss: #C0362C;
+  --ts-warn: #A85A06;
+  --ts-accent: #2C52C4;
+  --ts-axis: #948C7C;
+  --ts-focus: var(--ts-accent);
+  --ts-radius: 10px;
+  --ts-pad: 18px;
+  --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
+  --ts-fill: 12%;
+  --ts-num-weight-small: 500;
+  --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
+}
+
+/*
+ * Before the elements upgrade (RFC 0002 §6.5). A grid's tiles are plain
+ * unstyled children until the script defines them, so they are hidden and the
+ * grid keeps one row of height; a known widget tag keeps its standalone height.
+ * The page then doesn't jump when the script arrives. Zero specificity, like
+ * everything here, so a host can restyle any of it.
+ */
+:where(ts-grid:not(:defined)) {
+  display: block;
+  min-height: var(--ts-row, 150px);
+}
+:where(ts-grid:not(:defined) > *) {
+  display: none;
+}
+:where(:is(ts-today-pnl, ts-equity-curve, ts-session-clock, ts-pnl-calendar, ts-edge-stats, ts-capital-funding, ts-open-positions, ts-watchlist, ts-mini-chart, ts-card, ts-metric, ts-chart):not(:defined)) {
+  display: block;
+  height: var(--ts-row, 150px);
+}
+:where(:is(ts-pnl-calendar, ts-mini-chart):not(:defined):not([size])),
+:where(:is(ts-today-pnl, ts-equity-curve, ts-session-clock, ts-pnl-calendar, ts-edge-stats, ts-capital-funding, ts-open-positions, ts-watchlist, ts-mini-chart, ts-card, ts-metric, ts-chart):not(:defined):is([size="M"], [size="Tall"], [size="L"], [size="XL"])) {
+  height: calc(2 * var(--ts-row, 150px) + var(--ts-gap, 16px));
 }

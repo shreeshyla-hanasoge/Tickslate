@@ -8,9 +8,9 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
 <link rel="stylesheet" href="/src/themes/tokens.css">
 <style>
-  /* The page is pinned to Paper (data-theme="light" on <html>) so the Paper
-     block below does not pick up an OS dark preference; the Graphite block
-     opts in with its own data-theme. */
+  /* Dark mode is opt-in (data-theme="auto" follows the OS), so the Paper
+     block below stays light by default; the Graphite block opts in with its
+     own data-theme. */
   body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
   .page { max-width: 1360px; margin: 0 auto; padding: 24px 24px 96px; }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding-bottom: 8px; }
