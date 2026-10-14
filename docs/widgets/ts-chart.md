@@ -106,7 +106,8 @@ chart.data = {
 
 | Name | Type | What it does |
 |---|---|---|
-| `label` | attribute and property | The heading and the region's name. Defaults to "Chart" |
+| `label` | attribute and property | The heading and the tile's name. Defaults to "Chart" |
+| `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `size` | attribute and property | `Wide`, `M`, `L` or `XL`; others snap. A grid sets it |
 | `data` | property, or a JSON attribute | `ChartData` |
 | `state` | attribute and property | `'loading'` or `'error'` |
@@ -127,8 +128,13 @@ The base members are listed in [Your own widget](../guide/your-own-widget.md).
 
 | Part | Element |
 |---|---|
-| `tile` | The tile's `<section>` |
-| `error` | The error view's container |
+| `tile` | The tile box, `role="group"` named by the headline sentence |
+| `header` | The header row: the live dot, the label and the right-hand text (at `Wide`, the first series' name) |
+| `label` | The label, a `role="heading"` whose level comes from `heading-level` |
+| `chart` | The plot box: the svg, without its axis labels |
+| `empty` | The empty view's container |
+| `error` | The error view's container (only while the error view shows) |
+| `skeleton` | The loading view's container, around the skeleton blocks |
 
 Series colours are `--ts-series-1` to `--ts-series-4` in order; see
 [Theming](../theming.md). Area series get a legend swatch shaped as a filled
@@ -145,7 +151,7 @@ square so line and area differ without colour.
 
 ## Accessibility
 
-- The tile is a region named by its label alone. The plot is a `role="img"` svg
+- The tile is a `role="group"` named by its label alone, and the label is a heading. The plot is a `role="img"` svg
   whose label states the result, "Revenue, last 12,100; Cost, last 8,100", so
   the summary is spoken once.
 - Series are told apart by position, legend name and (for areas) swatch shape,

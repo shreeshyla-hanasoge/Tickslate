@@ -282,6 +282,7 @@ export interface Messages {
   'size.XL': string
   'size.name': string
   'time.synced': string
+  'time.live': string
   'time.days.one': string
   'time.days.other': string
   'grid.dashboard': string
@@ -348,6 +349,12 @@ export interface Messages {
   'equity.range3M': string
   'equity.rangeYTD': string
   'equity.rangeAll': string
+  'equity.rangeExpand': string
+  'equity.range1W.long': string
+  'equity.range1M.long': string
+  'equity.range3M.long': string
+  'equity.rangeYTD.long': string
+  'equity.rangeAll.long': string
   'equity.peakNote': string
   'equity.over': string
   'equity.dayCount.one': string

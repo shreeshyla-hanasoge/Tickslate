@@ -66,8 +66,6 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   size: SizeName
   /** The size actually rendered. */
   readonly variant: SizeName
-  /** The `label` attribute, else the `widget.<catalogKey>.label` message for a catalog widget, else the spec's label ('' when none; the tile is then named by its tag). */
-  label: string
   /** Catalog entry, else the validated static spec, else `{ label: '', sizes: [] }`. Subclasses may override. */
   readonly spec: Omit<WidgetSpec, 'tag'>
   /** What the widget takes the time to be. Tests and demos can freeze it. */
@@ -109,6 +107,25 @@ export declare function escapeHtml(s: unknown): string
 export declare const SHARED_CSS: string
 /** One skeleton block: width in percent (snapped to 5) or 'x' for an axis label, height in px. */
 export declare function sk(width: number | 'x', height: number): string
+/** What header() takes (RFC 0003 §5.1). Internal for now: the built-in widgets use it, and custom widgets are not yet promised it. */
+export interface HeaderOptions {
+  /** The live dot, hidden until the widget unhides it. */
+  dot?: boolean
+  /** `true` for the standard "synced 11:42" meta, or markup for the widget's own right-hand content. */
+  meta?: boolean | string
+  /** A `<slot name="actions">` after the meta. */
+  actions?: boolean
+  /** Markup straight after the label. */
+  extra?: string
+  /** Markup inside the label, for a label that shows two forms; the widget then writes those nodes. */
+  inner?: string
+  /** An extra class on the label. */
+  labelClass?: string
+}
+/** The header row `[dot][label][spacer][meta]`, with `part="header"`, and the label as `part="label"` and `role="heading"`. */
+export declare function header(opts?: HeaderOptions): string
+/** ▲ for a text that starts with `+`, ▼ for one that starts with `−` (U+2212), else ''. */
+export declare function arrowFor(text: unknown): '▲' | '▼' | ''
 /** The words either side of the time in `time.synced`, for a tile that hides them when narrow. */
 export declare function syncedParts(t: Translate): { pre: string; post: string }
 

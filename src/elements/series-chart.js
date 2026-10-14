@@ -11,7 +11,7 @@
  * unused, which is what lets new data never need new markup.
  */
 
-import { TsWidget, sk, describeElement, syncedParts } from './widget.js'
+import { TsWidget, sk, describeElement, syncedParts, header } from './widget.js'
 import { areaPaths, scale, seriesDomain } from './chart.js'
 import { DEV, warnOnce } from './dev.js'
 import { EN, toNumber, toTime } from '../core/index.js'
@@ -303,18 +303,17 @@ export function chartModel(data, variant, ctx) {
 
 const SLOTS = [1, 2, 3, 4]
 
-const dot = '<span class="dot live" data-k="dot" hidden></span>'
-const meta = '<span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>'
-
 // Wide names the first series up in the header, where the other sizes have a legend.
 const head = (wide) =>
-  `<div class="hd">${dot}<span class="lb ell" data-k="label"></span>${
-    wide ? '<span class="sname sm" data-k="first" hidden><span class="sw c-1" data-k="sw1" aria-hidden="true"></span><span class="ell" data-k="n1"></span></span>' : ''
-  }<span class="f1"></span>${meta}</div>`
+  header({
+    dot: true,
+    meta: true,
+    extra: wide ? '<span class="sname sm" data-k="first" hidden><span class="sw c-1" data-k="sw1" aria-hidden="true"></span><span class="ell" data-k="n1"></span></span>' : '',
+  })
 
 const marks = (cls, prefix) => SLOTS.map((i) => `<path class="${cls} c-${i}" data-k="${prefix}${i}"></path>`).join('')
 
-const plot = (ticked) => `<div class="prow"><div class="plot"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
+const plot = (ticked) => `<div class="prow"><div class="plot" part="chart"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
   ticked ? '<path class="gl" data-k="grid"></path>' : ''
 }<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sl', 'l')}${marks('sd', 'd')}</svg></div>${
   ticked ? `<div class="yax n" aria-hidden="true"><div class="yin">${[0, 1, 2, 3].map((i) => `<span data-k="y${i}"></span>`).join('')}</div></div>` : ''
@@ -341,7 +340,7 @@ TEMPLATES.XL = TEMPLATES.L
 
 // Loading shapes follow each size's layout block for block.
 const skAxis = '<div class="xax"><span class="sk wx h9"></span><span></span><span class="sk wx h9"></span></div>'
-const skHead = '<div class="hd"><span class="lb ell" data-k="label"></span></div>'
+const skHead = header()
 const skRail = SLOTS.map(() => `<div class="ri">${sk(60, 10)}${sk(40, 16)}</div>`).join('')
 const SKELETONS = {
   Wide: `${skHead}<div class="chartcol"><span class="sk grow"></span>${skAxis}</div>`,
@@ -370,10 +369,8 @@ export class TsChart extends TsWidget {
 
   static styles = `
 [hidden] { display: none !important; }
-.n { unicode-bidi: isolate; }
-.meta { flex: none; white-space: nowrap; }
-@container (max-width: 200px) { .pre { display: none; } }
-.chartcol { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Time runs left to right in every locale, so the plot and its axes never mirror. */
+.chartcol { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; direction: ltr; }
 .prow { flex: 1; min-height: 0; display: flex; gap: 8px; }
 .plot { position: relative; flex: 1; min-width: 0; min-height: 0; }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; direction: ltr; }
@@ -404,6 +401,16 @@ export class TsChart extends TsWidget {
 @container (max-width: 460px) {
   .crow { flex-direction: column; gap: 10px; }
   .rail { width: auto; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; gap: 8px 16px; border-inline-start: 0; padding-inline-start: 0; }
+}
+/* Colours are not the host's to theme here, and backgrounds are dropped, so series differ by colour AND dash and the
+   swatches become coloured blocks again. Two system colours and a dash tell four series apart. */
+@media (forced-colors: active) {
+  .sl, .sd { stroke: CanvasText; }
+  .sl.c-2, .sd.c-2, .sl.c-4, .sd.c-4 { stroke: Highlight; }
+  .sl.c-3, .sl.c-4 { stroke-dasharray: 6 3; }
+  .gl, .zl { stroke: CanvasText; }
+  .sw { background: CanvasText; }
+  .sw.c-2, .sw.c-4 { background: Highlight; }
 }
 `
 

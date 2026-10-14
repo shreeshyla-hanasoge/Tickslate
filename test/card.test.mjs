@@ -43,7 +43,7 @@ function make({ attrs = {}, kids = [] } = {}) {
 }
 
 const html = (card) => card.shadowRoot.section.html
-const slotsIn = (s) => [...s.matchAll(/<slot(?: name="([^"]+)")?>/g)].map((m) => m[1] || 'default')
+const slotsIn = (s) => [...s.matchAll(/<slot(?: name="([^"]+)")?(?: part="[^"]+")?>/g)].map((m) => m[1] || 'default')
 
 describe('static contract', () => {
   test('the card has optional data, the card catalog key and a dataShape for its two optional keys', () => {

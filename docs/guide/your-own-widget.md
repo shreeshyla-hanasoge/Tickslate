@@ -64,7 +64,7 @@ JSON `data` attribute and development warnings all work without more code.
   colour. See [Theming](../theming.md).
 - **Data in, nothing out.** Render what the host passes in. No fetching, no
   broker APIs, no credentials.
-- **Accessible by default.** The tile is a labelled region; return `ariaLabel`
+- **Accessible by default.** The tile is a labelled group with a heading; return `ariaLabel`
   stating the result, give charts `role="img"` and a label, put a sign (and an
   `aria-hidden` arrow) on gains and losses, and stop motion under
   `prefers-reduced-motion`. See [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md).
@@ -128,8 +128,8 @@ defined is not lost. Add context the pure view model needs from the element
 Exactly one view shows, first match wins: **error** (`state="error"`, `error`
 set, or a view model that threw), then **loading** (`state="loading"`, or `data`
 undefined unless `dataOptional`), then **empty** (`data === null`), then
-**content**. The tile is a fixed box, so no view changes its size. The section
-is `<section class="tile" part="tile" aria-label>`.
+**content**. The tile is a fixed box, so no view changes its size. The tile
+is `<div class="tile" part="tile" role="group" aria-label>`.
 
 ## Shared classes
 

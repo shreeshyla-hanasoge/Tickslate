@@ -11,18 +11,27 @@ list wins.
 
 ## Names and structure
 
-1. **Every tile is a labelled region whose name states its headline.** The
-   tile is `<section part="tile" aria-label="…">`, and the name is the label
-   followed by the result a sighted user reads first: `Signups, 1,204, up 12% vs last week`,
-   not `Signups`. The view model builds it (`ariaLabel`), so node tests cover
-   it.
+1. **Every tile is a labelled group whose name states its headline, and its
+   label is a heading.** The tile is `<div part="tile" role="group" aria-label="…">`,
+   and the name is the label followed by the result a sighted user reads first:
+   `Signups, 1,204, up 12% vs last week`, not `Signups`. The view model builds
+   it (`ariaLabel`), so node tests cover it. `<ts-grid>` is the one labelled
+   region; the tiles are groups inside it, so a 12-tile dashboard is one
+   landmark, not twelve.
+   - The label is `role="heading"` with an `aria-level` from `heading-level`: the
+     widget's own attribute, else the nearest `<ts-grid>`'s, else 3. Where the
+     words it shows are not the plain label (`Today` in a small P&L tile, the
+     open or closed title of the session clock) it is named by the plain label,
+     so heading navigation lists labels. It is `role="heading"` and not an `<h3>`
+     so shadow styles stay in control.
+   - A live tile's name ends with `, live` (`time.live`).
+   - The name is written only when it changes, so a ticking value does not make a
+     screen reader read the tile again.
    - Loading keeps the real label and sets `aria-busy="true"`.
-   - The error view names the region `<label>, error: <message>`.
+   - The error view names the group `<label>, error: <message>`.
    - A widget with no label from any source is named by its tag, never by an
-     empty `aria-label`, and warns in development.
-   - In 0.1.0 each tile is its own region. Tiles becoming `role="group"` with a
-     heading, inside one labelled grid region, is P1 (RFC 0002 Decision 25);
-     this file is updated when that lands.
+     empty `aria-label`, and warns in development. Its heading is hidden from
+     the accessibility tree, since it would only repeat the tag.
 2. **Charts have `role="img"` and a summary.** The `aria-label` states the
    result in words a listener can use: `Revenue, last 12,400; Cost, last 8,100`,
    or `Intraday P&L: low −₹715, now +₹2,185.65`. Lines, areas, ticks and dots
@@ -71,9 +80,10 @@ list wins.
 
 12. **Logical CSS properties only.** `margin-inline-start`, `padding-inline-end`,
     `inset-inline-start`, `text-align: start` and so on; never `left`, `right`,
-    `margin-left` or `text-align: right` in widget CSS. Chart drawing boxes are
-    the one exception: they force `direction: ltr`, because time runs left to
-    right in every locale.
+    `margin-left` or `text-align: right` in widget CSS, and a test fails on them.
+    Chart drawing boxes, time axes and progress tracks force `direction: ltr`,
+    because time runs left to right in every locale; their logical properties
+    then resolve as left to right.
 
 ## Colour and contrast
 
@@ -85,9 +95,17 @@ list wins.
     `--ts-surface-2`. Muted, profit, loss, warn and accent text sit on
     `--ts-surface` or `--ts-bg`.
 15. **Colour is never the only signal.** Signs and arrows carry direction,
-    stripes carry shortfalls, a glyph and text carry an error.
+    stripes carry shortfalls, a glyph and text carry an error. Entry and exit
+    marks differ in shape (a circle and a diamond). Decorative glyphs (▲, ▼,
+    the live dot, tick marks) are `aria-hidden`; range buttons add a visually
+    hidden expansion, so `1W` is announced as "1W, 1 week".
 16. **Tokens only.** Widget CSS uses `--ts-*` variables and no colour values,
-    so a host theme, a palette or forced colours reaches every pixel.
+    so a host theme or a palette reaches every pixel. The one exception is
+    `@media (forced-colors: active)`, where `Highlight`, `CanvasText` and
+    `ButtonFace` (the user's own colours) keep the session-clock fill and ticks,
+    the live dot, Today's P&L marks, chart lines, the selected `.btn.on` and the
+    metric target bar visible. `test/tile-chrome.test.mjs` fails on a colour
+    anywhere else.
 
 ## Motion and live data
 
@@ -122,20 +140,18 @@ before each release. Record the result in the PR.
 | Keyboard only | Unplug the mouse. Tab through a dashboard; Enter on "Edit layout"; move, resize and remove a tile; Done; Undo | Every control is reachable in visual order, focus is always visible, nothing traps focus, and Done returns focus to where editing started |
 | VoiceOver | macOS Safari, and iOS Safari on a phone. Read the dashboard with the rotor's landmarks, then edit with the keyboard (macOS) and with tap-to-place (iOS) | Each tile's name states its headline, charts read their summary, every move and drop is announced once, and nothing ticking is announced |
 | NVDA | Windows, Firefox or Chrome. Browse mode through the dashboard, then focus mode to edit | As for VoiceOver; buttons are read as buttons with their names |
-| Forced colours | Windows High Contrast, or Chromium's forced-colors emulation, in both themes | Tile boundaries, focus rings, chart lines, the live dot, progress fills and selected buttons stay visible |
+| Forced colours | Windows High Contrast, or Chromium's forced-colors emulation, in both themes | Tile boundaries, focus rings, chart lines, the live dot, the session-clock fill and ticks, Today's P&L marks, the metric target bar and selected buttons stay visible |
 | 390 px | A 390 px wide viewport (or a real phone), both themes | Two columns, no horizontal scroll, 44 px targets, figures fit without clipping, long press doesn't start a text selection |
 
-## Where the existing widgets stand (13 Oct 2026)
+## Where the existing widgets stand (14 Oct 2026)
 
-Today's P&L, the equity curve, the session clock and the grid were built
-under RFC 0001 §11, before this list. Known gaps, and who closes them:
-
-| Gap | Where | Closed by |
-|---|---|---|
-| Gains and losses show sign and colour but no ▲/▼ | Today's P&L, equity curve | Proposed for tile chrome (RFC 0003); see RFC 0002 §14, point I |
-| Physical CSS properties (`left`, `margin-left`, `padding-left`, `text-align: right`) | Session clock, equity curve | Tile chrome (P1) |
-| Figures without `unicode-bidi: isolate` | All three widgets | Tile chrome (P1) |
-| Strings inline in templates, not in one constant object | All three widgets | Widget states (P0) for the states; messages (P1) for the rest |
+Today's P&L, the equity curve, the session clock and the grid were built under
+RFC 0001 §11, before this list. The gaps it once listed are closed: gains and
+losses carry ▲ and ▼, widget CSS uses logical properties, figures use
+`unicode-bidi: isolate`, every string is a message, and every tile is a group
+with a heading. What is still open is the manual assistive-technology pass
+(VoiceOver, NVDA and forced colours on a real device), which the table above
+describes and RFC 0003 §27 schedules.
 
 New widgets (`<ts-card>`, `<ts-metric>`, `<ts-chart>` and everything after)
 meet the whole list from their first PR.

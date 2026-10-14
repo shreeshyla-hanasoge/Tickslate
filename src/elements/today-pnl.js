@@ -11,7 +11,7 @@
  * heading on Wide and M, and the accessible name on every variant.
  */
 
-import { TsWidget, sk } from './widget.js'
+import { TsWidget, sk, header, arrowFor } from './widget.js'
 import { linePaths } from './chart.js'
 import { EN, toNumber, toTime } from '../core/index.js'
 
@@ -211,10 +211,16 @@ export function todayPnlModel(data, variant, ctx) {
     unrealized: fmt.money(d.unrealized),
     unrealizedTone: tone(d.unrealized),
     fees: feesText,
+    // ▲ or ▼ beside a gain or a loss, read from the sign the reader sees. Fees are a deduction, not a result, so they get none.
+    netArrow: '',
+    realizedArrow: arrowFor(fmt.money(d.realized)),
+    unrealizedArrow: arrowFor(fmt.money(d.unrealized)),
     // Rows the tile couldn't read. Only the M variant draws the series, so
     // only it can say; the others have nothing to drop.
     dropped: 0,
   }
+
+  vm.netArrow = arrowFor(vm.net)
 
   if (variant === 'S') {
     vm.footer = joined([counts, feesPlain && t('pnl.feesNote', { amount: feesPlain })])
@@ -230,32 +236,35 @@ export function todayPnlModel(data, variant, ctx) {
   return vm
 }
 
-const dot = '<span class="dot live" data-k="dot" hidden></span>'
+// A figure that can be a gain or a loss: the ▲ or ▼ sits inside it, so the figure's own box (and its tone class) covers both,
+// and update() writes the arrow and the text to their own nodes.
+const figure = (cls, k, part = '') =>
+  `<span class="${cls}"${part ? ` part="${part}"` : ''} data-k="${k}"><span class="ar" aria-hidden="true" data-k="${k}Ar"></span><span data-k="${k}V"></span></span>`
 
 // Variant markup is static; update() fills it. Ids are scoped to the shadow
 // root, so the clip-path ids can be fixed.
 const TEMPLATES = {
   S: `
-<div class="hd">${dot}<span class="lb ell" data-k="label"></span><span class="f1"></span><span class="sm mut n" data-k="time"></span></div>
-<span class="big nv" data-k="net"></span>
+${header({ dot: true, meta: '<span class="sm mut n" data-k="time"></span>' })}
+${figure('big nv', 'net', 'value')}
 <span class="f1"></span>
 <span class="sm mut ell" data-k="footer"></span>`,
   Wide: `
 <div class="cols">
   <div class="col lhs">
-    <div class="hd">${dot}<span class="lb ell" data-k="label"></span></div>
-    <span class="xbig nv" data-k="net"></span>
+    ${header({ dot: true })}
+    ${figure('xbig nv', 'net', 'value')}
     <span class="sm mut" data-k="note"></span>
   </div>
   <div class="col rhs">
-    <div class="rowb"><span class="lb f1" data-k="lbRealised"></span><span class="n" data-k="realized"></span></div>
-    <div class="rowb"><span class="lb f1" data-k="lbUnrealised"></span><span class="n" data-k="unrealized"></span></div>
+    <div class="rowb"><span class="lb f1" data-k="lbRealised"></span>${figure('n', 'realized')}</div>
+    <div class="rowb"><span class="lb f1" data-k="lbUnrealised"></span>${figure('n', 'unrealized')}</div>
     <div class="rowb"><span class="lb f1" data-k="lbFees"></span><span class="n mut" data-k="fees"></span></div>
   </div>
 </div>`,
   M: `
-<div class="hd">${dot}<span class="lb ell" data-k="label"></span><span class="f1"></span><span class="sm mut" data-k="counts"></span></div>
-<div class="rowb base"><span class="xbig nv" data-k="net"></span><span class="sm mut" data-k="summary"></span></div>
+${header({ dot: true, meta: '<span class="sm mut" data-k="counts"></span>' })}
+<div class="rowb base">${figure('xbig nv', 'net', 'value')}<span class="sm mut" data-k="summary"></span></div>
 <div class="chart" part="chart">
   <svg viewBox="0 0 ${CHART_BOX.width} ${CHART_BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">
     <defs>
@@ -270,12 +279,12 @@ const TEMPLATES = {
     <path class="ln" clip-path="url(#dn)" data-k="line-dn"></path>
   </svg>
   <div class="marks" data-k="marks"></div>
-  <div class="nodata sm" data-k="nodata" hidden></div>
+  <div class="nodata sm" part="empty" data-k="nodata" hidden></div>
 </div>
 <div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
-  <div class="col"><span class="lb" data-k="lbRealised"></span><span class="n md" data-k="realized"></span></div>
-  <div class="col"><span class="lb" data-k="lbUnrealised"></span><span class="n md" data-k="unrealized"></span></div>
+  <div class="col"><span class="lb" data-k="lbRealised"></span>${figure('n md', 'realized')}</div>
+  <div class="col"><span class="lb" data-k="lbUnrealised"></span>${figure('n md', 'unrealized')}</div>
   <div class="col"><span class="lb" data-k="lbFees"></span><span class="n md mut" data-k="fees"></span></div>
 </div>`,
 }
@@ -284,12 +293,12 @@ const TEMPLATES = {
 // land where the blocks were. S says "Today" as its content does, through
 // _skeletonLabel.
 const SKELETONS = {
-  S: `<div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(65, 30)}<span class="f1"></span>${sk(80, 11)}`,
+  S: `${header()}${sk(65, 30)}<span class="f1"></span>${sk(80, 11)}`,
   Wide: `<div class="cols">
-  <div class="col lhs"><div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(75, 44)}${sk(60, 11)}</div>
+  <div class="col lhs">${header()}${sk(75, 44)}${sk(60, 11)}</div>
   <div class="col rhs">${`<div class="rowb">${sk(40, 9)}<span class="f1"></span>${sk(35, 13)}</div>`.repeat(3)}</div>
 </div>`,
-  M: `<div class="hd"><span class="lb ell" data-k="label"></span></div>
+  M: `${header()}
 <div class="rowb base">${sk(40, 44)}${sk(30, 11)}</div>
 <span class="sk grow"></span>
 <div class="axis">${sk('x', 9)}${sk('x', 9)}${sk('x', 9)}</div>
@@ -338,16 +347,27 @@ export class TsTodayPnl extends TsWidget {
 .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .marks { position: absolute; inset: 0; pointer-events: none; }
 .mk {
-  position: absolute; box-sizing: content-box; width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  position: absolute; box-sizing: content-box; width: 8px; height: 8px; margin-block-start: -4px; margin-inline-start: -4px;
   border-radius: 50%; border: 2px solid var(--ts-surface); pointer-events: auto;
 }
+/* An entry is a circle and an exit a diamond, so the two differ by shape and not by colour alone. */
 .mk.entry { background: var(--ts-accent); }
-.mk.exit { background: var(--ts-ink); }
+.mk.exit { background: var(--ts-ink); border-radius: 0; transform: rotate(45deg) scale(.85); }
 .nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ts-muted); }
 .nodata[hidden] { display: none; }
+/* Time runs left to right in every locale, so the drawing box and its axis never mirror. */
+.chart, .axis { direction: ltr; }
 .axis { position: relative; display: flex; justify-content: space-between; min-height: 1.4em; }
-.axis .mid { position: absolute; top: 0; transform: translateX(-50%); }
-.trio { padding-top: 10px; }
+.axis .mid { position: absolute; inset-block-start: 0; transform: translateX(-50%); }
+.trio { padding-block-start: 10px; }
+/* The arrow takes room beside the figure, so the figure is a little smaller than the tile alone would allow, on the
+   narrowest tiles only: 10 characters and the arrow still fit the content box of a 2-column phone's tile. */
+.big.nv { font-size: min(34px, 18cqi); }
+.xbig.nv { font-size: min(48px, 8.7cqi); }
+@media (forced-colors: active) {
+  .mk.entry { background: Highlight; border-color: ButtonFace; }
+  .mk.exit { background: CanvasText; border-color: ButtonFace; }
+}
 `
 
   static template(variant) {
@@ -372,9 +392,11 @@ export class TsTodayPnl extends TsWidget {
       if (el && el.textContent !== s) el.textContent = s
       return el
     }
-    // Only the sign colour changes between renders; the size class stays.
-    const toned = (k, base, s, t) => {
-      const el = text(k, s)
+    // Only the sign colour changes between renders; the size class stays. The arrow is its own node, so the figure's text stays a figure.
+    const toned = (k, base, s, arrow, t) => {
+      const el = this.$(`[data-k="${k}"]`)
+      text(`${k}Ar`, arrow)
+      text(`${k}V`, s)
       if (el) el.className = t ? `${base} ${t}` : base
     }
     this.$('[data-k="dot"]').toggleAttribute('hidden', !vm.live)
@@ -382,17 +404,17 @@ export class TsTodayPnl extends TsWidget {
 
     if (variant === 'S') {
       text('time', vm.time)
-      toned('net', 'big nv', vm.net, vm.netTone)
+      toned('net', 'big nv', vm.net, vm.netArrow, vm.netTone)
       text('footer', vm.footer)
       return
     }
 
-    toned('net', 'xbig nv', vm.net, vm.netTone)
+    toned('net', 'xbig nv', vm.net, vm.netArrow, vm.netTone)
     text('lbRealised', this.t('pnl.realised'))
     text('lbUnrealised', this.t('pnl.unrealised'))
     text('lbFees', this.t('pnl.fees'))
-    toned('realized', variant === 'M' ? 'n md' : 'n', vm.realized, vm.realizedTone)
-    toned('unrealized', variant === 'M' ? 'n md' : 'n', vm.unrealized, vm.unrealizedTone)
+    toned('realized', variant === 'M' ? 'n md' : 'n', vm.realized, vm.realizedArrow, vm.realizedTone)
+    toned('unrealized', variant === 'M' ? 'n md' : 'n', vm.unrealized, vm.unrealizedArrow, vm.unrealizedTone)
     text('fees', vm.fees)
 
     if (variant === 'Wide') {
@@ -404,7 +426,7 @@ export class TsTodayPnl extends TsWidget {
     text('summary', vm.summary)
     this._updateChart(vm.chart)
     text('t0', vm.chart.ticks[0])
-    text('t1', vm.chart.ticks[1]).style.left = `${vm.chart.midAt}%`
+    text('t1', vm.chart.ticks[1]).style.insetInlineStart = `${vm.chart.midAt}%`
     text('t2', vm.chart.ticks[2])
   }
 
@@ -444,8 +466,8 @@ export class TsTodayPnl extends TsWidget {
       ...c.marks.map((m) => {
         const el = document.createElement('span')
         el.className = `mk ${m.kind}`
-        el.style.left = `${m.left}%`
-        el.style.top = `${m.top}%`
+        el.style.insetInlineStart = `${m.left}%`
+        el.style.insetBlockStart = `${m.top}%`
         el.title = m.title
         el.setAttribute('role', 'img')
         el.setAttribute('aria-label', m.title)

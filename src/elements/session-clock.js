@@ -24,7 +24,7 @@
  * rail's own ends.
  */
 
-import { TsWidget, sk } from './widget.js'
+import { TsWidget, sk, header } from './widget.js'
 import { EN, createFormatter, localDate } from '../core/index.js'
 
 const DAY = 86400000
@@ -334,11 +334,10 @@ const LANE_HTML =
 
 // Loading shapes follow each variant's layout. A Banner can't know how many
 // sessions it will show, so it draws two lanes.
-const LABEL_HEAD = '<div class="hd"><span class="lb title" data-k="label"></span>'
 const SKELETON_LANE = `<div class="lane"><div class="lcol">${sk(80, 11)}${sk(60, 9)}</div><div class="f1">${sk(100, 4)}</div><div class="lr">${sk(70, 10)}</div></div>`
 const SKELETONS = {
-  S: `${LABEL_HEAD}</div><div class="rowb">${sk(45, 30)}${sk(25, 11)}</div><span class="f1"></span>${sk(100, 6)}<div class="row">${sk(15, 9)}<span class="f1"></span>${sk(15, 9)}</div>`,
-  Banner: `${LABEL_HEAD}<span class="f1"></span>${sk(20, 9)}</div><div class="lanes">${SKELETON_LANE.repeat(2)}</div>`,
+  S: `${header({ labelClass: 'title' })}<div class="rowb">${sk(45, 30)}${sk(25, 11)}</div><span class="f1"></span>${sk(100, 6)}<div class="row">${sk(15, 9)}<span class="f1"></span>${sk(15, 9)}</div>`,
+  Banner: `${header({ labelClass: 'title', meta: sk(20, 9) })}<div class="lanes">${SKELETON_LANE.repeat(2)}</div>`,
 }
 
 export class TsSessionClock extends TsWidget {
@@ -353,7 +352,9 @@ export class TsSessionClock extends TsWidget {
   static styles = `
 [hidden] { display: none !important; }
 .trk { position: relative; height: 6px; border-radius: 99px; background: var(--ts-surface-2); overflow: hidden; flex: none; }
-.fill, .lf { position: absolute; left: 0; width: 0; background: var(--ts-accent); border-radius: 99px; }
+/* Time runs left to right in every locale, so a progress track never mirrors. */
+.trk, .lt { direction: ltr; }
+.fill, .lf { position: absolute; inset-inline-start: 0; width: 0; background: var(--ts-accent); border-radius: 99px; }
 .fill { top: 0; bottom: 0; }
 .ft { gap: 6px; }
 .ft .n { flex: none; }
@@ -368,13 +369,20 @@ export class TsSessionClock extends TsWidget {
 .lname { font-weight: 600; }
 .lt { position: relative; flex: 1; min-width: 0; height: 26px; }
 .rail, .lf { position: absolute; top: 11px; height: 4px; border-radius: 99px; }
-.rail { left: 0; right: 0; background: var(--ts-surface-2); }
+.rail { inset-inline: 0; background: var(--ts-surface-2); }
 .tks { position: absolute; inset: 0; pointer-events: none; }
 .tk { position: absolute; top: 8px; width: 1px; height: 10px; background: var(--ts-muted); }
 .tk.b { top: 5px; height: 16px; background: var(--ts-ink); }
-.mk { position: absolute; top: 2px; left: 0; width: 6px; height: 22px; margin-left: -3px; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--ts-ink); }
-.msg { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; }
-.lr { width: 90px; flex: none; text-align: right; white-space: nowrap; }
+.mk { position: absolute; top: 2px; inset-inline-start: 0; width: 6px; height: 22px; margin-inline-start: -3px; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--ts-ink); }
+.msg { position: absolute; inset: 0; display: flex; align-items: center; unicode-bidi: plaintext; }
+.lr { width: 90px; flex: none; text-align: end; white-space: nowrap; }
+/* Box-shadows, and the backgrounds that tell a track from its fill, are gone in forced colours. Outlines and the fill stay. */
+@media (forced-colors: active) {
+  .trk, .rail { box-sizing: border-box; border: 1px solid CanvasText; background: ButtonFace; }
+  .fill, .lf { background: Highlight; }
+  .tk, .tk.b { background: CanvasText; }
+  .mk { box-sizing: border-box; border: 2px solid CanvasText; box-shadow: none; }
+}
 @container (max-width: 480px) { .legend { display: none; } }
 @container (max-width: 400px) { .lane { gap: 10px; } .lcol { width: 84px; } .lr { width: 72px; } }
 /* A phone-width S (~170px): short words so nothing wraps or truncates. */
@@ -384,14 +392,22 @@ export class TsSessionClock extends TsWidget {
   static template(variant) {
     if (variant === 'Banner') {
       return (
-        '<div class="hd"><span class="dot live"></span><span class="lb title"></span><span class="n sm clock ell"></span>' +
-        '<span class="f1"></span><span class="legend xs mut"><span class="lg0"></span><span class="lg1"></span></span>' +
-        '<span class="nx xs"></span></div><div class="lanes"></div>'
+        header({
+          dot: true,
+          labelClass: 'title',
+          extra: '<span class="n sm clock ell"></span>',
+          // The tick glyphs are decoration: the words beside them say what each tick means.
+          meta:
+            '<span class="legend xs mut"><span class="lg0"><span class="lgm" aria-hidden="true"></span> <span class="lgt"></span></span>' +
+            '<span class="lg1"><span class="lgm" aria-hidden="true"></span> <span class="lgt"></span></span></span>' +
+            '<span class="nx xs"><span aria-hidden="true">▮ </span><span class="nxt"></span></span>',
+        }) +
+        '<div class="lanes"></div>'
       )
     }
     return (
-      '<div class="hd"><span class="dot live"></span><span class="lb title"><span class="tf"></span><span class="ts"></span></span><span class="f1"></span><span class="xs mut sess ell"></span></div>' +
-      '<div class="rowb"><span class="big time"></span><span class="sm mut zone"></span></div>' +
+      header({ dot: true, labelClass: 'title', inner: '<span class="tf"></span><span class="ts"></span>', meta: '<span class="xs mut sess ell"></span>' }) +
+      '<div class="rowb"><span class="big time" part="value"></span><span class="sm mut zone"></span></div>' +
       '<span class="f1"></span>' +
       '<div class="trk"><div class="fill"></div></div>' +
       '<div class="row xs mut ft"><span class="n from"></span><span class="f1"></span><span class="mid ell"><span class="mf"></span><span class="ms"></span></span><span class="f1"></span><span class="n to"></span></div>'
@@ -442,11 +458,12 @@ export class TsSessionClock extends TsWidget {
       const item = vm.legend[i]
       const el = this.$(`.lg${i}`)
       el.hidden = !item
-      setText(el, item ? `${item.mark} ${item.text}` : '')
+      setText(this.$(`.lg${i} .lgm`), item ? item.mark : '')
+      setText(this.$(`.lg${i} .lgt`), item ? item.text : '')
     }
     const nx = this.$('.nx')
     nx.hidden = !vm.nextClose
-    setText(nx, vm.nextClose ? `▮ ${vm.nextClose}` : '')
+    setText(this.$('.nxt'), vm.nextClose)
 
     const rows = this._laneRows(vm.lanes)
     // Read every width before any write below, so the browser lays out once.
@@ -466,11 +483,11 @@ export class TsSessionClock extends TsWidget {
       // second only the fill and marker move.
       const ticks = visibleTicks(lane, vm.now, widths[i])
       if (row.tickKey !== ticks.key) {
-        row.ticks.innerHTML = ticks.items.map((t) => `<i class="tk${t.k ? ' b' : ''}" style="left:${t.l}%"></i>`).join('')
+        row.ticks.innerHTML = ticks.items.map((t) => `<i class="tk${t.k ? ' b' : ''}" style="inset-inline-start:${t.l}%"></i>`).join('')
         row.tickKey = ticks.key
       }
       row.mark.hidden = lane.next === null
-      if (lane.next !== null) row.mark.style.left = `${lane.next}%`
+      if (lane.next !== null) row.mark.style.insetInlineStart = `${lane.next}%`
     })
   }
 

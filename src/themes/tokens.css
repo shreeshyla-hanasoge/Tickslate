@@ -64,6 +64,12 @@
   --ts-gap-compact: 10px;
   --ts-num-weight: 500;
   --ts-num-weight-small: 500;
+  /* Typography of the tile label and the headline figure; these defaults are the look before they were tokens. */
+  --ts-label-size: 10px;
+  --ts-label-case: uppercase;
+  --ts-label-tracking: .12em;
+  --ts-label-weight: 600;
+  --ts-headline-weight: var(--ts-num-weight);
   /* A tile picked up while editing the layout. */
   --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
   --ts-motion: 220ms;

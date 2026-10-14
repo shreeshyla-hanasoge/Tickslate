@@ -32,7 +32,10 @@
  *     The HTML inside the tile for one variant ('S', 'Wide', 'M'…). Static
  *     markup only: no data in it, because it is built once per variant and
  *     the DOM it makes is kept while data changes. It must be a pure function
- *     of `variant`.
+ *     of `variant`. Start it with `header({ dot, meta, … })`: the one header
+ *     row, whose label is the tile's heading and whose parts are `header` and
+ *     `label`. Give the headline figure `part="value"` and the drawing box
+ *     `part="chart"`.
  *
  *   static viewModel(data, variant, ctx) → object
  *     Pure: data in, plain display strings and numbers out. `ctx` is
@@ -40,7 +43,8 @@
  *     element's messages, the current time in ms (from `clock` if set) and the
  *     effective label. Return `ariaLabel` to name the
  *     tile with its headline result ("Today's P&L, +₹2,185.65"); without it
- *     the tile is named by the label. `data` is never null here, and is `{}`
+ *     the tile is named by the label. A view model with `live: true` gets
+ *     ", live" after that name from the base. `data` is never null here, and is `{}`
  *     for a `static dataOptional` widget that has none yet. If this throws,
  *     the base logs it once and shows the error view.
  *
@@ -58,8 +62,9 @@
  *   static skeleton(variant) → string
  *     The loading view's markup: `.sk` blocks shaped like that variant's
  *     content, so content lands without the tile moving. Build them with
- *     `sk(width, height)`. Include an element with `data-k="label"` and the
- *     base fills it with the real label. Static markup, pure in `variant`.
+ *     `sk(width, height)`. Include `header()` (its label has `data-k="label"`)
+ *     and the base fills it with the real label. The base wraps the markup in
+ *     the `skeleton` part. Static markup, pure in `variant`.
  *     The default is a header, a headline bar and two text lines.
  *
  *   viewContext() → object
@@ -109,6 +114,8 @@
  *                   else t('widget.<catalogKey>.label') for a catalog widget,
  *                   else the spec's label. With none, a development warning,
  *                   and the tile is named by the tag.
+ *   heading-level   Attribute, 1 to 6: the aria-level of the tile's heading.
+ *                   The widget's own, else the nearest <ts-grid>'s, else 3.
  *   locale, currency, time-zone
  *                   Attributes. Each resolves: own attribute → nearest
  *                   ancestor <ts-grid>'s attribute → configure() defaults.
@@ -137,8 +144,11 @@
  *
  * ── Rendering ───────────────────────────────────────────────────────────
  *
- * The tile is `<section class="tile" part="tile" aria-label>`. Exactly one
- * view is shown, first match wins (RFC 0002 §2.3):
+ * The tile is `<div class="tile" part="tile" role="group" aria-label>`, named
+ * by the view model's ariaLabel (with ", live" after it while `vm.live`), and
+ * its label is a `role="heading"` made by header() (RFC 0003 §5). The grid is
+ * the one labelled region. Exactly one view is shown, first match wins (RFC
+ * 0002 §2.3):
  *
  *   1. error    state 'error', `error` set, or a view model that threw
  *   2. loading  state 'loading', or data undefined (unless dataOptional)
@@ -248,6 +258,47 @@ export function sk(width, height) {
   return `<span class="sk ${w} h${h}"></span>`
 }
 
+// The status dot is decoration: whether the tile is live is in its name (", live").
+const DOT = '<span class="dot live" data-k="dot" aria-hidden="true" hidden></span>'
+// "synced 11:42". The words either side of the time are their own nodes, so a narrow tile can hide them.
+const META = '<span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>'
+
+/**
+ * The header row every widget starts with: `[status dot][label][spacer][meta]`
+ * (RFC 0003 §5.1). `part="header"` is the row and `part="label"` the label,
+ * which is the tile's heading: the base writes its aria-level after each render.
+ *
+ *   dot      the live dot, hidden until the widget unhides it
+ *   meta     true for the standard "synced 11:42" meta; a string of markup for a
+ *            widget's own right-hand content (a count, range buttons)
+ *   actions  a <slot name="actions"> after the meta
+ *   extra    markup straight after the label
+ *   inner    markup inside the label, for a label that shows two forms (the
+ *            session clock's long and short title); the widget then writes
+ *            those nodes, not the label's own text
+ *   labelClass  an extra class on the label
+ *
+ * `inner` and a string `meta` go beyond the RFC's signature; without them the
+ * clock's title and every widget's own meta could not use the shared row.
+ */
+export function header(opts) {
+  const { dot = false, meta = false, actions = false, extra = '', inner = '', labelClass = '' } = opts || {}
+  const right = (meta === true ? META : meta || '') + (actions ? '<slot name="actions"></slot>' : '')
+  const label = `<span class="lb ell${labelClass ? ` ${labelClass}` : ''}" part="label" role="heading" aria-level="3" data-k="label">${inner}</span>`
+  return `<div class="hd" part="header">${dot ? DOT : ''}${label}${extra}${right ? `<span class="f1"></span>${right}` : ''}</div>`
+}
+
+/**
+ * The ▲ or ▼ that goes beside a signed figure (RFC 0003 §5.5), read from the
+ * text the reader sees so it can never disagree with it. A figure that shows
+ * no sign (zero) gets none. The glyph's node is `aria-hidden`: the sign is
+ * what a listener hears.
+ */
+export function arrowFor(text) {
+  const first = typeof text === 'string' ? text[0] : ''
+  return first === '+' ? '▲' : first === '−' ? '▼' : ''
+}
+
 // Headline figures shrink with the tile, capped at the design size.
 //
 // 1cqi is 1% of the tile's content box (its width less padding and border).
@@ -276,16 +327,25 @@ ${standaloneCss()}
   container-type: inline-size;
 }
 .hd { display: flex; align-items: center; gap: 8px; min-height: 18px; }
-.lb { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 600; color: var(--ts-muted); }
-.n, .big, .xbig {
-  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500);
+.lb {
+  font-size: var(--ts-label-size, 10px); text-transform: var(--ts-label-case, uppercase);
+  letter-spacing: var(--ts-label-tracking, .12em); font-weight: var(--ts-label-weight, 600); color: var(--ts-muted);
 }
+/* A figure keeps its sign and currency symbol beside its digits in a right-to-left page. */
+.n, .big, .xbig {
+  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate;
+}
+.big, .xbig { font-weight: var(--ts-headline-weight, var(--ts-num-weight, 500)); }
 .big { font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em; }
 .xbig { font-size: min(48px, 9cqi); line-height: 1; letter-spacing: -.02em; }
 .md { font-size: min(17px, 12cqi); }
 .sm { font-size: 11px; }
 .xs { font-size: 10px; }
 .n.sm, .n.xs { font-weight: var(--ts-num-weight-small, 500); }
+/* The arrow beside a signed figure (arrowFor): a small mark raised to the digits' middle, and no room taken when it is empty. */
+.ar:empty { display: none; }
+.big .ar, .xbig .ar { font-size: .4em; margin-inline-end: .1em; vertical-align: .55em; line-height: 0; }
+.n .ar { font-size: .7em; margin-inline-end: .2em; vertical-align: .1em; }
 .mut { color: var(--ts-muted); }
 .pos { color: var(--ts-profit); }
 .neg { color: var(--ts-loss); }
@@ -302,14 +362,21 @@ ${standaloneCss()}
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .btn {
   font: 500 11px var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
-  border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer;
+  border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer; position: relative;
 }
 .btn.on { background: var(--ts-surface-2); color: var(--ts-ink); box-shadow: inset 0 -2px 0 var(--ts-accent); }
+.visually-hidden {
+  position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
 .btn:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
 @media (pointer: coarse) { .btn { min-height: 44px; min-width: 44px; } }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 .dot.live { background: var(--ts-profit); animation: ts-pulse 2s infinite; }
+/* The header's meta says 'synced 11:42', and on a tile narrower than 200px just '14:05', so the label keeps its room. */
+.meta { flex: none; white-space: nowrap; }
+@container (max-width: 200px) { .pre { display: none; } }
 @keyframes ts-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ts-profit) 55%, transparent); }
   70% { box-shadow: 0 0 0 7px transparent; }
@@ -323,6 +390,8 @@ ${standaloneCss()}
 .btn.retry { color: var(--ts-ink); }
 .sk { display: block; flex: none; position: relative; overflow: hidden; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); }
 .sk.grow { flex: 1; min-height: 0; width: 100%; }
+/* The loading view's box. It lays its blocks out as the tile does, so a skeleton's markup needs no wrapper of its own. */
+.skel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .sk::after {
   content: ''; position: absolute; inset: 0; transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ts-surface-2) 35%, var(--ts-surface)), transparent);
@@ -337,6 +406,13 @@ ${SK_CSS}
 .ap { fill: color-mix(in srgb, var(--ts-profit) var(--ts-fill, 12%), transparent); }
 .an { fill: color-mix(in srgb, var(--ts-loss) var(--ts-fill, 12%), transparent); }
 .lz { stroke: var(--ts-axis); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+/* The one place widget CSS names colours: the user's own, which a host cannot theme (RFC 0003 §29, point 1).
+   Backgrounds and box-shadows are dropped in forced colours, so what they drew is redrawn in marks that stay. */
+@media (forced-colors: active) {
+  .dot.live { background: Highlight; }
+  .btn.on { background: Highlight; color: ButtonFace; }
+  .lp, .ln, .lz { stroke: CanvasText; }
+}
 `
 
 const EMPTY_SPEC = Object.freeze({ label: '', sizes: Object.freeze([]) })
@@ -364,7 +440,7 @@ function skeletonFor(Ctor, variant) {
   let byVariant = skeletonCache.get(Ctor)
   if (!byVariant) skeletonCache.set(Ctor, (byVariant = new Map()))
   let html = byVariant.get(variant)
-  if (html === undefined) byVariant.set(variant, (html = Ctor.skeleton(variant)))
+  if (html === undefined) byVariant.set(variant, (html = `<div class="skel" part="skeleton">${Ctor.skeleton(variant)}</div>`))
   return html
 }
 
@@ -414,7 +490,7 @@ function unmount(widget) {
 
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone', 'state', 'data']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'state', 'data', 'heading-level']
   }
 
   constructor() {
@@ -454,7 +530,7 @@ export class TsWidget extends Base {
       }
     }
     const root = this.attachShadow({ mode: 'open' })
-    root.innerHTML = `<style>${cssFor(this.constructor)}</style><section class="tile" part="tile"></section>`
+    root.innerHTML = `<style>${cssFor(this.constructor)}</style><div class="tile" part="tile" role="group"></div>`
     this._section = root.querySelector('.tile')
     // One delegated listener: the Retry button is rebuilt with the error view.
     this._section.addEventListener('click', (e) => {
@@ -697,7 +773,7 @@ export class TsWidget extends Base {
 
   /** The default loading shape: a header, a headline bar and two text lines. */
   static skeleton() {
-    return `<div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(60, 30)}${sk(85, 11)}${sk(70, 11)}`
+    return `${header()}${sk(60, 30)}${sk(85, 11)}${sk(70, 11)}`
   }
 
   viewContext() {
@@ -832,12 +908,58 @@ export class TsWidget extends Base {
     return this.spec.sizes
   }
 
+  /**
+   * The aria-level of the tile's heading: this widget's `heading-level`, else
+   * the nearest grid's, else 3 (RFC 0003 §5.2). A value that isn't 1 to 6 is
+   * skipped, with one development warning, so a typo costs a level, not a heading.
+   */
+  _headingLevel(grid) {
+    for (const [source, whose] of [[this, ''], [grid, "grid's "]]) {
+      const raw = source ? source.getAttribute('heading-level') : null
+      if (!raw) continue
+      if (/^\s*[1-6]\s*$/.test(raw)) return Number(raw)
+      if (DEV) warnOnce(`level:${this._uid}:${whose}`, `${describeElement(this)} ${whose}heading-level="${raw}" is not a number from 1 to 6, so it is ignored.`)
+    }
+    return 3
+  }
+
+  /**
+   * Write `value` only when it differs, so a ticking tile doesn't rewrite its
+   * name and make a screen reader read it again (RFC 0003 §5.2). null removes.
+   */
+  _setAttr(el, name, value) {
+    if (value === null) {
+      if (el.getAttribute(name) !== null) el.removeAttribute(name)
+    } else if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+  }
+
+  /**
+   * The tile's heading is the header's label. It takes its level here because
+   * the template is static, and it keeps the plain label as its name when the
+   * words it shows differ from it ("Today" in a small P&L tile), so heading
+   * navigation lists labels. A tile with no label from any source is named by
+   * its tag, which the heading would only repeat, so the heading is hidden.
+   */
+  _markHeading(grid, label) {
+    const heading = this._section.querySelector('[part="label"]')
+    if (!heading) return
+    this._setAttr(heading, 'aria-level', String(this._headingLevel(grid)))
+    const named = !!this.label
+    this._setAttr(heading, 'aria-hidden', named ? null : 'true')
+    this._setAttr(heading, 'aria-label', named && heading.textContent !== label ? label : null)
+  }
+
+  /** The tile's name: the view model's, then ", live" while it is live (a stale tile will say so too). */
+  _tileName(name, live) {
+    this._setAttr(this._section, 'aria-label', live ? `${name}, ${(this._renderT || this.t)('time.live')}` : name)
+  }
+
   /** The name for the tile: the label, else the tag, never empty. */
   _name() {
     const label = this.label
     if (label) return label
     if (DEV) {
-      warnOnce(`label:${this.localName}`, `<${this.localName}> has no label, so its region is named "${this.localName}". Set a label attribute or static spec.`)
+      warnOnce(`label:${this.localName}`, `<${this.localName}> has no label, so its tile is named "${this.localName}". Set a label attribute or static spec.`)
     }
     return this.localName
   }
@@ -889,15 +1011,15 @@ export class TsWidget extends Base {
 
     if (state === 'error' || this._error || this._parseError) {
       this._failed = false
-      return this._showError(label, this._error)
+      return this._showError(label, this._error, grid)
     }
     if (state === 'loading' || (this._data === undefined && !Ctor.dataOptional)) {
       this._failed = false
-      return this._showLoading(label, variant)
+      return this._showLoading(label, variant, grid)
     }
     if (this._data === null) {
       this._failed = false
-      return this._showEmpty(label)
+      return this._showEmpty(label, grid)
     }
     try {
       const fmt = this._formatterFor(config, grid)
@@ -913,20 +1035,21 @@ export class TsWidget extends Base {
         this._shown = variant
       }
       this._section.removeAttribute('aria-busy')
-      this._section.setAttribute('aria-label', vm.ariaLabel || label)
+      this._tileName(vm.ariaLabel || label, vm.live === true)
       this.update(vm, variant)
+      this._markHeading(grid, label)
       this._failed = false
     } catch (err) {
       // A widget that can't draw its data shouldn't take the page with it.
       // Logged once per run of failures: a clock tick would otherwise log every second.
       if (!this._failed) console.error(`tickslate: ${describeElement(this)} could not render its data; see docs/widgets/${this.localName}.md`, err)
       this._failed = true
-      this._showError(label, null)
+      this._showError(label, null, grid)
     }
   }
 
   /** Swap in a non-content view's markup, and write the real label into it. */
-  _show(key, html, label, name, busy, skeletonLabel = label) {
+  _show(key, html, label, name, busy, grid, skeletonLabel = label) {
     if (this._shown !== key) {
       this._section.innerHTML = html
       this._refs.clear()
@@ -935,9 +1058,10 @@ export class TsWidget extends Base {
     // A skeleton may carry its own words (Today's P&L S says "Today"), so the hook is optional.
     const slot = this._section.querySelector('[data-k="label"]')
     if (slot) slot.textContent = skeletonLabel
-    this._section.setAttribute('aria-label', name)
+    this._tileName(name, false)
     if (busy) this._section.setAttribute('aria-busy', 'true')
     else this._section.removeAttribute('aria-busy')
+    this._markHeading(grid, label)
   }
 
   /** What the skeleton's label node says. A widget whose small loading view uses a shorter word overrides this. */
@@ -945,8 +1069,8 @@ export class TsWidget extends Base {
     return label
   }
 
-  _showLoading(label, variant) {
-    this._show(`view:loading:${variant}`, skeletonFor(this.constructor, variant), label, label, true, this._skeletonLabel(variant, label))
+  _showLoading(label, variant, grid) {
+    this._show(`view:loading:${variant}`, skeletonFor(this.constructor, variant), label, label, true, grid, this._skeletonLabel(variant, label))
   }
 
   /**
@@ -966,21 +1090,22 @@ export class TsWidget extends Base {
     return own === EN['widget.empty'] ? t('widget.empty') : own
   }
 
-  _showEmpty(label) {
-    this._show('view:empty', '<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="empty"><slot name="empty"><span data-k="empty"></span></slot></div>', label, label, false)
+  _showEmpty(label, grid) {
+    this._show('view:empty', `${header()}<div class="empty" part="empty"><slot name="empty"><span data-k="empty"></span></slot></div>`, label, label, false, grid)
     this._section.querySelector('[data-k="empty"]').textContent = this._emptyText()
   }
 
-  _showError(label, message) {
+  _showError(label, message, grid) {
     const t = this.t
     const text = message || t('widget.error')
     const retry = this.actionEnabled('retry') ? '<button type="button" class="btn retry" data-action="retry" data-k="retry"></button>' : ''
     this._show(
       retry ? 'view:error:retry' : 'view:error',
-      `<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="err" part="error"><span class="err-msg">${WARN_GLYPH}<span data-k="message"></span></span>${retry}</div>`,
+      `${header()}<div class="err" part="error"><span class="err-msg">${WARN_GLYPH}<span data-k="message"></span></span>${retry}</div>`,
       label,
       t('widget.error.region', { label, message: text }),
       false,
+      grid,
     )
     this._section.querySelector('[data-k="message"]').textContent = text
     if (retry) this._section.querySelector('[data-k="retry"]').textContent = t('action.retry')

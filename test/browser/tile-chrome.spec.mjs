@@ -1,0 +1,290 @@
+// The shared tile chrome in real engines (RFC 0003 §5): the group and heading
+// semantics, the system colours under forced colours, and mirroring in a
+// right-to-left page. The node tests cover the markup and the CSS text; this
+// covers what a browser makes of them.
+import { test, expect } from '@playwright/test'
+import { SIZES } from '../../src/core/index.js'
+
+const PAGE = '/test/browser/fixtures/widgets.html'
+
+function guard(page, errors) {
+  page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()))
+  page.on('pageerror', (error) => errors.push(error.message))
+}
+
+// The fixture lets a tile shrink to its caption (a size container has no width of its own), so each figure is given
+// the width a 4-column desktop grid would, and the drawings have room to be measured.
+async function open(page, query = '') {
+  await page.goto(`${PAGE}?theme=light${query}`)
+  await page.waitForFunction(() => window.__ready === true)
+  await page.evaluate((sizes) => {
+    for (const el of window.__fx.tiles.values()) {
+      const { cols } = sizes[el.dataset.size]
+      el.parentElement.style.width = `${cols * 304 + (cols - 1) * 16}px`
+    }
+    return window.__fx.nextFrame()
+  }, SIZES)
+}
+
+test.describe('tile semantics', () => {
+  test('every tile is a labelled group with a level-3 heading, and none is a landmark', async ({ page }) => {
+    const errors = []
+    guard(page, errors)
+    await open(page)
+    const tiles = await page.evaluate(() =>
+      [...window.__fx.tiles.entries()].map(([key, el]) => {
+        const tile = el.shadowRoot.querySelector('.tile')
+        const heading = el.shadowRoot.querySelector('[part="label"]')
+        return {
+          key,
+          tag: tile.localName,
+          role: tile.getAttribute('role'),
+          part: tile.getAttribute('part'),
+          name: tile.getAttribute('aria-label'),
+          headingRole: heading && heading.getAttribute('role'),
+          level: heading && heading.getAttribute('aria-level'),
+          headingTag: heading && heading.localName,
+          landmarks: el.shadowRoot.querySelectorAll('section, [role="region"], [role="main"]').length,
+        }
+      }),
+    )
+    expect(tiles.length).toBeGreaterThan(10)
+    for (const tile of tiles) {
+      expect(tile.tag, tile.key).toBe('div')
+      expect(tile.role, tile.key).toBe('group')
+      expect(tile.part, tile.key).toBe('tile')
+      expect(tile.name, `${tile.key} is named`).toBeTruthy()
+      expect(tile.headingRole, tile.key).toBe('heading')
+      expect(tile.headingTag, `${tile.key}: role=heading on a span, not an <h3>`).toBe('span')
+      expect(tile.level, tile.key).toBe('3')
+      expect(tile.landmarks, tile.key).toBe(0)
+    }
+    expect(errors).toEqual([])
+  })
+
+  test('the accessibility tree names the group and exposes the heading', async ({ page }) => {
+    await open(page)
+    const tree = await page.locator('ts-metric[data-size="Wide"]').ariaSnapshot()
+    expect(tree).toMatch(/group "Metric, [^"]*"/)
+    expect(tree).toMatch(/heading "Metric" \[level=3\]/)
+  })
+
+  test('heading-level on a widget sets the level, on a grid it is inherited, and the widget wins', async ({ page }) => {
+    await open(page)
+    const levels = await page.evaluate(async () => {
+      const level = (el) => el.shadowRoot.querySelector('[part="label"]').getAttribute('aria-level')
+      const metric = window.__fx.tiles.get('metric:S')
+      metric.setAttribute('heading-level', '5')
+      await window.__fx.nextFrame()
+      const own = level(metric)
+      const grid = document.createElement('ts-grid')
+      const inner = document.createElement('ts-metric')
+      inner.setAttribute('size', 'S')
+      inner.data = { value: 1 }
+      grid.setAttribute('heading-level', '2')
+      grid.append(inner)
+      document.body.append(grid)
+      await window.__fx.nextFrame()
+      const inherited = level(inner)
+      inner.setAttribute('heading-level', '4')
+      await window.__fx.nextFrame()
+      return { own, inherited, widgetWins: level(inner) }
+    })
+    expect(levels).toEqual({ own: '5', inherited: '2', widgetWins: '4' })
+  })
+
+  test('a live tile\'s name ends ", live" and a ticking tile\'s name is written only when it changes', async ({ page }) => {
+    await open(page)
+    const result = await page.evaluate(async () => {
+      const el = window.__fx.tiles.get('metric:S')
+      const tile = el.shadowRoot.querySelector('.tile')
+      const writes = []
+      new MutationObserver((records) => records.forEach((r) => writes.push(r.attributeName))).observe(tile, { attributes: true, attributeFilter: ['aria-label'] })
+      const before = tile.getAttribute('aria-label')
+      el.data = { ...el.data, live: true }
+      await window.__fx.nextFrame()
+      const live = tile.getAttribute('aria-label')
+      const count = writes.length
+      for (let i = 0; i < 5; i++) {
+        el.requestRender()
+        await window.__fx.nextFrame()
+      }
+      return { before, live, extraWrites: writes.length - count }
+    })
+    expect(result.live).toBe(`${result.before}, live`)
+    expect(result.extraWrites).toBe(0)
+  })
+})
+
+// A system colour as the browser computes it, so a rule can be compared with what it should resolve to.
+const systemColours = (page) =>
+  page.evaluate(() => {
+    const probe = document.createElement('span')
+    document.body.append(probe)
+    const out = {}
+    for (const name of ['Highlight', 'CanvasText', 'ButtonFace']) {
+      probe.style.color = name
+      out[name] = getComputedStyle(probe).color
+    }
+    probe.remove()
+    return out
+  })
+
+test.describe('forced colours', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' })
+  })
+
+  test('the forced-colors query matches, and the system colours are the three the CSS uses', async ({ page }) => {
+    await open(page)
+    expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true)
+    const colours = await systemColours(page)
+    expect(new Set(Object.values(colours)).size, 'three distinct colours').toBeGreaterThanOrEqual(2)
+  })
+
+  test('the session clock fill, ticks and marker stay visible in system colours', async ({ page }) => {
+    await open(page)
+    const colours = await systemColours(page)
+    const found = await page.evaluate(() => {
+      const root = window.__fx.tiles.get('sessionClock:Banner').shadowRoot
+      const style = (el, prop) => getComputedStyle(el)[prop]
+      const lf = root.querySelector('.lf')
+      const tick = root.querySelector('.tk')
+      const mark = root.querySelector('.mk:not([hidden])')
+      const small = window.__fx.tiles.get('sessionClock:S').shadowRoot
+      return {
+        laneFill: style(lf, 'backgroundColor'),
+        laneFillWidth: lf.getBoundingClientRect().width,
+        tick: tick && style(tick, 'backgroundColor'),
+        markBorder: mark && style(mark, 'borderTopColor'),
+        markShadow: mark && style(mark, 'boxShadow'),
+        smallFill: style(small.querySelector('.fill'), 'backgroundColor'),
+        smallFillWidth: small.querySelector('.fill').getBoundingClientRect().width,
+        trackBorder: style(small.querySelector('.trk'), 'borderTopWidth'),
+      }
+    })
+    expect(found.laneFill).toBe(colours.Highlight)
+    expect(found.laneFillWidth).toBeGreaterThan(0)
+    expect(found.smallFill).toBe(colours.Highlight)
+    expect(found.smallFillWidth).toBeGreaterThan(0)
+    expect(found.tick).toBe(colours.CanvasText)
+    expect(found.trackBorder).toBe('1px')
+    if (found.markBorder) {
+      expect(found.markBorder).toBe(colours.CanvasText)
+      expect(found.markShadow).toBe('none')
+    }
+  })
+
+  test('the live dot, Today\'s P&L marks and chart lines use system colours', async ({ page }) => {
+    await open(page)
+    const colours = await systemColours(page)
+    const found = await page.evaluate(() => {
+      const pnl = window.__fx.tiles.get('todayPnl:M').shadowRoot
+      const dot = pnl.querySelector('.dot.live:not([hidden])')
+      const entry = pnl.querySelector('.mk.entry')
+      const exit = pnl.querySelector('.mk.exit')
+      const chart = window.__fx.tiles.get('chart:M').shadowRoot
+      const equity = window.__fx.tiles.get('equityCurve:M').shadowRoot
+      return {
+        dot: dot && getComputedStyle(dot).backgroundColor,
+        entry: getComputedStyle(entry).backgroundColor,
+        exit: getComputedStyle(exit).backgroundColor,
+        pnlLine: getComputedStyle(pnl.querySelector('.lp')).stroke,
+        chartLine: getComputedStyle(chart.querySelector('.sl.c-1')).stroke,
+        chartLine2: getComputedStyle(chart.querySelector('.sl.c-2')).stroke,
+        equityLine: getComputedStyle(equity.querySelector('.lp')).stroke,
+        entryBox: entry.getBoundingClientRect().width,
+      }
+    })
+    expect(found.dot).toBe(colours.Highlight)
+    expect(found.entry).toBe(colours.Highlight)
+    expect(found.exit).toBe(colours.CanvasText)
+    expect(found.entryBox).toBeGreaterThan(0)
+    expect(found.pnlLine).toBe(colours.CanvasText)
+    expect(found.equityLine).toBe(colours.CanvasText)
+    expect(found.chartLine).toBe(colours.CanvasText)
+    expect(found.chartLine2).toBe(colours.Highlight)
+  })
+
+  test('the selected range button and the metric target bar stay visible', async ({ page }) => {
+    await open(page)
+    const colours = await systemColours(page)
+    const found = await page.evaluate(() => {
+      const equity = window.__fx.tiles.get('equityCurve:XL').shadowRoot
+      const on = equity.querySelector('.btn.on')
+      const metric = window.__fx.tiles.get('metric:M').shadowRoot
+      const fill = metric.querySelector('.fill')
+      const bar = metric.querySelector('.tbar')
+      return {
+        onBackground: getComputedStyle(on).backgroundColor,
+        onColor: getComputedStyle(on).color,
+        fill: getComputedStyle(fill).fill,
+        fillWidth: fill.getBoundingClientRect().width,
+        barBorder: getComputedStyle(bar).borderTopWidth,
+      }
+    })
+    expect(found.onBackground).toBe(colours.Highlight)
+    expect(found.onColor).toBe(colours.ButtonFace)
+    expect(found.fill).toBe(colours.Highlight)
+    expect(found.fillWidth).toBeGreaterThan(0)
+    expect(found.barBorder).toBe('1px')
+  })
+})
+
+test.describe('right-to-left pages', () => {
+  const marks = (page) =>
+    page.evaluate(() => {
+      const root = window.__fx.tiles.get('todayPnl:M').shadowRoot
+      const box = root.querySelector('.chart').getBoundingClientRect()
+      return [...root.querySelectorAll('.mk')].map((m) => {
+        const r = m.getBoundingClientRect()
+        return Math.round(((r.left + r.width / 2 - box.left) / box.width) * 100)
+      })
+    })
+
+  test('Today\'s P&L marks, the session clock fill and the chart plot keep their left-to-right places', async ({ page }) => {
+    await open(page)
+    const read = () =>
+      page.evaluate(() => {
+        const clock = window.__fx.tiles.get('sessionClock:S').shadowRoot
+        const fill = clock.querySelector('.fill').getBoundingClientRect()
+        const track = clock.querySelector('.trk').getBoundingClientRect()
+        const plot = window.__fx.tiles.get('chart:M').shadowRoot.querySelector('.plot')
+        return { fillFromStart: Math.round(fill.left - track.left), fillWidth: Math.round(fill.width), plotDirection: getComputedStyle(plot).direction }
+      })
+    const ltrMarks = await marks(page)
+    const ltr = await read()
+    await page.evaluate(() => { document.documentElement.dir = 'rtl' })
+    await page.evaluate(() => window.__fx.nextFrame())
+    expect(await marks(page)).toEqual(ltrMarks)
+    const rtl = await read()
+    expect(rtl).toEqual(ltr)
+    expect(rtl.plotDirection).toBe('ltr')
+    expect(ltrMarks.length).toBeGreaterThan(1)
+  })
+
+  test('the header mirrors: the label sits at the inline start, the meta at the inline end', async ({ page }) => {
+    await open(page)
+    await page.evaluate(() => { document.documentElement.dir = 'rtl' })
+    await page.evaluate(() => window.__fx.nextFrame())
+    const place = await page.evaluate(() => {
+      const root = window.__fx.tiles.get('metric:S').shadowRoot
+      const tile = root.querySelector('.tile').getBoundingClientRect()
+      const label = root.querySelector('[part="label"]').getBoundingClientRect()
+      const meta = root.querySelector('[data-k="meta"]')
+      return { labelFromRight: tile.right - label.right, labelFromLeft: label.left - tile.left, metaShown: !meta.hidden && meta.getBoundingClientRect().width > 0 ? meta.getBoundingClientRect().left - tile.left : null }
+    })
+    expect(place.labelFromRight).toBeLessThan(place.labelFromLeft)
+    if (place.metaShown !== null) expect(place.metaShown).toBeLessThan(place.labelFromLeft)
+  })
+
+  test('no tile grows a horizontal scrollbar or changes height in a right-to-left page', async ({ page }) => {
+    await open(page)
+    const heights = await page.evaluate(() => [...window.__fx.tiles.values()].map((el) => Math.round(el.getBoundingClientRect().height)))
+    await page.evaluate(() => { document.documentElement.dir = 'rtl' })
+    await page.evaluate(() => window.__fx.nextFrame())
+    const after = await page.evaluate(() => [...window.__fx.tiles.values()].map((el) => Math.round(el.getBoundingClientRect().height)))
+    expect(after).toEqual(heights)
+  })
+})

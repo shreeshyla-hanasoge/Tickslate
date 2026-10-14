@@ -11,7 +11,7 @@
  * change, so a tile never says "+130 (+12%)" in one size and "+12%" in another.
  */
 
-import { TsWidget, sk, syncedParts } from './widget.js'
+import { TsWidget, sk, syncedParts, header } from './widget.js'
 import { linePaths } from './chart.js'
 import { EN, toNumber, toTime } from '../core/index.js'
 
@@ -211,26 +211,25 @@ export function metricModel(data, variant, ctx) {
 }
 
 const delta = `<span class="delta" data-k="deltabox" hidden><span class="n" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span class="nv" data-k="delta"></span></span><span class="mut ell" data-k="compare"></span></span>`
-const dot = '<span class="dot live" data-k="dot" hidden></span>'
-const head = `<div class="hd">${dot}<span class="lb ell" data-k="label"></span><span class="f1"></span><span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span></div>`
+const head = header({ dot: true, meta: true })
 const spark = (cls) => `
-<div class="${cls}"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="${cls}" part="chart"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>`
 
 // Variant markup is static; update() fills it.
 const TEMPLATES = {
   S: `${head}
-<span class="big nv" data-k="value"></span>
+<span class="big nv" part="value" data-k="value"></span>
 <span class="f1"></span>
 ${delta}`,
   Wide: `
 <div class="cols">
-  <div class="col lhs">${head}<span class="xbig nv" data-k="value"></span>${delta}</div>
+  <div class="col lhs">${head}<span class="xbig nv" part="value" data-k="value"></span>${delta}</div>
   ${spark('rhs')}
 </div>`,
   M: `${head}
-<div class="rowb wrap"><span class="xbig nv" data-k="value"></span>${delta}</div>
+<div class="rowb wrap"><span class="xbig nv" part="value" data-k="value"></span>${delta}</div>
 ${spark('plot')}
 <div class="target" data-k="target" hidden>
   <div class="rowb"><span class="lb f1" data-k="lbTarget"></span><span class="sm n" data-k="tpct"></span></div>
@@ -242,12 +241,12 @@ ${spark('plot')}
 // Loading shapes follow each size's layout block for block, so the figures
 // land where the blocks were.
 const SKELETONS = {
-  S: `<div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(60, 30)}<span class="f1"></span>${sk(70, 11)}`,
+  S: `${header()}${sk(60, 30)}<span class="f1"></span>${sk(70, 11)}`,
   Wide: `<div class="cols">
-  <div class="col lhs"><div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(70, 44)}${sk(85, 11)}</div>
+  <div class="col lhs">${header()}${sk(70, 44)}${sk(85, 11)}</div>
   <div class="rhs"><span class="sk grow"></span></div>
 </div>`,
-  M: `<div class="hd"><span class="lb ell" data-k="label"></span></div>
+  M: `${header()}
 <div class="rowb wrap">${sk(35, 44)}${sk(40, 11)}</div>
 <div class="plot"><span class="sk grow"></span></div>
 <div class="target"><div class="rowb">${sk(20, 9)}<span class="f1"></span>${sk(30, 11)}</div>${sk(100, 6)}</div>
@@ -280,13 +279,8 @@ export class TsMetric extends TsWidget {
 
   static styles = `
 [hidden] { display: none; }
-/* Figures keep their sign beside their digits in right-to-left pages, and a
-   value too wide for its slot clips rather than running into its neighbour. */
+/* A value too wide for its slot clips rather than running into its neighbour, and keeps its sign beside its digits in right-to-left pages. */
 .nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; unicode-bidi: isolate; }
-.n { unicode-bidi: isolate; }
-/* On a tile narrower than 200px the meta says '14:05', so the label keeps its room. */
-.meta { flex: none; white-space: nowrap; }
-@container (max-width: 200px) { .pre { display: none; } }
 .delta { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; font-size: 12px; }
 .delta .n { font-weight: var(--ts-num-weight-small, 500); flex: none; }
 .wrap { flex-wrap: wrap; gap: 2px 20px; }
@@ -305,6 +299,12 @@ svg.mut { color: var(--ts-muted); }
 .tbar { height: 6px; border-radius: 3px; background: var(--ts-surface-2); overflow: hidden; }
 .tbar svg { display: block; width: 100%; height: 100%; }
 .fill { fill: var(--ts-accent); }
+/* The bar's track is a background, which forced colours drop, so it gets an outline; the fill and the line stay visible. */
+@media (forced-colors: active) {
+  .tbar { box-sizing: border-box; border: 1px solid CanvasText; background: ButtonFace; }
+  .fill { fill: Highlight; }
+  .sl { stroke: CanvasText; }
+}
 `
 
   static template(variant) {

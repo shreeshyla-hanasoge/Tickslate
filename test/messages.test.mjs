@@ -1171,6 +1171,7 @@ describe('the source', () => {
   const built = () => [
     ...Object.keys(WIDGETS).map((key) => `widget.${key}.label`),
     ...['1W', '1M', '3M', 'YTD', 'All'].map((range) => `equity.range${range}`),
+    ...['1W', '1M', '3M', 'YTD', 'All'].map((range) => `equity.range${range}.long`),
   ]
 
   test('the keys built at run time exist too', () => {

@@ -94,7 +94,8 @@ tile.data = {
 
 | Name | Type | What it does |
 |---|---|---|
-| `label` | attribute and property | The heading and the region's name. Defaults to "Metric" |
+| `label` | attribute and property | The heading and the tile's name. Defaults to "Metric" |
+| `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `size` | attribute and property | `S`, `Wide` or `M`; others snap. A grid sets it |
 | `data` | property, or a JSON attribute | `MetricData` |
 | `state` | attribute and property | `'loading'` or `'error'` |
@@ -124,8 +125,14 @@ See [Events](../reference/events.md).
 
 | Part | Element |
 |---|---|
-| `tile` | The tile's `<section>` |
-| `error` | The error view's container |
+| `tile` | The tile box, `role="group"` named by the headline sentence |
+| `header` | The header row: the live dot, the label and the right-hand text |
+| `label` | The label, a `role="heading"` whose level comes from `heading-level` |
+| `value` | The headline figure |
+| `chart` | At `Wide` and `M`, the box around the sparkline |
+| `empty` | The empty view's container |
+| `error` | The error view's container (only while the error view shows) |
+| `skeleton` | The loading view's container, around the skeleton blocks |
 
 ## States
 
@@ -138,8 +145,9 @@ See [Events](../reference/events.md).
 
 ## Accessibility
 
-- A labelled region, named with the headline and the change:
-  "Signups, 1,204, up 12% vs last week".
+- A `role="group"` named with the headline and the change:
+  "Signups, 1,204, up 12% vs last week" (and ", live" while `live` is true). Its
+  label is a heading.
 - The change always carries a sign and an arrow (the arrow is `aria-hidden`; the
   accessible name says "up" or "down"), so colour is never the only signal. Tone
   follows `goodWhen`: up is green by default, `goodWhen: 'down'` flips it, and

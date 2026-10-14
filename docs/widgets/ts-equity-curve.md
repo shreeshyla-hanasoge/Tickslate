@@ -71,7 +71,8 @@ curve.addEventListener('ts-action', (e) => {
 
 | Name | Type | What it does |
 |---|---|---|
-| `label` | attribute and property | The region's name and heading. Defaults to "Equity curve"; `Wide` shortens that default to "Equity" and adds the day count |
+| `label` | attribute and property | The tile's name and heading. Defaults to "Equity curve"; `Wide` shortens that default to "Equity" and adds the day count |
+| `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `size` | attribute and property | `Wide`, `M` or `XL`; others snap. A grid sets it |
 | `range` | attribute and property | `'1W'`, `'1M'`, `'3M'`, `'YTD'` or `'All'`. Matched without regard to case; anything else reads as `'All'`. Reads back normalised |
 | `data` | property, or a JSON attribute | `EquityCurveData` |
@@ -98,8 +99,14 @@ only lets your app know, for instance to save the choice. See
 
 | Part | Element |
 |---|---|
-| `tile` | The tile's `<section>` |
-| `error` | The error view's container |
+| `tile` | The tile box, `role="group"` named by the headline sentence |
+| `header` | The header row: the live dot, the label and the right-hand text (at `XL`, the range buttons) |
+| `label` | The label, a `role="heading"` whose level comes from `heading-level` |
+| `value` | The net figure, with its ▲ or ▼ |
+| `chart` | The box around the curve |
+| `empty` | The empty view's container, and the "No trading days in this range" message inside the chart |
+| `error` | The error view's container (only while the error view shows) |
+| `skeleton` | The loading view's container, around the skeleton blocks |
 
 ## States
 
@@ -112,13 +119,14 @@ only lets your app know, for instance to save the choice. See
 
 ## Accessibility
 
-- The region is named with the result: "Equity, +US$785.65 over 4 trading days",
-  or "..., no trading days in this range".
+- The tile is a `role="group"` named with the result: "Equity, +US$785.65 over 4 trading days",
+  or "..., no trading days in this range", with ", live" added while `live` is true.
+  Its label is a heading.
 - The curve is a `role="img"` svg labelled with its extremes: "Equity: peak
   +US$880.75, lowest +US$240.50, ends at +US$785.65".
 - The range buttons sit in a `role="group"` named "Range", each a toggle with
-  `aria-pressed`. The pressed one also has an underline, so it is not shown by
+  `aria-pressed`. A hidden expansion makes "1W" read as "1W, 1 week". The pressed one also has an underline, so it is not shown by
   tint alone. On touch screens each is at least 44px.
-- Gains and losses carry a sign and colour; a drawdown is shown as a negative
-  amount. The finance widgets do not yet show a gain or loss arrow.
+- Gains and losses carry a sign, colour and an `aria-hidden` ▲ or ▼; a drawdown is
+  shown as a negative amount.
 - The loading shimmer and the live pulse stop under `prefers-reduced-motion`.

@@ -91,7 +91,8 @@ tile.data = {
 
 | Name | Type | What it does |
 |---|---|---|
-| `label` | attribute and property | The region's name and the heading at `Wide` and `M`. `S` always says "Today". Defaults to "Today's P&L" |
+| `label` | attribute and property | The tile's name and the heading at `Wide` and `M`. `S` always says "Today". Defaults to "Today's P&L" |
+| `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `size` | attribute and property | `S`, `Wide` or `M`; others snap. A grid sets it |
 | `data` | property, or a JSON attribute | `TodayPnlData` |
 | `state` | attribute and property | `'loading'` or `'error'` |
@@ -111,9 +112,14 @@ The base members are listed in [Your own widget](../guide/your-own-widget.md).
 
 | Part | Element |
 |---|---|
-| `tile` | The tile's `<section>` |
+| `tile` | The tile box, `role="group"` named by the headline sentence |
+| `header` | The header row: the live dot, the label and the right-hand text |
+| `label` | The label, a `role="heading"` whose level comes from `heading-level` |
+| `value` | The headline figure, with its ▲ or ▼ |
 | `chart` | At `M`, the box around the intraday curve and its marks |
-| `error` | The error view's container |
+| `empty` | The empty view's container, and the "No intraday data yet" message inside the `M` chart |
+| `error` | The error view's container (only while the error view shows) |
+| `skeleton` | The loading view's container, around the skeleton blocks |
 
 ## States
 
@@ -126,13 +132,14 @@ The base members are listed in [Your own widget](../guide/your-own-widget.md).
 
 ## Accessibility
 
-- The region is named with the headline: "Today's P&L, +₹2,185.65" (the label
-  you set, then the net figure with its sign).
-- Gains and losses carry a sign and a colour; fees always read as a deduction.
-  The finance widgets do not yet show a gain or loss arrow
-  (see [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md)).
+- The tile is a `role="group"` named with the headline: "Today's P&L, +₹2,185.65"
+  (the label you set, then the net figure with its sign), and ", live" is added
+  while `live` is true. Its label is a heading that always says the plain label, even
+  where the small tile shows "Today".
+- Gains and losses carry a sign, a colour and an `aria-hidden` ▲ or ▼; fees always
+  read as a deduction.
 - The `M` curve is a `role="img"` svg labelled with the result, for example
   "Intraday P&L: low −₹640, now +₹2,185.65". Each mark is a labelled image with its
-  name and time, and the day's low and high are written beside the headline.
+  name and time, an entry a circle and an exit a diamond, and the day's low and high are written beside the headline.
 - Figures use tabular numbers and clip rather than run into their neighbour.
 - The live pulse and the loading shimmer stop under `prefers-reduced-motion`.

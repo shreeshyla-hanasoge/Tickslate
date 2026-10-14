@@ -239,7 +239,7 @@ describe('the views', () => {
       const el = await connect(make())
       el.data = null
       await tick()
-      assert.match(section(el).html, /<div class="empty"><slot name="empty"><span data-k="empty"><\/span><\/slot><\/div>/)
+      assert.match(section(el).html, /<div class="empty" part="empty"><slot name="empty"><span data-k="empty"><\/span><\/slot><\/div>/)
       assert.equal(text(el, '[data-k="empty"]'), 'No data')
       assert.equal(text(el, '[data-k="label"]'), 'Signups')
       assert.equal(section(el).getAttribute('aria-label'), 'Signups')

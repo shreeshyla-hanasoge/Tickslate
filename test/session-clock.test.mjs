@@ -397,7 +397,7 @@ describe('update()', () => {
     assert.equal(ticks.writes, 1)
     // 12 thin ticks in the next hour + 25 thick ones (the rail is 800px)
     assert.equal((ticks.html.match(/<i /g) || []).length, 12 + 25)
-    assert.match(ticks.html, /<i class="tk b" style="left:3\.896%"><\/i>/)
+    assert.match(ticks.html, /<i class="tk b" style="inset-inline-start:3\.896%"><\/i>/)
     assert.equal(nse.querySelector('.lname').textContent, 'NSE F&O')
     assert.equal(nse.querySelector('.lhours').textContent, '09:15–15:40')
     assert.equal(nse.querySelector('.lr').textContent, '3h 57m left')
@@ -408,7 +408,7 @@ describe('update()', () => {
     assert.equal(ticks.writes, 1, 'ticks are not rebuilt')
     assert.equal(nse.querySelector('.mk').hidden, false)
     assert.equal(w.$('.clock').textContent, '11:42:21 IST')
-    assert.equal(w.$('.nx').textContent, '▮ next close in 2:39')
+    assert.equal(w.$('.nxt').textContent, 'next close in 2:39')
     // The fill is rounded to 0.01%, so it takes a few minutes to show a change.
     // 11:50 is past the 11:45 close: the thin window slid, so the ticks rebuild once.
     w.update(model(data, 'Banner', at('2026-10-12', '11:50')), 'Banner')

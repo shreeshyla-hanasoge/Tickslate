@@ -17,28 +17,22 @@
  * nothing slotted into it.
  */
 
-import { TsWidget, syncedParts } from './widget.js'
+import { TsWidget, syncedParts, header } from './widget.js'
 import { SIZE_NAMES, isSize, toTime } from '../core/index.js'
 
 // Rendered by every variant: the card has no layouts of its own per size, so
 // its slotted content reflows into the box it is given.
 const TEMPLATE = `
-<div class="hd">
-  <span class="dot live" data-k="dot" hidden></span>
-  <span class="lb ell" data-k="label"></span>
-  <span class="f1"></span>
-  <span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>
-  <slot name="actions"></slot>
-</div>
-<slot name="value"></slot>
+${header({ dot: true, meta: true, actions: true })}
+<slot name="value" part="value"></slot>
 <div class="body" data-k="body" part="body"><slot></slot></div>
 <slot name="footer"></slot>`
 
 // Loading covers the body only (RFC 0002 §3.1): the header, headline and
 // footer are the host's own content and stay where they are.
 const SKELETON = `
-<div class="hd"><span class="lb ell" data-k="label"></span><span class="f1"></span><slot name="actions"></slot></div>
-<slot name="value"></slot>
+${header({ actions: true })}
+<slot name="value" part="value"></slot>
 <span class="sk grow"></span>
 <slot name="footer"></slot>`
 
@@ -99,15 +93,13 @@ export class TsCard extends TsWidget {
 ::slotted(canvas), ::slotted(svg), ::slotted(img), ::slotted(video), ::slotted(iframe) { display: block; }
 slot[name="value"]::slotted(*) {
   display: block; flex: none; white-space: nowrap; overflow: hidden; unicode-bidi: isolate;
-  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500);
+  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-headline-weight, var(--ts-num-weight, 500));
   font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em;
 }
 slot[name="footer"]::slotted(*) {
   display: block; flex: none; font-size: 11px; color: var(--ts-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* On a tile narrower than 200px the meta says '14:05', so the label keeps its room. */
-@container (max-width: 200px) { .pre { display: none; } }
 `
 
   constructor() {

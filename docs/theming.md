@@ -105,8 +105,13 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-pad` | Padding inside a tile | `18px` | `16px` | Every tile |
 | `--ts-row-compact` | Row height at 2 columns (phones) | `150px` | same | `<ts-grid>` at 2 columns. Set in px |
 | `--ts-gap-compact` | Gap at 2 columns (phones) | `10px` | same | `<ts-grid>` at 2 columns. Set in px |
-| `--ts-num-weight` | Weight of headline figures | `500` | same | `.big` and `.xbig` figures |
+| `--ts-num-weight` | Weight of figures | `500` | same | Every figure; the headline figures take `--ts-headline-weight`, which follows it |
 | `--ts-num-weight-small` | Weight of small figures | `500` | `600` | Secondary figures; Graphite is heavier because light-on-dark text reads thinner |
+| `--ts-label-size` | Size of a tile's label | `10px` | same | The label in every header, and the small labels beside figures |
+| `--ts-label-case` | Case of a tile's label (`text-transform`) | `uppercase` | same | The same labels; `none` gives sentence case |
+| `--ts-label-tracking` | Letter spacing of a tile's label | `.12em` | same | The same labels |
+| `--ts-label-weight` | Weight of a tile's label | `600` | same | The same labels |
+| `--ts-headline-weight` | Weight of headline figures | `var(--ts-num-weight)` | same | `.big` and `.xbig` figures; follows `--ts-num-weight` until you set it |
 | `--ts-shadow-lift` | Shadow of a tile picked up while editing | `0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45)` | `0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7)` | The lifted tile and the grid's floating pill and toast |
 | `--ts-motion` | Duration of the grid's slide animations | `220ms` | same | Tiles sliding into place |
 | `--ts-ease` | Easing of the grid's slide animations | `cubic-bezier(.2, .8, .2, 1)` | same | Tiles sliding into place |

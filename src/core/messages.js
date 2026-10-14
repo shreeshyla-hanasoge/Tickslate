@@ -55,6 +55,8 @@ export const EN = Object.freeze({
   // Time
   // One {time} only: the words before it and after it are shown either side of the time (syncedParts).
   'time.synced': 'synced {time}',
+  // Said after a tile's name while its data is live: "Signups, 1,204, up 12% vs last week, live".
+  'time.live': 'live',
   'time.days.one': '{count} day',
   'time.days.other': '{count} days',
 
@@ -129,6 +131,13 @@ export const EN = Object.freeze({
   'equity.range3M': '3M',
   'equity.rangeYTD': 'YTD',
   'equity.rangeAll': 'All',
+  // What a range button's short name stands for, said after it ("1W, 1 week") and visually hidden.
+  'equity.rangeExpand': ', {long}',
+  'equity.range1W.long': '1 week',
+  'equity.range1M.long': '1 month',
+  'equity.range3M.long': '3 months',
+  'equity.rangeYTD.long': 'year to date',
+  'equity.rangeAll.long': 'all days',
   'equity.peakNote': 'peak {peak}',
   'equity.over': 'over {days}',
   'equity.dayCount.one': '{count} day',

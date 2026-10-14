@@ -16,8 +16,8 @@ fetches anything.
   for any content, such as your own Chart.js or ECharts chart).
 - **A finance set.** Today's P&L, an equity curve and an exchange session
   clock, with more to come.
-- **Accessible by default.** Each widget is a labelled region, charts state
-  their result in words, gains and losses carry a sign as well as a colour, and
+- **Accessible by default.** Each widget is a labelled group with a heading, charts state
+  their result in words, gains and losses carry a sign and an arrow as well as a colour, and
   motion respects `prefers-reduced-motion`. See [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
 
 ## Install
