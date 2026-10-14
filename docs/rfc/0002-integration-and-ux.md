@@ -992,7 +992,8 @@ function createHistory(cap?: number): {          // cap default 20
   is still focusable, else to the grid host (`tabindex="-1"`, named by its own
   `aria-label` or "Dashboard"). Focus is moved before any chrome turns inert or
   `aria-hidden`.
-- `edit-controls="off"` hides the button and the pill. Long press, Escape and
+- `edit-controls="off"` hides the button, the pill and the empty board's Add back button (the empty
+  message and slot stay). Long press, Escape and
   the `editing` attribute still work.
 
 ```ts
@@ -1009,13 +1010,13 @@ function pickFocusTarget<T>(
 When the active profile has no visible tiles, the board stays one row tall and
 shows "No widgets on this layout yet" (`part="empty"`). A host child with
 `slot="empty"` replaces the text. While `hiddenItems` isn't empty the panel
-also offers Add back.
+also offers Add back, unless the grid is `locked` or has `edit-controls="off"`.
 
 ### 5.7 Edit-mode outline under reduced motion
 
 With `prefers-reduced-motion`, the edit outline that replaces the wiggle is
-`color-mix(in srgb, var(--ts-ink) 45%, transparent)`, at least 3:1 against
-`--ts-bg` in both themes.
+`color-mix(in srgb, var(--ts-ink) 50%, transparent)`, at least 3:1 against
+`--ts-bg` in both themes (3.21:1 on Paper, 4.86:1 on Graphite).
 
 ### 5.8 Text selection
 

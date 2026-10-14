@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tickslate generic dashboard</title>
 <!--
-  A dashboard with nothing to do with trading: <ts-card> tiles holding a
-  list, a status table, text and a placeholder chart, in a <ts-grid> with no
-  layout code (implicit mode). The children's order is the layout.
+  A dashboard with nothing to do with trading: a row of <ts-metric> KPI tiles
+  (value, change, sparkline, target) and <ts-card> tiles holding a list, a
+  status table, text and a placeholder chart, in a <ts-grid> with no layout
+  code (implicit mode). The children's order is the layout.
 
   The placeholder chart stands in for Chart.js or ECharts: a block with
   height: 100% in the card's body. Swap it for a canvas and call the library's
@@ -70,7 +71,13 @@
   <p class="hint">Cards in implicit mode: no layout, no data, only slotted content. Use "Edit layout" on the grid to move and resize them, then resize one with the keyboard and watch the placeholder chart follow.</p>
 
   <div class="frame" id="frame">
-    <ts-grid id="grid">
+    <ts-grid id="grid" currency="USD" time-zone="UTC">
+      <ts-metric item="signups" label="Signups" size="M" id="signups"></ts-metric>
+      <ts-metric item="revenue" label="Revenue" size="S" id="revenue"></ts-metric>
+      <ts-metric item="seats" label="Active seats" size="S" id="seats"></ts-metric>
+      <ts-metric item="p95" label="p95 latency" size="Wide" id="p95"></ts-metric>
+      <ts-metric item="errors" label="Error rate" size="S" id="errors"></ts-metric>
+      <ts-metric item="tickets" label="Open tickets" size="S" id="tickets"></ts-metric>
       <ts-card item="traffic" label="Page views by channel" size="M" sizes="Wide M L XL" live>
         <div class="acts" slot="actions" role="group" aria-label="Range">
           <button type="button" aria-pressed="false">7D</button>
@@ -130,6 +137,24 @@
 
 <script type="module">
   import '/src/elements/index.js'
+
+  // Made-up numbers. goodWhen says which way is good: more signups is, more
+  // tickets and a slower p95 are not, and a seat count is only informative.
+  const metric = (id, data) => { document.getElementById(id).data = data }
+  const asOf = '2026-10-12T14:05:00Z'
+  metric('signups', {
+    value: 1204, previous: 1075, compareLabel: 'vs last week', asOf, target: 1500,
+    caption: 'New accounts on every plan, this week',
+    series: [820, 860, 905, 880, 940, 1010, 985, 1040, 1100, 1075, 1150, 1204],
+  })
+  metric('revenue', { value: 48210, previous: 51530, format: 'money', decimals: 0, compareLabel: 'vs last month', asOf })
+  metric('seats', { value: 312, previous: 308, goodWhen: 'neither', compareLabel: 'vs last week', asOf })
+  metric('p95', {
+    value: 182, previous: 196, unit: 'millisecond', goodWhen: 'down', compareLabel: 'vs yesterday', live: true,
+    series: [196, 201, 193, 188, 190, 184, 187, 179, 183, 182],
+  })
+  metric('errors', { value: 0.0042, previous: 0.005, format: 'percent', goodWhen: 'down', compareLabel: 'vs last week', asOf })
+  metric('tickets', { value: 86, previous: 71, goodWhen: 'down', compareLabel: 'vs yesterday', asOf })
 
   // The last card has nothing slotted, so a null data shows its empty view.
   document.getElementById('archive').data = null

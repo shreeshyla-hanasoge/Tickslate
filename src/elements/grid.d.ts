@@ -23,6 +23,20 @@ export interface TsLayoutChangeDetail {
  * to resize, tap − to remove. Ctrl or Cmd+Z undoes while editing, and after a
  * remove an undo toast (`part="toast"`; `undo-toast="off"` suppresses it) offers Undo for 6 s.
  *
+ * Built-in edit controls, all hidden by `locked` and by `edit-controls="off"`
+ * (for hosts with their own): a visually hidden "Edit layout" button that is
+ * the grid's first Tab stop; while editing, a floating pill (`part="edit-pill"`)
+ * with Done and, while tiles are hidden, "Add back (n)" and its list; and a
+ * pointerdown outside the grid ends edit mode. When editing ends, focus goes
+ * back to the element that started it, else to the grid. A profile with no
+ * visible tiles shows an empty panel (`part="empty"`), replaceable through
+ * `slot="empty"`, that also offers Add back (not while locked or with `edit-controls="off"`).
+ *
+ * Attributes: `editing`, `profile`, `locked`, `undo-toast="off"`,
+ * `edit-controls="off"`.
+ * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
+ * Slots: the default one for tiles, and `empty`.
+ *
  * With no `layout` set it works from its children alone (implicit mode): each
  * child becomes a tile, its id is written back as `item`, and the grid's own
  * list stays the truth across re-renders. Setting `layout` to a Layout or an

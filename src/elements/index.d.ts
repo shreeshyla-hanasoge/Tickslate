@@ -1,5 +1,6 @@
 import type { Calendar, DayResult, Layout, LayoutItem, Numeric, SizeName, Time } from '../core/index.js'
 import { TsWidget } from './widget.js'
+import type { ViewModelContext } from './widget.js'
 
 export { version } from '../core/index.js'
 // widget.d.ts is shipped beside this file (scripts/pack-lib.mjs), so this
@@ -44,6 +45,55 @@ export declare class TsCard extends TsWidget<CardData> {
   static dataOptional: true
   /** From the sizes and label attributes. */
   get spec(): { label: string; sizes: SizeName[] }
+}
+
+export interface MetricData extends WidgetFreshness {
+  value: Numeric
+  /** Default 'number'. 'percent' takes a fraction (0.12 is 12%); 'duration' takes milliseconds. */
+  format?: 'number' | 'money' | 'percent' | 'duration'
+  decimals?: number
+  /** Formatted with `fmt.unit`: '182 ms', '3 seats'. */
+  unit?: string
+  /** '1.2M' at every size. Without it, S still goes compact when the figure is too long. */
+  compact?: boolean
+  /** With format 'percent': value, previous, delta and target are 0 to 100. */
+  percentPoints?: boolean
+  previous?: Numeric
+  /** The absolute change; wins over `previous`. */
+  delta?: Numeric
+  /** The change as a fraction (0.12 is 12%); always a fraction, whatever `percentPoints` says. */
+  deltaPct?: Numeric
+  /** Shown after the delta, e.g. 'vs last week'. */
+  compareLabel?: string
+  /** Which way is good, for the delta's colour. Default 'up'. */
+  goodWhen?: 'up' | 'down' | 'neither'
+  /** Wide and M: the sparkline. Plain numbers are spaced evenly. */
+  series?: Array<{ t: Time; v: Numeric }> | Numeric[]
+  /** M: the bar's goal; no bar when 0 or less. */
+  target?: Numeric
+  /** M: one line under the bar. */
+  caption?: string
+}
+
+export interface MetricModel {
+  ariaLabel: string
+  value: string
+  delta: string
+  arrow: '▲' | '▼' | ''
+  tone: 'pos' | 'neg' | 'mut'
+  compare: string
+  line: string
+  area: string
+  targetPct: string
+  targetWidth: number
+  caption: string
+  dropped: number
+}
+
+/** <ts-metric>, sizes S · Wide · M. */
+export declare class TsMetric extends TsWidget<MetricData> {
+  /** Pure: data to display strings, paths and the accessible name. */
+  static metricModel(data: MetricData, variant: SizeName, ctx: ViewModelContext): MetricModel
 }
 
 export interface TodayPnlData extends WidgetFreshness {
@@ -97,6 +147,7 @@ export declare class TsSessionClock extends TsWidget<SessionClockData> {}
 declare global {
   interface HTMLElementTagNameMap {
     'ts-card': TsCard
+    'ts-metric': TsMetric
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock
