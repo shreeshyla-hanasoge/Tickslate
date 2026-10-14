@@ -176,6 +176,7 @@ const FORMAT_ATTRS = [
   ['locale', 'locale'],
   ['currency', 'currency'],
   ['time-zone', 'timeZone'],
+  ['hour-cycle', 'hourCycle'],
 ]
 
 /**
@@ -484,7 +485,7 @@ let uids = 0
 const NO_DATA_MS = 10000
 
 // attribute that each formatter option comes from, for naming a warning's source
-const FORMAT_ATTR = { locale: 'locale', currency: 'currency', timeZone: 'time-zone' }
+const FORMAT_ATTR = { locale: 'locale', currency: 'currency', timeZone: 'time-zone', hourCycle: 'hour-cycle' }
 
 /** The nearest ancestor <ts-grid>, looking out through shadow roots. */
 function findGrid(el) {
@@ -517,7 +518,7 @@ function unmount(widget) {
 
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone', 'state', 'data', 'heading-level']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level']
   }
 
   constructor() {

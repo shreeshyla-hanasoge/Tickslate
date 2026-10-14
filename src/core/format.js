@@ -1,3 +1,5 @@
+import { toTime } from './time.js'
+
 /**
  * Number, money, percent, time and duration formatting (RFC 0001 §5).
  *
@@ -60,7 +62,7 @@ export function currentConfig() {
 
 function pick(o) {
   const out = {}
-  for (const key of ['locale', 'currency', 'timeZone']) if (o[key] !== undefined) out[key] = o[key] || undefined
+  for (const key of ['locale', 'currency', 'timeZone', 'hourCycle']) if (o[key] !== undefined) out[key] = o[key] || undefined
   return out
 }
 
@@ -120,6 +122,9 @@ const CHECKS = {
       return 'is not a time zone this runtime knows'
     }
   },
+  hourCycle(v) {
+    return v === 'h23' || v === 'h12' || v === 'auto' ? '' : 'must be h23, h12 or auto'
+  },
 }
 
 /**
@@ -164,6 +169,8 @@ const sanctioned = (u) => {
 export function createFormatter(options = {}) {
   const { values, issues } = resolve(options)
   const { locale, currency, timeZone } = values
+  const hourCycle = values.hourCycle || 'h23'
+  const calendar = new Intl.Locale(locale || new Intl.DateTimeFormat().resolvedOptions().locale).calendar
   const cache = new Map()
   // Intl constructors are slow next to format(); widgets format on every
   // tick, so each distinct set of options is built once.
@@ -177,6 +184,18 @@ export function createFormatter(options = {}) {
     const key = `d${JSON.stringify(opts)}`
     let f = cache.get(key)
     if (!f) cache.set(key, (f = new Intl.DateTimeFormat(locale, { timeZone, ...opts })))
+    return f
+  }
+  const durationFormat = (opts) => {
+    const key = `duration${JSON.stringify(opts)}`
+    let f = cache.get(key)
+    if (!f) cache.set(key, (f = new Intl.DurationFormat(locale, opts)))
+    return f
+  }
+  const listFormat = (opts) => {
+    const key = `list${JSON.stringify(opts)}`
+    let f = cache.get(key)
+    if (!f) cache.set(key, (f = new Intl.ListFormat(locale, opts)))
     return f
   }
 
@@ -243,7 +262,34 @@ export function createFormatter(options = {}) {
   // because session times (09:15, 15:30) are published that way.
   const time = (t, o = {}) => {
     if (!Number.isFinite(t)) return DASH
-    return df({ hour: '2-digit', minute: '2-digit', ...(o.seconds ? { second: '2-digit' } : {}), hourCycle: o.hour12 ? 'h12' : 'h23' }).format(t)
+    const cycle = o.hour12 === true ? 'h12' : o.hour12 === false ? 'h23' : hourCycle === 'auto' ? undefined : hourCycle
+    const resolvedCycle = cycle || df({ hour: 'numeric' }).resolvedOptions().hourCycle
+    return df({ hour: resolvedCycle === 'h12' || resolvedCycle === 'h11' ? 'numeric' : '2-digit', minute: '2-digit', ...(o.seconds ? { second: '2-digit' } : {}), ...(cycle ? { hourCycle: cycle } : {}) }).format(t)
+  }
+
+  const date = (value, o = {}) => {
+    let t
+    let zone = timeZone
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [y, m, d] = value.split('-').map(Number)
+      const plainDay = new Date(0)
+      plainDay.setUTCHours(12, 0, 0, 0)
+      plainDay.setUTCFullYear(y, m - 1, d)
+      if (plainDay.toISOString().slice(0, 10) !== value) return DASH
+      t = plainDay.getTime()
+      zone = 'UTC'
+    } else t = toTime(value)
+    if (!Number.isFinite(t) || Math.abs(t) > 8.64e15) return DASH
+    const styles = {
+      day: { day: 'numeric', month: 'short' },
+      month: { month: 'short' },
+      monthYear: { month: 'short', year: 'numeric' },
+      medium: { day: 'numeric', month: 'short', year: 'numeric' },
+      weekday: { weekday: 'short' },
+    }
+    const requestedStyle = o.style
+    const style = Object.hasOwn(styles, requestedStyle) ? styles[requestedStyle] : styles.medium
+    return df({ ...style, timeZone: zone, calendar: calendar || 'gregory' }).format(t)
   }
 
   const duration = (ms, o = {}) => {
@@ -253,9 +299,16 @@ export function createFormatter(options = {}) {
     const m = Math.floor((total % 3600) / 60)
     const s = total % 60
     if (o.style === 'words') {
-      if (h) return m ? `${h}h ${m}m` : `${h}h`
-      if (m) return `${m}m`
-      return `${s}s`
+      const parts = []
+      if (h) parts.push([h, 'hour'])
+      if (m) parts.push([m, 'minute'])
+      if (!parts.length) parts.push([s, 'second'])
+      if (typeof Intl.DurationFormat === 'function') {
+        const duration = { ...(h ? { hours: h } : {}), ...(m ? { minutes: m } : {}), ...(!h && !m ? { seconds: s } : {}) }
+        return durationFormat({ style: 'narrow' }).format(duration)
+      }
+      const rendered = parts.map(([n, unit]) => nf({ style: 'unit', unit, unitDisplay: 'narrow', maximumFractionDigits: 0 }).format(n))
+      return listFormat({ style: 'narrow', type: 'unit' }).format(rendered)
     }
     const mm = h ? String(m).padStart(2, '0') : String(m)
     return `${h ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
@@ -269,16 +322,17 @@ export function createFormatter(options = {}) {
   const fit = (value, maxChars, o = {}) => {
     const { style = 'money', ...rest } = o
     const f = style === 'percent' ? percent : style === 'number' ? number : money
+    const visibleLength = (text) => [...text.replace(/[\u200e\u200f\u061c\u2066-\u2069]/g, '')].length
     let best = f(value, rest)
-    if (best.length <= maxChars) return best
+    if (visibleLength(best) <= maxChars) return best
     if (f !== money) {
       const plain = f(value, { ...rest, decimals: 0 })
-      if (plain.length < best.length) best = plain
-      if (best.length <= maxChars) return best
+      if (visibleLength(plain) < visibleLength(best)) best = plain
+      if (visibleLength(best) <= maxChars) return best
     }
     const compact = f(value, { ...rest, compact: true })
-    return compact.length < best.length ? compact : best
+    return visibleLength(compact) < visibleLength(best) ? compact : best
   }
 
-  return Object.freeze({ locale, currency, timeZone, issues, money, number, price, percent, unit, time, duration, fit })
+  return Object.freeze({ locale, currency, timeZone, hourCycle, issues, money, number, price, percent, unit, time, date, duration, fit })
 }

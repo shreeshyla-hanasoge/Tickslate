@@ -203,6 +203,8 @@ export interface FormatOptions {
   currency?: string
   /** For times, e.g. 'Asia/Kolkata'. */
   timeZone?: string
+  /** 24-hour by default, 12-hour, or 'auto' to follow the locale. */
+  hourCycle?: 'h23' | 'h12' | 'auto'
 }
 
 /** Values may be numbers, decimal strings or decimal-library objects (Decimal.js, big.js); anything else formats as '—'. */
@@ -210,7 +212,7 @@ export type Numeric = number | string | { toNumber(): number }
 
 /** An option that failed validation and fell back to its default. */
 export interface FormatterIssue {
-  option: 'locale' | 'currency' | 'timeZone'
+  option: 'locale' | 'currency' | 'timeZone' | 'hourCycle'
   value: unknown
   message: string
 }
@@ -219,6 +221,7 @@ export interface Formatter {
   readonly locale: string | undefined
   readonly currency: string | undefined
   readonly timeZone: string | undefined
+  readonly hourCycle: 'h23' | 'h12' | 'auto'
   /** The options that failed validation and fell back to the defaults. */
   readonly issues: readonly FormatterIssue[]
   /** '+₹2,185.65', '−₹263.00', '₹0.00'. sign defaults to 'always'. */
@@ -229,8 +232,10 @@ export interface Formatter {
   price(v: Numeric, o?: { decimals?: number }): string
   /** Takes a fraction, not a percentage: 0.12 → '+12.00%' (sign 'always' by default), '12.00%' with sign 'negative'. */
   percent(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number }): string
-  /** 24-hour unless hour12: '11:42', '11:42:20'. */
+  /** Uses the configured hour cycle; a per-call hour12 choice wins. */
   time(t: number, o?: { seconds?: boolean; hour12?: boolean }): string
+  /** A date. Plain YYYY-MM-DD values never shift; instants use the formatter's time zone. */
+  date(t: Time, o?: { style?: 'day' | 'month' | 'monthYear' | 'medium' | 'weekday' }): string
   /** 'clock': '2:40', '1:02:05'. 'words': '3h 48m', '48m', '9s'. */
   duration(ms: number, o?: { style?: 'clock' | 'words' }): string
   /** '182 ms' for an ECMA-402 sanctioned unit (or an 'x-per-y' pair of them), '3 seats' for any other. */

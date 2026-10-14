@@ -285,7 +285,7 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'persist', 'aria-label']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'aria-label']
   }
 
   constructor() {
@@ -864,7 +864,7 @@ export class TsGrid extends Base {
       this._cancelGesture()
       this._sync(false)
       if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: this.profile }))
-    } else if (name === 'locale') {
+    } else if (['locale', 'currency', 'time-zone', 'hour-cycle'].includes(name)) {
       this._refreshText()
       this._invalidateWidgets()
     } else if (name === 'persist') {

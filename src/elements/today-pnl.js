@@ -28,6 +28,22 @@ export const CHART_BOX = Object.freeze({ width: 375, height: 100 })
 const PAD = 4
 
 const DASH = '—'
+const localClocks = new Map()
+
+function localClock(timeZone) {
+  const key = timeZone || ''
+  let clock = localClocks.get(key)
+  if (!clock) {
+    clock = new Intl.DateTimeFormat('en-US-u-nu-latn', {
+      timeZone: timeZone || undefined,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+    localClocks.set(key, clock)
+  }
+  return clock
+}
 
 const tone = (v) => {
   const n = toNumber(v)
@@ -87,17 +103,21 @@ function domainOf(window, pts) {
  */
 function midTick([from, to], fmt) {
   const mid = (from + to) / 2
+  const clock = localClock(fmt.timeZone)
   const minuteOfDay = (t) => {
-    const m = /^(\d{1,2}):(\d{2})/.exec(fmt.time(t))
-    return m ? Number(m[1]) * 60 + Number(m[2]) : NaN
+    const parts = Object.fromEntries(clock.formatToParts(t).map(({ type, value }) => [type, value]))
+    return Number(parts.hour) * 60 + Number(parts.minute)
   }
   for (const step of [30, 15]) {
-    const ms = step * 60000
-    const m = minuteOfDay(mid)
-    if (!Number.isFinite(m)) break
-    // Back to the boundary at or before the middle, then whichever of it and the next is nearer.
-    const below = mid - ((m % step) * 60000 + (((mid % 60000) + 60000) % 60000))
-    const best = [below, below + ms].filter((t) => t > from && t < to).sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0]
+    const base = Math.floor(mid / 60000) * 60000
+    const candidates = []
+    // Probe epoch minutes and ask Intl for their numeric local minute. This
+    // handles localized digits, bidi marks, and zones offset by half hours.
+    for (let delta = -step; delta <= step; delta++) {
+      const at = base + delta * 60000
+      if (at > from && at < to && minuteOfDay(at) % step === 0) candidates.push(at)
+    }
+    const best = candidates.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0]
     if (best !== undefined) return best
   }
   return mid

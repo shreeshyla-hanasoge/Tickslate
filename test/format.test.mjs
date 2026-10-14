@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { createFormatter, configure, currentConfig, toNumber } from '../src/core/index.js'
+import { createFormatter, configure, currentConfig, onConfigure, toNumber } from '../src/core/index.js'
 
 const inr = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 const MINUS = '−'
@@ -160,6 +160,88 @@ describe('time and duration', () => {
     assert.equal(inr.duration(9000, { style: 'words' }), '9s')
     assert.equal(inr.duration(-5000), '0:00')
   })
+
+  test('hour cycles, Gregorian dates, and live configure notifications', () => {
+    const instant = Date.UTC(2026, 9, 12, 14, 15)
+    assert.equal(createFormatter({ locale: 'en-US', timeZone: 'UTC', hourCycle: 'h12' }).time(instant), '2:15 PM')
+    assert.equal(createFormatter({ locale: 'en-US', timeZone: 'UTC' }).time(instant), '14:15')
+    assert.match(createFormatter({ locale: 'en-US', timeZone: 'UTC', hourCycle: 'auto' }).time(instant), /AM|PM/)
+    const utc = createFormatter({ locale: 'en-US', timeZone: 'America/Los_Angeles' })
+    assert.equal(utc.date('2026-10-12', { style: 'medium' }), 'Oct 12, 2026')
+    assert.equal(utc.date('2026-02-30'), '—')
+    assert.equal(utc.date('March 5, 2026'), '—')
+    assert.equal(utc.date('0x10'), '—')
+    assert.equal(utc.date('2026-10-12T00:00:00Z', { style: 'day' }), 'Oct 11')
+    for (const style of ['constructor', 'toString', '__proto__']) assert.equal(utc.date('2026-10-12', { style }), utc.date('2026-10-12'))
+    assert.equal(utc.date(instant, { style: 'monthYear' }), 'Oct 2026')
+    assert.match(createFormatter({ locale: 'fa-IR' }).date('2026-10-12'), /۲۰۲۶|2026/)
+    const persian = createFormatter({ locale: 'fa-IR-u-CA-persian', timeZone: 'UTC' })
+    assert.equal(persian.date('2026-10-12'), new Intl.DateTimeFormat('fa-IR-u-CA-persian', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }).format(Date.UTC(2026, 9, 12, 12)))
+    const privateUse = createFormatter({ locale: 'th-TH-x-u-ca-gregory', timeZone: 'UTC' })
+    assert.equal(privateUse.date('2026-10-12'), new Intl.DateTimeFormat('th-TH-x-u-ca-gregory', { timeZone: 'UTC', calendar: 'gregory', day: 'numeric', month: 'short', year: 'numeric' }).format(Date.UTC(2026, 9, 12, 12)))
+    const before = currentConfig()
+    const seen = []
+    const off = onConfigure((config) => seen.push(config.hourCycle))
+    try {
+      configure({ hourCycle: 'h12' })
+      assert.equal(seen.at(-1), 'h12')
+    } finally {
+      off()
+      configure({ hourCycle: before.hourCycle || '' })
+    }
+  })
+
+  test('duration fallback uses localized units and a unit list', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Intl, 'DurationFormat')
+    try {
+      Object.defineProperty(Intl, 'DurationFormat', { configurable: true, value: undefined })
+      assert.equal(createFormatter({ locale: 'en-US' }).duration(9_000_000, { style: 'words' }), '2h 30m')
+      assert.match(createFormatter({ locale: 'de-DE' }).duration(9_000_000, { style: 'words' }), /Std|Stunden|h/)
+    } finally {
+      if (descriptor) Object.defineProperty(Intl, 'DurationFormat', descriptor)
+      else delete Intl.DurationFormat
+    }
+  })
+})
+
+test('fit counts Unicode characters and ignores bidi controls', () => {
+  const fmt = createFormatter({ locale: 'ar-EG', currency: 'EGP' })
+  const value = fmt.money(123)
+  assert.equal(fmt.fit(123, [...value.replace(/[\u200e\u200f\u061c\u2066-\u2069]/g, '')].length), value)
+})
+
+test('Intl formatter instances are reused for repeated calls', () => {
+  const counts = { DateTimeFormat: 0, DurationFormat: 0, ListFormat: 0 }
+  const names = ['DateTimeFormat', typeof Intl.DurationFormat === 'function' ? 'DurationFormat' : 'ListFormat']
+  const saved = Object.fromEntries(names.map((name) => [name, Object.getOwnPropertyDescriptor(Intl, name)]))
+  try {
+    for (const name of names) {
+      const Native = Intl[name]
+      function Counted(...args) {
+        counts[name]++
+        return Reflect.construct(Native, args)
+      }
+      Counted.prototype = Native.prototype
+      Object.setPrototypeOf(Counted, Native)
+      Object.defineProperty(Intl, name, { configurable: true, writable: true, value: Counted })
+    }
+    const fmt = createFormatter({ locale: 'en-US', timeZone: 'UTC', hourCycle: 'auto' })
+    const at = Date.UTC(2026, 9, 12, 14, 15)
+    fmt.time(at)
+    const timeCount = counts.DateTimeFormat
+    fmt.time(at)
+    assert.equal(counts.DateTimeFormat, timeCount)
+    fmt.date('2026-10-12')
+    const dateCount = counts.DateTimeFormat
+    fmt.date('2026-10-13')
+    assert.equal(counts.DateTimeFormat, dateCount)
+    fmt.duration(9_000_000, { style: 'words' })
+    const durationCount = counts[names[1]]
+    fmt.duration(9_000_000, { style: 'words' })
+    assert.equal(counts[names[1]], durationCount)
+  } finally {
+    for (const name of names) Object.defineProperty(Intl, name, saved[name])
+  }
 })
 
 test('configure sets defaults for formatters made later', () => {

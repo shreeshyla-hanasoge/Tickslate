@@ -822,6 +822,6 @@ describe('the dashboard region', () => {
     // The one place that names it, and nothing else writes the host's role or label.
     assert.equal((source.match(/_board\.setAttribute\('aria-label'/g) || []).length, 1)
     assert.doesNotMatch(source, /this\.setAttribute\('(?:role|aria-label)'/)
-    assert.match(source, /return \['editing', 'profile', 'locked', 'edit-controls', 'locale', 'persist', 'aria-label'\]/)
+    assert.match(source, /return \['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'aria-label'\]/)
   })
 })

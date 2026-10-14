@@ -2,6 +2,8 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsTodayPnl, todayPnlModel, HEADLINE_CHARS, CHART_BOX } from '../src/elements/today-pnl.js'
 import { createFormatter, createMessages } from '../src/core/index.js'
+import { TsWidget } from '../src/elements/widget.js'
+import { resetWarnings } from '../src/elements/dev.js'
 
 const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 const ctx = { fmt, t: createMessages(), now: 0, label: "Today's P&L" }
@@ -26,6 +28,61 @@ const intraday = [
 ]
 const withChart = { ...day, intraday, window: { from: ist(9, 15), to: ist(15, 30) } }
 const model = (data, variant) => todayPnlModel(data, variant, ctx)
+
+test('invalid hour-cycle diagnostics point to the owning attribute', () => {
+  const warnings = []
+  const previous = console.warn
+  const element = {
+    localName: 'ts-today-pnl',
+    _uid: 9201,
+    parentElement: null,
+    getAttribute(name) { return name === 'hour-cycle' ? 'invalid' : null },
+  }
+  try {
+    resetWarnings()
+    console.warn = (message) => warnings.push(message)
+    TsWidget.prototype._checkFormatter.call(element, createFormatter({ hourCycle: 'invalid' }))
+    assert.match(warnings[0], /from its hour-cycle attribute/)
+  } finally {
+    console.warn = previous
+    resetWarnings()
+  }
+})
+
+test('middle tick uses numeric local minutes in non-Latin and half-hour locales', () => {
+  for (const locale of ['fi-FI', 'ar-EG', 'hi-IN-u-nu-deva']) {
+    const localFmt = createFormatter({ locale, timeZone: 'Asia/Kolkata' })
+    const from = Date.UTC(2026, 2, 2, 3, 45) // 09:15 IST
+    const to = Date.UTC(2026, 2, 2, 10, 10) // 15:40 IST
+    const vm = todayPnlModel({ net: 1, intraday: [], window: { from, to } }, 'M', { ...ctx, fmt: localFmt })
+    assert.equal(vm.chart.ticks[1], localFmt.time(Date.UTC(2026, 2, 2, 7))) // 12:30 IST
+  }
+})
+
+test('middle tick reuses its zone formatter across view models', () => {
+  const saved = Object.getOwnPropertyDescriptor(Intl, 'DateTimeFormat')
+  let count = 0
+  const Native = Intl.DateTimeFormat
+  function Counted(...args) {
+    count++
+    return Reflect.construct(Native, args)
+  }
+  Counted.prototype = Native.prototype
+  Object.setPrototypeOf(Counted, Native)
+  Object.defineProperty(Intl, 'DateTimeFormat', { configurable: true, writable: true, value: Counted })
+  try {
+    const timeZone = 'Pacific/Chatham'
+    const localFmt = createFormatter({ locale: 'en-US', timeZone })
+    const data = { net: 1, intraday: [], window: { from: ist(9, 15), to: ist(15, 30) } }
+    todayPnlModel(data, 'M', { ...ctx, fmt: localFmt })
+    const first = count
+    todayPnlModel(data, 'M', { ...ctx, fmt: localFmt })
+    assert.equal(count, first)
+    assert.ok(first > 0)
+  } finally {
+    Object.defineProperty(Intl, 'DateTimeFormat', saved)
+  }
+})
 
 describe('without a DOM', () => {
   test('the class module loads and declares its catalog key', () => {

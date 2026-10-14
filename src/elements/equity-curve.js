@@ -110,13 +110,8 @@ export function filterRange(days, range, timeZone = 'UTC') {
 
 // ── View model (pure) ─────────────────────────────────────────────────────
 
-const monthFormats = new Map()
 function monthName(fmt, iso) {
-  const key = String(fmt.locale)
-  let f = monthFormats.get(key)
-  if (!f) monthFormats.set(key, (f = new Intl.DateTimeFormat(fmt.locale, { month: 'short', timeZone: 'UTC' })))
-  const [y, m, d] = parts(iso)
-  return f.format(Date.UTC(y, m - 1, d))
+  return fmt.date(iso, { style: 'month' })
 }
 
 // Sign of a running sum, ignoring float dust: 0.1 + 0.2 - 0.3 is not a gain.
