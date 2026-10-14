@@ -23,6 +23,9 @@
  * Ticks sit strictly inside the session, because its start and end are the
  * rail's own ends.
  *
+ * `track` is false where how far through the session is can't be known (open
+ * with a close but no start), and then the rail or its fill is not drawn.
+ *
  * Overnight sessions (RFC 0003 §12): a lane's window may span two dates, and
  * then each of its times names the day when it isn't today. A session that is
  * open with no close the calendar can name is `endless`: a full rail, "Open
@@ -138,6 +141,8 @@ function laneState(calendar, id, now) {
     win,
     opensAt: st.opensAt,
     closesAt: st.closesAt,
+    // Open with a known close but no known start (a run that began over a month ago): there is no fraction to show.
+    partial: st.open && !endless && st.startedAt === null,
     progress: endless ? 100 : st.open && st.progress !== null ? round(st.progress * 100, 2) : 0,
     // More than a day away, a weekday says more than a duration does.
     far: !st.open && st.opensAt !== null && st.opensAt - now > DAY,
@@ -225,9 +230,9 @@ function ariaFor(name, env, st, now, t) {
  * Pure: data in, strings and percentages out. Never throws for a missing
  * calendar or an unknown session id; those show as a muted message.
  *
- * S: { variant, live, title, titleShort, session, time, zone, progress, from, to, middle, middleShort, ariaLabel }
+ * S: { variant, live, title, titleShort, session, time, zone, progress, track, from, to, middle, middleShort, ariaLabel }
  * Banner: { variant, live, title, clock, legend: [{ mark, text }], nextClose, lanes, ariaLabel }
- *   lane: { id, name, error, open, hours, progress, right, ticks: { key, items: [{ l, k, at }], steps }, next }
+ *   lane: { id, name, error, open, hours, progress, track, right, ticks: { key, items: [{ l, k, at }], steps }, next }
  *   (ticks are all the candidates; visibleTicks picks what to draw. `now` is on the model for it.)
  *   (percentages are 0–100; `next` is null unless the lane is open and has timeframes)
  */
@@ -262,6 +267,7 @@ function small(d, ids, first, env, now, ctx) {
       time,
       zone,
       progress: 0,
+      track: true,
       from: '',
       to: '',
       middle: first.error,
@@ -301,8 +307,9 @@ function small(d, ids, first, env, now, ctx) {
     time,
     zone,
     progress: st.progress,
-    from: times.from,
-    to: times.to,
+    track: !st.partial,
+    from: st.partial ? '' : times.from,
+    to: st.partial ? whenText(env, st.closesAt, now, t) : times.to,
     middle,
     middleShort,
     ariaLabel: t('session.aria', { label: ctx.label, state: ariaFor(spec.label, env, st, now, t) }),
@@ -318,7 +325,7 @@ function banner(d, ids, first, env, now, ctx) {
   ids.forEach((id, i) => {
     const found = i === 0 ? first : lookup(d.calendar, id, t)
     if (found.error) {
-      lanes.push({ id, name: id, error: found.error, open: false, hours: '', progress: 0, right: '', ticks: { key: '', items: [], steps: [] }, next: null })
+      lanes.push({ id, name: id, error: found.error, open: false, hours: '', progress: 0, track: true, right: '', ticks: { key: '', items: [], steps: [] }, next: null })
       spoken.push(found.error)
       return
     }
@@ -346,8 +353,10 @@ function banner(d, ids, first, env, now, ctx) {
       name: spec.label,
       error: null,
       open: st.open,
-      hours: st.win ? `${times.from}–${times.to}` : '',
+      // With no start to show, the hours are just the close, after the dash that would have followed the open.
+      hours: st.win ? `${times.from}–${times.to}` : st.partial ? `–${whenText(env, st.closesAt, now, t)}` : '',
       progress: st.progress,
+      track: !st.partial,
       right,
       ticks: st.win ? tickItems(st.win, tfs) : { key: '', items: [], steps: [] },
       next,
@@ -487,6 +496,8 @@ export class TsSessionClock extends TsWidget {
     setText(this.$('.time'), vm.time)
     setText(this.$('.zone'), vm.zone)
     this.$('.fill').style.width = `${vm.progress}%`
+    this.$('.trk').hidden = !vm.track
+    this.$('.from').hidden = !vm.track
     setText(this.$('.from'), vm.from)
     setText(this.$('.mf'), vm.middle)
     setText(this.$('.ms'), vm.middleShort)
@@ -523,7 +534,7 @@ export class TsSessionClock extends TsWidget {
       row.msg.hidden = !lane.error
       setText(row.msg, lane.error || '')
       row.rail.hidden = !!lane.error
-      row.fill.hidden = !!lane.error
+      row.fill.hidden = !!lane.error || !lane.track
       row.fill.style.width = `${lane.progress}%`
       // The tick container is rebuilt only when the drawn set changes (a
       // candle passes, the day changes, the rail resizes); every other

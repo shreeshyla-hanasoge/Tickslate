@@ -22,14 +22,17 @@ export function createCalendar(input) {
   for (const spec of input.sessions) {
     checkSpec(spec)
     if (specs.has(spec.id)) throw new TypeError(`Two sessions have the id "${spec.id}"`)
-    specs.set(spec.id, spec)
+    specs.set(spec.id, frozenCopy(spec))
   }
-  const holidays = input.holidays || {}
-  for (const key of Object.keys(holidays)) {
-    if (!Array.isArray(holidays[key]) || !holidays[key].every((d) => DATE_RE.test(d))) {
+  const given = input.holidays || {}
+  for (const key of Object.keys(given)) {
+    if (!Array.isArray(given[key]) || !given[key].every((d) => DATE_RE.test(d))) {
       throw new TypeError(`holidays.${key} must be a list of 'YYYY-MM-DD' dates`)
     }
   }
+  // Specs and holidays are read once, here: windows are cached from them, so a
+  // later change to the host's objects must not reach a calendar half-way.
+  const holidays = frozenCopy(given)
   const closed = new Map()
   const closedOn = (id) => {
     let set = closed.get(id)
@@ -68,11 +71,10 @@ export function createCalendar(input) {
     let w = windowCache.get(key)
     if (w === undefined) {
       const h = hoursOn(s, date)
-      w = h && {
-        date,
-        open: zonedTime(date, h.open, s.timeZone),
-        close: zonedTime(h.close > h.open ? date : addDays(date, 1), h.close, s.timeZone),
-      }
+      const open = h && zonedTime(date, h.open, s.timeZone)
+      const close = h && zonedTime(h.close > h.open ? date : addDays(date, 1), h.close, s.timeZone)
+      // A window that is over as soon as it begins (both ends inside one spring-forward gap) never traded.
+      w = h && close > open ? { date, open, close } : null
       if (windowCache.size >= 4096) windowCache.clear()
       windowCache.set(key, w)
     }
@@ -185,8 +187,8 @@ export function createCalendar(input) {
     /**
      * Every session window that overlaps [from, to), in time order, with
      * touching windows merged. A run that is still touching LOOKAHEAD_DAYS
-     * past the range is cut there, which is how activeProfile spots one that
-     * never closes.
+     * past the range, or before it, is cut there, which is how activeProfile
+     * spots one that never closes.
      */
     windows(id, from, to) {
       const s = spec(id)
@@ -210,7 +212,7 @@ export function createCalendar(input) {
  */
 function mergeWindows(list) {
   const out = []
-  for (const w of [...list].sort((a, b) => a.open - b.open)) {
+  for (const w of list.sort((a, b) => a.open - b.open)) {
     const m = out[out.length - 1]
     if (m && w.open <= m.close) {
       m.close = Math.max(m.close, w.close)
@@ -218,6 +220,12 @@ function mergeWindows(list) {
     } else out.push({ open: w.open, close: w.close, first: w.date, last: w.date })
   }
   return out
+}
+
+/** A deep, frozen copy of plain data: arrays and objects of strings and numbers. */
+function frozenCopy(v) {
+  if (!v || typeof v !== 'object') return v
+  return Object.freeze(Array.isArray(v) ? v.map(frozenCopy) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, frozenCopy(x)])))
 }
 
 function closeOn(s, date) {

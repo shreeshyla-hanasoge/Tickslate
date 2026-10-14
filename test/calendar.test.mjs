@@ -439,3 +439,53 @@ test('state is quick enough to call every second for a session that never closes
   const each = (performance.now() - start) / 200
   assert.ok(each < 5, `${each.toFixed(2)} ms per call`)
 })
+
+describe('a calendar reads its specs once', () => {
+  test("changing the host's spec or holidays afterwards has no effect, and the caller's objects are not frozen", () => {
+    const spec = { id: 'x', label: 'X', timeZone: 'UTC', days: [1, 2, 3, 4, 5], open: '09:00', close: '17:00', specialSessions: {} }
+    const holidays = { x: ['2026-10-13'] }
+    const c = createCalendar({ sessions: [spec], holidays })
+    const monday = Date.UTC(2026, 9, 12, 10)
+    assert.equal(c.state('x', monday).open, true)
+    assert.equal(c.state('x', monday).closesAt, Date.UTC(2026, 9, 12, 17))
+    spec.close = '12:00'
+    spec.days.push(6)
+    spec.specialSessions['2026-10-17'] = { open: '10:00', close: '11:00' }
+    holidays.x.push('2026-10-12')
+    assert.equal(c.state('x', monday).closesAt, Date.UTC(2026, 9, 12, 17))
+    assert.equal(c.isTradingDay('x', '2026-10-17'), false)
+    assert.equal(c.isTradingDay('x', '2026-10-12'), true)
+    assert.equal(c.isTradingDay('x', '2026-10-13'), false)
+    assert.equal(Object.isFrozen(spec) || Object.isFrozen(spec.days) || Object.isFrozen(holidays), false)
+  })
+
+  test('the spec a calendar hands back is frozen all the way down', () => {
+    const c = createCalendar({
+      sessions: [
+        {
+          id: 'x',
+          label: 'X',
+          timeZone: 'UTC',
+          days: [1],
+          open: '09:00',
+          close: { default: '17:00', ranges: [{ from: '2026-01-01', to: '2026-01-31', close: '12:00' }] },
+          specialSessions: { '2026-10-17': { open: '10:00', close: '11:00' } },
+        },
+      ],
+    })
+    const s = c.session('x')
+    for (const v of [s, s.days, s.close, s.close.ranges, s.close.ranges[0], s.specialSessions, s.specialSessions['2026-10-17']]) assert.equal(Object.isFrozen(v), true)
+  })
+})
+
+describe('windows() cuts a run at the look-ahead on both sides', () => {
+  test('a never-closing run starts and ends a month outside the range, not at infinity', () => {
+    const c = createCalendar({ sessions: [{ id: 'x', label: 'X', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }] })
+    const from = Date.UTC(2026, 9, 12)
+    const to = Date.UTC(2026, 9, 13)
+    const [w, ...rest] = c.windows('x', from, to)
+    assert.equal(rest.length, 0)
+    assert.ok(Number.isFinite(w.open) && Number.isFinite(w.close))
+    assert.ok(w.open < from - 30 * 86400000 && w.close > to + 30 * 86400000)
+  })
+})

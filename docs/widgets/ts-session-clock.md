@@ -42,6 +42,23 @@ A marker shows the next close of any timeframe. The legend names them
 ("5m close, next hour", "1h close"). A timeframe that is not a positive number
 is dropped and reported once in development.
 
+### Overnight and 24/7 sessions
+
+A session may close on the next local day (a futures exchange open 17:00 to
+16:00) or never close (crypto). Its lane draws the window across midnight, and
+each time that is not today names its day: "17:00–Tue 16:00" in the evening and
+"Sun 17:00–16:00" the next morning. Windows that touch read as one, so an FX
+week shows "Sun 17:00–Fri 17:00" all week. See
+[Session calendars](../reference/core.md#session-calendars).
+
+A session that is open with no close in sight shows "Open 24/7": at `S` in
+place of the countdown, with a full track and no times; at `Banner` as a full
+lane reading "Open 24/7" with no hours. Its candle closes still feed the
+"next close" in the header. When the close is known but the session has been
+open for over a month (a holiday is coming), there is no start to measure
+from: the track is not drawn, `S` shows only the countdown and the close, and a
+`Banner` lane reads "–Thu 00:00" with its time left.
+
 ## Minimal example
 
 ```html

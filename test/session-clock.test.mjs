@@ -642,3 +642,37 @@ describe('overnight and 24/7 sessions', () => {
     }
   })
 })
+
+describe('an open session with a close but no known start', () => {
+  // Open round the clock for over a month before the holiday, so the calendar can name the close but not the start.
+  const holiday = createCalendar({
+    sessions: [{ id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }],
+    holidays: { crypto: ['2026-10-15'] },
+  })
+  const now = Date.UTC(2026, 9, 5, 10)
+  const ask = (variant) => model({ calendar: holiday, sessions: ['crypto'] }, variant, now)
+
+  test('the calendar says what it knows', () => {
+    const st = holiday.state('crypto', now)
+    assert.deepEqual([st.open, st.startedAt, st.progress], [true, null, null])
+    assert.equal(st.closesAt, Date.UTC(2026, 9, 15))
+  })
+
+  test('S: no rail and no from-label, but the countdown and the close stay', () => {
+    const m = ask('S')
+    assert.equal(m.live, true)
+    assert.equal(m.track, false)
+    assert.deepEqual([m.from, m.to, m.middle], ['', 'Thu 00:00', '230h to close'])
+    assert.equal(m.ariaLabel, 'Session clock: Crypto open, closes Thu 00:00')
+  })
+
+  test('Banner: the lane shows only the close and draws no fill', () => {
+    const lane = ask('Banner').lanes[0]
+    assert.deepEqual([lane.track, lane.hours, lane.right, lane.next], [false, '–Thu 00:00', '230h left', null])
+  })
+
+  test('a run with a known start keeps its rail', () => {
+    assert.equal(model(data, 'S', at('2026-10-12', '11:42')).track, true)
+    assert.equal(model(data, 'Banner', at('2026-10-12', '11:42')).lanes[0].track, true)
+  })
+})

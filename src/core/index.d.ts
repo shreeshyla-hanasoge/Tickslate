@@ -489,11 +489,11 @@ export interface Calendar {
   nextChange(id: string, now: number): { at: number; to: 'open' | 'closed' } | null
   /** The next candle close, aligned to the session open (to the day's window when the session has no known start); null while closed. */
   candleClose(id: string, now: number, timeframeMinutes: number): number | null
-  /** Every session window overlapping [from, to), touching windows merged. A run still going a month past `to` is cut there. */
+  /** Every session window overlapping [from, to), touching windows merged. A run still going a month past `to`, or a month before `from`, is cut there. */
   windows(id: string, from: number, to: number): Array<{ open: number; close: number }>
 }
 
-/** Throws TypeError on a malformed session or holiday list. */
+/** Throws TypeError on a malformed session or holiday list. The specs and holidays are copied (frozen) here and read once: changing the host's objects later has no effect. */
 export declare function createCalendar(input: CalendarInput): Calendar
 
 /** Ready-made sessions, checked against exchange circulars on 13 Oct 2026. */

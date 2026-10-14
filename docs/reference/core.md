@@ -425,7 +425,7 @@ serialised a date as one) means that date whatever the zone.
 
 `(date: string, hhmm: string, timeZone: string) => number`. The instant the
 clock in `timeZone` reads `hhmm` on `date`, handling daylight-saving changes. A
-time inside a spring-forward gap lands just after it.
+time inside a spring-forward gap, which never happened, lands just after it, shifted by the gap's length (02:30 becomes 03:30 when 02:00 jumps to 03:00). A time that happened twice when clocks went back is the earlier one.
 
 ### `localDate(t, timeZone)`
 
@@ -444,7 +444,10 @@ createCalendar(input: {
 }): Calendar
 ```
 
-Throws `TypeError` on a malformed session or holiday list.
+Throws `TypeError` on a malformed session or holiday list. The sessions and
+holidays are read **once**, here: the calendar keeps a frozen copy, so changing
+your own objects afterwards does nothing (create a new calendar instead), and
+`session(id)` returns that frozen copy. Your objects are not frozen.
 
 ```ts
 interface SessionSpec {
@@ -491,7 +494,7 @@ The `Calendar`:
 | `state(id, now)` | `{ open, opensAt, closesAt, startedAt, progress }`: `opensAt` is the next open when closed (`null` if none within a month); the rest apply when open, with `progress` 0 to 1. For a session with no close within a month, `closesAt`, `startedAt` and `progress` are `null` while `open` is `true` |
 | `nextChange(id, now)` | `{ at, to: 'open' \| 'closed' }`, or `null` when there is no change within a month (including while open with no close) |
 | `candleClose(id, now, timeframeMinutes)` | The next candle close, aligned to the session open (to the day's window when the session has no known start); `null` while closed |
-| `windows(id, from, to)` | Every session window overlapping `[from, to)`, touching windows merged. A run still going a month past `to` is cut there |
+| `windows(id, from, to)` | Every session window overlapping `[from, to)`, touching windows merged. A run still going a month past `to`, or a month before `from`, is cut there |
 
 ### `presets`
 
