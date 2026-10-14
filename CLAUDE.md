@@ -10,7 +10,9 @@ on top of [RFC 0001](docs/rfc/0001-api.md).** Read both before writing code.
 [docs/BRIEF.md](docs/BRIEF.md) is the original handover and explains where the
 project came from. Branches, waves and changelog fragments follow
 [docs/WORKFLOW.md](docs/WORKFLOW.md), and every widget meets
-[docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
+[docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md). [AGENTS.md](AGENTS.md) carries
+these rules for other coding agents; when you change a rule here, change it
+there too.
 
 ## Hard rules
 
