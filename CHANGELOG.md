@@ -37,3 +37,23 @@ All notable changes to Tickslate are recorded here. The format follows
   `override()` for the manual switch and a replaceable `clock`.
 - Playground: live session status, a pretend clock to try scheduled
   switching, and formatting samples.
+- Widget base `TsWidget` (RFC 0001 §8.1): open shadow root, shared themed CSS,
+  `data` / `size` / `label` / `clock`, formatting attributes resolved from the
+  nearest `<ts-grid>`, one render per microtask, an empty state, and `every()`
+  for timers that pause while the page is hidden. Headlines scale with the tile
+  so phone sizes fit.
+- `<ts-today-pnl>` (S, Wide, M): headline net with realised, unrealised and fees,
+  and on M an intraday curve with entry and exit marks on the session window.
+- `<ts-equity-curve>` (Wide, M, XL): cumulative P&L with peak and max drawdown,
+  `range` of 1W, 1M, 3M, YTD or All, and on XL the shaded drawdown and range
+  buttons that fire `ts-action`.
+- `<ts-session-clock>` (S, Banner): the exchange's time, open or closed, and the
+  time to the close or open; on Banner one lane per session with candle-close ticks.
+- `tickslate/elements` exports `TsWidget`, `TsTodayPnl`, `TsEquityCurve` and
+  `TsSessionClock`, with typed `data`, and types for the shared base ship as
+  `widget.d.ts`. `npm run pack:lib` fails if a shipped declaration imports a
+  file that is not in the package.
+- Widget gallery (`widgets.html`): every widget at every size, desktop and phone,
+  in Paper and Traed Dark, with empty states, a frozen or live clock and a
+  loss-day toggle. The playground now uses the real widgets for Today's P&L,
+  the session clock and the equity curve.

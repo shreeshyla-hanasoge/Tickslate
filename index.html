@@ -19,6 +19,7 @@
   }
   .bar button[aria-pressed="true"] { background: var(--ts-ink); color: var(--ts-bg); border-color: var(--ts-ink); }
   .bar button.primary { background: var(--ts-accent); color: var(--ts-surface); border-color: var(--ts-accent); }
+  .gallery { color: var(--ts-accent); font-size: 13px; font-weight: 500; }
   .hint { color: var(--ts-muted); font-size: 13px; margin: 0 0 16px; }
   .log { position: fixed; left: 16px; bottom: 16px; max-width: calc(100% - 32px); padding: 8px 12px; border-radius: var(--ts-radius-sm);
     background: var(--ts-surface); border: 1px solid var(--ts-line); color: var(--ts-muted); font: 12px ui-monospace, monospace; }
@@ -39,6 +40,7 @@
 <div class="page">
   <header>
     <h1>Tickslate</h1>
+    <a class="gallery" href="/widgets.html">Widget gallery</a>
     <div class="bar" role="group" aria-label="Profile">
       <button type="button" data-profile="auto" aria-pressed="true">Auto</button>
       <button type="button" data-profile="market" aria-pressed="false">Market hours</button>
@@ -64,15 +66,15 @@
     Keyboard: Tab to a tile in edit mode, Space to pick up, arrows to move, Space to drop, + and − to resize.</p>
 
   <ts-grid id="grid" locale="en-IN" currency="INR">
-    <play-tile item="todayPnl" label="Today's P&amp;L"></play-tile>
-    <play-tile item="sessionClock" label="Session clock"></play-tile>
+    <ts-today-pnl item="todayPnl" label="Today's P&amp;L"></ts-today-pnl>
+    <ts-session-clock item="sessionClock" label="Session clock"></ts-session-clock>
     <play-tile item="openPositions" label="Open positions"></play-tile>
     <play-tile item="capitalFunding" label="Capital funding"></play-tile>
     <play-tile item="watchlist" label="Watchlist"></play-tile>
     <play-tile item="edgeStats" label="Edge stats"></play-tile>
     <play-tile item="chart-nifty" label="Mini chart · NIFTY"></play-tile>
     <play-tile item="chart-crude" label="Mini chart · CRUDE"></play-tile>
-    <play-tile item="equityCurve" label="Equity curve"></play-tile>
+    <ts-equity-curve item="equityCurve" label="Equity curve"></ts-equity-curve>
     <play-tile item="pnlCalendar" label="Daily P&amp;L calendar"></play-tile>
   </ts-grid>
 </div>
@@ -82,7 +84,7 @@
   import { createCalendar, createFormatter, presets, zonedTime, localDate } from '/src/core/index.js'
   import '/src/elements/index.js'
 
-  // A stand-in tile until the real widgets exist: shows its label and the
+  // A stand-in tile for the widgets that don't exist yet: shows its label and the
   // size the grid asked for, and has a button so you can check a drag never
   // clicks it.
   class PlayTile extends HTMLElement {
@@ -210,6 +212,79 @@
     grid.clock = now
     tick()
   })
+
+  // ── Widget data (all synthetic) ──
+  const TZ = 'Asia/Kolkata'
+  const pnlEl = grid.querySelector('[item="todayPnl"]')
+  const clockEl = grid.querySelector('[item="sessionClock"]')
+  const equityEl = grid.querySelector('[item="equityCurve"]')
+  // Same function the grid uses, so "Pretend it's" moves the widgets too.
+  for (const el of [pnlEl, clockEl, equityEl]) el.clock = now
+
+  clockEl.data = { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
+
+  // Today's P&L: a random walk, one reading every 2s, over today's NSE F&O session.
+  let readings = []
+  function reseedPnl() {
+    const t = now()
+    const hours = calendar.hours('nse-fo', localDate(t, TZ))
+    // Readings stay inside the session: the curve is drawn on its window.
+    const from = hours && t > hours.open ? hours.open : t
+    const to = hours ? Math.min(t, Math.max(hours.close, from)) : t
+    let v = 0
+    readings = []
+    for (let at = from; at < to; at += 60000) {
+      v += (Math.random() - 0.45) * 80
+      readings.push({ t: at, v: Math.round(v * 100) / 100 })
+    }
+    readings.push({ t: to, v: Math.round(v * 100) / 100 })
+    publishPnl(hours)
+  }
+  function publishPnl(hours = calendar.hours('nse-fo', localDate(now(), TZ))) {
+    const net = readings[readings.length - 1].v
+    const fees = Math.round((95 + Math.abs(net) * 0.012) * 100) / 100
+    const unrealized = Math.round(net * 0.4 * 100) / 100
+    pnlEl.data = {
+      net, unrealized, fees,
+      realized: Math.round((net + fees - unrealized) * 100) / 100,
+      closedCount: 6,
+      openCount: 2,
+      intraday: readings,
+      window: hours ? { from: hours.open, to: hours.close } : undefined,
+      asOf: now(),
+      live: !!hours && now() >= hours.open && now() <= hours.close,
+    }
+  }
+  function tickPnl() {
+    const t = now()
+    const hours = calendar.hours('nse-fo', localDate(t, TZ))
+    // Outside the session there is nothing to add to today's curve.
+    if (!hours || t < hours.open || t > hours.close) return publishPnl(hours)
+    // After "Pretend it's" jumps back, readings from the future are dropped.
+    while (readings.length && readings[readings.length - 1].t >= t) readings.pop()
+    const last = readings.length ? readings[readings.length - 1].v : 0
+    readings.push({ t, v: Math.round((last + (Math.random() - 0.48) * 40) * 100) / 100 })
+    publishPnl()
+  }
+  reseedPnl()
+  setInterval(tickPnl, 2000)
+  // A jump in the pretend clock changes what "today so far" means.
+  pretend.addEventListener('change', reseedPnl)
+  document.getElementById('live').addEventListener('click', reseedPnl)
+
+  // Equity curve: about 60 weekdays of daily P&L with a rise, a drawdown and a recovery.
+  {
+    const days = []
+    const date = new Date(Date.parse(`${localDate(Date.now(), TZ)}T00:00:00Z`))
+    while (days.length < 60) {
+      date.setUTCDate(date.getUTCDate() - 1)
+      if (date.getUTCDay() % 6 === 0) continue
+      const i = 59 - days.length
+      const drift = i < 22 ? 650 : i < 40 ? -1150 : 900
+      days.unshift({ date: date.toISOString().slice(0, 10), pnl: Math.round(drift + (Math.random() - 0.5) * 4200), trades: 2 + Math.floor(Math.random() * 8) })
+    }
+    equityEl.data = { days, fees: 21460.35, trades: days.reduce((sum, d) => sum + d.trades, 0) }
+  }
 
   const profileButtons = document.querySelectorAll('[data-profile]')
   function showProfileChoice(choice) {

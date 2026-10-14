@@ -38,11 +38,15 @@ await copyFile(resolve(root, 'src/themes/tokens.css'), resolve(out, 'tokens.css'
 
 // 4. type declarations, flattened to sit beside their entry points. The
 // elements entry points at the core as '../core/index.js'; at the package
-// root that is './index.js'.
+// root that is './index.js'. It also imports './widget.js' for the widget base
+// class, whose declarations ship as widget.d.ts beside it: TypeScript maps
+// that specifier to widget.d.ts, so no rewrite is needed.
 const types = [
   ['src/core/index.d.ts', 'index.d.ts'],
   ['src/elements/index.d.ts', 'elements.d.ts'],
+  ['src/elements/widget.d.ts', 'widget.d.ts'],
 ]
+const shipped = []
 for (const [from, to] of types) {
   const src = resolve(root, from)
   if (!existsSync(src)) continue
@@ -50,6 +54,20 @@ for (const [from, to] of types) {
   const dest = resolve(out, to)
   await mkdir(dirname(dest), { recursive: true })
   await writeFile(dest, text)
+  shipped.push(dest)
+}
+
+// Every relative import in a shipped declaration must land on a file in
+// dist-lib/, or consumers get `any` (or an error) for the whole entry point.
+for (const file of shipped) {
+  const text = await readFile(file, 'utf8')
+  for (const [, spec] of text.matchAll(/\bfrom\s+['"](\.[^'"]*)['"]/g)) {
+    const target = resolve(dirname(file), spec.replace(/\.js$/, ''))
+    if (!existsSync(`${target}.d.ts`)) {
+      console.error(`${file} imports '${spec}', but ${target}.d.ts is not in dist-lib/.`)
+      process.exit(1)
+    }
+  }
 }
 
 console.log('packed dist-lib/ — publish with: npm publish ./dist-lib')
