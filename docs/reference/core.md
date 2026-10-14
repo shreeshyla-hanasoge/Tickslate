@@ -335,6 +335,20 @@ reads (see [Messages](#messages)); `null` clears it.
 configure({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 ```
 
+### `onConfigure(fn)`
+
+`(fn: (config) => void) => () => void`. Calls `fn` with the new defaults after
+every `configure()` call, whichever option changed, and returns a function that
+stops it. Importing the core registers nothing; mounted widgets subscribe while
+they are on the page and draw again when it fires. A listener that throws does
+not stop the others.
+
+```js
+const stop = onConfigure(({ locale }) => console.log('now', locale))
+configure({ locale: 'de-DE' })   // logs: now de-DE
+stop()
+```
+
 ### `currentConfig()`
 
 `() => { locale?, currency?, timeZone?, messages? }`. A copy of the defaults
@@ -372,13 +386,15 @@ forms, for example `equity.dayCount.one` and `equity.dayCount.other`.
 
 ### `createMessages(overrides?, locale?)`
 
-`(overrides?: Partial<Messages> | null, locale?: string) => Translate`, where
+`(overrides?: MessageOverrides | null, locale?: string) => Translate`, where
 `Translate` is `(key, params?, count?) => string`. Builds a function that reads
-`overrides`, then `EN`, then returns the key itself. With a `count` it reads
-`key.<category>` (the category comes from `Intl.PluralRules(locale)`: `zero`,
-`one`, `two`, `few`, `many` or `other`), then `key.other`, then `key`, and `{count}`
-is available as a parameter. The locale only chooses plural forms; the table is
-not matched against it. It never formats, so pass numbers and times already
+`overrides`, then `EN`, then returns the key itself. With a `count` (a number, or
+a numeric string such as `'2'`) it reads `key.<category>` (`zero`, `one`, `two`,
+`few`, `many` or `other`), then `key.other`, then `key`, and `{count}` is
+available as a parameter. The category comes from `Intl.PluralRules(locale)` for
+text out of your table, and from English rules for text that falls back to `EN`,
+so an untranslated key in a `ja-JP` app still reads "1 day". The table is not
+matched against the locale. It never formats, so pass numbers and times already
 formatted by [`createFormatter`](#createformatteroptions).
 
 ```js

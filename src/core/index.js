@@ -28,7 +28,7 @@ export {
   withProfile,
   setTopStrip,
 } from './edit.js'
-export { createFormatter, configure, currentConfig, toNumber } from './format.js'
+export { createFormatter, configure, onConfigure, currentConfig, toNumber } from './format.js'
 export { EN, createMessages } from './messages.js'
 export { createCalendar, presets, activeProfile, nextProfileChange, usDaylightSaving } from './calendar.js'
 export { zonedTime, localDate } from './zone.js'

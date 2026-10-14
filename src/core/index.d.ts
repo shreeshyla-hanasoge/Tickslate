@@ -241,8 +241,10 @@ export interface Formatter {
 
 export declare function createFormatter(options?: FormatOptions): Formatter
 /** Sets defaults for formatters (and widgets) created without their own. `messages` is the table every widget and grid reads; null clears it. */
-export declare function configure(options: FormatOptions & { messages?: Partial<Messages> | null }): void
-export declare function currentConfig(): FormatOptions & { messages?: Partial<Messages> }
+export declare function configure(options: FormatOptions & { messages?: MessageOverrides | null }): void
+export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides }
+/** Calls `fn` with the new defaults after every configure(); returns a function that stops it. Registers nothing until called. */
+export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides }) => void): () => void
 /** A finite number from a number, a decimal string or a decimal-library object; else NaN. */
 export declare function toNumber(v: unknown): number
 
@@ -396,14 +398,29 @@ export interface Messages {
 
 export type MessageKey = keyof Messages
 
-/** `{param}` interpolation and plural forms; a missing key falls back to EN, then to the key itself. A `count` selects `key.<category>`, then `key.other`, then `key`. */
-export type Translate = (key: MessageKey, params?: Record<string, string | number>, count?: number) => string
+/** The forms Intl.PluralRules can name. */
+export type PluralForm = 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+
+/** A key that has plural forms, such as 'time.days' for 'time.days.one' and 'time.days.other'. It is never looked up bare unless a count is given. */
+export type PluralBase = { [K in MessageKey]: K extends `${infer Base}.${PluralForm}` ? Base : never }[MessageKey]
+
+/**
+ * A table of overrides. Any key may be left out. A plural base may be given any
+ * of its forms (`time.days.few`), including forms English has no use for.
+ */
+export type MessageOverrides = Partial<Messages> & { [K in `${PluralBase}.${PluralForm}`]?: string }
+
+/**
+ * `{param}` interpolation and plural forms; a missing key falls back to EN, then to the key itself.
+ * A `count` (a number, or a numeric string) selects `key.<category>`, then `key.other`, then `key`; the category comes from the table's locale for text a host supplied, and from English for text that falls back to EN.
+ */
+export type Translate = (key: MessageKey | PluralBase, params?: Record<string, string | number | null | undefined> | null, count?: number | string) => string
 
 /** Every key and its English text. Frozen; keys are flat and dotted. */
 export declare const EN: Readonly<Messages>
 
-/** Builds a `t` from a table of overrides (missing keys fall back to EN) and the locale that picks plural forms. */
-export declare function createMessages(overrides?: Partial<Messages> | null, locale?: string): Translate
+/** Builds a `t` from a table of overrides (missing keys fall back to EN) and the locale that picks plural forms for them. */
+export declare function createMessages(overrides?: MessageOverrides | null, locale?: string): Translate
 
 /** An instant: ms or seconds since the epoch, a Date, an ISO 8601 string or a numeric string. */
 export type Time = number | string | Date

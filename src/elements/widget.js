@@ -154,9 +154,10 @@
  * server-side rendering); only constructing a widget does.
  */
 
-import { WIDGETS, EN, createFormatter, createMessages, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
+import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
+import { translator } from './messages-cache.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -218,8 +219,9 @@ const TIME_MARK = '\uE000'
  * when it is narrow, and a translation that puts the time first still works.
  */
 export function syncedParts(t) {
-  const [pre = '', post = ''] = t('time.synced', { time: TIME_MARK }).split(TIME_MARK)
-  return { pre, post }
+  // The message holds one {time}; a second would be text with no node to sit beside, so it is kept as words.
+  const [pre = '', ...rest] = t('time.synced', { time: TIME_MARK }).split(TIME_MARK)
+  return { pre, post: rest.join('') }
 }
 
 export function escapeHtml(s) {
@@ -391,6 +393,25 @@ function findGrid(el) {
   return null
 }
 
+// The widgets that are connected. One subscription to configure() serves them
+// all, and exists only while there is at least one, so nothing is held after the
+// last widget leaves the page.
+const mounted = new Set()
+let stopListening = null
+
+function mount(widget) {
+  mounted.add(widget)
+  if (!stopListening) stopListening = onConfigure(() => mounted.forEach((w) => w.invalidate()))
+}
+
+function unmount(widget) {
+  mounted.delete(widget)
+  if (!mounted.size && stopListening) {
+    stopListening()
+    stopListening = null
+  }
+}
+
 export class TsWidget extends Base {
   static get observedAttributes() {
     return ['size', 'label', 'locale', 'currency', 'time-zone', 'state', 'data']
@@ -409,8 +430,8 @@ export class TsWidget extends Base {
     this._fmt = null
     this._fmtKey = ''
     this._messages = null
-    this._tCache = null
     this._renderT = null
+    this._grid = null // the grid this widget has told about itself, so it hears when the grid's messages or locale change
     this._every = 0
     this._timer = 0
     this._failed = false
@@ -556,10 +577,14 @@ export class TsWidget extends Base {
   }
 
   get formatter() {
-    const options = resolveFormatOptions(this, findGrid(this))
+    return this._formatterFor(currentConfig(), findGrid(this))
+  }
+
+  _formatterFor(config, grid) {
+    const options = resolveFormatOptions(this, grid)
     // configure() can change after we connect, so its values are part of the key.
     // The messages are not: they are a large table the formatter never reads.
-    const config = currentConfig()
+    config = { ...config }
     delete config.messages
     const key = JSON.stringify([options, config])
     if (!this._fmt || key !== this._fmtKey) {
@@ -581,21 +606,37 @@ export class TsWidget extends Base {
 
   /**
    * Resolved per key: this element's messages, then the nearest grid's, then
-   * configure()'s, then EN. Rebuilt when any layer or the locale changes, which
-   * is an identity check: assign a new object to change a table.
+   * configure()'s, then EN. One function is shared by every element that
+   * resolves to the same tables and locale; assign a new object to change a table.
    */
   get t() {
     // Inside a render the answer is already known, and update() asks many times.
-    if (this._renderT) return this._renderT
-    const grid = findGrid(this)
-    const config = currentConfig()
-    const layers = [config.messages || null, (grid && grid.messages) || null, this._messages]
+    return this._renderT || this._translatorFor(currentConfig(), findGrid(this))
+  }
+
+  _translatorFor(config, grid) {
     const locale = resolveFormatOptions(this, grid).locale || config.locale
-    const c = this._tCache
-    if (c && c.locale === locale && c.layers.every((l, i) => l === layers[i])) return c.t
-    const merged = { ...layers[0], ...layers[1], ...layers[2] }
-    this._tCache = { locale, layers, t: createMessages(merged, locale) }
-    return this._tCache.t
+    return translator(config.messages, grid && grid.messages, this._messages, locale)
+  }
+
+  /**
+   * Forget what was worked out from the formatter's and the messages' inputs
+   * and draw once more. The grid calls it when its messages or locale change,
+   * and configure() when any default does.
+   */
+  invalidate() {
+    this._fmt = null
+    this._fmtKey = ''
+    this.requestRender()
+  }
+
+  /** Tell the nearest grid this widget is in it, or that it left; a grid not yet defined is tried again at the next render. */
+  _link(grid) {
+    const target = grid && typeof grid._link === 'function' ? grid : null
+    if (target === this._grid) return
+    if (this._grid) this._grid._unlink(this)
+    this._grid = target
+    if (target) target._link(this)
   }
 
   /** The first match for `selector` in the shadow root, remembered until the template is rebuilt. */
@@ -671,6 +712,8 @@ export class TsWidget extends Base {
     // Before the first render, so the tile never paints unstyled; cheap after the first call.
     ensureTokens()
     this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions', 'messages')
+    mount(this)
+    this._link(findGrid(this))
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
@@ -680,6 +723,8 @@ export class TsWidget extends Base {
 
   disconnectedCallback() {
     if (DEV) clearTimeout(this._undefTimer)
+    unmount(this)
+    this._link(null)
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVisibility)
     this._disarm()
   }
@@ -823,16 +868,19 @@ export class TsWidget extends Base {
   }
 
   _render() {
-    this._renderT = null
-    this._renderT = this.t
+    // Asked once for this render: it is also where a grid that was not defined at connect is found.
+    const config = currentConfig()
+    const grid = findGrid(this)
+    this._link(grid)
+    this._renderT = this._translatorFor(config, grid)
     try {
-      this._draw()
+      this._draw(config, grid)
     } finally {
       this._renderT = null
     }
   }
 
-  _draw() {
+  _draw(config, grid) {
     const Ctor = this.constructor
     const t = this._renderT
     const label = this._name()
@@ -852,7 +900,7 @@ export class TsWidget extends Base {
       return this._showEmpty(label)
     }
     try {
-      const fmt = this.formatter
+      const fmt = this._formatterFor(config, grid)
       if (DEV) {
         this._checkFormatter(fmt)
         this._checkShape(this._data)

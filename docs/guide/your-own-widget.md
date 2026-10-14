@@ -85,10 +85,10 @@ JSON `data` attribute and development warnings all work without more code.
 | `catalogKey` | `null` | A key of the core's `WIDGETS` catalog, for the built-ins |
 | `styles` | `''` | CSS for your content, appended after the shared CSS. Tokens only |
 | `template(variant)` | | Markup inside the tile for one size, built once per size |
-| `viewModel(data, variant, ctx)` | | Pure: data to display strings and numbers. `ctx` is `{ fmt, now, label, ...viewContext() }`. `data` is never `null` here (it is `{}` for a `dataOptional` widget with none). Return `ariaLabel` to name the tile; without it the label does. Throwing shows the error view and logs once, linking `docs/widgets/<tag>.md` |
+| `viewModel(data, variant, ctx)` | | Pure: data to display strings and numbers. `ctx` is `{ fmt, t, now, label, ...viewContext() }`, where `t(key, params?, count?)` reads the element's messages. `data` is never `null` here (it is `{}` for a `dataOptional` widget with none). Return `ariaLabel` to name the tile; without it the label does. Throwing shows the error view and logs once, linking `docs/widgets/<tag>.md` |
 | `dataShape` | `null` | `{ key: kind \| { kind, optional?, of? } }` with kinds `number`, `numeric`, `time`, `string`, `boolean`, `array` and `object`. A bare kind is required; keys not listed are allowed; `numeric` and `time` accept what `toNumber` and `toTime` read. Development only |
 | `dataOptional` | `false` | `true` for a widget useful before it has data: it renders while `data` is `undefined`, with `viewModel` getting `{}`, and shows the skeleton only for `state="loading"` |
-| `emptyText` | `'No data'` | What the empty view says |
+| `emptyText` | `EN['widget.empty']` | What the empty view says; a host's `widget.<catalogKey>.empty` message wins over it |
 | `skeleton(variant)` | a header, a bar and two lines | The loading markup: `.sk` blocks shaped like the content, built with `sk(width, height)` (width in percent snapped to 5, or `'x'`; height in px). Include an element with `data-k="label"` and the base fills it |
 
 Add observed attributes by extending the list and calling the base:

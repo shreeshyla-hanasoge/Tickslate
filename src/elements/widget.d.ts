@@ -1,4 +1,4 @@
-import type { Formatter, Messages, SizeName, Translate, WidgetSpec } from '../core/index.js'
+import type { Formatter, MessageOverrides, SizeName, Translate, WidgetSpec } from '../core/index.js'
 
 /** 'loading' covers a re-fetch over existing data; 'error' shows the error view. */
 export type WidgetState = 'loading' | 'error' | null
@@ -76,7 +76,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   /** Resolved from own attributes, then the nearest <ts-grid>, then configure(); cached. */
   readonly formatter: Formatter
   /** Overrides for this widget's strings; null clears. Assign a new object to change them. */
-  messages: Partial<Messages> | null
+  messages: MessageOverrides | null
   /** Resolved for this element: element → nearest <ts-grid> → configure() → EN. Cached; rebuilt when a table or the locale changes. */
   readonly t: Translate
 

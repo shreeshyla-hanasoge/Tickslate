@@ -1,4 +1,4 @@
-import type { Calendar, Layout, LayoutItem, LayoutIssue, Messages, ProfileSchedule, Catalog, Translate } from '../core/index.js'
+import type { Calendar, Layout, LayoutItem, LayoutIssue, MessageOverrides, ProfileSchedule, Catalog, Translate } from '../core/index.js'
 
 export interface TsLayoutChangeDetail {
   /** The whole layout after the edit; save this. */
@@ -61,7 +61,7 @@ export declare class TsGrid extends HTMLElement {
   /** Defaults to WIDGETS. May be a function that resolves one item to its spec. */
   catalog: Catalog
   /** Overrides for the grid's own strings and for every tile inside it; null clears. Assign a new object to change them. */
-  messages: Partial<Messages> | null
+  messages: MessageOverrides | null
   /** The grid's own translate function: its messages, then configure()'s, then EN, with plural forms from its `locale` attribute. */
   readonly t: Translate
   /** The profile shown; reflects the `profile` attribute. Defaults to 'market'. */

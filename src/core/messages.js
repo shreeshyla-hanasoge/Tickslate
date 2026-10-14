@@ -53,6 +53,7 @@ export const EN = Object.freeze({
   'size.name': '{name}, {cols} by {rows}',
 
   // Time
+  // One {time} only: the words before it and after it are shown either side of the time (syncedParts).
   'time.synced': 'synced {time}',
   'time.days.one': '{count} day',
   'time.days.other': '{count} days',
@@ -199,33 +200,50 @@ function fill(text, params) {
   return text.replace(/\{(\w+)\}/g, (whole, name) => (hasOwn(params, name) && params[name] !== undefined && params[name] !== null ? String(params[name]) : whole))
 }
 
+// The count a plural lookup uses: a number, or a numeric string such as '2'
+// (a count read from markup or JSON). Anything else is not a plural request.
+function countOf(count) {
+  if (typeof count === 'number') return count
+  if (typeof count === 'string' && count.trim() !== '' && Number.isFinite(Number(count))) return Number(count)
+  return undefined
+}
+
 /**
  * A `t(key, params?, count?)` for one table of overrides and one locale. The
- * locale only picks plural forms; the table is the host's and is not matched
- * against it. Builds a closure and logs nothing.
+ * locale picks plural forms for text from the host's table; text that falls
+ * back to EN is English and always takes English plural rules, so a Japanese
+ * app that left a key untranslated still reads "1 day", not "1 days". The table
+ * is the host's and is not matched against the locale. Builds a closure and
+ * logs nothing.
  */
 export function createMessages(overrides, locale) {
   const own = overrides && typeof overrides === 'object' ? overrides : null
-  let rules
-  const category = (n) => {
-    if (!rules) {
+  let hostRules
+  let enRules
+  const category = (n, english) => {
+    if (english) {
+      if (!enRules) enRules = new Intl.PluralRules('en')
+      return enRules.select(n)
+    }
+    if (!hostRules) {
       try {
-        rules = new Intl.PluralRules(locale)
+        hostRules = new Intl.PluralRules(locale)
       } catch {
         // An unknown locale must not take the widget down; English plural rules are the safe answer.
-        rules = new Intl.PluralRules('en')
+        hostRules = new Intl.PluralRules('en')
       }
     }
-    return rules.select(n)
+    return hostRules.select(n)
   }
   return (key, params, count) => {
-    const plural = typeof count === 'number'
-    const keys = plural ? [`${key}.${category(count)}`, `${key}.other`, key] : [key]
+    const n = countOf(count)
+    const plural = n !== undefined
+    const chain = (english) => (plural ? [`${key}.${category(n, english)}`, `${key}.other`, key] : [key])
     // The host's whole chain first, so a translation that supplies only
     // `.other` is never answered with an English `.one`.
-    const text = pick(own, keys)
-    const found = text !== undefined ? text : pick(EN, keys)
-    return found === undefined ? key : fill(found, plural ? { count, ...params } : params)
+    let found = pick(own, chain(false))
+    if (found === undefined) found = pick(EN, chain(true))
+    return found === undefined ? key : fill(found, plural ? { count: n, ...params } : params)
   }
 }
 

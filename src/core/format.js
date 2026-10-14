@@ -10,10 +10,13 @@
 const MINUS = '−'
 
 let defaults = {}
+// Nothing is registered until a host or a mounted widget asks, so importing the core has no effect.
+const listeners = new Set()
 
 /**
  * Sets the default locale, currency and time zone for formatters made without
- * their own, and the messages every widget reads (null clears them).
+ * their own, and the messages every widget reads (null clears them). Whoever
+ * subscribed with onConfigure() hears about every call.
  */
 export function configure(options = {}) {
   defaults = { ...defaults, ...pick(options) }
@@ -21,6 +24,32 @@ export function configure(options = {}) {
     const m = options.messages
     if (m && typeof m === 'object') defaults.messages = m
     else delete defaults.messages
+  }
+  // A copy, so a listener that subscribes or unsubscribes while being called does not skip another;
+  // one that was unsubscribed in the meantime is not called.
+  for (const entry of [...listeners]) {
+    if (!listeners.has(entry)) continue
+    try {
+      entry.fn(currentConfig())
+    } catch (err) {
+      // One listener's failure must not stop the others or the configure() call; the host still hears of it.
+      queueMicrotask(() => {
+        throw err
+      })
+    }
+  }
+}
+
+/**
+ * Calls `fn` with the new defaults after every configure(), and returns a
+ * function that stops it. Widgets use it to draw again; a host can too.
+ */
+export function onConfigure(fn) {
+  // An entry per call, so two subscriptions of one function are separate and each unsubscribe takes only its own.
+  const entry = { fn }
+  listeners.add(entry)
+  return () => {
+    listeners.delete(entry)
   }
 }
 

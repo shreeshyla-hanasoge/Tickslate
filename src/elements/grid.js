@@ -27,13 +27,13 @@ import {
   addItem,
   activeProfile,
   columnsFor,
-  createMessages,
   currentConfig,
   dropIndex,
   emptyLayout,
   footprint,
   moveItem,
   nextProfileChange,
+  onConfigure,
   place,
   readLayout,
   removeItem,
@@ -62,6 +62,7 @@ import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
 import { keyAction, tapAction } from './grid-input.js'
+import { translator } from './messages-cache.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -296,8 +297,10 @@ export class TsGrid extends Base {
     this._emptyPanel = root.querySelector('.empty')
     this._hint = root.querySelector('.hint')
     this._messages = null
-    this._tCache = null
     this._tText = null // the translate function the static texts were last written with
+    this._ownLabel = null // the aria-label the grid gave itself as a last resort, so it only ever rewrites its own
+    this._widgets = new Set() // the widgets inside it, at any depth of shadow roots, which it tells when its messages or locale change
+    this._offConfigure = null
     // Each place Add back appears: its button, its list, and what counts as inside it.
     this._addBack = {
       pill: { add: this._pill.querySelector('.add'), menu: this._pill.querySelector('.menu'), wrap: this._pill },
@@ -478,26 +481,40 @@ export class TsGrid extends Base {
 
   set messages(value) {
     this._messages = value && typeof value === 'object' ? value : null
-    this._syncText()
-    // Tiles resolve their strings through this grid, so they draw again.
-    if (typeof this.querySelectorAll === 'function') {
-      for (const el of this.querySelectorAll('*')) if (typeof el.requestRender === 'function') el.requestRender()
-    }
+    this._refreshText()
+    this._invalidateWidgets()
   }
 
   /**
    * The grid's translate function: its messages, then configure(), then EN,
-   * with plural forms from its `locale` attribute. Rebuilt when either table
-   * or the locale changes, so assign a new object to change a table.
+   * with plural forms from its `locale` attribute. It is the one its tiles
+   * share when they have no messages of their own, so assign a new object to
+   * change a table.
    */
   get t() {
     const config = currentConfig()
-    const layers = [config.messages || null, this._messages]
-    const locale = this.getAttribute('locale') || config.locale
-    const c = this._tCache
-    if (c && c.locale === locale && c.layers[0] === layers[0] && c.layers[1] === layers[1]) return c.t
-    this._tCache = { locale, layers, t: createMessages({ ...layers[0], ...layers[1] }, locale) }
-    return this._tCache.t
+    return translator(config.messages, this._messages, null, this.getAttribute('locale') || config.locale)
+  }
+
+  /** A widget in this grid says so, so it hears of changes even through a host component's shadow root. */
+  _link(widget) {
+    this._widgets.add(widget)
+  }
+
+  _unlink(widget) {
+    this._widgets.delete(widget)
+  }
+
+  _invalidateWidgets() {
+    // A copy: drawing again can link or unlink.
+    for (const widget of [...this._widgets]) widget.invalidate()
+  }
+
+  /** The strings the grid wrote itself, written again from the current messages, and the controls built from them. */
+  _refreshText() {
+    // Before the first measure the controls are built by connectedCallback.
+    if (this.isConnected && this._m) this._syncControls()
+    else this._syncText()
   }
 
   /** Write the texts that sit in the static markup, and redo the ones built from messages, when the translate function changed. */
@@ -511,6 +528,11 @@ export class TsGrid extends Base {
     this._pill.querySelector('.done').textContent = t('grid.done')
     this._emptyPanel.querySelector('.note').textContent = t('grid.emptyBoard')
     this._hint.textContent = t('grid.instructions')
+    // Only a name the grid gave itself: a host's own aria-label is never touched.
+    if (this._ownLabel !== null && this.getAttribute('aria-label') === this._ownLabel) {
+      this._ownLabel = t('grid.dashboard')
+      this.setAttribute('aria-label', this._ownLabel)
+    }
     // The Add back list and each tile's chrome names were built from the old table.
     this._menuSig = ''
     for (const id of this._chromes.keys()) this._chrome(id)
@@ -683,6 +705,14 @@ export class TsGrid extends Base {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
+    // A messages property set before the element was defined would shadow the accessor.
+    if (Object.prototype.hasOwnProperty.call(this, 'messages')) {
+      const value = this.messages
+      delete this.messages
+      this.messages = value
+    }
+    // configure() may change the messages or the locale while the grid is on the page; the widgets hear of it themselves.
+    this._offConfigure = onConfigure(() => this._refreshText())
     // Measuring renders, and rendering changes the grid's own height, which the
     // observer reports again within the same frame. WebKit raises that as an
     // uncaught "ResizeObserver loop" error, so the work waits for the next frame.
@@ -706,6 +736,8 @@ export class TsGrid extends Base {
   }
 
   disconnectedCallback() {
+    if (this._offConfigure) this._offConfigure()
+    this._offConfigure = null
     this._resizeObserver.disconnect()
     cancelAnimationFrame(this._measureFrame)
     this._mutationObserver.disconnect()
@@ -760,7 +792,8 @@ export class TsGrid extends Base {
       this._sync(false)
       if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: this.profile }))
     } else if (name === 'locale') {
-      this._syncText()
+      this._refreshText()
+      this._invalidateWidgets()
     }
   }
 
@@ -1197,7 +1230,10 @@ export class TsGrid extends Base {
   _focus(target) {
     if (target === this) {
       if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '-1')
-      if (!this.hasAttribute('aria-label') && !this.hasAttribute('aria-labelledby')) this.setAttribute('aria-label', this.t('grid.dashboard'))
+      if (!this.hasAttribute('aria-label') && !this.hasAttribute('aria-labelledby')) {
+        this._ownLabel = this.t('grid.dashboard')
+        this.setAttribute('aria-label', this._ownLabel)
+      }
       if (!this.hasAttribute('role')) this.setAttribute('role', 'group')
     }
     target.focus()

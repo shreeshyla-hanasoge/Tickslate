@@ -31,11 +31,12 @@ list wins.
    accounts, sessions, feed entries) are a `<table>` with header cells, or a
    `<ul>`/`<ol>` of `<li>`, or the matching ARIA roles. Never a stack of bare
    `<div>`s.
-4. **Strings sit in one constant object per module.** Every visible or spoken
-   English string (labels, empty and error text, button names, announcements)
-   is in one frozen object such as `STRINGS` at the top of the module, never
-   inline in templates or view models, so overridable messages (P1) can
-   replace them all.
+4. **Strings come from messages.** Every visible or spoken English string
+   (labels, empty and error text, button names, announcements) is a key in
+   `EN` (`src/core/messages.js`), never inline in a template or view model.
+   A view model reads it with `ctx.t`, and `update()` fills static template
+   text into a `data-k` node with `this.t`, so a host can translate or reword
+   every one.
 
 ## Figures
 
