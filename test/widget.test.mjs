@@ -295,6 +295,13 @@ describe('rendering', () => {
     assert.equal(event.composed, true)
   })
 
+  test('emit is cancelable and returns false when a listener cancels it', () => {
+    const el = make()
+    assert.equal(el.emit('retry'), true)
+    el.addEventListener('ts-action', (e) => e.preventDefault())
+    assert.equal(el.emit('retry'), false)
+  })
+
   describe('every', () => {
     test('re-renders on the period while connected and visible', async (t) => {
       t.mock.timers.enable({ apis: ['setInterval'] })

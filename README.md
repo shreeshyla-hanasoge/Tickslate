@@ -206,6 +206,9 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
   [Svelte](docs/guide/frameworks/svelte.md),
   [Angular](docs/guide/frameworks/angular.md)
 - [Saving layouts](docs/guide/saving-layouts.md)
+- [Your own widget](docs/guide/your-own-widget.md)
+- Reference: [widgets](docs/widgets/), [core](docs/reference/core.md),
+  [events](docs/reference/events.md), [theming](docs/theming.md)
 - [Server templates](docs/guide/server-templates.md) (Blade, Django)
 - [Bring your own chart](docs/guide/bring-your-own-chart.md) (Chart.js, ECharts)
 - The contract: [RFC 0001](docs/rfc/0001-api.md) and

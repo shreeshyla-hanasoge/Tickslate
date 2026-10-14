@@ -590,7 +590,9 @@ export class TsGrid extends Base {
     this._layout = withProfile(this._layout, profile, addItem(list, item, this._resolve))
     this._hideToast(false)
     this._sync(true)
-    this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'add', id })
+    const items = this._profileItems()
+    const index = items.findIndex((it) => it.id === id)
+    this._emit('ts-layout-change', { layout: this._layout, items, previous, profile, reason: 'add', id, index, item: items[index] })
     return true
   }
 

@@ -16,7 +16,7 @@ import { linePaths } from './chart.js'
 import { toNumber, toTime } from '../core/index.js'
 
 // English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({ empty: 'No trades today', shortLabel: 'Today' })
+export const STRINGS = Object.freeze({ empty: 'No trades today', shortLabel: 'Today', realised: 'Realised', unrealised: 'Unrealised', fees: 'Fees' })
 
 // Characters the headline holds per variant before fmt.fit() switches it to
 // the compact form. Sized for the 34px / 48px figures in a tile that never
@@ -248,9 +248,9 @@ const TEMPLATES = {
     <span class="sm mut" data-k="note"></span>
   </div>
   <div class="col rhs">
-    <div class="rowb"><span class="lb f1">Realised</span><span class="n" data-k="realized"></span></div>
-    <div class="rowb"><span class="lb f1">Unrealised</span><span class="n" data-k="unrealized"></span></div>
-    <div class="rowb"><span class="lb f1">Fees</span><span class="n mut" data-k="fees"></span></div>
+    <div class="rowb"><span class="lb f1">${STRINGS.realised}</span><span class="n" data-k="realized"></span></div>
+    <div class="rowb"><span class="lb f1">${STRINGS.unrealised}</span><span class="n" data-k="unrealized"></span></div>
+    <div class="rowb"><span class="lb f1">${STRINGS.fees}</span><span class="n mut" data-k="fees"></span></div>
   </div>
 </div>`,
   M: `
@@ -274,9 +274,9 @@ const TEMPLATES = {
 </div>
 <div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
-  <div class="col"><span class="lb">Realised</span><span class="n md" data-k="realized"></span></div>
-  <div class="col"><span class="lb">Unrealised</span><span class="n md" data-k="unrealized"></span></div>
-  <div class="col"><span class="lb">Fees</span><span class="n md mut" data-k="fees"></span></div>
+  <div class="col"><span class="lb">${STRINGS.realised}</span><span class="n md" data-k="realized"></span></div>
+  <div class="col"><span class="lb">${STRINGS.unrealised}</span><span class="n md" data-k="unrealized"></span></div>
+  <div class="col"><span class="lb">${STRINGS.fees}</span><span class="n md mut" data-k="fees"></span></div>
 </div>`,
 }
 

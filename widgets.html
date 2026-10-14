@@ -6,7 +6,7 @@
 <title>Tickslate widget gallery</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
-<link rel="stylesheet" href="/src/themes/tokens.css">
+<link rel="stylesheet" href="./src/themes/tokens.css">
 <style>
   /* Dark mode is opt-in (data-theme="auto" follows the OS), so the Paper
      block below stays light by default; the Graphite block opts in with its
@@ -19,6 +19,7 @@
   h3 { font: 600 15px/1.2 var(--ts-font-ui); margin: 28px 0 12px; }
   h4 { font: 600 11px/1.2 var(--ts-font-ui); margin: 20px 0 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
   a { color: var(--ts-accent); }
+  .links { display: flex; gap: 14px; font-size: 13px; font-weight: 500; }
   a:focus-visible, input:focus-visible { outline: 2px solid var(--ts-accent); outline-offset: 2px; }
   .intro { color: var(--ts-muted); font-size: 13px; margin: 0 0 16px; max-width: 80ch; }
 
@@ -38,6 +39,17 @@
   .set.phone { --ts-gap: var(--ts-gap-compact); gap: 10px 10px; }
   figure { margin: 0; }
   figcaption { margin-top: 6px; font-size: 11px; color: var(--ts-muted); font-variant-numeric: tabular-nums; }
+  /* Content slotted into the cards, tokens only. */
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .rows li { display: flex; align-items: baseline; gap: 10px; min-width: 0; padding-block: 7px; border-top: 1px solid var(--ts-line); }
+  .rows li:first-child { border-top: 0; padding-top: 0; }
+  .rows .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rows .when { font-size: 11px; color: var(--ts-muted); font-variant-numeric: tabular-nums; }
+  .big { font: var(--ts-num-weight) 34px/1 var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; }
+  .cta { min-height: 28px; padding: 0 10px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line);
+    background: transparent; color: var(--ts-accent); font: 500 12px var(--ts-font-ui); cursor: pointer; }
+  .cta:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
+  @media (pointer: coarse) { .cta { min-height: 44px; min-width: 44px; } }
   @media (max-width: 699px) { .page { padding: 16px; } .theme { padding: 12px; } }
 </style>
 </head>
@@ -45,9 +57,9 @@
 <div class="page">
   <header>
     <h1>Widget gallery</h1>
-    <a href="/">Playground</a>
+    <nav class="links" aria-label="Other pages"><a href="index.html">Playground</a><a href="examples/index.html">Examples</a></nav>
   </header>
-  <p class="intro">Every v1 widget that exists so far, at each size it supports, in both themes, at the real sizes the grid gives it.
+  <p class="intro">Every widget in 0.1.0 (the generic card, metric and chart, and the finance ones), at each size it supports, in both themes, at the real sizes the grid gives it. Each widget ends with a states row: loading, empty and error with Retry.
     All figures are synthetic. Today's P&amp;L and the session clock run on the same clock as the controls below.</p>
 
   <div class="controls" role="group" aria-label="Gallery controls">
@@ -66,8 +78,8 @@
 </div>
 
 <script type="module">
-  import { configure, createCalendar, presets, localDate, zonedTime } from '/src/core/index.js'
-  import '/src/elements/index.js'
+  import { configure, createCalendar, presets, localDate, zonedTime } from './src/core/index.js'
+  import './src/elements/index.js'
 
   const TZ = 'Asia/Kolkata'
   configure({ locale: 'en-IN', currency: 'INR', timeZone: TZ })
@@ -157,7 +169,28 @@
 
   const sessionClock = { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
 
+  // The generic widgets, with made-up numbers.
+  const day = (n) => Date.UTC(2026, 7, 3 + n)
+  const wave = (base, amp, phase, drift, n = 40) => Array.from({ length: n }, (_, i) => Math.round((base + amp * Math.sin((i + phase) / 4.6) + drift * i) * 100) / 100)
+  const pts = (values) => values.map((y, i) => ({ x: day(i), y }))
+  const metricData = () => ({
+    value: 1204, previous: 1075, compareLabel: 'vs last week', asOf: FROZEN, target: 1500,
+    caption: 'New accounts, this week',
+    series: [820, 860, 905, 880, 940, 1010, 985, 1040, 1100, 1075, 1150, 1204],
+  })
+  const chartData = () => ({
+    series: [
+      { name: 'Requests', kind: 'area', points: pts(wave(4200, 700, 0, 12)) },
+      { name: 'Errors', points: pts(wave(3100, 500, 5, 8)) },
+      { name: 'Cached', points: pts(wave(2000, 400, 9, 5)) },
+    ],
+    asOf: FROZEN,
+  })
+
   const DATA = {
+    'ts-card': () => ({ asOf: FROZEN }),
+    'ts-metric': metricData,
+    'ts-chart': chartData,
     'ts-today-pnl': () => todayPnl(lossDay),
     'ts-equity-curve': (() => { const data = equityCurve(); return () => data })(),
     'ts-session-clock': () => sessionClock,
@@ -169,7 +202,29 @@
   const DESKTOP = { S: [304, 150], Wide: [624, 150], M: [624, 316], XL: [1264, 316], Banner: [1264, 150] }
   const PHONE = { S: [170, 150], Wide: [351, 150], M: [351, 310], Banner: [351, 150] }
 
+  const DESKTOP_MORE = { Tall: [304, 316], L: [944, 316] }
+  Object.assign(DESKTOP, DESKTOP_MORE)
+  Object.assign(PHONE, { Tall: [170, 310] })
+
+  // What a card holds: the host's own content, slotted. Small sizes get a
+  // headline, bigger ones a list, as a real dashboard would.
+  const ROWS = [['Larkspur Press', '2 min'], ['Tidewater Bakery', '9 min'], ['Mossgate Cycles', '14 min'], ['Pinecone Audio', '31 min'], ['Halyard Books', '48 min'], ['Quarry Lane Studio', '1 h']]
+  function fillCard(el, size) {
+    el.setAttribute('label', 'New subscribers')
+    el.setAttribute('sizes', 'S Wide Tall M L Banner XL')
+    if (size === 'S' || size === 'Wide') {
+      el.insertAdjacentHTML('beforeend', '<span slot="value" class="big">42</span><span slot="footer">Newest 2 min ago</span>')
+      return
+    }
+    if (size === 'Tall') el.setAttribute('scrollable', '')
+    const rows = size === 'Banner' ? ROWS.slice(0, 2) : ROWS
+    el.insertAdjacentHTML('beforeend', `<ul class="rows">${rows.map(([n, w]) => `<li><span class="nm">${n}</span><span class="when">${w}</span></li>`).join('')}</ul><span slot="footer">Newest first</span>`)
+  }
+
   const GALLERY = [
+    { tag: 'ts-card', title: 'Card', desktop: ['S', 'Wide', 'Tall', 'M', 'L', 'Banner', 'XL'], phone: ['S', 'Wide', 'Tall', 'M', 'Banner'], emptySize: 'M', fill: fillCard },
+    { tag: 'ts-metric', title: 'Metric', desktop: ['S', 'Wide', 'M'], phone: ['S', 'Wide', 'M'], emptySize: 'M' },
+    { tag: 'ts-chart', title: 'Chart', desktop: ['Wide', 'M', 'L', 'XL'], phone: ['Wide', 'M'], emptySize: 'M' },
     { tag: 'ts-today-pnl', title: "Today's P&L", desktop: ['S', 'Wide', 'M'], phone: ['S', 'Wide', 'M'], emptySize: 'M' },
     { tag: 'ts-equity-curve', title: 'Equity curve', desktop: ['Wide', 'M', 'XL'], phone: ['Wide', 'M'], emptySize: 'M' },
     { tag: 'ts-session-clock', title: 'Session clock', desktop: ['S', 'Banner'], phone: ['S', 'Banner'], emptySize: 'S' },
@@ -184,14 +239,26 @@
   let frozen = true
   const instances = []
 
-  function make(tag, size, [width, height], empty) {
+  const MODE_NOTE = { data: '', loading: ' · loading, data undefined', empty: ' · empty, data null', error: ' · error, with Retry' }
+  const ERROR_TEXT = "Couldn't reach the data service"
+
+  // mode is 'data' or one of the three states (RFC 0002 §2).
+  function make(tag, size, [width, height], mode = 'data', fill) {
     const el = document.createElement(tag)
     el.setAttribute('size', size)
     el.style.width = `${width}px`
-    instances.push({ el, tag, empty })
+    // An empty card shows the host's call to action, slotted; a full one shows its content.
+    if (tag === 'ts-card') {
+      if (mode === 'empty') {
+        el.setAttribute('label', 'Archived reports')
+        el.insertAdjacentHTML('beforeend', '<button slot="empty" type="button" class="cta">Add a report</button>')
+      } else if (fill) fill(el, size)
+      else el.setAttribute('label', 'Notes')
+    }
+    instances.push({ el, tag, mode })
     const figure = document.createElement('figure')
     const caption = document.createElement('figcaption')
-    caption.textContent = `${size} · ${width} × ${height}${empty ? ' · no data' : ''}`
+    caption.textContent = `${size} · ${width} × ${height}${MODE_NOTE[mode]}`
     figure.append(el, caption)
     return figure
   }
@@ -223,9 +290,9 @@
       h3.textContent = w.title
       block.append(
         h3,
-        ...group('Desktop', w.desktop.map((s) => make(w.tag, s, DESKTOP[s], false))),
-        ...group('Phone', w.phone.map((s) => make(w.tag, s, PHONE[s], false)), true),
-        ...group('Empty state', [make(w.tag, w.emptySize, DESKTOP[w.emptySize], true)]),
+        ...group('Desktop', w.desktop.map((s) => make(w.tag, s, DESKTOP[s], 'data', w.fill))),
+        ...group('Phone', w.phone.map((s) => make(w.tag, s, PHONE[s], 'data', w.fill)), true),
+        ...group('States', ['loading', 'empty', 'error'].map((m) => make(w.tag, w.emptySize, DESKTOP[w.emptySize], m, w.fill))),
       )
     }
     themesEl.append(block)
@@ -235,11 +302,37 @@
 
   const frozenClock = () => FROZEN
   function apply() {
-    for (const { el, tag, empty } of instances) {
+    for (const { el, tag, mode } of instances) {
       el.clock = frozen ? frozenClock : null
-      el.data = empty ? null : DATA[tag]()
+      el.state = null
+      el.error = null
+      // The states are built from the data property alone, as a host would:
+      // undefined is loading, null is empty, and error is a message.
+      if (mode === 'loading') {
+        el.data = undefined
+        // The state says the wait is on purpose: a widget with undefined data and
+        // no state warns after 10 s that someone forgot to set it. A card has no
+        // data of its own to wait for, so it needs the state to show a skeleton.
+        el.state = 'loading'
+      } else if (mode === 'empty') el.data = null
+      else {
+        el.data = DATA[tag]()
+        if (mode === 'error') {
+          el.actions = ['retry']
+          el.error = ERROR_TEXT
+        }
+      }
     }
   }
+
+  // Retry loads for a moment and fails again, like an outage that hasn't cleared.
+  document.addEventListener('ts-action', (e) => {
+    if (e.detail.action !== 'retry') return
+    const el = e.target
+    el.error = null
+    el.state = 'loading'
+    setTimeout(() => { el.state = null; el.error = ERROR_TEXT }, 800)
+  })
 
   for (const radio of document.querySelectorAll('input[name="time"]')) {
     radio.addEventListener('change', () => {

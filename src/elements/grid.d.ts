@@ -11,9 +11,9 @@ export interface TsLayoutChangeDetail {
   reason: 'move' | 'resize' | 'remove' | 'add' | 'undo'
   /** The item that was moved, resized, removed or added back. Empty for 'undo', which restores a whole profile: compare `previous` and `layout`. */
   id: string
-  /** On 'remove': the item's index in the profile before it went. */
+  /** On 'remove': the item's index in the profile before it went. On 'add': its index after it came back. */
   index?: number
-  /** On 'remove': the item that was removed. */
+  /** On 'remove': the item that was removed. On 'add': the item as restored. */
   item?: LayoutItem
 }
 

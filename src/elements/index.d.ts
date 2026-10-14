@@ -76,6 +76,10 @@ export interface MetricData extends WidgetFreshness {
 }
 
 export interface MetricModel {
+  label: string
+  live: boolean
+  time: string
+  sparkLabel: string
   ariaLabel: string
   value: string
   delta: string
