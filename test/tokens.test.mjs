@@ -74,6 +74,10 @@ for (const [name, theme] of Object.entries(themes)) {
     for (const token of ['--ts-axis', '--ts-focus']) {
       test(`${token} reaches 3:1 on --ts-surface`, () => on(token, '--ts-surface', 3))
     }
+    // A line or an area is a graphic, so 3:1 is the floor (WCAG 1.4.11), not 4.5:1.
+    for (let n = 1; n <= 6; n++) {
+      test(`--ts-series-${n} reaches 3:1 on --ts-surface`, () => on(`--ts-series-${n}`, '--ts-surface', 3))
+    }
   })
 }
 
@@ -83,4 +87,17 @@ test('--ts-axis and --ts-focus exist in both themes, and focus defaults to the a
     assert.equal(colour(theme, '--ts-focus'), colour(theme, '--ts-accent'))
   }
   assert.ok(graphite['--ts-axis'] && graphite['--ts-focus'])
+})
+
+test('the six series colours are defined in both themes and are all different within each', () => {
+  for (const theme of [paper, graphite]) {
+    const colours = [1, 2, 3, 4, 5, 6].map((n) => {
+      const c = theme[`--ts-series-${n}`]
+      assert.match(c, /^#[0-9a-f]{6}$/i, `--ts-series-${n}`)
+      return c.toLowerCase()
+    })
+    assert.equal(new Set(colours).size, 6)
+  }
+  assert.ok(graphite['--ts-series-1'], 'the dark block restates the series')
+  assert.notEqual(graphite['--ts-series-1'], paper['--ts-series-1'])
 })

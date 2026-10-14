@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickslate quick start</title>
+<!--
+  The README's quick start, between the markers below. test/readme.test.mjs
+  fails if the two drift apart, so change both together. The one difference is
+  nothing: the page imports 'tickslate/elements' like the README does, and
+  vite.config.js aliases that name to the source for the dev server, so the
+  example runs under `npm run dev` before anything is published.
+-->
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  /* Page chrome only. */
+  body { margin: 0; padding: 24px; font: 14px system-ui, sans-serif; }
+  .page { max-width: 960px; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div class="page">
+<h1>Quick start</h1>
+<!-- quickstart -->
+<ts-grid>
+  <ts-metric label="Signups" size="S" data='{"value": 1204, "previous": 1075, "compareLabel": "vs last week"}'></ts-metric>
+  <ts-chart label="Revenue" size="Wide" data='{"series": [{"name": "Revenue", "points": [{"x": "2026-09-01", "y": 11800}, {"x": "2026-09-02", "y": 12400}, {"x": "2026-09-03", "y": 12100}]}]}'></ts-chart>
+  <ts-card label="Notes" sizes="S Wide M"><p>Deploy freeze from Friday.</p></ts-card>
+</ts-grid>
+<script type="module">
+  import { persistLayout } from 'tickslate/elements'
+  persistLayout(document.querySelector('ts-grid'), { key: 'ops-dashboard' })
+</script>
+<!-- /quickstart -->
+</div>
+</body>
+</html>

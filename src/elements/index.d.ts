@@ -96,6 +96,60 @@ export declare class TsMetric extends TsWidget<MetricData> {
   static metricModel(data: MetricData, variant: SizeName, ctx: ViewModelContext): MetricModel
 }
 
+export type ChartKind = 'line' | 'area'
+
+export interface ChartSeries {
+  id?: string
+  name: string
+  /** Default 'line'. */
+  kind?: ChartKind
+  /** Read in any order; x with `toTime` (or `toNumber` when `xType` is 'number'), y with `toNumber`. */
+  points: Array<{ x: Time; y: Numeric }>
+}
+
+export interface ChartOptions extends WidgetFreshness {
+  /** How x is read. Default 'time'. */
+  xType?: 'time' | 'number'
+  /** How each series' last value is shown. Default 'number'; 'percent' takes fractions, 'duration' milliseconds. */
+  format?: 'number' | 'money' | 'percent' | 'duration'
+  decimals?: number
+  /** Formatted with `fmt.unit`: '182 ms'. */
+  unit?: string
+  /** Accepted for parity with `<ts-metric>`; no chart size shows a change yet. */
+  goodWhen?: 'up' | 'down' | 'neither'
+}
+
+/** Either named series, or rows with the keys to read. At most four series are drawn. */
+export type ChartData = ChartOptions &
+  (
+    | { series: ChartSeries[] }
+    | {
+        rows: Array<Record<string, unknown>>
+        /** The row key for x. */
+        x: string
+        y: string | string[] | Array<{ key: string; name?: string; kind?: ChartKind }>
+      }
+  )
+
+export interface ChartModel {
+  /** What the svg's `aria-label` says: 'Revenue, last 12,400; Cost, last 8,100'. */
+  ariaLabel: string
+  series: Array<{ name: string; kind: ChartKind; line: string; area: string; last: string }>
+  /** `index` 1 to 4 picks `--ts-series-<n>`. */
+  legend: Array<{ name: string; index: number }>
+  axis: { start: string; middle: string; end: string }
+  /** Where the zero line falls in the 400 by 100 drawing box, drawn in `--ts-axis`. */
+  zeroY: number
+  /** Rows or points that couldn't be read. */
+  dropped: number
+}
+
+/** <ts-chart>, sizes Wide · M · L · XL. Lines and areas, up to four series, legend from M up. */
+export declare class TsChart extends TsWidget<ChartData> {
+  /** Pure: data to paths, labels and the accessible name. */
+  static chartModel(data: ChartData, variant: SizeName, ctx: ViewModelContext): ChartModel
+}
+
 export interface TodayPnlData extends WidgetFreshness {
   /** Shown exactly as given; the widget never recomputes it from the parts. */
   net: Numeric
@@ -148,6 +202,7 @@ declare global {
   interface HTMLElementTagNameMap {
     'ts-card': TsCard
     'ts-metric': TsMetric
+    'ts-chart': TsChart
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock

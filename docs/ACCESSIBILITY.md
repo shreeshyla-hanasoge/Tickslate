@@ -135,7 +135,6 @@ under RFC 0001 §11, before this list. Known gaps, and who closes them:
 | Physical CSS properties (`left`, `margin-left`, `padding-left`, `text-align: right`) | Session clock, equity curve | Tile chrome (P1) |
 | Figures without `unicode-bidi: isolate` | All three widgets | Tile chrome (P1) |
 | Strings inline in templates, not in one constant object | All three widgets | Widget states (P0) for the states; messages (P1) for the rest |
-| Each tile's edit chrome is a `role="button"` wrapper around the remove button (nested interactive), and focus rings are box shadows | `<ts-grid>` | Accessible editing (P0) |
 
 New widgets (`<ts-card>`, `<ts-metric>`, `<ts-chart>` and everything after)
 meet the whole list from their first PR.
