@@ -2,38 +2,29 @@
 
 Publishing is the maintainer's. Agents prepare a release and stop before
 `npm publish`, tagging and creating a GitHub release. This page is the exact
-list of what to run, for 0.1.0 and for later versions (replace the version).
+list of what to run for a release. Below, `X.Y.Z` stands for the version you
+are cutting.
 
-## What is already done for 0.1.0
+0.1.0 is published (npm, and this repository is public). The steps that only
+the first release needed are gone from this page; what follows is how to cut
+the next one.
 
-- `CHANGELOG.md` has a `0.1.0 — Unreleased` section, and the per-story
-  fragments in `changes/` are folded in and deleted.
-- `package.lib.json` and `src/core/index.js` both read `0.1.0`;
-  `test/core.test.mjs` fails if they differ, and `verify:package` checks the
-  built files against `dist-lib/package.json`.
-- Size budgets are re-baselined (`scripts/check-size.mjs`, RFC 0002 §9).
+## Prepare the release
 
-## Before you publish
-
-These steps are the maintainer-only part of
-[PUBLIC-CHECKLIST.md](PUBLIC-CHECKLIST.md). Do them in order, because npm
-links (homepage, bugs, repository) 404 while the repository is private.
-
-1. **Settle the flagged figures and decide on history.** Answer the figures
-   table in the checklist. If any is real, rewrite history (or start a fresh
-   root commit) before the repository is public. GitHub keeps pull request
-   refs, so ask GitHub Support to purge them after a rewrite. If none is real,
-   history can stay.
-2. **Make the repository public** (Settings, General, Danger Zone, Change
-   visibility). Then check that the homepage, issues and repository URLs in
-   `package.lib.json` return 200.
-3. **Enable private vulnerability reporting** (Settings, Code security,
-   Private vulnerability reporting, Enable).
-4. Decide whether to keep the author email in `package.lib.json`. npm shows it
-   publicly.
-5. Confirm you are logged in to npm as the account that should own the
-   package: `npm whoami`. The name `tickslate` was free when last checked
-   (`npm view tickslate` returned 404).
+1. **Fold the changelog.** `CHANGELOG.md` keeps an empty `## Unreleased`
+   section at the top. Rename what is under it into a new
+   `## X.Y.Z — YYYY-MM-DD` section (today's date), add the entries from the
+   story fragments in `changes/` as `changes/README.md` describes, delete the
+   folded fragments in the same commit, and leave a fresh empty
+   `## Unreleased` above it.
+2. **Bump the version** in `package.lib.json` and in `src/core/index.js`.
+   `test/core.test.mjs` fails if they differ, and `verify:package` checks the
+   built files against `dist-lib/package.json`.
+3. **Re-baseline the size budgets** if the release changes them
+   (`scripts/check-size.mjs`, RFC 0002 §9).
+4. Update the pinned jsDelivr URL in the README to `tickslate@X.Y.Z`.
+5. Confirm you are logged in to npm as the account that owns the package:
+   `npm whoami`.
 
 ## Publish
 
@@ -43,29 +34,29 @@ Run from the repository root, on the merged branch, with a clean tree.
 # 1. Test, build everything, check the package and the size budgets.
 npm run release
 
-# 2. Real-browser tests (Chromium, WebKit, iPhone profile). Needs browsers:
-#    npx playwright install --with-deps
+# 2. Real-browser tests on every project in playwright.config.mjs: chromium,
+#    webkit, firefox, mobile-safari (iPhone 14) and mobile-chrome (Pixel 7).
+#    Needs browsers: npx playwright install --with-deps
 npm run test:browser
 
 # 3. Inspect what will ship: the file list and the sizes. Nothing is published.
 npm publish ./dist-lib --dry-run
 
-# 4. Edit CHANGELOG.md: replace "Unreleased" in the 0.1.0 heading with the
-#    release date (YYYY-MM-DD) and commit it. Then repeat step 1 so the
-#    tarball holds the dated changelog.
+# 4. Commit the dated changelog and version bump from "Prepare the release",
+#    then repeat step 1 so the tarball holds them.
 
 # 5. Publish. If your npm account uses 2FA, pass --otp=<code>.
 npm publish ./dist-lib
 
 # 6. Tag the commit you published and push the tag.
-git tag -a v0.1.0 -m "0.1.0"
-git push origin v0.1.0
+git tag -a vX.Y.Z -m "X.Y.Z"
+git push origin vX.Y.Z
 
 # 7. Create the GitHub release from the changelog section.
-gh release create v0.1.0 --title "0.1.0" --notes-file <(awk '/^## 0.1.0/{f=1;next} /^## /{f=0} f' CHANGELOG.md)
+gh release create vX.Y.Z --title "X.Y.Z" --notes-file <(awk '/^## X.Y.Z/{f=1;next} /^## /{f=0} f' CHANGELOG.md)
 ```
 
-What to look for in step 3: `dist-lib/package.json` reads `0.1.0`; the file
+What to look for in step 3: `dist-lib/package.json` reads `X.Y.Z`; the file
 list holds `index.js`, `elements.js`, `elements.dev.js`, `umd/tickslate.umd.js`,
 `tokens.css`, the `.d.ts` files, `README.md`, `LICENSE`, `CHANGELOG.md` and
 `package.json`, and nothing else (`verify:package` enforces the allowlist);
@@ -78,7 +69,7 @@ and the sizes match the `npm run size` table.
 2. Smoke test it as a user would, in an empty folder:
    `npm install tickslate`, then import `tickslate/elements` in a page.
 3. Check the pinned jsDelivr URL used in the README
-   (`https://cdn.jsdelivr.net/npm/tickslate@0.1.0/umd/tickslate.umd.js`)
+   (`https://cdn.jsdelivr.net/npm/tickslate@X.Y.Z/umd/tickslate.umd.js`)
    serves the file.
 4. Start the next version's `changes/` fragments; see `changes/README.md`.
 
@@ -86,5 +77,5 @@ and the sizes match the `npm run size` table.
 
 - Before step 5, nothing is public; fix and rerun `npm run release`.
 - After step 5, a version cannot be reused. Within 72 hours `npm unpublish`
-  is possible, but prefer publishing 0.1.1 with the fix and, for a harmful
-  version, `npm deprecate tickslate@0.1.0 "reason"`.
+  is possible, but prefer publishing the next patch with the fix and, for a harmful
+  version, `npm deprecate tickslate@X.Y.Z "reason"`.
