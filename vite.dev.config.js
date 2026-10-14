@@ -1,18 +1,25 @@
 import { defineConfig } from 'vite'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
+import { elementEntries, root } from './scripts/entries.mjs'
 
-const root = dirname(fileURLToPath(import.meta.url))
 const coreEntry = resolve(root, 'src/core/index.js')
 
 /**
- * Development build — dist-lib/elements.dev.js (RFC 0002 §7.3, §8).
+ * Development build — dist-lib/dev/ (RFC 0003 §2.2, replacing RFC 0002's single
+ * elements.dev.js).
  *
- * The same entry as the production elements.js, built with __TS_DEV__ true so
- * every warning is kept. The core stays external and is imported as
- * './index.js', exactly as in the library build, so both files share one core
- * and one configure() state: a host that swaps between them (or loads both)
- * never gets two copies of the formatter settings.
+ * The same entries as the production elements build (the all-in `elements` and
+ * one per define module), built with __TS_DEV__ true so every warning is kept.
+ * The files are:
+ *
+ *   dist-lib/dev/elements.js
+ *   dist-lib/dev/elements/<name>.js
+ *   dist-lib/dev/chunks/…       (shared among the development files only)
+ *
+ * The core stays external and points at dist-lib/index.js, so the production
+ * and development trees share one core and one configure() state: a host that
+ * swaps between them (or loads both) never gets two copies of the formatter
+ * settings. Production and development files never import each other.
  *
  * Run with: npm run build:dev  (after build:lib, whose emptyOutDir wipes
  * dist-lib/)
@@ -20,13 +27,16 @@ const coreEntry = resolve(root, 'src/core/index.js')
 export default defineConfig({
   define: { __TS_DEV__: 'true' },
   build: {
-    outDir: 'dist-lib',
-    emptyOutDir: false,
+    outDir: 'dist-lib/dev',
+    emptyOutDir: true,
     sourcemap: true,
     minify: false,
     target: 'es2019',
     lib: {
-      entry: { 'elements.dev': 'src/elements/index.js' },
+      entry: {
+        elements: resolve(root, 'src/elements/index.js'),
+        ...Object.fromEntries(elementEntries().map((e) => [`elements/${e.name}`, e.input])),
+      },
       formats: ['es'],
     },
     rollupOptions: {
@@ -35,7 +45,12 @@ export default defineConfig({
       external: (id) => id === 'emberwick' || resolve(id) === coreEntry,
       output: {
         entryFileNames: '[name].js',
-        paths: (id) => (resolve(id) === coreEntry ? './index.js' : id),
+        chunkFileNames: 'chunks/[name]-[hash].js',
+        // A relative path here is read from dist-lib/dev/, and rollup rewrites
+        // it for each file's depth: ../index.js from elements.js,
+        // ../../index.js from elements/<name>.js and chunks/*.js. It is
+        // dist-lib/index.js, the one core the production tree builds.
+        paths: (id) => (resolve(id) === coreEntry ? '../index.js' : id),
       },
     },
   },

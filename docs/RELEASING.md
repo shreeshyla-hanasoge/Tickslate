@@ -57,9 +57,13 @@ gh release create vX.Y.Z --title "X.Y.Z" --notes-file <(awk '/^## X.Y.Z/{f=1;nex
 ```
 
 What to look for in step 3: `dist-lib/package.json` reads `X.Y.Z`; the file
-list holds `index.js`, `elements.js`, `elements.dev.js`, `umd/tickslate.umd.js`,
-`tokens.css`, the `.d.ts` files, `README.md`, `LICENSE`, `CHANGELOG.md` and
-`package.json`, and nothing else (`verify:package` enforces the allowlist);
+list holds `index.js`, `elements.js`, `elements/<name>.js` (one per widget),
+`chunks/`, the development tree under `dev/` (`dev/elements.js`,
+`dev/elements/<name>.js`, `dev/chunks/`), `cdn/tickslate.js`,
+`cdn/tickslate.iife.js`, `umd/tickslate.umd.js`, `tokens.css`, the `.d.ts`
+files (including `elements/<name>.d.ts`), `README.md`, `LICENSE`,
+`CHANGELOG.md` and `package.json`, plus source maps for everything except the
+two `cdn/` files, and nothing else (`verify:package` enforces the allowlist);
 and the sizes match the `npm run size` table.
 
 ## After publishing
@@ -69,7 +73,7 @@ and the sizes match the `npm run size` table.
 2. Smoke test it as a user would, in an empty folder:
    `npm install tickslate`, then import `tickslate/elements` in a page.
 3. Check the pinned jsDelivr URL used in the README
-   (`https://cdn.jsdelivr.net/npm/tickslate@X.Y.Z/umd/tickslate.umd.js`)
+   (`https://cdn.jsdelivr.net/npm/tickslate@X.Y.Z/cdn/tickslate.iife.js`)
    serves the file.
 4. Start the next version's `changes/` fragments; see `changes/README.md`.
 

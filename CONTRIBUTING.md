@@ -33,7 +33,7 @@ npm run dev
 | `npm test` | The unit suite, under `node --test`. Needs no install |
 | `npm run test:browser` | The real-browser suites (Playwright) |
 | `npm run dev` | The playground, at the address Vite prints |
-| `npm run release` | Test, build the library and UMD, pack `dist-lib/`, verify the package and check the size budgets |
+| `npm run release` | Test, build the library (ESM entries and the development tree), the UMD and the CDN bundle, pack `dist-lib/`, verify the package and check the size budgets |
 
 ### The install-free node suite
 

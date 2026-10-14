@@ -33,10 +33,12 @@ export function coreExports(source = read('src/core/index.js')) {
 
 const elementFiles = () => readdirSync(join(root, 'src/elements')).filter((f) => f.endsWith('.js')).map((f) => `src/elements/${f}`)
 
-/** { tag, className } for every define('ts-x', Class) call under src/elements. */
+const defineFiles = () => readdirSync(join(root, 'src/elements/define')).filter((f) => f.endsWith('.js')).map((f) => `src/elements/define/${f}`)
+
+/** { tag, className } for every define('ts-x', Class) call under src/elements, which are in its define/ modules (RFC 0003 §2.1). */
 export function definedTags() {
   const out = []
-  for (const file of elementFiles()) {
+  for (const file of [...elementFiles(), ...defineFiles()]) {
     for (const m of stripComments(read(file)).matchAll(/\bdefine\(\s*'([a-z][\w]*-[\w-]*)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/g)) {
       out.push({ tag: m[1], className: m[2] })
     }

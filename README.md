@@ -40,6 +40,26 @@ can never change your page. This works once 0.1.0 is published to npm.
 To use a named export from a page script, import it from the same URL:
 `import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.1.0/elements.js'`.
 
+Pay only for the widgets you use: each one has its own entry, which registers
+just that tag.
+
+```js
+import 'tickslate/elements/grid'
+import 'tickslate/elements/metric' // also: card, chart, today-pnl, equity-curve, session-clock
+```
+
+Or, with no build step at all, one script tag loads the core and every element
+and sets `window.Tickslate`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/tickslate@0.1.0/cdn/tickslate.iife.js"></script>
+```
+
+Use that bundle or the package entries, not both: each carries its own copy of
+the core, so a page that loaded both would have two registries and two
+`configure()` states. The bundle and the core-only `umd/tickslate.umd.js` both
+set `window.Tickslate`, so load one of them.
+
 ### Fonts (optional)
 
 Text is set in Geist and figures in Newsreader. Both are optional: without
@@ -233,7 +253,7 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 npm install
 npm run dev        # playground at http://localhost:5173
 npm test           # node --test, no install needed
-npm run release    # test, build ESM + UMD, assemble dist-lib/
+npm run release    # test, build ESM, development tree, UMD and CDN bundle, assemble dist-lib/
 ```
 
 Publishing is done from the assembled folder: `npm publish ./dist-lib`.

@@ -1,27 +1,22 @@
 /**
- * Tickslate custom elements. Importing this entry registers them with
- * customElements, so it is a side effect (listed in package.lib.json
- * "sideEffects"). Where there is no DOM, as during server-side rendering, it
+ * Tickslate custom elements. Importing this entry registers every element
+ * with customElements, so it is a side effect (scripts/pack-lib.mjs lists it
+ * in the published "sideEffects"). Where there is no DOM, as during server-side rendering, it
  * registers nothing and still imports cleanly.
+ *
+ * Each element registers itself in its own module under ./define/, which is
+ * also its per-widget entry (RFC 0003 §2.1): this file only gathers them, so
+ * the all-in entry stays the same set a host gets by importing each by name.
  */
 import { version } from '../core/index.js'
-import { TsGrid } from './grid.js'
+import { TsGrid } from './define/grid.js'
+import { TsCard } from './define/card.js'
+import { TsMetric } from './define/metric.js'
+import { TsChart } from './define/series-chart.js'
+import { TsTodayPnl } from './define/today-pnl.js'
+import { TsEquityCurve } from './define/equity-curve.js'
+import { TsSessionClock } from './define/session-clock.js'
 import { TsWidget } from './widget.js'
-import { TsCard } from './card.js'
-import { TsMetric } from './metric.js'
-import { TsChart } from './series-chart.js'
-import { TsTodayPnl } from './today-pnl.js'
-import { TsEquityCurve } from './equity-curve.js'
-import { TsSessionClock } from './session-clock.js'
 import { persistLayout } from './persist.js'
-import { define } from './registry.js'
 
 export { version, persistLayout, TsGrid, TsWidget, TsCard, TsMetric, TsChart, TsTodayPnl, TsEquityCurve, TsSessionClock }
-
-define('ts-grid', TsGrid)
-define('ts-card', TsCard)
-define('ts-metric', TsMetric)
-define('ts-chart', TsChart)
-define('ts-today-pnl', TsTodayPnl)
-define('ts-equity-curve', TsEquityCurve)
-define('ts-session-clock', TsSessionClock)

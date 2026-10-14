@@ -13,27 +13,16 @@
     "url": "git+https://github.com/shreeshyla-hanasoge/Tickslate.git"
   },
   "type": "module",
-  "sideEffects": [
-    "./elements.js",
-    "./elements.dev.js",
-    "*.css"
-  ],
   "main": "./index.js",
   "module": "./index.js",
   "types": "./index.d.ts",
-  "unpkg": "./umd/tickslate.umd.js",
-  "jsdelivr": "./umd/tickslate.umd.js",
+  "unpkg": "./cdn/tickslate.iife.js",
+  "jsdelivr": "./cdn/tickslate.iife.js",
   "exports": {
     ".": {
       "types": "./index.d.ts",
       "import": "./index.js",
       "default": "./index.js"
-    },
-    "./elements": {
-      "types": "./elements.d.ts",
-      "development": "./elements.dev.js",
-      "import": "./elements.js",
-      "default": "./elements.js"
     },
     "./tokens.css": "./tokens.css",
     "./package.json": "./package.json"

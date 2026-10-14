@@ -9,14 +9,21 @@
  * here with esbuild (the minifier vite already uses) and gzipped with
  * node:zlib, so the min+gz column is the figure a host's bundle pays.
  *
+ * Two kinds of row. A *file* row is one file as built. An *entry* row is what
+ * a host pays for `import 'tickslate/elements/<name>'`: the entry bundled with
+ * the core and the shared chunks it needs, which is the figure a per-widget
+ * entry is for. Entries are found in src/elements/define/, so a new widget
+ * shows up here and must be given a budget before a release passes.
+ *
  * Runs after pack:lib, against dist-lib/ as it will be published.
  */
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { transform, build } from 'esbuild'
+import { elementEntries } from './entries.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const out = resolve(root, 'dist-lib')
@@ -24,9 +31,11 @@ const out = resolve(root, 'dist-lib')
 // 1024 bytes, as in Emberwick's check, so figures compare across the two.
 const KB = 1024
 const ALL_IN = 'tickslate/elements + core (bundled)'
+const entryLabel = (name) => `tickslate/elements/${name} (bundled)`
+const pairLabel = (name) => `grid + ${name} (bundled)`
 
 /**
- * Budgets on min+gz bytes, per file.
+ * Budgets on min+gz bytes, per row.
  *
  * 'warn' prints a warning and exits 0; 'enforce' fails the run. A budget
  * starts as 'warn' while its target is provisional and moves to 'enforce'
@@ -42,35 +51,75 @@ const BUDGETS = {
   'dist-lib/index.js': { maxKb: 9.5, mode: 'enforce', target: 'RFC 0002 §9, core, measured + 10 %', date: '2026-10-13' },
   // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-13: 8,639 B.
   'dist-lib/umd/tickslate.umd.js': { maxKb: 9.5, mode: 'enforce', target: 'RFC 0002 §9, UMD, measured + 10 %', date: '2026-10-13' },
-  // What a host pays for `import 'tickslate/elements'`: the entry bundled with
-  // its core. A virtual row, measured below. Measured 2026-10-13: 46,478 B.
-  [ALL_IN]: { maxKb: 50, mode: 'enforce', target: 'RFC 0002 §9, all-in elements, measured + 10 %', date: '2026-10-13' },
-  // dist-lib/elements.dev.js and elements.js are reported only: the dev build
-  // is never shipped to production, and elements.js alone is not what a host
+  // The all-in `tickslate/elements` and the two CDN files carry no budget:
+  // P1 adds about a dozen widgets to them, so RFC 0002's 50 kB figure belongs
+  // to the 0.1.0 widget set. They are reported, and 0.2.0 release preparation
+  // resets their enforced budgets from measurement (RFC 0003 §25, Decision 38).
+  // dist-lib/elements.js and the dev/ tree are reported too: the dev tree is
+  // never shipped to production, and elements.js alone is not what a host
   // downloads.
 }
+
+/**
+ * One budget per `tickslate/elements/<name>` entry (RFC 0003 §25), keyed by the
+ * entry name, each the measured min+gz size of the entry bundled with its core
+ * plus 10 %, rounded up to the next 0.5 kB. Same rule as above: raise a
+ * figure only with the reason in the story's fragment and a new date.
+ *
+ * Measured 2026-10-14 (entries-and-cdn): grid 20,664 B, card 11,168 B,
+ * metric 12,910 B, chart 13,865 B, today-pnl 13,567 B, equity-curve 13,720 B,
+ * session-clock 12,868 B.
+ */
+const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
+const ENTRY_BUDGETS = {
+  grid: entry(22.5),
+  card: entry(12),
+  metric: entry(14),
+  chart: entry(15),
+  'today-pnl': entry(15),
+  'equity-curve': entry(15),
+  'session-clock': entry(14),
+}
+
+/**
+ * RFC 0003 §25: the grid plus any one widget is at most 15 kB. It is 'warn'
+ * and not 'enforce' because it cannot hold today: the grid alone is over 15 kB
+ * (see the grid row), so every pair is. Every run prints the overage; the
+ * maintainer decides whether the figure or the grid moves.
+ */
+const PAIR_BUDGET = { maxKb: 15, mode: 'warn', target: 'RFC 0003 §25, grid + one widget', date: '2026-10-14' }
 
 const problems = []
 const warnings = []
 
-const files = ['dist-lib/index.js', 'dist-lib/elements.js', 'dist-lib/elements.dev.js']
-const umdDir = resolve(out, 'umd')
-const umd = existsSync(umdDir)
-  ? (await readdir(umdDir)).filter((n) => n.endsWith('.js')).sort().map((n) => `dist-lib/umd/${n}`)
-  : []
-// Never skip a missing build: the manifest advertises the UMD to every CDN
-// user, so a release that lost it must not report a clean size table. The
-// placeholder row fails below like any other missing file.
-files.push(...(umd.length ? umd : ['dist-lib/umd/*.js']))
+const entries = elementEntries()
 
-// A budget keyed on a path that is never measured would silently never apply.
+const files = [
+  'dist-lib/index.js',
+  'dist-lib/elements.js',
+  'dist-lib/dev/elements.js',
+  'dist-lib/umd/tickslate.umd.js',
+  'dist-lib/cdn/tickslate.js',
+  'dist-lib/cdn/tickslate.iife.js',
+]
+
+// A budget keyed on something that is never measured would silently never apply.
 for (const rel of Object.keys(BUDGETS)) {
-  if (rel !== ALL_IN && !files.includes(rel)) problems.push(`there is a budget for ${rel}, but that file is not measured`)
+  if (!files.includes(rel)) problems.push(`there is a budget for ${rel}, but that file is not measured`)
+}
+for (const name of Object.keys(ENTRY_BUDGETS)) {
+  if (!entries.some((e) => e.name === name)) problems.push(`there is a budget for tickslate/elements/${name}, but src/elements/define/ has no module for it`)
+}
+// And the reverse: an entry nobody budgeted is the one that grows unnoticed.
+for (const e of entries) {
+  if (!ENTRY_BUDGETS[e.name]) problems.push(`tickslate/elements/${e.name} has no budget in scripts/check-size.mjs: measure it and add one (RFC 0003 §25)`)
 }
 
 const rows = []
 for (const rel of files) {
   const file = resolve(root, rel)
+  // Never skip a missing build: the manifest advertises the CDN files to every
+  // CDN user, so a release that lost one must not report a clean size table.
   if (!existsSync(file)) {
     problems.push(`${rel} is missing — run \`npm run release\``)
     rows.push({ rel, missing: true })
@@ -82,12 +131,59 @@ for (const rel of files) {
   const { code } = await transform(raw, { loader: 'js', minify: true, target: 'es2019' })
   const row = {
     rel,
+    label: relative(out, file),
     raw: Buffer.byteLength(raw),
     min: Buffer.byteLength(code),
     gz: gzipSync(code).length,
   }
   judge(row, BUDGETS[rel])
   rows.push(row)
+}
+
+/** Minified and gzipped size of `options`' bundle, which is what a host's bundler would add. */
+async function bundled(label, options, budget) {
+  const result = await build({
+    bundle: true,
+    minify: true,
+    format: 'esm',
+    target: 'es2019',
+    write: false,
+    logLevel: 'silent',
+    external: ['emberwick'],
+    ...options,
+  })
+  const contents = result.outputFiles[0].contents
+  const row = { rel: label, label, raw: contents.length, min: contents.length, gz: gzipSync(contents).length }
+  judge(row, budget)
+  rows.push(row)
+}
+
+const built = (rel) => resolve(out, rel)
+if (existsSync(built('elements.js')) && existsSync(built('index.js'))) {
+  await bundled(ALL_IN, { entryPoints: [built('elements.js')] })
+} else problems.push('the all-in elements size could not be measured: elements.js or index.js is missing')
+
+for (const e of entries) {
+  const file = built(`elements/${e.name}.js`)
+  if (!existsSync(file)) {
+    problems.push(`${entryLabel(e.name)} could not be measured: elements/${e.name}.js is missing`)
+    continue
+  }
+  await bundled(entryLabel(e.name), { entryPoints: [file] }, ENTRY_BUDGETS[e.name])
+}
+
+// The grid plus each other widget, bundled together so what they share (the
+// core, the widget base) is counted once, as a host that imports both pays.
+const gridFile = built('elements/grid.js')
+for (const e of entries) {
+  if (e.name === 'grid') continue
+  const file = built(`elements/${e.name}.js`)
+  if (!existsSync(gridFile) || !existsSync(file)) continue
+  await bundled(
+    pairLabel(e.name),
+    { stdin: { contents: `export * from ${JSON.stringify(gridFile)}\nexport * from ${JSON.stringify(file)}\n`, resolveDir: out, loader: 'js' } },
+    PAIR_BUDGET
+  )
 }
 
 function judge(row, budget) {
@@ -108,33 +204,15 @@ function judge(row, budget) {
   }
 }
 
-// The all-in row is built before the table so it prints with the others.
-if (existsSync(resolve(out, 'elements.js')) && existsSync(resolve(out, 'index.js'))) {
-  const result = await build({
-    entryPoints: [resolve(out, 'elements.js')],
-    bundle: true,
-    minify: true,
-    format: 'esm',
-    target: 'es2019',
-    write: false,
-    logLevel: 'silent',
-    external: ['emberwick'],
-  })
-  const bundled = result.outputFiles[0].contents
-  const row = { rel: ALL_IN, raw: bundled.length, min: bundled.length, gz: gzipSync(bundled).length }
-  judge(row, BUDGETS[ALL_IN])
-  rows.push(row)
-} else problems.push('the all-in elements size could not be measured: elements.js or index.js is missing')
-
 const header = ['file', 'raw', 'min', 'min+gz', 'budget', 'mode', 'status']
 const table = rows.map((r) => [
-  r.rel === ALL_IN ? r.rel : relative(out, resolve(root, r.rel)),
+  r.label || r.rel,
   r.missing ? 'missing' : bytes(r.raw),
   r.missing ? '' : bytes(r.min),
   r.missing ? '' : bytes(r.gz),
   r.budget ? `${r.budget.maxKb} kB` : '',
   r.budget ? r.budget.mode : '',
-  r.missing ? 'FAIL' : r.status || '',
+  r.missing ? 'FAIL' : r.status || 'report',
 ])
 const widths = header.map((h, i) => Math.max(h.length, ...table.map((r) => r[i].length)))
 const line = (cells) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i]))).join('  ').trimEnd()

@@ -8,6 +8,7 @@
     "build:lib": "vite build --config vite.lib.config.js",
     "build:dev": "vite build --config vite.dev.config.js",
     "build:umd": "vite build --config vite.umd.config.js",
+    "build:cdn": "vite build --config vite.cdn.config.js",
     "build:site": "vite build --config vite.site.config.js",
     "preview:site": "vite preview --config vite.site.config.js",
     "pack:lib": "node scripts/pack-lib.mjs",
@@ -15,7 +16,7 @@
     "size": "node scripts/check-size.mjs",
     "test": "node --test test/*.test.mjs",
     "test:browser": "playwright test",
-    "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run pack:lib && npm run verify:package && npm run size"
+    "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run build:cdn && npm run pack:lib && npm run verify:package && npm run size"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { elementEntries } from './scripts/entries.mjs'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const src = (path) => resolve(root, path)
@@ -65,7 +66,9 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      // The longer name goes first so 'tickslate/elements' isn't caught by the bare match.
+      // The longer names go first so 'tickslate/elements' isn't caught by the bare match.
+      // `tickslate/elements/<name>` is answered by that widget's define module.
+      ...elementEntries().map((e) => ({ find: new RegExp(`^tickslate/elements/${e.name}$`), replacement: e.input })),
       { find: /^tickslate\/elements$/, replacement: src('src/elements/index.js') },
       { find: /^tickslate$/, replacement: src('src/core/index.js') },
     ],

@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
 
 /**
- * UMD build — one minified file for a plain <script> tag / CDN use.
- * Core only for now: exposes window.Tickslate.
+ * UMD build — the core only, as one minified file: exposes window.Tickslate.
+ * It has no elements. The one-script bundle with every element is the CDN
+ * build (vite.cdn.config.js), which "unpkg" and "jsdelivr" point at.
  *
  * Run with: npm run build:umd  (after build:lib — emptyOutDir is off here)
  */
