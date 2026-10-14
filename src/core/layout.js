@@ -9,7 +9,7 @@
  * so.
  */
 
-import { WIDGETS, specFor } from './catalog.js'
+import { WIDGETS, DEFAULT_PROFILE, specFor, typeOf } from './catalog.js'
 import { isSize, snapSize } from './sizes.js'
 
 export const LAYOUT_VERSION = 1
@@ -27,6 +27,11 @@ export function readLayout(input, options = {}) {
   const fallbackDevice = options.device === 'phone' ? 'phone' : 'desktop'
   const issues = []
   const report = (path, code, message, fixed) => issues.push({ path, code, message, fixed })
+
+  // A bare item array is the shorthand for a layout that never names a profile.
+  if (Array.isArray(input)) {
+    input = { version: LAYOUT_VERSION, device: fallbackDevice, profiles: { [DEFAULT_PROFILE]: input, closed: [] } }
+  }
 
   if (!isObject(input)) {
     report('', 'bad-shape', 'The layout is not an object, so an empty layout is used instead.', 'replaced')
@@ -61,7 +66,7 @@ export function readLayout(input, options = {}) {
         profiles[name] = []
         continue
       }
-      profiles[name] = readItems(list, path, catalog, report)
+      profiles[name] = readItems(list, path, catalog, report, options.unknown === 'keep')
     }
   }
   for (const name of BUILT_IN_PROFILES) if (!profiles[name]) profiles[name] = []
@@ -74,7 +79,8 @@ export function readLayout(input, options = {}) {
   return { layout, issues }
 }
 
-function readItems(list, path, catalog, report) {
+// `keep` is false by default: RFC 0001's behaviour for direct callers.
+function readItems(list, path, catalog, report, keep) {
   const items = []
   const seen = new Set()
   list.forEach((raw, i) => {
@@ -88,8 +94,9 @@ function readItems(list, path, catalog, report) {
       return
     }
     const spec = specFor(raw, catalog)
-    if (!spec) {
-      report(at, 'unknown-widget', `No widget called "${raw.type === undefined ? raw.id : raw.type}" is in the catalog.`, 'dropped')
+    const unknown = !spec && `No widget called "${typeOf(raw)}" is in the catalog.`
+    if (unknown && !keep) {
+      report(at, 'unknown-widget', unknown, 'dropped')
       return
     }
     if (seen.has(raw.id)) {
@@ -99,7 +106,12 @@ function readItems(list, path, catalog, report) {
     seen.add(raw.id)
 
     let size = raw.size
-    if (!isSize(size) || !spec.sizes.includes(size)) {
+    if (!spec) {
+      // A tile whose widget isn't defined yet (or never will be) must survive a
+      // save, so it keeps whatever size it had and is reported once.
+      report(at, 'unknown-widget', unknown, 'kept')
+      if (!isSize(size)) size = 'S'
+    } else if (!isSize(size) || !spec.sizes.includes(size)) {
       size = snapSize(size, spec.sizes)
       const why = isSize(raw.size) ? `${spec.label} does not come in size ${raw.size}` : `${JSON.stringify(raw.size)} is not a size`
       report(`${at}.size`, 'unsupported-size', `${why}; ${size} is used.`, 'replaced')

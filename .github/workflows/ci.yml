@@ -39,7 +39,7 @@ jobs:
           cache: npm
       - run: npm ci
       # The same chain the maintainer runs before publishing (test, build:lib,
-      # build:umd, pack:lib, verify:package, size), so CI can't pass a
+      # build:dev, build:umd, pack:lib, verify:package, size), so CI can't pass a
       # package that a local release would refuse.
       - run: npm run release
       - name: What would be published

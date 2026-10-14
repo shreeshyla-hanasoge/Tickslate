@@ -12,7 +12,7 @@
  * DOM its template built.
  */
 
-import { TsWidget } from './widget.js'
+import { TsWidget, sk } from './widget.js'
 import { linePath, linePaths, bandPath } from './chart.js'
 import { WIDGETS, equitySeries, equityStats, toDay, toNumber } from '../core/index.js'
 
@@ -26,6 +26,9 @@ export const HEADLINE_CHARS = { Wide: 10, M: 12, XL: 12 }
 const DIMS = { Wide: [400, 100], M: [600, 160], XL: [900, 220] }
 
 const DASH = '—'
+
+// English strings in one place, ready for overridable messages.
+export const STRINGS = Object.freeze({ empty: 'No trading days yet' })
 
 // ── Range filtering (pure) ────────────────────────────────────────────────
 
@@ -252,8 +255,20 @@ function rangeButtons() {
   return `<div role="group" aria-label="Range" class="row rng">${buttons}</div>`
 }
 
+// Loading shapes follow each variant's layout, so the figures land where the
+// blocks were. The plot is one block filling the chart's box.
+const plotBlock = '<div class="plot"><span class="sk"></span></div>'
+const stat = (a = 60, b = 75) => `<div class="col">${sk(a, 9)}${sk(b, 16)}</div>`
+const head = '<div class="hd"><span class="lb" data-k="label"></span></div>'
+const SKELETONS = {
+  Wide: `<div class="rowl"><div class="col side"><span class="lb" data-k="label"></span>${sk(70, 30)}${sk(80, 11)}</div>${plotBlock}</div>`,
+  M: `${head}<div class="rowb">${sk(40, 30)}${sk(25, 11)}</div>${plotBlock}<div class="row">${sk('x', 9)}<span class="f1"></span>${sk('x', 9)}</div><div class="g3 sep stats">${stat()}${stat()}${stat()}</div>`,
+  XL: `<div class="rowl xl"><div class="chartcol">${head}${plotBlock}<div class="row">${sk('x', 9)}<span class="f1"></span>${sk('x', 9)}<span class="f1"></span>${sk('x', 9)}</div></div><div class="col sep rail">${stat(50, 70).repeat(4)}</div></div>`,
+}
+
 export class TsEquityCurve extends TsWidget {
   static catalogKey = 'equityCurve'
+  static emptyText = STRINGS.empty
 
   static styles = `
 [hidden] { display: none !important; }
@@ -262,6 +277,7 @@ export class TsEquityCurve extends TsWidget {
 .plot { position: relative; flex: 1; min-height: 0; min-width: 0; }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .plot .empty { position: absolute; inset: 0; font-size: 12px; }
+.plot .sk { position: absolute; inset: 0; width: auto; }
 .dd { fill: color-mix(in srgb, var(--ts-loss) 22%, transparent); }
 .side { width: 170px; flex: none; justify-content: space-between; }
 .chartcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -306,6 +322,10 @@ ${chartMarkup('M')}
 <div class="col"><span class="lb">Max drawdown</span><span class="n md" data-k="maxDrawdown"></span></div>
 <div class="col"><span class="lb" data-k="thirdLabel"></span><span class="n md" data-k="thirdValue"></span></div>
 </div>`
+  }
+
+  static skeleton(variant) {
+    return SKELETONS[variant] || SKELETONS.M
   }
 
   // The range is the one thing the pure model needs beyond the data and formatter.

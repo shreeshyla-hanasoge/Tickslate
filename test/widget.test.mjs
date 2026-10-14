@@ -133,11 +133,11 @@ describe('rendering', () => {
     assert.equal(el.label, 'Net today')
   })
 
-  test('connecting without data shows the empty state named by the label', async () => {
+  test('connecting without data shows the skeleton named by the label', async () => {
     const el = make()
     el.connect()
     await tick()
-    assert.match(section(el).html, /class="empty">No data</)
+    assert.match(section(el).html, /class="sk /)
     assert.equal(section(el).getAttribute('aria-label'), "Today's P&L")
     assert.deepEqual(log.updates, [])
   })
@@ -231,7 +231,7 @@ describe('rendering', () => {
     assert.equal(typeof ctx.fmt.money, 'function')
   })
 
-  test('a view model that throws logs once and shows the empty state', async (t) => {
+  test('a view model that throws logs once and shows the error view', async (t) => {
     const error = t.mock.method(console, 'error', () => {})
     const el = make()
     el.connect()
@@ -240,7 +240,7 @@ describe('rendering', () => {
     el.data = { boom: true }
     await tick()
     assert.equal(error.mock.callCount(), 1)
-    assert.match(section(el).html, /No data/)
+    assert.match(section(el).html, /part="error"/)
     el.data = { n: 5 }
     await tick()
     assert.equal(log.updates.at(-1), '5@S')

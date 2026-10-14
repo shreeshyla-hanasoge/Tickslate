@@ -23,6 +23,7 @@ const out = resolve(root, 'dist-lib')
 
 // 1024 bytes, as in Emberwick's check, so figures compare across the two.
 const KB = 1024
+const ALL_IN = 'tickslate/elements + core (bundled)'
 
 /**
  * Budgets on min+gz bytes, per file.
@@ -33,19 +34,26 @@ const KB = 1024
  * can't block a release, yet every run still shows how far off it is.
  */
 const BUDGETS = {
-  // Target: core ≤ 6 kB min+gz (RFC 0001 §13), set 2026-10-13. Warn until
-  // RFC 0002 approves the final value, then enforce.
-  'dist-lib/index.js': { maxKb: 6, mode: 'warn', target: 'RFC 0001 §13', date: '2026-10-13' },
-  // Target: tickslate/elements ≤ 24 kB min+gz (RFC 0001 §13), set
-  // 2026-10-13. Measured without the core, which has its own line above.
-  // Warn until RFC 0002 approves the final value, then enforce.
-  'dist-lib/elements.js': { maxKb: 24, mode: 'warn', target: 'RFC 0001 §13', date: '2026-10-13' },
+  // RFC 0002 §9 (Decision 16), set 2026-10-13: the budgets for development.
+  // They tighten to measured + 10 % at release (release-0-1-0).
+  // Core: a development ceiling (RFC 0002 §9), tightened at release prep.
+  'dist-lib/index.js': { maxKb: 10, mode: 'enforce', target: 'RFC 0002 §9, core', date: '2026-10-13' },
+  // The UMD is the core plus a ~150 B wrapper, so it needs headroom above the
+  // 10 kB core budget rather than sharing it.
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 11, mode: 'enforce', target: 'RFC 0002 §9, UMD', date: '2026-10-13' },
+  // What a host pays for `import 'tickslate/elements'`: the entry bundled with
+  // its core. It replaces the elements.js-alone budget, which counted the
+  // core's share nowhere. A virtual row, measured below.
+  [ALL_IN]: { maxKb: 40, mode: 'enforce', target: 'RFC 0002 §9, all-in elements', date: '2026-10-13' },
+  // dist-lib/elements.dev.js and elements.js are reported only: the dev build
+  // is never shipped to production, and elements.js alone is not what a host
+  // downloads.
 }
 
 const problems = []
 const warnings = []
 
-const files = ['dist-lib/index.js', 'dist-lib/elements.js']
+const files = ['dist-lib/index.js', 'dist-lib/elements.js', 'dist-lib/elements.dev.js']
 const umdDir = resolve(out, 'umd')
 const umd = existsSync(umdDir)
   ? (await readdir(umdDir)).filter((n) => n.endsWith('.js')).sort().map((n) => `dist-lib/umd/${n}`)
@@ -57,7 +65,7 @@ files.push(...(umd.length ? umd : ['dist-lib/umd/*.js']))
 
 // A budget keyed on a path that is never measured would silently never apply.
 for (const rel of Object.keys(BUDGETS)) {
-  if (!files.includes(rel)) problems.push(`there is a budget for ${rel}, but that file is not measured`)
+  if (rel !== ALL_IN && !files.includes(rel)) problems.push(`there is a budget for ${rel}, but that file is not measured`)
 }
 
 const rows = []
@@ -78,46 +86,29 @@ for (const rel of files) {
     min: Buffer.byteLength(code),
     gz: gzipSync(code).length,
   }
-  const budget = BUDGETS[rel]
-  if (budget) {
-    row.budget = budget
-    const limit = budget.maxKb * KB
-    if (row.gz > limit) {
-      const over = `${rel} is ${kb(row.gz)} min+gz, over its ${budget.maxKb} kB budget by ${row.gz - limit} B (${budget.target}, ${budget.date})`
-      if (budget.mode === 'enforce') {
-        row.status = 'FAIL'
-        problems.push(over)
-      } else {
-        row.status = 'warn'
-        warnings.push(over)
-      }
-    } else row.status = 'ok'
-  }
+  judge(row, BUDGETS[rel])
   rows.push(row)
 }
 
-const header = ['file', 'raw', 'min', 'min+gz', 'budget', 'mode', 'status']
-const table = rows.map((r) => [
-  relative(out, resolve(root, r.rel)),
-  r.missing ? 'missing' : bytes(r.raw),
-  r.missing ? '' : bytes(r.min),
-  r.missing ? '' : bytes(r.gz),
-  r.budget ? `${r.budget.maxKb} kB` : '',
-  r.budget ? r.budget.mode : '',
-  r.missing ? 'FAIL' : r.status || '',
-])
-const widths = header.map((h, i) => Math.max(h.length, ...table.map((r) => r[i].length)))
-const line = (cells) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i]))).join('  ').trimEnd()
-console.log(line(header))
-console.log(widths.map((w) => '-'.repeat(w)).join('  '))
-for (const r of table) console.log(line(r))
+function judge(row, budget) {
+  if (!budget) return
+  row.budget = budget
+  const limit = budget.maxKb * KB
+  if (row.gz <= limit) {
+    row.status = 'ok'
+    return
+  }
+  const over = `${row.rel} is ${kb(row.gz)} min+gz, over its ${budget.maxKb} kB budget by ${row.gz - limit} B (${budget.target}, ${budget.date})`
+  if (budget.mode === 'enforce') {
+    row.status = 'FAIL'
+    problems.push(over)
+  } else {
+    row.status = 'warn'
+    warnings.push(over)
+  }
+}
 
-/**
- * What `import 'tickslate/elements'` costs a host in total: the entry bundled
- * with the core it imports. Reported, not budgeted, because RFC 0001 §13
- * budgets the two entries separately; it is here so the maintainer sees the
- * combined figure when RFC 0002 settles the final budgets.
- */
+// The all-in row is built before the table so it prints with the others.
 if (existsSync(resolve(out, 'elements.js')) && existsSync(resolve(out, 'index.js'))) {
   const result = await build({
     entryPoints: [resolve(out, 'elements.js')],
@@ -130,8 +121,26 @@ if (existsSync(resolve(out, 'elements.js')) && existsSync(resolve(out, 'index.js
     external: ['emberwick'],
   })
   const bundled = result.outputFiles[0].contents
-  console.log(`\nimport 'tickslate/elements' with its core, bundled: ${bytes(bundled.length)} min, ${bytes(gzipSync(bundled).length)} min+gz (not budgeted)`)
-}
+  const row = { rel: ALL_IN, raw: bundled.length, min: bundled.length, gz: gzipSync(bundled).length }
+  judge(row, BUDGETS[ALL_IN])
+  rows.push(row)
+} else problems.push('the all-in elements size could not be measured: elements.js or index.js is missing')
+
+const header = ['file', 'raw', 'min', 'min+gz', 'budget', 'mode', 'status']
+const table = rows.map((r) => [
+  r.rel === ALL_IN ? r.rel : relative(out, resolve(root, r.rel)),
+  r.missing ? 'missing' : bytes(r.raw),
+  r.missing ? '' : bytes(r.min),
+  r.missing ? '' : bytes(r.gz),
+  r.budget ? `${r.budget.maxKb} kB` : '',
+  r.budget ? r.budget.mode : '',
+  r.missing ? 'FAIL' : r.status || '',
+])
+const widths = header.map((h, i) => Math.max(h.length, ...table.map((r) => r[i].length)))
+const line = (cells) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[i]) : c.padStart(widths[i]))).join('  ').trimEnd()
+console.log(line(header))
+console.log(widths.map((w) => '-'.repeat(w)).join('  '))
+for (const r of table) console.log(line(r))
 
 if (warnings.length) {
   console.warn(`\n${warnings.length} budget warning${warnings.length > 1 ? 's' : ''} (mode 'warn', so this run still passes):`)

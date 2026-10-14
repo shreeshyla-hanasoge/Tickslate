@@ -24,7 +24,7 @@
  * rail's own ends.
  */
 
-import { TsWidget } from './widget.js'
+import { TsWidget, sk } from './widget.js'
 import { createFormatter, localDate } from '../core/index.js'
 
 const DAY = 86400000
@@ -325,8 +325,21 @@ const LANE_HTML =
   '<div class="lt"><div class="rail"></div><div class="lf"></div><div class="tks"></div><div class="mk"></div><span class="msg xs mut ell" hidden></span></div>' +
   '<span class="lr n sm mut"></span></div>'
 
+// English strings in one place, ready for overridable messages.
+export const STRINGS = Object.freeze({ empty: 'No sessions set up' })
+
+// Loading shapes follow each variant's layout. A Banner can't know how many
+// sessions it will show, so it draws two lanes.
+const LABEL_HEAD = '<div class="hd"><span class="lb title" data-k="label"></span>'
+const SKELETON_LANE = `<div class="lane"><div class="lcol">${sk(80, 11)}${sk(60, 9)}</div><div class="f1">${sk(100, 4)}</div><div class="lr">${sk(70, 10)}</div></div>`
+const SKELETONS = {
+  S: `${LABEL_HEAD}</div><div class="rowb">${sk(45, 30)}${sk(25, 11)}</div><span class="f1"></span>${sk(100, 6)}<div class="row">${sk(15, 9)}<span class="f1"></span>${sk(15, 9)}</div>`,
+  Banner: `${LABEL_HEAD}<span class="f1"></span>${sk(20, 9)}</div><div class="lanes">${SKELETON_LANE.repeat(2)}</div>`,
+}
+
 export class TsSessionClock extends TsWidget {
   static catalogKey = 'sessionClock'
+  static emptyText = STRINGS.empty
 
   static styles = `
 [hidden] { display: none !important; }
@@ -374,6 +387,10 @@ export class TsSessionClock extends TsWidget {
       '<div class="trk"><div class="fill"></div></div>' +
       '<div class="row xs mut ft"><span class="n from"></span><span class="f1"></span><span class="mid ell"><span class="mf"></span><span class="ms"></span></span><span class="f1"></span><span class="n to"></span></div>'
     )
+  }
+
+  static skeleton(variant) {
+    return SKELETONS[variant] || SKELETONS.S
   }
 
   static viewModel(data, variant, ctx) {

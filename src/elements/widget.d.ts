@@ -1,5 +1,8 @@
 import type { Formatter, SizeName, WidgetSpec } from '../core/index.js'
 
+/** 'loading' covers a re-fetch over existing data; 'error' shows the error view. */
+export type WidgetState = 'loading' | 'error' | null
+
 /** The context a view model receives. */
 export interface ViewModelContext {
   /** Whatever the element's viewContext() adds. */
@@ -21,12 +24,26 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   static styles: string
   /** Static markup for one variant, built once per variant. */
   static template(variant: SizeName): string
-  /** Pure: data to display strings and numbers. Throwing shows the empty state. */
+  /** Render the template while data is undefined (viewModel then gets `{}`); the skeleton shows only for state="loading". Default false. */
+  static dataOptional: boolean
+  /** What the empty state says. Default 'No data'. */
+  static emptyText: string
+  /** Loading markup for one variant, built once: `.sk` blocks shaped like the content. Default: a header, a headline bar and two text lines. */
+  static skeleton(variant: SizeName): string
+  /** Pure: data to display strings and numbers. Throwing shows the error view. */
   static viewModel(data: any, variant: SizeName, ctx: ViewModelContext): { ariaLabel?: string } & Record<string, unknown>
   static get observedAttributes(): string[]
 
-  /** Setting it schedules one render per microtask. null or undefined shows the empty state. */
+  /** Setting it schedules one render per microtask. undefined (never set) shows the loading skeleton; null shows the empty state. */
   data: Data | null | undefined
+  /** Attribute and property. 'loading' shows the skeleton even over existing data; 'error' shows the error view. */
+  state: WidgetState
+  /** A message shows the error view; null clears it. An Error is read as its message. */
+  error: string | null
+  /** The action names the widget may offer, such as ['retry']. Setting a non-array gives []. Re-applied on connect. */
+  actions: readonly string[]
+  /** True when `actions` includes `name`. */
+  actionEnabled(name: string): boolean
   /** Attribute and property, snapped to the widget's supported sizes; defaults to the first supported size. */
   size: SizeName
   /** The size actually rendered. */
@@ -68,6 +85,10 @@ export declare function resolveFormatOptions(
 export declare function standaloneCss(): string
 export declare function escapeHtml(s: unknown): string
 export declare const SHARED_CSS: string
+/** One skeleton block: width in percent (snapped to 5) or 'x' for an axis label, height in px. */
+export declare function sk(width: number | 'x', height: number): string
+/** The base's English strings; `{label}` and `{message}` are filled in. */
+export declare const STRINGS: Readonly<{ noData: string; errorDefault: string; errorRegion: string; retry: string }>
 
 declare global {
   interface HTMLElementEventMap {

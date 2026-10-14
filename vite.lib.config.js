@@ -14,6 +14,9 @@ import { defineConfig } from 'vite'
  * Run with: npm run build:lib
  */
 export default defineConfig({
+  // False in production so every `if (DEV) warnOnce(…)` is dropped; the
+  // development build (vite.dev.config.js) sets it true.
+  define: { __TS_DEV__: 'false' },
   build: {
     outDir: 'dist-lib',
     emptyOutDir: true,

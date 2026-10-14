@@ -15,6 +15,7 @@
   "type": "module",
   "sideEffects": [
     "./elements.js",
+    "./elements.dev.js",
     "*.css"
   ],
   "main": "./index.js",
@@ -25,11 +26,14 @@
   "exports": {
     ".": {
       "types": "./index.d.ts",
-      "import": "./index.js"
+      "import": "./index.js",
+      "default": "./index.js"
     },
     "./elements": {
       "types": "./elements.d.ts",
-      "import": "./elements.js"
+      "development": "./elements.dev.js",
+      "import": "./elements.js",
+      "default": "./elements.js"
     },
     "./tokens.css": "./tokens.css",
     "./package.json": "./package.json"
