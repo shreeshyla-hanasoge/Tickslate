@@ -63,6 +63,7 @@ import { createHistory } from './grid-history.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
 import { keyAction, tapAction } from './grid-input.js'
 import { translator } from './messages-cache.js'
+import { persistLayout } from './persist.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -94,6 +95,11 @@ const REMOVE_GUARD_MS = 400
 const TOAST_MS = 6000
 // A developer's warning, not interface text, so it stays out of the messages.
 const LOCKED_WARNING = '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.'
+const EMPTY_PERSIST_WARNING = '<ts-grid> persist attribute is empty, so saving is off. Give it a key, for example persist="my-dashboard".'
+// Wording and link are fixed by RFC 0003 §4.3.
+const UNSAVED_WARNING = '<ts-grid> edits will be lost on reload: add a persist attribute, or call persistLayout(). See docs/guide/saving-layouts.md'
+// Tells one grid's warning from another's: warnOnce keys are global, and each unsaved grid is worth one.
+let unsavedSerial = 0
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 
 // Built on first use, so importing this module where there is no DOM (Node,
@@ -273,7 +279,7 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls', 'locale']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'persist']
   }
 
   constructor() {
@@ -301,6 +307,10 @@ export class TsGrid extends Base {
     this._ownLabel = null // the aria-label the grid gave itself as a last resort, so it only ever rewrites its own
     this._widgets = new Set() // the widgets inside it, at any depth of shadow roots, which it tells when its messages or locale change
     this._offConfigure = null
+    this._persistOn = false // true from the first measure on connect to disconnect, when the persist attribute may attach
+    this._persistKey = null // the key persistLayout is attached with
+    this._persistHandle = null
+    this._persistBase = null // the layout a device with nothing saved falls back to
     // Each place Add back appears: its button, its list, and what counts as inside it.
     this._addBack = {
       pill: { add: this._pill.querySelector('.add'), menu: this._pill.querySelector('.menu'), wrap: this._pill },
@@ -591,6 +601,16 @@ export class TsGrid extends Base {
     return this._columns
   }
 
+  /** A key that saves this grid's layout to localStorage per device; null, or no attribute, turns saving off. Reflects the `persist` attribute. */
+  get persist() {
+    return this.getAttribute('persist')
+  }
+
+  set persist(value) {
+    if (value == null) this.removeAttribute('persist')
+    else this.setAttribute('persist', String(value))
+  }
+
   /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
   get hiddenItems() {
     const shown = new Set(this._profileItems().map((item) => item.id))
@@ -711,6 +731,12 @@ export class TsGrid extends Base {
       delete this.messages
       this.messages = value
     }
+    // Likewise a persist property set before upgrade: it becomes the attribute.
+    if (Object.prototype.hasOwnProperty.call(this, 'persist')) {
+      const value = this.persist
+      delete this.persist
+      this.persist = value
+    }
     // configure() may change the messages or the locale while the grid is on the page; the widgets hear of it themselves.
     this._offConfigure = onConfigure(() => this._refreshText())
     // Measuring renders, and rendering changes the grid's own height, which the
@@ -729,6 +755,9 @@ export class TsGrid extends Base {
     this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
     if (!this._explicit) this._reconcile()
     this._measure(true)
+    // After the first measure, so the device is known and the layout on show is the defaults.
+    this._persistOn = true
+    this._syncPersist()
     this._syncControls()
     if (this._editing) this._startEditing()
     document.addEventListener('visibilitychange', this._onVisibility)
@@ -736,6 +765,8 @@ export class TsGrid extends Base {
   }
 
   disconnectedCallback() {
+    this._persistOn = false
+    this._syncPersist()
     if (this._offConfigure) this._offConfigure()
     this._offConfigure = null
     this._resizeObserver.disconnect()
@@ -794,7 +825,36 @@ export class TsGrid extends Base {
     } else if (name === 'locale') {
       this._refreshText()
       this._invalidateWidgets()
+    } else if (name === 'persist') {
+      // Upgrade reports the attribute before connectedCallback has measured; it attaches then.
+      if (this._persistOn) this._syncPersist()
     }
+  }
+
+  /** Make persistLayout match the `persist` attribute: attach, re-key or dispose (RFC 0003 §4.1). */
+  _syncPersist() {
+    const attr = this._persistOn ? this.getAttribute('persist') : null
+    if (DEV && attr === '') warnOnce('grid-persist-empty', EMPTY_PERSIST_WARNING)
+    const key = attr || null
+    if (key === this._persistKey) return
+    if (this._persistHandle) this._persistHandle.dispose()
+    this._persistHandle = null
+    this._persistKey = key
+    if (!key) return
+    // The first defaults are kept across reconnects and re-keys: by then the layout on show may be a saved or edited one.
+    if (!this._persistBase) this._persistBase = this._layout
+    this._persistHandle = persistLayout(this, { key, defaults: () => this._defaultsToPersist() })
+  }
+
+  /**
+   * What a device with nothing saved shows. While the grid is implicit that is
+   * its layout as it stands, so children that arrive late are part of it and
+   * nothing is assigned (which would end implicit mode and hide them). Once a
+   * layout has been set, the last implicit one, or the host's, is kept.
+   */
+  _defaultsToPersist() {
+    if (!this._explicit) this._persistBase = this._layout
+    return this._persistBase
   }
 
   // ── Profiles on a schedule ─────────────────────────────────────────────
@@ -2070,6 +2130,12 @@ export class TsGrid extends Base {
   }
 
   _emit(name, detail) {
+    // DEV: the first edit on a grid nothing saves says so, once (RFC 0003 §4.3).
+    // persistLayout sets `_persisted`, and a locked grid never commits.
+    if (DEV && name === 'ts-layout-change' && !this._persisted && !this._unsavedWarned && !this.locked) {
+      this._unsavedWarned = true
+      warnOnce(`grid-unsaved:${++unsavedSerial}`, UNSAVED_WARNING)
+    }
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }))
   }
 }

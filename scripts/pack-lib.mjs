@@ -134,6 +134,9 @@ for (const entry of entries) {
   const extras = TYPE_EXTRAS[entry.name] || []
   if (existsSync(resolve(root, `src/elements/${entry.file}.d.ts`))) {
     lines.push(`export * from '../${entry.file}.js'`)
+    // What the define module exports besides its class (the grid's persistLayout) is a value declared in elements.d.ts.
+    const values = entry.exports.filter((name) => !/^Ts[A-Z]/.test(name))
+    if (values.length) lines.push(`export { ${values.join(', ')} } from '../elements.js'`)
     if (extras.length) lines.push(`export type { ${extras.join(', ')} } from '../elements.js'`)
     extras.forEach((n) => stubTypes.add(n))
   } else {

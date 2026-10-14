@@ -1,4 +1,20 @@
-import type { Calendar, Layout, LayoutItem, LayoutIssue, MessageOverrides, ProfileSchedule, Catalog, Translate } from '../core/index.js'
+import type { Calendar, Device, Layout, LayoutItem, LayoutIssue, MessageOverrides, ProfileSchedule, Catalog, Translate } from '../core/index.js'
+
+/**
+ * Remote or async storage for `persistLayout`: either method may return a
+ * promise. The grid shows its defaults while `load` is pending, and the result is ignored when the device changed,
+ * `reset()` or `dispose()` ran, a later load started, or the user edited in the
+ * meantime. `save` is called on each `ts-layout-change`, in event order, and
+ * not awaited. A throw or a rejection is caught and warns once in development;
+ * the adapter owns retries and ordering.
+ */
+export interface LayoutAdapter {
+  /** What is stored for `device`; null or undefined for nothing. It is read like a saved layout, so a Layout or an item array both work. */
+  load(device: Device): Layout | LayoutItem[] | unknown | null | undefined | Promise<Layout | LayoutItem[] | unknown | null | undefined>
+  save(device: Device, layout: Layout): void | Promise<void>
+  /** Called by `reset()`; without it `reset()` only applies the defaults. */
+  remove?(device: Device): void | Promise<void>
+}
 
 export interface TsLayoutChangeDetail {
   /** The whole layout after the edit; save this. */
@@ -43,7 +59,8 @@ export interface TsLayoutChangeDetail {
  * scheduled profile change that falls due while editing applies after Done.
  *
  * Attributes: `editing`, `profile`, `locked`, `undo-toast="off"`,
- * `edit-controls="off"`, `locale` (for plural forms in its messages).
+ * `edit-controls="off"`, `locale` (for plural forms in its messages),
+ * `persist="my-dash"` (saves the layout to `localStorage` per device, with no script).
  * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
  * Slots: the default one for tiles, and `empty`.
  *
@@ -74,6 +91,15 @@ export declare class TsGrid extends HTMLElement {
    * it while editing ends edit mode. Reflects the `locked` attribute.
    */
   locked: boolean
+  /**
+   * A key that saves the layout to `localStorage` under `${key}:${device}`, as
+   * `persistLayout(grid, { key })` does, with the layout the grid shows when
+   * its device is first known as the defaults. null, or no attribute, turns
+   * saving off; so does an empty string, with one development warning. Changing
+   * it re-attaches, and the grid detaches when removed from the page. Reflects
+   * the `persist` attribute.
+   */
+  persist: string | null
   /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
   readonly hiddenItems: ReadonlyArray<{ id: string; type: string; label: string }>
   /**

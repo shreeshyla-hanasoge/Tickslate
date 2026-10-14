@@ -9,15 +9,17 @@ export { TsWidget } from './widget.js'
 export type { ViewModelContext, WidgetState } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
-import type { TsGrid } from './grid.js'
+import type { TsGrid, LayoutAdapter } from './grid.js'
 
 export interface PersistLayoutOptions {
-  /** Each device is stored under `${key}:${device}`. */
-  key: string
+  /** Each device is stored under `${key}:${device}`. Required unless `adapter` is given. */
+  key?: string
   /** A Layout or item array serves both devices; in the object form `phone` falls back to `desktop`. */
   defaults?: Layout | LayoutItem[] | { desktop: Layout | LayoutItem[]; phone?: Layout | LayoutItem[] }
   /** Defaults to `localStorage` when it exists. Storage that throws is treated as empty. */
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null
+  /** Remote or async storage. It wins over `storage` (giving both warns once in development) and names its own storage, so it needs no `key`. */
+  adapter?: LayoutAdapter
 }
 
 /** Loads the grid's layout for its device, saves every `ts-layout-change`, and reloads when the device changes. */
