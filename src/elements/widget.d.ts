@@ -62,6 +62,10 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   actions: readonly string[]
   /** True when `actions` includes `name`. */
   actionEnabled(name: string): boolean
+  /** Attribute and property. Makes the label a real link. Only http, https, mailto, tel and relative URLs are accepted. */
+  href: string | null
+  /** Attribute and property. Fires ts-action { action: 'open', id }. */
+  activatable: boolean
   /** Attribute and property, snapped to the widget's supported sizes; defaults to the first supported size. */
   size: SizeName
   /** The size actually rendered. */
@@ -128,6 +132,20 @@ export declare function header(opts?: HeaderOptions): string
 export declare function arrowFor(text: unknown): '▲' | '▼' | ''
 /** The words either side of the time in `time.synced`, for a tile that hides them when narrow. */
 export declare function syncedParts(t: Translate): { pre: string; post: string }
+/** Only http:, https:, mailto:, tel: and relative URLs are accepted (RFC 0003 §7). */
+export declare function validateHref(raw: unknown, el?: { _uid?: string; localName?: string; getAttribute?(name: string): string | null }): string | null
+
+/** RFC 0003 §7: Tile activation */
+export type TsOpenAction = { action: 'open'; id: string }
+
+/** RFC 0003 §7.1: Chart point selection */
+export type TsChartSelectAction = {
+  action: 'select'
+  value: number | string
+  series: string
+  y: number
+  index: number
+}
 
 declare global {
   interface HTMLElementEventMap {
