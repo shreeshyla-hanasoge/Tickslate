@@ -451,7 +451,7 @@ export class TsSessionClock extends TsWidget {
         header({
           dot: true,
           labelClass: 'title',
-          extra: '<span class="n sm clock ell" data-flash="clock" data-k="clock"></span>',
+          extra: '<span class="n sm clock ell"></span>',
           // The tick glyphs are decoration: the words beside them say what each tick means.
           meta:
             '<span class="legend xs mut"><span class="lg0"><span class="lgm" aria-hidden="true"></span> <span class="lgt"></span></span>' +
@@ -463,7 +463,7 @@ export class TsSessionClock extends TsWidget {
     }
     return (
       header({ dot: true, labelClass: 'title', inner: '<span class="tf"></span><span class="ts"></span>', meta: '<span class="xs mut sess ell"></span>' }) +
-      '<div class="rowb"><span class="big time" part="value" data-flash="time" data-k="time"></span><span class="sm mut zone"></span></div>' +
+      '<div class="rowb"><span class="big time" part="value"></span><span class="sm mut zone"></span></div>' +
       '<span class="f1"></span>' +
       '<div class="trk"><div class="fill"></div></div>' +
       '<div class="row xs mut ft"><span class="n from"></span><span class="f1"></span><span class="mid ell"><span class="mf"></span><span class="ms"></span></span><span class="f1"></span><span class="n to"></span></div>'
@@ -494,7 +494,6 @@ export class TsSessionClock extends TsWidget {
     setText(this.$('.ts'), vm.titleShort)
     setText(this.$('.sess'), vm.session)
     setText(this.$('.time'), vm.time)
-    this.flash('time', vm.time, { goodWhen: 'neither' })
     setText(this.$('.zone'), vm.zone)
     this.$('.fill').style.width = `${vm.progress}%`
     this.$('.trk').hidden = !vm.track
@@ -512,7 +511,6 @@ export class TsSessionClock extends TsWidget {
     this.$('.dot').hidden = !vm.live
     setText(this.$('.title'), vm.title)
     setText(this.$('.clock'), vm.clock)
-    this.flash('clock', vm.clock, { goodWhen: 'neither' })
     this.$('.legend').hidden = vm.legend.length === 0
     for (let i = 0; i < 2; i++) {
       const item = vm.legend[i]

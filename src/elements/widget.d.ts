@@ -1,4 +1,4 @@
-import type { Formatter, MessageOverrides, SizeName, Translate, WidgetSpec } from '../core/index.js'
+import type { Formatter, MessageOverrides, Numeric, SizeName, Translate, WidgetSpec } from '../core/index.js'
 
 /** 'loading' covers a re-fetch over existing data; 'error' shows the error view. */
 export type WidgetState = 'loading' | 'error' | null
@@ -21,7 +21,7 @@ export type DataShape = Readonly<Record<string, ShapeKind | ShapeField>>
 export interface Freshness {
   /** data.asOf read with toTime; null when absent or unreadable. */
   asOf: number | null
-  /** fmt.ago, '' without asOf. */
+  /** fmt.ago, '' without asOf. An asOf ahead of `now` reads as 'just now', never a negative age. */
   ago: string
   /** live and past the threshold. */
   stale: boolean
@@ -111,11 +111,13 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   update(vm: ViewModel, variant: SizeName): void
 
   /**
-   * Tints the element marked data-flash="<key>" for 700 ms: up (--ts-profit) when
+   * Tints the element marked data-k or data-flash "<key>" for 700 ms: up (--ts-profit) when
    * the value rose, down (--ts-loss) when it fell. With goodWhen 'down' the
-   * colours swap; 'neither' uses --ts-accent for both (RFC 0003 §6.3).
+   * colours swap; 'neither' uses --ts-accent for both (RFC 0003 §6.3). Pass the number behind the
+   * figure, not its text. Never on a first render, an unchanged or unreadable value, or under
+   * `flash="off"` or reduced motion; at most once a second per key. A clock needs no flash: don't call it.
    */
-  protected flash(key: string, value: unknown, o?: { goodWhen?: 'up' | 'down' | 'neither' }): void
+  protected flash(key: string, value: Numeric, o?: { goodWhen?: 'up' | 'down' | 'neither' }): void
 
   connectedCallback(): void
   disconnectedCallback(): void

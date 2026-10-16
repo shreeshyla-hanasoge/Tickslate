@@ -405,7 +405,7 @@ ${chartMarkup('M')}
     }
     text('label', vm.label)
     fig('net', 'big', vm.headline, vm.headlineArrow, vm.netClass)
-    this.flash('net', vm.netNum !== undefined ? vm.netNum : (this.data && this.data.net))
+    this.flash('net', vm.netNum)
     text('empty', t('equity.noDays'))
 
     if (variant === 'Wide') text('peakNote', vm.peakNote)

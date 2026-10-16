@@ -168,6 +168,7 @@ import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isS
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
 import { translator } from './messages-cache.js'
+import { subscribe } from './ticker.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -189,38 +190,6 @@ export function parseDuration(v) {
     }
   }
   return null
-}
-
-function addClass(el, cls) {
-  if (!el) return
-  if (el.classList) {
-    el.classList.add(cls)
-  } else if (typeof el.getAttribute === 'function' && typeof el.setAttribute === 'function') {
-    const cur = (el.getAttribute('class') || '').split(/\s+/).filter(Boolean)
-    if (!cur.includes(cls)) {
-      cur.push(cls)
-      el.setAttribute('class', cur.join(' '))
-    }
-  } else if (typeof el.className === 'string') {
-    const cur = el.className.split(/\s+/).filter(Boolean)
-    if (!cur.includes(cls)) {
-      cur.push(cls)
-      el.className = cur.join(' ')
-    }
-  }
-}
-
-function removeClass(el, cls) {
-  if (!el) return
-  if (el.classList) {
-    el.classList.remove(cls)
-  } else if (typeof el.getAttribute === 'function' && typeof el.setAttribute === 'function') {
-    const cur = (el.getAttribute('class') || '').split(/\s+/).filter((c) => c && c !== cls)
-    el.setAttribute('class', cur.join(' '))
-  } else if (typeof el.className === 'string') {
-    const cur = el.className.split(/\s+/).filter((c) => c && c !== cls)
-    el.className = cur.join(' ')
-  }
 }
 
 // attribute → createFormatter option
@@ -643,8 +612,7 @@ export class TsWidget extends Base {
     this._grid = null // the grid this widget has told about itself, so it hears when the grid's messages or locale change
     this._every = 0
     this._timer = 0
-    this._freshTimer = 0
-    this._freshAsOf = null
+    this._unsubFresh = null
     this._flashes = new Map()
     this._failed = false
     // The JSON data attribute (RFC 0002 §2.6): the property wins once set, so
@@ -660,11 +628,9 @@ export class TsWidget extends Base {
     this._onVisibility = () => {
       if (this._visible()) {
         this._arm()
-        this._armFreshness()
         this.requestRender()
       } else {
         this._disarm()
-        this._disarmFreshness()
       }
     }
     const root = this.attachShadow({ mode: 'open' })
@@ -983,7 +949,7 @@ export class TsWidget extends Base {
     this._link(null)
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVisibility)
     this._disarm()
-    this._disarmFreshness()
+    this._watchFreshness(false)
     this._clearFlashes()
   }
 
@@ -1208,16 +1174,12 @@ export class TsWidget extends Base {
     this._timer = 0
   }
 
-  _armFreshness() {
-    if (this._freshTimer || !this.isConnected || !this._visible() || this._freshAsOf === null) return
-    this._freshTimer = setInterval(() => this.requestRender(), 15000)
-    if (this._freshTimer && typeof this._freshTimer.unref === 'function') this._freshTimer.unref()
-  }
-
-  _disarmFreshness() {
-    if (this._freshTimer) {
-      clearInterval(this._freshTimer)
-      this._freshTimer = 0
+  /** Re-renders every 15 s on the shared ticker while the data is live and has an asOf: the only data whose words age. */
+  _watchFreshness(on) {
+    if (on && !this._unsubFresh) this._unsubFresh = subscribe(() => this.requestRender())
+    else if (!on && this._unsubFresh) {
+      this._unsubFresh()
+      this._unsubFresh = null
     }
   }
 
@@ -1232,116 +1194,102 @@ export class TsWidget extends Base {
     return 120000
   }
 
-  _updateFreshnessHeader(freshness, live, fmt, t, now, vm) {
+  _updateFreshnessHeader(freshness, live, stale, fmt, t, now, vm) {
     const dot = this.$('[data-k="dot"]')
     if (dot) {
       if (live) {
         dot.removeAttribute('hidden')
-        const cls = freshness.stale ? 'dot live stale' : 'dot live'
-        if (typeof dot.setAttribute === 'function') dot.setAttribute('class', cls)
-        dot.className = cls
+        const cls = stale ? 'dot live stale' : 'dot live'
+        if (dot.getAttribute('class') !== cls) dot.setAttribute('class', cls)
       } else {
         dot.setAttribute('hidden', '')
       }
     }
     const meta = this.$('[data-k="meta"]')
-    if (meta) {
-      const preNode = this.$('[data-k="pre"]')
-      const timeNode = this.$('[data-k="time"]')
-      const postNode = this.$('[data-k="post"]')
-      if (freshness.asOf === null) {
-        if (!vm || !vm.time) meta.setAttribute('hidden', '')
-      } else {
-        meta.removeAttribute('hidden')
-        if (!live) {
-          const parts = syncedParts(t)
-          if (preNode) preNode.textContent = parts.pre
-          if (timeNode) timeNode.textContent = fmt.time(freshness.asOf)
-          if (postNode) postNode.textContent = parts.post
-        } else if (!freshness.stale) {
-          if (preNode) preNode.textContent = ''
-          if (timeNode) timeNode.textContent = freshness.ago
-          if (postNode) postNode.textContent = ''
-        } else {
-          const ageMs = Math.max(0, now - freshness.asOf)
-          const mins = Math.max(1, Math.round(ageMs / 60000))
-          let age
-          if (mins < 60) age = fmt.unit(mins, 'minute')
-          else if (Math.round(ageMs / 3600000) < 24) age = fmt.unit(Math.round(ageMs / 3600000), 'hour')
-          else age = fmt.unit(Math.round(ageMs / 86400000), 'day')
-          if (preNode) preNode.textContent = ''
-          if (timeNode) timeNode.textContent = t('time.stale', { age })
-          if (postNode) postNode.textContent = ''
-        }
-      }
+    if (!meta) return
+    if (freshness.asOf === null) {
+      if (!vm || !vm.time) meta.setAttribute('hidden', '')
+      return
+    }
+    let pre = ''
+    let time
+    let post = ''
+    if (!live) {
+      const parts = syncedParts(t)
+      pre = parts.pre
+      post = parts.post
+      time = fmt.time(freshness.asOf)
+    } else if (!stale) {
+      time = freshness.ago
+    } else {
+      const ageMs = Math.max(0, now - freshness.asOf)
+      const mins = Math.max(1, Math.round(ageMs / 60000))
+      let age
+      if (mins < 60) age = fmt.unit(mins, 'minute')
+      else if (Math.round(ageMs / 3600000) < 24) age = fmt.unit(Math.round(ageMs / 3600000), 'hour')
+      else age = fmt.unit(Math.round(ageMs / 86400000), 'day')
+      time = t('time.stale', { age })
+    }
+    meta.removeAttribute('hidden')
+    for (const [k, text] of [['pre', pre], ['time', time], ['post', post]]) {
+      const node = this.$(`[data-k="${k}"]`)
+      if (node && node.textContent !== text) node.textContent = text
     }
   }
 
   /**
-   * Tints the element marked data-flash="<key>" for 700 ms: up (--ts-profit) when
-   * the value rose, down (--ts-loss) when it fell. With goodWhen 'down' the
-   * colours swap; 'neither' uses --ts-accent for both (RFC 0003 §6.3).
+   * Tints the element marked data-k or data-flash "<key>" for 700 ms: up
+   * (--ts-profit) when the value rose, down (--ts-loss) when it fell. With
+   * goodWhen 'down' the colours swap; 'neither' uses --ts-accent for both
+   * (RFC 0003 §6.3). Pass the number behind the figure, not its text.
    */
   flash(key, value, o) {
     if (!this.isConnected) return
-    let n = toNumber(value)
-    if (!Number.isFinite(n) && typeof value === 'string') {
-      const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(value.trim())
-      if (m) n = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3] || 0)
-    }
+    const n = toNumber(value)
     if (!Number.isFinite(n)) return
-    if (!this._flashes) this._flashes = new Map()
-    if (!this._flashes.has(key)) {
-      this._flashes.set(key, { lastVal: n, lastTime: 0, timer: null })
+    const entry = this._flashes.get(key)
+    if (!entry) {
+      this._flashes.set(key, { lastVal: n, lastTime: 0, timer: null, el: null, cls: '' })
       return
     }
-    const entry = this._flashes.get(key)
     const prevVal = entry.lastVal
     entry.lastVal = n
     if (n === prevVal) return
-    const now = typeof this.now === 'function' ? this.now() : Date.now()
+    const now = this.now()
     if (entry.lastTime > 0 && now - entry.lastTime < 1000) return
     entry.lastTime = now
-    const grid = findGrid(this)
-    if (this._flashDisabled(grid)) return
-    const up = n > prevVal
+    if (this._flashDisabled(findGrid(this))) return
     const goodWhen = o && o.goodWhen ? o.goodWhen : 'up'
-    let cls = 'flash-up'
-    if (goodWhen === 'neither') cls = 'flash-neither'
-    else if (goodWhen === 'down') cls = up ? 'flash-down' : 'flash-up'
-    else cls = up ? 'flash-up' : 'flash-down'
+    const up = n > prevVal
+    const cls = goodWhen === 'neither' ? 'flash-neither' : up === (goodWhen !== 'down') ? 'flash-up' : 'flash-down'
 
-    let el = null
-    try {
-      el = this.$(`[data-k="${key}"]`)
-    } catch {
-      // Mocked environments may only accept specific selectors
-    }
-    if (!el) {
-      try {
-        el = this.$(`[data-flash="${key}"]`) || this.$(`slot[name="${key}"]`)
-      } catch {
-        // Ignore mock selector errors
-      }
-    }
+    const q = String(key).replace(/["\\]/g, '\\$&')
+    const el = this.$(`[data-k="${q}"]`) || this.$(`[data-flash="${q}"]`)
     if (!el) return
-    removeClass(el, 'flash-up')
-    removeClass(el, 'flash-down')
-    removeClass(el, 'flash-neither')
     if (entry.timer) clearTimeout(entry.timer)
-    addClass(el, cls)
+    // Only the class that changes is written: the other two are not on the element.
+    if (entry.cls && entry.cls !== cls) entry.el.classList.remove(entry.cls)
+    el.classList.add(cls)
+    entry.el = el
+    entry.cls = cls
     entry.timer = setTimeout(() => {
-      removeClass(el, 'flash-up')
-      removeClass(el, 'flash-down')
-      removeClass(el, 'flash-neither')
+      el.classList.remove(cls)
       entry.timer = null
+      entry.cls = ''
     }, 700)
-    if (entry.timer && typeof entry.timer.unref === 'function') entry.timer.unref()
+    if (entry.timer.unref) entry.timer.unref()
+  }
+
+  /** An update() that rewrites an element's class (a figure's tone) must not end a flash that is still running. */
+  _keepFlashes() {
+    for (const entry of this._flashes.values()) {
+      if (entry.cls && !entry.el.classList.contains(entry.cls)) entry.el.classList.add(entry.cls)
+    }
   }
 
   _flashDisabled(grid) {
-    if (typeof this.getAttribute === 'function' && this.getAttribute('flash') === 'off') return true
-    if (grid && typeof grid.getAttribute === 'function' && grid.getAttribute('flash') === 'off') return true
+    if (this.getAttribute('flash') === 'off') return true
+    if (grid && grid.getAttribute('flash') === 'off') return true
     if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true
     return false
   }
@@ -1349,6 +1297,7 @@ export class TsWidget extends Base {
   _clearFlashes() {
     for (const entry of this._flashes.values()) {
       if (entry.timer) clearTimeout(entry.timer)
+      if (entry.cls) entry.el.classList.remove(entry.cls)
     }
     this._flashes.clear()
   }
@@ -1398,7 +1347,8 @@ export class TsWidget extends Base {
       const asOf = Number.isFinite(parsedAsOf) ? parsedAsOf : null
       const staleAfter = this._staleAfter(grid)
       const dataLive = d && typeof d.live === 'boolean' ? d.live : (this.hasAttribute('live') ? this.getAttribute('live') !== 'false' : false)
-      const stale = dataLive === true && asOf !== null && (now - asOf > staleAfter)
+      // The one place "stale" is decided: the header, the tile's name and ctx.freshness all read it.
+      const stale = dataLive === true && asOf !== null && now - asOf > staleAfter
       const ago = asOf !== null ? fmt.ago(asOf, now, { justNow: t('time.justNow') }) : ''
       const freshness = Object.freeze({ asOf, ago, stale })
 
@@ -1412,18 +1362,14 @@ export class TsWidget extends Base {
       }
       this._section.removeAttribute('aria-busy')
       const isLive = typeof vm.live === 'boolean' ? vm.live : dataLive
-      const isStale = isLive === true && asOf !== null && (now - asOf > staleAfter)
+      const isStale = isLive && stale
       this._tileName(vm.ariaLabel || label, isLive, isStale)
       this.update(vm, variant)
-      this._updateFreshnessHeader(freshness, isLive, fmt, t, now, vm)
+      this._keepFlashes()
+      this._updateFreshnessHeader(freshness, isLive, isStale, fmt, t, now, vm)
       this._markHeading(grid, label)
-      if (asOf !== null) {
-        this._freshAsOf = asOf
-        this._armFreshness()
-      } else {
-        this._freshAsOf = null
-        this._disarmFreshness()
-      }
+      // A snapshot's "synced 11:42" never changes, so only live data ticks.
+      this._watchFreshness(isLive && asOf !== null)
       this._failed = false
     } catch (err) {
       // A widget that can't draw its data shouldn't take the page with it.
@@ -1436,8 +1382,7 @@ export class TsWidget extends Base {
 
   /** Swap in a non-content view's markup, and write the real label into it. */
   _show(key, html, label, name, busy, grid, skeletonLabel = label) {
-    this._freshAsOf = null
-    this._disarmFreshness()
+    this._watchFreshness(false)
     if (this._shown !== key) {
       this._section.innerHTML = html
       this._refs.clear()

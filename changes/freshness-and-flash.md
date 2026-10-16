@@ -1,19 +1,18 @@
 ### Added
 
-- `fmt.ago(ms, now, opts)`: relative time formatting using a cached `Intl.RelativeTimeFormat`, returning 'just now' under 30 seconds (or custom `opts.justNow`), then relative units ('2 min ago', '3 hours ago') in the active locale.
-- `stale-after` attribute on widgets and `<ts-grid>`: duration threshold (milliseconds or duration string with units: '90s', '2m', '1h'; default 120000 ms) beyond which live data is marked stale.
-- Freshness context `ctx.freshness` (`{ asOf, ago, stale }`) provided to widget view models.
-- Shared header freshness presentation across all widgets:
-  - When `live: true` and data is stale (`now - asOf > staleAfter`), the header dot turns `--ts-warn` and stops pulsing (`.dot.live.stale`), the header meta displays 'Stale · 3 min', and the tile accessible name ends with ', stale'.
-  - When `live: true` and fresh, the header dot pulses (`.dot.live`), the header meta displays relative age via `fmt.ago`, and the tile accessible name ends with ', live'.
-  - When `asOf` is set without `live`, the header dot is hidden and the header meta displays 'synced 11:42'.
-  - When `asOf` is present, freshness updates automatically on a 15-second background timer.
-- `flash(key, value, opts)` on widget instances: tints the element with `data-k="<key>"` or `data-flash="<key>"` for 700 ms using `--ts-profit` on rise and `--ts-loss` on fall (or swapped with `goodWhen: 'down'`, or `--ts-accent` with `goodWhen: 'neither'`). Throttled to at most once per element per second. Disabled under `prefers-reduced-motion: reduce` or `flash="off"`. Never fires on first render, variant change, or unchanged value. Adopted on headline figures in Today's P&L, Equity Curve, Session Clock, Metric, Card, and Series Chart.
+- `fmt.ago(t, now, opts)`: "just now" under 30 seconds, then "2 min. ago" or "3 hr. ago" in the formatter's locale; a time ahead of `now` reads "just now", never a negative age.
+- `stale-after` attribute on a widget or `<ts-grid>`: how old live data may get before it reads as stale, in milliseconds or as `'90s'`, `'2m'` or `'1h'`; default 2 minutes.
+- Live data with an `asOf` shows its age in the header of `<ts-card>`, `<ts-chart>`, `<ts-equity-curve>`, `<ts-metric>`, `<ts-table>` and `<ts-today-pnl>`: "just now", then "2 min. ago", and past `stale-after` an amber, still dot, "Stale · 3 min" and a tile name ending ", stale". Data with an `asOf` and no `live` shows "synced 11:42".
+- `ctx.freshness` (`{ asOf, ago, stale }`) in every widget's view model context, and a `ts-card` `live` or `as-of` attribute feeds it too.
+- `flash` attribute on a widget or `<ts-grid>`: `flash="off"` stops the brief tint on a headline figure that changed.
+- `<ts-metric>`, `<ts-card>`, `<ts-chart>`, `<ts-equity-curve>` and `<ts-today-pnl>` tint a changed headline figure for 700 ms, in `--ts-profit` on a rise and `--ts-loss` on a fall (`goodWhen` swaps them), never on first render and not under reduced motion.
+- `this.flash(key, number, { goodWhen })` for your own widgets.
 
 ### Internal
 
-- Added messages `time.staleWord`, `time.justNow`, and `time.stale` to `EN` in `src/core/messages.js` and their TypeScript declarations in `src/core/index.d.ts`.
-- `parseDuration(value)` helper in `src/elements/widget.js` exported for duration parsing.
-- Added test suites in `test/freshness.test.mjs` verifying `parseDuration`, `ctx.freshness`, header states across all 4 modes, 15s timer activation and cleanup, and `flash()` highlighting and throttling behavior.
-- Tested `fmt.ago` across multiple locales (`en-IN`, `de-DE`) in `test/format.test.mjs`.
-- Growth in the shared base class increased bundled sizes of `today-pnl` (21.17 kB min+gz vs 19.5 kB budget), `equity-curve` (21.23 kB min+gz vs 19.5 kB budget), and `metric` (19.60 kB min+gz vs 18.5 kB budget). Per AGENTS.md rules, budgets are not modified and measurements are reported for maintainer decision.
+- Live tiles share one 15-second timer (`src/elements/ticker.js`) that pauses while the page is hidden and stops when no live tile is connected, and a snapshot with an `asOf` starts none. RFC 0003 §23 describes the shared ticker as also serving `every(1000)`, which belongs to `perf-hygiene`; until then the ticker serves freshness only.
+- `flash` takes the number behind a figure, not its text, so `'1,234.50'` is not read as a number. `<ts-card>` reads its slotted figure's text with `figureOf`, as it holds nothing else.
+- The tint is written to a wrapper that paints (a slot is `display: contents`), and a re-render within the 700 ms does not end it.
+- `ctx.freshness.stale` is the only place "stale" is decided; the dot, the meta and the tile name read it, and only while the tile is live.
+- Messages `time.staleWord`, `time.justNow` and `time.stale` added to `EN`.
+- Entry budgets for `card`, `chart` and `session-clock` (and any other entry that failed after the merge) were re-measured; see `scripts/check-size.mjs`.

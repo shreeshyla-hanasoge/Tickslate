@@ -87,6 +87,8 @@ clock.data = { calendar, sessions: ['nse'] }
 | `size` | attribute and property | `S` or `Banner`; others snap. A grid sets it |
 | `label` | attribute and property | The name in the loading view and the start of the tile's name. Defaults to "Session clock" |
 | `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
+| `stale-after` | attribute | Accepted on every tile, and has no effect here: the dot says a session is open, not that data is fresh, and the clock reads its own time |
+| `flash` | attribute | Accepted on every tile, and has no effect here: a clock changes every minute and rolls over at midnight, so nothing on this tile flashes |
 | `data` | property | `SessionClockData` |
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
@@ -98,6 +100,10 @@ clock.data = { calendar, sessions: ['nse'] }
 It re-renders every second while connected and the page is visible, and catches
 up at once when the tab becomes visible again. The base members are listed in
 [Your own widget](../guide/your-own-widget.md).
+
+## Freshness and change flashes
+
+The session clock works out the time from its clock, not from data that ages, so its dot means an open session and the header has no "just now" or "Stale" text. It has no change flash either: a clock changes every minute and rolls over at midnight, and tinting that would be noise.
 
 ## Actions
 

@@ -24,7 +24,9 @@ list wins.
      open or closed title of the session clock) it is named by the plain label,
      so heading navigation lists labels. It is `role="heading"` and not an `<h3>`
      so shadow styles stay in control.
-   - A live tile's name ends with `, live` (`time.live`).
+   - A live tile's name ends with `, live` (`time.live`), or with `, stale` (`time.staleWord`)
+     once its data is older than `stale-after`. The warning is never colour alone: the
+     header also reads `Stale · 3 min`, and the stale dot stops pulsing.
    - The name is written only when it changes, so a ticking value does not make a
      screen reader read the tile again.
    - Loading keeps the real label and sets `aria-busy="true"`.
@@ -112,7 +114,8 @@ list wins.
 
 17. **Reduced motion is respected.** Under `prefers-reduced-motion: reduce`:
     no live-dot pulse, no skeleton shimmer, no edit wiggle (a static outline
-    instead), no sliding toast, no smooth scrolling. State changes appear
+    instead), no sliding toast, no smooth scrolling, no change-flash tint
+    (`flash`). State changes appear
     without movement.
 18. **No `aria-live` on ticking values.** Prices, P&L and clocks change their
     labels silently. Only changes the user caused are announced: grid editing

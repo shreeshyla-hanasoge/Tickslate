@@ -198,10 +198,9 @@ export function createFormatter(options = {}) {
     if (!f) cache.set(key, (f = new Intl.ListFormat(locale, opts)))
     return f
   }
-  const rtf = (opts = { style: 'short', numeric: 'always' }) => {
-    const key = `rtf${JSON.stringify(opts)}`
-    let f = cache.get(key)
-    if (!f) cache.set(key, (f = new Intl.RelativeTimeFormat(locale, opts)))
+  const rtf = () => {
+    let f = cache.get('rtf')
+    if (!f) cache.set('rtf', (f = new Intl.RelativeTimeFormat(locale, { style: 'short', numeric: 'always' })))
     return f
   }
 
@@ -326,7 +325,9 @@ export function createFormatter(options = {}) {
 
   const ago = (t, now, o = {}) => {
     if (!Number.isFinite(t) || !Number.isFinite(now)) return DASH
-    const diff = now - t
+    // A time ahead of `now` (a host clock a little behind the server's) reads as
+    // fresh and never as a negative age; it ages normally once `now` passes it.
+    const diff = Math.max(0, now - t)
     if (diff < 30000) return o.justNow !== undefined ? o.justNow : 'just now'
     const min = Math.round(diff / 60000)
     if (min < 60) return rtf().format(-min, 'minute')

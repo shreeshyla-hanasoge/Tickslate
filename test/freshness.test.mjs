@@ -1,4 +1,4 @@
-import { test, describe, before, after, afterEach } from 'node:test'
+import { test, describe, before, after, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseDuration, header } from '../src/elements/widget.js'
 import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
@@ -36,7 +36,12 @@ describe('freshness and flash', () => {
     Widget = (await import('../src/elements/widget.js?fake-dom-freshness')).TsWidget
     delete globalThis.HTMLElement
   })
-  afterEach(() => globalThis.document.reset())
+  // A widget left connected keeps its place on the shared ticker, so each test starts from none.
+  const made = []
+  afterEach(() => {
+    for (const el of made.splice(0)) if (el.isConnected) el.disconnect()
+    globalThis.document.reset()
+  })
   after(() => {
     delete globalThis.document
   })
@@ -59,6 +64,7 @@ describe('freshness and flash', () => {
       }
     }
     const el = new Cls()
+    made.push(el)
     const root = el.shadowRoot
     root.querySelector = (sel) => (sel === '.tile' ? root.section : root.section.querySelector(sel))
     for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
@@ -196,18 +202,151 @@ describe('freshness and flash', () => {
     })
   })
 
-  describe('15 s timer', () => {
-    test('timer is active while asOf is set, and stops when cleared', async () => {
+  describe('the shared ticker', () => {
+    // Counts the intervals the code under test starts and stops, so a test sees how many are live.
+    let live
+    let realSet
+    let realClear
+    beforeEach(() => {
+      live = new Set()
+      realSet = globalThis.setInterval
+      realClear = globalThis.clearInterval
+      globalThis.setInterval = (fn, ms) => {
+        const id = realSet(fn, ms)
+        live.add(id)
+        return id
+      }
+      globalThis.clearInterval = (id) => {
+        live.delete(id)
+        realClear(id)
+      }
+    })
+    afterEach(() => {
+      for (const id of live) realClear(id)
+      globalThis.setInterval = realSet
+      globalThis.clearInterval = realClear
+    })
+
+    const NOW = 1760000120000
+    const liveWidget = async (attrs) => {
+      const el = make({ attrs })
+      el.now = () => NOW
+      el.connect()
+      el.data = { val: 1, asOf: NOW - 5000, live: true }
+      await tick()
+      return el
+    }
+
+    test('thirty live tiles share one timer, and it stops when the last one goes', async () => {
+      const before = live.size
+      const els = []
+      for (let i = 0; i < 30; i++) els.push(await liveWidget())
+      assert.equal(live.size - before, 1)
+      for (const el of els.slice(1)) el.disconnect()
+      assert.equal(live.size - before, 1, 'still one while a tile is connected')
+      els[0].disconnect()
+      assert.equal(live.size - before, 0, 'none when no tile is connected')
+    })
+
+    test('a snapshot (asOf without live) and data without asOf start no timer', async () => {
+      const before = live.size
       const el = await connect(make())
-      assert.equal(el._freshTimer, 0)
-
-      el.data = { val: 100, asOf: 1760000000000 }
+      el.data = { val: 1, asOf: NOW - 5000 }
       await tick()
-      assert.ok(el._freshTimer !== 0, 'timer armed with asOf')
-
-      el.data = { val: 100 }
+      assert.equal(live.size - before, 0, 'a snapshot never ages in words')
+      el.data = { val: 1, live: true }
       await tick()
-      assert.equal(el._freshTimer, 0, 'timer disarmed without asOf')
+      assert.equal(live.size - before, 0, 'live with no asOf has nothing to age')
+      el.data = { val: 1, asOf: NOW - 5000, live: true }
+      await tick()
+      assert.equal(live.size - before, 1)
+      el.data = { val: 1, asOf: NOW - 5000, live: false }
+      await tick()
+      assert.equal(live.size - before, 0, 'going from live to a snapshot stops it')
+    })
+
+    test('the timer pauses while the page is hidden and resumes when it shows', async () => {
+      const before = live.size
+      await liveWidget()
+      assert.equal(live.size - before, 1)
+      globalThis.document.visibilityState = 'hidden'
+      globalThis.document.dispatchEvent(new Event('visibilitychange'))
+      assert.equal(live.size - before, 0)
+      globalThis.document.visibilityState = 'visible'
+      globalThis.document.dispatchEvent(new Event('visibilitychange'))
+      assert.equal(live.size - before, 1)
+    })
+
+    test('a tick re-renders the tile, so its age moves on and it goes stale', async () => {
+      let now = NOW
+      const el = make()
+      el.now = () => now
+      el.connect()
+      el.data = { val: 1, asOf: NOW - 5000, live: true }
+      await tick()
+      const s = section(el)
+      assert.equal(s.getAttribute('aria-label'), 'Revenue, live')
+      now = NOW + 300000
+      const writes = s.htmlWrites
+      el.requestRender()
+      await tick()
+      assert.equal(s.getAttribute('aria-label'), 'Revenue, stale')
+      assert.equal(s.htmlWrites, writes, 'patched in place, not rebuilt')
+    })
+  })
+
+  describe('one source for stale', () => {
+    test('ctx.freshness.stale, the dot and the tile name agree, for the data and for the live attribute', async () => {
+      const now = 1760000120000
+      const el = make({ attrs: { live: '' } })
+      el.now = () => now
+      el.connect()
+      el.data = { val: 1, asOf: now - 600000 }
+      await tick()
+      const s = section(el)
+      assert.equal(el._getCtx().freshness.stale, true)
+      assert.equal(s.querySelector('[data-k="dot"]').getAttribute('class'), 'dot live stale')
+      assert.equal(s.getAttribute('aria-label'), 'Revenue, stale')
+      // Data's own live: false wins over the attribute, in all three places.
+      el.data = { val: 1, asOf: now - 600000, live: false }
+      await tick()
+      assert.equal(el._getCtx().freshness.stale, false)
+      assert.equal(s.querySelector('[data-k="dot"]').getAttribute('hidden'), '')
+      assert.equal(s.getAttribute('aria-label'), 'Revenue')
+    })
+
+    test('an asOf ahead of now reads as fresh with no negative age, and ages once now passes it', async () => {
+      let now = 1760000000000
+      const el = make()
+      el.now = () => now
+      el.connect()
+      el.data = { val: 1, asOf: now + 3600000, live: true }
+      await tick()
+      const s = section(el)
+      assert.equal(el._getCtx().freshness.ago, 'just now')
+      assert.equal(s.querySelector('[data-k="time"]').textContent, 'just now')
+      assert.equal(s.getAttribute('aria-label'), 'Revenue, live')
+      now += 3600000 + 600000
+      el.requestRender()
+      await tick()
+      assert.equal(s.getAttribute('aria-label'), 'Revenue, stale')
+      assert.match(s.querySelector('[data-k="time"]').textContent, /^Stale · 10 min$/)
+    })
+
+    test('the meta text is written only when it changes', async () => {
+      const now = 1760000120000
+      const el = make()
+      el.now = () => now
+      el.connect()
+      el.data = { val: 1, asOf: now - 5000, live: true }
+      await tick()
+      const time = section(el).querySelector('[data-k="time"]')
+      let writes = 0
+      let text = time.textContent
+      Object.defineProperty(time, 'textContent', { get: () => text, set: (v) => { writes++; text = v } })
+      el.requestRender()
+      await tick()
+      assert.equal(writes, 0)
     })
   })
 
@@ -312,13 +451,13 @@ describe('freshness and flash', () => {
       await tick()
       const valEl = section(el).querySelector('[data-k="val"]')
       assert.match(valEl.getAttribute('class') || '', /\bflash-up\b/)
-      valEl.setAttribute('class', 'val')
+      const writes = valEl.classWrites
 
-      // Second change at t = 2500 (< 1000 ms later): throttled, does not flash
+      // Second change at t = 2500 (< 1000 ms later): throttled, so nothing is written
       simNow = 2500
       el.data = { val: 30 }
       await tick()
-      assert.doesNotMatch(valEl.getAttribute('class') || '', /flash/)
+      assert.equal(valEl.classWrites, writes)
     })
 
     test('disabled when flash="off" or under reduced motion', async () => {
@@ -341,6 +480,90 @@ describe('freshness and flash', () => {
       await tick()
       const valEl = section(el).querySelector('[data-k="val"]')
       assert.doesNotMatch(valEl.getAttribute('class') || '', /flash/)
+    })
+
+    test('writes only the class that changes', async () => {
+      let simNow = 1000
+      const el = await connect(make({ onUpdate: (w, vm) => w.flash('val', vm.val) }))
+      el.now = () => simNow
+      el.data = { val: 10 }
+      await tick()
+      const valEl = section(el).querySelector('[data-k="val"]')
+      simNow += 2000
+      el.data = { val: 20 }
+      await tick()
+      assert.equal(valEl.classWrites, 1, 'one add, no clearing of the others first')
+      simNow += 2000
+      el.data = { val: 5 }
+      await tick()
+      assert.equal(valEl.classWrites, 3, 'one remove of the old tint, one add of the new')
+      assert.equal(valEl.getAttribute('class'), 'flash-down')
+    })
+
+    test('a re-render that rewrites the element\'s class does not end a flash', async () => {
+      let simNow = 1000
+      const el = await connect(
+        make({
+          onUpdate(w, vm) {
+            // What Today's P&L does with its figure's tone.
+            w.$('[data-k="val"]').setAttribute('class', 'big')
+            w.flash('val', vm.val)
+          },
+        }),
+      )
+      el.now = () => simNow
+      el.data = { val: 10 }
+      await tick()
+      const valEl = section(el).querySelector('[data-k="val"]')
+      simNow += 2000
+      el.data = { val: 20 }
+      await tick()
+      assert.match(valEl.getAttribute('class'), /\bflash-up\b/)
+      el.requestRender()
+      await tick()
+      assert.match(valEl.getAttribute('class'), /\bflash-up\b/, 'still tinted after an unrelated render')
+    })
+
+    test('the tint goes after 700 ms', async () => {
+      let simNow = 1000
+      const el = await connect(make({ onUpdate: (w, vm) => w.flash('val', vm.val) }))
+      el.now = () => simNow
+      el.data = { val: 10 }
+      await tick()
+      const valEl = section(el).querySelector('[data-k="val"]')
+      simNow += 2000
+      el.data = { val: 20 }
+      await tick()
+      assert.match(valEl.getAttribute('class'), /flash-up/)
+      await new Promise((r) => setTimeout(r, 760))
+      assert.doesNotMatch(valEl.getAttribute('class') || '', /flash/)
+    })
+
+    test('reads a number, not a formatted string; a string that is not a number never flashes', async () => {
+      let simNow = 1000
+      const el = await connect(make({ onUpdate: (w, vm) => w.flash('val', vm.val) }))
+      el.now = () => simNow
+      el.data = { val: '1,234.50' }
+      await tick()
+      simNow += 2000
+      el.data = { val: '1,300.00' }
+      await tick()
+      assert.doesNotMatch(section(el).querySelector('[data-k="val"]').getAttribute('class') || '', /flash/)
+      el.data = { val: '10' }
+      await tick()
+      simNow += 2000
+      el.data = { val: '12.5' }
+      await tick()
+      assert.match(section(el).querySelector('[data-k="val"]').getAttribute('class'), /flash-up/)
+    })
+
+    test('a key with a quote or backslash in it is looked up as written', async () => {
+      const el = await connect(make({ onUpdate: (w, vm) => w.flash('a"b\\c', vm.val) }))
+      el.data = { val: 1 }
+      await tick()
+      el.data = { val: 2 }
+      await tick()
+      assert.ok(section(el).kids.has('[data-k="a\\"b\\\\c"]'))
     })
   })
 })

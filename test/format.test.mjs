@@ -357,6 +357,8 @@ describe('ago', () => {
     assert.equal(inFmt.ago(now - 10000, now), 'just now')
     assert.equal(inFmt.ago(now - 29000, now), 'just now')
     assert.equal(inFmt.ago(now, now), 'just now')
+    assert.equal(inFmt.ago(now + 5000, now), 'just now', 'a time ahead of now is fresh')
+    assert.equal(inFmt.ago(now + 7 * 86400000, now), 'just now', 'however far ahead, never a negative age')
     assert.equal(inFmt.ago(now - 15000, now, { justNow: 'gerade eben' }), 'gerade eben')
   })
 

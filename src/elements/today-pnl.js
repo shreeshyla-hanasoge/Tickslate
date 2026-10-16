@@ -225,6 +225,7 @@ export function todayPnlModel(data, variant, ctx) {
     label: variant === 'S' ? t('pnl.today') : ctx.label,
     time,
     net: fmt.fit(d.net, HEADLINE_CHARS[variant] || HEADLINE_CHARS.Wide),
+    netNum: net,
     netTone: tone(d.net),
     realized: fmt.money(d.realized),
     realizedTone: tone(d.realized),
@@ -422,16 +423,17 @@ export class TsTodayPnl extends TsWidget {
     }
     this.$('[data-k="dot"]').toggleAttribute('hidden', !vm.live)
     text('label', vm.label)
-    this.flash('net', this.data && this.data.net)
 
     if (variant === 'S') {
       text('time', vm.time)
       toned('net', 'big nv', vm.net, vm.netArrow, vm.netTone)
+      this.flash('net', vm.netNum)
       text('footer', vm.footer)
       return
     }
 
     toned('net', 'xbig nv', vm.net, vm.netArrow, vm.netTone)
+    this.flash('net', vm.netNum)
     text('lbRealised', this.t('pnl.realised'))
     text('lbUnrealised', this.t('pnl.unrealised'))
     text('lbFees', this.t('pnl.fees'))
