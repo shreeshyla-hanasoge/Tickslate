@@ -1,5 +1,6 @@
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { readsOf } from './ops.mjs'
 import { createFormatter, createMessages, EN, WIDGETS } from '../src/core/index.js'
 import { checkShape } from '../src/elements/dev.js'
 import { FakeElement, FakeDocument } from './fake-dom.mjs'
@@ -230,20 +231,38 @@ describe('sorting', () => {
     assert.deepEqual(ids(by('qty', 'sideways')), ['c', 'a', 'b'])
   })
 
-  test('500 rows sort in under 16 ms', () => {
-    const rows = Array.from({ length: 500 }, (_, i) => ({ id: `o${i}`, name: `Order ${(i * 7919) % 500}`, qty: (i * 7919) % 997, price: ((i * 104729) % 100000) / 7, pnl: ((i * 31) % 2001) - 1000, ret: ((i * 17) % 200) / 1000 - 0.1 }))
-    const run = (key) => {
-      const start = performance.now()
-      const m = model({ columns: COLUMNS, rows, sort: { key, dir: 'desc' } })
-      const ms = performance.now() - start
-      assert.equal(m.rows.length, 500)
-      return ms
+  test('500 rows sort in O(n log n) comparisons and read each row a fixed number of times', () => {
+    // Counts comparator calls and row reads instead of timing the sort, which
+    // flakes under load. A merge sort makes at most n * log2(n) comparisons
+    // (about 4,500 for 500 rows); an insertion or selection sort makes about
+    // n^2 / 4 (62,500), so the ceiling below fails on it by a wide margin.
+    const N = 500
+    const rows = Array.from({ length: N }, (_, i) => ({ id: `o${i}`, name: `Order ${(i * 7919) % 500}`, qty: (i * 7919) % 997, price: ((i * 104729) % 100000) / 7, pnl: ((i * 31) % 2001) - 1000, ret: ((i * 17) % 200) / 1000 - 0.1 }))
+    const nativeSort = Array.prototype.sort
+    let compares = 0
+    Array.prototype.sort = function (compare) {
+      if (this.length !== N || typeof compare !== 'function') return nativeSort.call(this, compare)
+      return nativeSort.call(this, (a, b) => {
+        compares++
+        return compare(a, b)
+      })
     }
-    // The first runs warm the formatter's caches, as a live table's first render does.
-    for (const key of ['name', 'qty', 'price', 'pnl']) run(key)
-    for (const key of ['name', 'qty', 'price', 'pnl', 'ret']) {
-      const best = Math.min(run(key), run(key), run(key))
-      assert.ok(best < 16, `sorting 500 rows by ${key} took ${best.toFixed(1)} ms`)
+    try {
+      for (const key of ['name', 'qty', 'price', 'pnl', 'ret']) {
+        compares = 0
+        let m
+        const reads = readsOf({ columns: COLUMNS, rows }, (data) => {
+          m = model({ ...data, sort: { key, dir: 'desc' } })
+        })
+        assert.equal(m.rows.length, N)
+        assert.ok(compares > 0, `sorting by ${key} made no comparisons, so the counter is not seeing the sort`)
+        assert.ok(compares <= N * Math.log2(N), `sorting ${N} rows by ${key} made ${compares} comparisons`)
+        // Each row is read a fixed number of times (its cells, its key): about 13 per row is today, so 20 is
+        // close to it and far below one visit per other row (500).
+        assert.ok(reads <= 20 * N, `sorting ${N} rows by ${key} read the input ${reads} times`)
+      }
+    } finally {
+      Array.prototype.sort = nativeSort
     }
   })
 })

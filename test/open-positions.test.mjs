@@ -1,6 +1,7 @@
 import { test, describe, before, after } from 'node:test'
 import { readFileSync as readFile } from 'node:fs'
 import assert from 'node:assert/strict'
+import { readsOf } from './ops.mjs'
 import { createFormatter, createMessages, EN, WIDGETS } from '../src/core/index.js'
 import { checkShape } from '../src/elements/dev.js'
 import { barPosition } from '../src/elements/list-parts.js'
@@ -253,20 +254,12 @@ describe('rows and the accessible name', () => {
   })
 
   test('the model\'s cost grows in step with the rows: four times the rows is well under ten times the work', () => {
-    const run = (n) => {
-      const big = { positions: Array.from({ length: n }, (_, i) => ({ ...LONG, id: `i${i}`, path: path(300) })) }
-      let best = Infinity
-      for (let k = 0; k < 7; k++) {
-        const t0 = performance.now()
-        model(big, 'L')
-        best = Math.min(best, performance.now() - t0)
-      }
-      return best
-    }
-    run(60)
-    const ratio = run(480) / run(120)
-    // Linear is 4; a quadratic step (each row looking at the others) would be 16.
-    assert.ok(ratio > 1.5 && ratio < 10, `ratio ${ratio}`)
+    // Counts reads of the input instead of timing the call: a clock flakes under
+    // load, a count does not. Linear is 4; a quadratic step (each row looking at
+    // the others) would be 16, so 4.5 leaves room only for constants.
+    const reads = (n) => readsOf({ positions: Array.from({ length: n }, (_, i) => ({ ...LONG, id: `i${i}`, path: path(300) })) }, (big) => model(big, 'L'))
+    const ratio = reads(480) / reads(120)
+    assert.ok(ratio > 3 && ratio <= 4.5, `reads grew ${ratio.toFixed(2)}x for 4x the rows`)
   })
 
   test('a tiny previous close is not an excuse for a sign', () => {
