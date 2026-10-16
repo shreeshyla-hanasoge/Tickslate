@@ -31,6 +31,7 @@ import {
   dropIndex,
   emptyLayout,
   footprint,
+  isSize,
   moveItem,
   nextProfileChange,
   onConfigure,
@@ -39,6 +40,7 @@ import {
   removeItem,
   resizeItem,
   sizeForExtent,
+  snapSize,
   stepSize,
   typeForTag,
   typeOf,
@@ -67,6 +69,7 @@ import { isOutside, pickFocusTarget } from './grid-focus.js'
 import { keyAction, tapAction } from './grid-input.js'
 import { translator } from './messages-cache.js'
 import { persistLayout } from './persist.js'
+import { onCatalogChange, widgetCatalog } from './registry.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -105,6 +108,16 @@ const UNSAVED_WARNING = '<ts-grid> edits will be lost on reload: add a persist a
 // Tells one grid's warning from another's: warnOnce keys are global, and each unsaved grid is worth one.
 let unsavedSerial = 0
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
+
+// A host answers ts-add-request by rendering a child; this long is how long the grid waits for it (RFC 0003 §18.2).
+const ADD_WAIT_MS = 10000
+
+/** The built-ins and every defineWidget() type: what a type resolves to after the host's own catalog (RFC 0003 §18.1). */
+function registered(item) {
+  const type = item.type === undefined ? item.id : item.type
+  const all = widgetCatalog()
+  return typeof type === 'string' && hasOwn(all, type) ? all[type] : null
+}
 
 // Built on first use, so importing this module where there is no DOM (Node,
 // server-side rendering) doesn't throw.
@@ -380,6 +393,11 @@ export class TsGrid extends Base {
     this._schedule = null
     this._scheduled = null // the profile the schedule calls for now
     this._override = null // { profile, until }
+    this._addTypes = null // the types the host answers ts-add-request for: a list, '*' or null
+    this._pendingAdds = new Map() // id → { type, size, timer }: requests the host has taken and not yet answered with a child
+    this._openPicker = null // set by <ts-grid-controls> while a picker is linked
+    this._stateListeners = new Set() // <ts-grid-controls>, which redraw when the schedule or an override changes
+    this._offCatalog = null
     this._profileTimer = 0
     this._clock = () => Date.now()
     this._onVisibility = () => {
@@ -451,7 +469,10 @@ export class TsGrid extends Base {
         this._editOrigin = this._editBtn
         this.editing = true
       } else if (target.closest('.done')) this.editing = false
-      else if (target.closest('.add')) this._toggleMenu(target.closest('.pill') ? 'pill' : 'empty')
+      else if (target.closest('.add')) {
+        if (this._openPicker) this._showPicker(target.closest('.add'))
+        else this._toggleMenu(target.closest('.pill') ? 'pill' : 'empty')
+      }
       else if (target.closest('.mi')) this._restoreFromMenu(target.closest('.mi').dataset.id)
     })
     root.addEventListener('keydown', (e) => {
@@ -555,6 +576,8 @@ export class TsGrid extends Base {
     // Before the first measure the controls are built by connectedCallback.
     if (this.isConnected && this._m) this._syncControls()
     else this._syncText()
+    // A locale, zone or messages change rewords the next-switch line in <ts-grid-controls>.
+    this._stateChanged()
   }
 
   /** Write the texts that sit in the static markup, and redo the ones built from messages, when the translate function changed. */
@@ -586,10 +609,11 @@ export class TsGrid extends Base {
 
   _setCatalog(catalog) {
     this._catalog = catalog
-    this._resolve = specResolver(this._elementSpecs, catalog, WIDGETS)
+    // The host's catalog first, then the types defineWidget() recorded (which include the built-ins).
+    this._resolve = specResolver(this._elementSpecs, catalog, registered)
     // For a tag's default spec: no element's own spec, or a tile that happens
     // to share the type's name would answer for it.
-    this._typeSpec = specResolver(NO_SPECS, catalog, WIDGETS)
+    this._typeSpec = specResolver(NO_SPECS, catalog, registered)
   }
 
   /** Read a layout from the host and show it. Issues are reported only here, never for the grid's own edits. */
@@ -713,6 +737,161 @@ export class TsGrid extends Base {
     return true
   }
 
+  /**
+   * The types the host answers ts-add-request for: a list, '*' for every
+   * catalog type, or null (the default) for none. The picker offers catalog
+   * types only for these (RFC 0003 Decision 33); add() itself doesn't need it.
+   */
+  get addTypes() {
+    return this._addTypes
+  }
+
+  set addTypes(value) {
+    this._addTypes = value === '*' ? '*' : Array.isArray(value) ? Object.freeze(value.filter((type) => typeof type === 'string')) : null
+  }
+
+  /**
+   * Asks the host for a new tile of `type`. Returns the id, or null when the
+   * type is unknown or the host did not take the request (RFC 0003 §18.2).
+   */
+  add(request) {
+    const type = request && request.type
+    if (typeof type !== 'string' || !type) return null
+    const given = typeof request.id === 'string' && request.id ? request.id : null
+    // A hidden child with this id is a restore, and the grid needs nobody's answer.
+    if (given && this.hiddenItems.some((h) => h.id === given)) return this.restore(given) ? given : null
+    // An id already on a tile of this grid can't be given to a second one.
+    if (given && [...this.children].some((el) => isTile(el) && el.getAttribute('item') === given)) return null
+    const id = given || this._freshId(type)
+    const spec = this._typeSpec({ id, type })
+    if (!spec || !Array.isArray(spec.sizes) || !spec.sizes.length) return null
+    const size = isSizeName(request.size) ? snapSize(request.size, spec.sizes) : spec.sizes[0]
+    const event = new CustomEvent('ts-add-request', { detail: { type, id, size }, bubbles: true, composed: true, cancelable: true })
+    this.dispatchEvent(event)
+    if (!event.defaultPrevented) {
+      if (DEV) warnOnce(`grid-add-unhandled:${type}`, `<ts-grid> asked for a '${type}' tile, and nothing called preventDefault() on ts-add-request, so none was added. Listen for ts-add-request and render a child with item="${id}".`)
+      return null
+    }
+    clearTimeout((this._pendingAdds.get(id) || {}).timer)
+    const timer = setTimeout(() => {
+      this._pendingAdds.delete(id)
+      if (DEV) warnOnce(`grid-add-late:${type}`, `<ts-grid> took ts-add-request for '${type}' but no child with item="${id}" appeared within ${ADD_WAIT_MS / 1000} seconds, so the request was forgotten.`)
+    }, ADD_WAIT_MS)
+    this._pendingAdds.set(id, { type, size, timer })
+    return id
+  }
+
+  /** `type`, `type-2`, `type-3`…: the first id no item, tile or hidden child uses. */
+  _freshId(type) {
+    const taken = new Set([...this.children].filter(isTile).map((el) => el.getAttribute('item')))
+    for (const id of this._pendingAdds.keys()) taken.add(id)
+    for (const items of Object.values(this._layout.profiles)) for (const item of items) taken.add(item.id)
+    let id = type
+    for (let n = 2; taken.has(id); n++) id = `${type}-${n}`
+    return id
+  }
+
+  /** The requests whose child has appeared. */
+  _arrivedAdds() {
+    if (!this._pendingAdds.size) return []
+    const ids = new Set([...this.children].filter(isTile).map((el) => el.getAttribute('item')))
+    return [...this._pendingAdds].filter(([id]) => ids.has(id))
+  }
+
+  /** Place each child the host rendered at the size asked for, and report it as one add. */
+  _finishAdds(arrived, before) {
+    for (const [id, pending] of arrived) {
+      clearTimeout(pending.timer)
+      this._pendingAdds.delete(id)
+      const { type } = pending
+      const profile = this.profile
+      const spec = this._resolve({ id, type })
+      const size = spec && Array.isArray(spec.sizes) && spec.sizes.length ? snapSize(pending.size, spec.sizes) : pending.size
+      let items = this._profileItems()
+      const at = items.findIndex((item) => item.id === id)
+      if (at < 0) items = addItem(items, id === type ? { id, size } : { id, type, size }, this._resolve)
+      else if (items[at].size !== size) items = resizeItem(items, id, size, this._resolve)
+      this._history.push(profile, before)
+      this._removedFor(profile).delete(id)
+      this._hideToast(false)
+      this._layout = withProfile(this._layout, profile, items)
+      this._sync(true)
+      const now = this._profileItems()
+      const index = now.findIndex((item) => item.id === id)
+      this._emit('ts-layout-change', { layout: this._layout, items: now, previous: before, profile, reason: 'add', id, index, item: now[index] })
+      this._announce(this.t('grid.added', { label: this._label(id) }))
+    }
+  }
+
+  /** The commit a drag makes, for an edit a host or a list makes (RFC 0003 §18.4). */
+  _edit(reason, id, items, extra) {
+    const profile = this.profile
+    const previous = this._layout
+    this._cancelGesture()
+    this._history.push(profile, previous)
+    this._hideToast(false)
+    // Children can't bring a removed tile back; only a restore can.
+    if (reason === 'remove') this._removedFor(profile).add(id)
+    this._layout = withProfile(previous, profile, items)
+    this._sync(true)
+    this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason, id, ...extra })
+  }
+
+  /** Moves the item to `toIndex` in the active profile (clamped). False for an unknown id. */
+  move(id, toIndex) {
+    const items = this._profileItems()
+    if (!items.some((item) => item.id === id)) return false
+    const next = moveItem(items, id, toIndex)
+    if (!sameOrder(items, next)) this._edit('move', id, next)
+    return true
+  }
+
+  /** Snaps to the item's spec. False for an unknown id. */
+  resize(id, size) {
+    const items = this._profileItems()
+    if (!items.some((item) => item.id === id)) return false
+    const next = resizeItem(items, id, size, this._resolve)
+    if (next.some((item, i) => item !== items[i] && item.size !== items[i].size)) this._edit('resize', id, next)
+    return true
+  }
+
+  /** Removes the item; it becomes a hidden child. False for an unknown id. */
+  remove(id) {
+    const items = this._profileItems()
+    const index = items.findIndex((item) => item.id === id)
+    if (index < 0) return false
+    this._edit('remove', id, removeItem(items, id), { index, item: items[index] })
+    return true
+  }
+
+  /** The profile an override shows, or null when the schedule (or the `profile` attribute) decides. */
+  get profileOverride() {
+    return this._override ? this._override.profile : null
+  }
+
+  /**
+   * Set by <ts-grid-controls> while a picker is linked. The edit pill then
+   * shows Add, which calls it with the button, so the picker can return focus there.
+   */
+  get openPicker() {
+    return this._openPicker
+  }
+
+  set openPicker(fn) {
+    this._openPicker = typeof fn === 'function' ? fn : null
+    if (this.isConnected && this._m) this._syncControls()
+  }
+
+  /** For <ts-grid-controls>: `fn()` runs when the schedule, the clock or an override changes. Returns the function that stops it. */
+  _onState(fn) {
+    this._stateListeners.add(fn)
+    return () => this._stateListeners.delete(fn)
+  }
+
+  _stateChanged() {
+    for (const fn of [...this._stateListeners]) fn()
+  }
+
   /** { calendar, market: { sessions, leadMinutes?, lagMinutes? } }; switches profiles on time. */
   get schedule() {
     return this._schedule
@@ -724,6 +903,7 @@ export class TsGrid extends Base {
     if (!value) this._override = null
     this._reschedule(false)
     this._profileChanged(before, 'schedule', true)
+    this._stateChanged()
   }
 
   /** What the grid takes the time to be. Tests and demos can replace it. */
@@ -748,6 +928,7 @@ export class TsGrid extends Base {
       this._override = null
       this._reschedule(false)
       this._profileChanged(before, 'override-ended')
+      this._stateChanged()
       return
     }
     const now = this._clock()
@@ -756,6 +937,7 @@ export class TsGrid extends Base {
     this._override = { profile, until: until === null ? Infinity : until }
     this._reschedule(false)
     this._profileChanged(before, 'override')
+    this._stateChanged()
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -779,6 +961,16 @@ export class TsGrid extends Base {
     }
     // configure() may change the messages or the locale while the grid is on the page; the widgets hear of it themselves.
     this._offConfigure = onConfigure(() => this._refreshText())
+    // A widget registered after the grid rendered may be the type of a tile it could not draw.
+    this._offCatalog = onCatalogChange(() => {
+      this._setCatalog(this._catalog)
+      this._apply(this._layout)
+    })
+    if (Object.prototype.hasOwnProperty.call(this, 'addTypes')) {
+      const value = this.addTypes
+      delete this.addTypes
+      this.addTypes = value
+    }
     // Measuring renders, and rendering changes the grid's own height, which the
     // observer reports again within the same frame. WebKit raises that as an
     // uncaught "ResizeObserver loop" error, so the work waits for the next frame.
@@ -790,7 +982,11 @@ export class TsGrid extends Base {
     this._mutationObserver = new MutationObserver((records) => {
       if (!records.some((r) => this._concerns(r))) return
       this._cancelGesture()
+      // A host answering ts-add-request renders its child here; the layout before it came is what Undo goes back to.
+      const arrived = this._arrivedAdds()
+      const before = this._layout
       this._sync(true)
+      if (arrived.length) this._finishAdds(arrived, before)
     })
     this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
     if (!this._explicit) this._reconcile()
@@ -809,6 +1005,10 @@ export class TsGrid extends Base {
     this._syncPersist()
     if (this._offConfigure) this._offConfigure()
     this._offConfigure = null
+    if (this._offCatalog) this._offCatalog()
+    this._offCatalog = null
+    for (const pending of this._pendingAdds.values()) clearTimeout(pending.timer)
+    this._pendingAdds.clear()
     this._resizeObserver.disconnect()
     cancelAnimationFrame(this._measureFrame)
     this._mutationObserver.disconnect()
@@ -928,6 +1128,7 @@ export class TsGrid extends Base {
       this._profileTimer = setTimeout(() => this._reschedule(true), wait)
     }
     if (emit) this._profileChanged(before, reason, quiet)
+    this._stateChanged()
   }
 
   _profileChanged(before, reason, quiet = false) {
@@ -1023,7 +1224,7 @@ export class TsGrid extends Base {
 
   /** The type of a child tag and the spec the catalogs give it. */
   _typeFor(tag) {
-    const type = typeForTag(this._catalog, tag) ?? typeForTag(WIDGETS, tag) ?? tag
+    const type = typeForTag(this._catalog, tag) ?? typeForTag(widgetCatalog(), tag) ?? tag
     return { type, spec: this._typeSpec({ id: type }) }
   }
 
@@ -1477,11 +1678,22 @@ export class TsGrid extends Base {
     const empty = this._rendered && !!this._m && this._order.length === 0
     this._emptyPanel.hidden = !empty
     const hidden = this.hiddenItems
-    for (const [owner, show] of [['pill', pillOn && hidden.length > 0], ['empty', empty && on && hidden.length > 0]]) {
+    // With a picker linked, Add opens it (and it lists the hidden children first), so the Add back list isn't needed.
+    const linked = !!this._openPicker
+    for (const [owner, show] of [['pill', pillOn && (linked || hidden.length > 0)], ['empty', empty && on && (linked || hidden.length > 0)]]) {
       const c = this._addBack[owner]
       c.add.hidden = !show
-      if (show) c.add.querySelector('.t').textContent = t('grid.addBack', { count: hidden.length })
-      if (!show && this._menuOwner === owner) this._closeMenu(false)
+      if (show) {
+        c.add.querySelector('.t').textContent = linked ? t('grid.add') : t('grid.addBack', { count: hidden.length })
+        if (linked) {
+          c.add.setAttribute('aria-haspopup', 'dialog')
+          c.add.removeAttribute('aria-expanded')
+        } else {
+          c.add.removeAttribute('aria-haspopup')
+          c.add.setAttribute('aria-expanded', this._menuOwner === owner ? 'true' : 'false')
+        }
+      }
+      if ((!show || linked) && this._menuOwner === owner) this._closeMenu(false)
     }
     // Rebuilt only when the list changed, so an open list isn't torn down under the pointer.
     const sig = hidden.map((h) => `${h.id}\n${h.label}`).join('\n\n')
@@ -1509,6 +1721,15 @@ export class TsGrid extends Base {
           menu.appendChild(item)
         }
       }
+    }
+  }
+
+  /** Open the linked picker, which returns focus to `opener` when it closes. */
+  _showPicker(opener) {
+    try {
+      this._openPicker(opener)
+    } catch (err) {
+      console.error('tickslate: the linked picker threw when opened.', err)
     }
   }
 
@@ -2342,6 +2563,10 @@ function liftStyle(el, chrome, on, animate = true) {
 
 function setAttr(el, name, value) {
   if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+}
+
+function isSizeName(size) {
+  return typeof size === 'string' && isSize(size)
 }
 
 function sameIds(a, b) {

@@ -10,8 +10,9 @@ import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 // installed, so this file imports nothing from src/elements/ statically.
 
 // The grid is not a widget: it has no tile chrome, and its geometry is another story's (see the logical-properties scan).
+// Nor are the picker and the grid controls, which share the controls entry (RFC 0003 §18.5).
 const DEFINE_MODULES = readdirSync(new URL('../src/elements/define/', import.meta.url))
-  .filter((f) => f.endsWith('.js') && f !== 'grid.js')
+  .filter((f) => f.endsWith('.js') && f !== 'grid.js' && f !== 'controls.js')
   .map((f) => f.slice(0, -3))
   .sort()
 

@@ -30,6 +30,8 @@ const files = (await readdir(defineDir)).filter((n) => n.endsWith('.js')).map((n
 // a pair. An exception is one line here.
 const TAGS = {
   'series-chart': ['ts-chart'],
+  // The picker and the grid controls are two elements in one opt-in entry (RFC 0003 §18.5).
+  controls: ['ts-widget-picker', 'ts-grid-controls'],
 }
 const tagsOf = (file) => TAGS[file] || [`ts-${file}`]
 

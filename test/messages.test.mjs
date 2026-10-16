@@ -1209,6 +1209,15 @@ describe('the source', () => {
     // Size names are built by sizeName(), which the picker and the layout list will call; the grid reads the bare token for now.
     ...SIZE_NAMES.map((size) => `size.${size}`),
     'size.name',
+    // Read as widget.<type>.description and category.<name> by the picker, whose types and categories are data.
+    ...Object.keys(WIDGETS).map((key) => `widget.${key}.description`),
+    'category.General',
+    'category.Performance',
+    'category.Accounts',
+    'category.Markets',
+    // The grid controls name a profile as controls.<profile>.
+    'controls.market',
+    'controls.closed',
   ]
 
   test('every EN key is used by the code, or listed as unused on purpose', () => {

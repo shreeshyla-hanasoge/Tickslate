@@ -9,6 +9,8 @@ export { TsWidget } from './widget.js'
 export type { ViewModelContext, WidgetState } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
+// controls.d.ts (the picker and the grid controls) ships beside this file too.
+export * from './controls.js'
 import type { TsGrid, LayoutAdapter } from './grid.js'
 
 export interface PersistLayoutOptions {

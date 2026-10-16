@@ -36,6 +36,24 @@ export const EN = Object.freeze({
   'widget.card.label': 'Card',
   'widget.metric.label': 'Metric',
   'widget.chart.label': 'Chart',
+  // The picker's sentence for each catalog entry
+  'widget.todayPnl.description': "Today's profit or loss, with an intraday line.",
+  'widget.equityCurve.description': 'Account value over time, with peak and drawdown.',
+  'widget.pnlCalendar.description': 'Each trading day coloured by its profit or loss.',
+  'widget.edgeStats.description': 'Win rate, payoff and expectancy at a glance.',
+  'widget.capitalFunding.description': 'How much capital each account has put to work.',
+  'widget.openPositions.description': 'The positions that are open now, with their profit or loss.',
+  'widget.watchlist.description': 'Prices and changes for the instruments you follow.',
+  'widget.sessionClock.description': 'Whether the market is open, and the time to the next change.',
+  'widget.miniChart.description': 'A small price chart for one instrument.',
+  'widget.card.description': 'A titled card for any content.',
+  'widget.metric.description': 'One figure with a label and a change.',
+  'widget.chart.description': 'A line, area or bar chart of any series.',
+  // The picker's groups. A host's own category name is shown as it is unless it adds category.<name>.
+  'category.General': 'General',
+  'category.Performance': 'Performance',
+  'category.Accounts': 'Accounts',
+  'category.Markets': 'Markets',
   'widget.todayPnl.empty': 'No trades today',
   'widget.equityCurve.empty': 'No trading days yet',
   'widget.sessionClock.empty': 'No sessions set up',
@@ -91,6 +109,27 @@ export const EN = Object.freeze({
   'grid.resized': '{label}, size {size}.',
   'grid.profile': 'Showing the {profile} layout.',
   'grid.undone': 'Undone.',
+  'grid.add': 'Add',
+  'grid.added': '{label} added.',
+
+  // <ts-widget-picker>
+  'picker.title': 'Add a widget',
+  'picker.search': 'Search widgets',
+  'picker.close': 'Close',
+  'picker.addBack': 'Add back',
+  'picker.addBackItem': 'Add back {label}',
+  'picker.addSized': 'Add {label} as {size}',
+  'picker.empty': 'Every widget is already on this layout',
+  'picker.noMatch': 'No widget matches your search',
+  'picker.count.one': '{count} widget',
+  'picker.count.other': '{count} widgets',
+
+  // <ts-grid-controls>
+  'controls.profile': 'Layout',
+  'controls.auto': 'Auto',
+  'controls.market': 'Market hours',
+  'controls.closed': 'After close',
+  'controls.next': 'Switches to {profile} at {time}',
 
   // <ts-today-pnl>
   'pnl.today': 'Today',

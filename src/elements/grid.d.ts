@@ -1,4 +1,4 @@
-import type { Calendar, Device, Layout, LayoutItem, LayoutIssue, MessageOverrides, ProfileSchedule, Catalog, Translate } from '../core/index.js'
+import type { Calendar, Device, Layout, LayoutItem, LayoutIssue, MessageOverrides, ProfileSchedule, Catalog, SizeName, Translate } from '../core/index.js'
 
 /**
  * Remote or async storage for `persistLayout`: either method may return a
@@ -31,6 +31,16 @@ export interface TsLayoutChangeDetail {
   index?: number
   /** On 'remove': the item that was removed. On 'add': the item as restored. */
   item?: LayoutItem
+}
+
+/** What `ts-add-request` carries (RFC 0003 §18.2). The event bubbles, is composed and is cancelable. */
+export interface TsAddRequestDetail {
+  /** The catalog key. */
+  type: string
+  /** The item id the host must give the new child. */
+  id: string
+  /** The size the grid will place it at. */
+  size: SizeName
 }
 
 export interface TsReadingOrderChangeDetail {
@@ -131,6 +141,28 @@ export declare class TsGrid extends HTMLElement {
    */
   restore(id: string): boolean
   /**
+   * The types the host answers `ts-add-request` for: a list, '*' for every catalog type, or
+   * null (the default) for none. The picker offers catalog types only for these; `add` doesn't need it.
+   */
+  addTypes: readonly string[] | '*' | null
+  /**
+   * Asks for a new tile of `type`. A hidden child with the same `id` is restored instead. Otherwise the
+   * grid fires the cancelable `ts-add-request { type, id, size }`; the host takes it with `preventDefault()`
+   * and answers by rendering a child with `item=id`, which the grid places at `size` and commits with
+   * reason 'add' (it waits 10 s). Returns the id, or null when the type is unknown or nobody took the request.
+   */
+  add(request: { type: string; id?: string; size?: SizeName }): string | null
+  /** Moves the item to `toIndex` in the active profile (clamped). False for an unknown id. Commits with reason 'move'. */
+  move(id: string, toIndex: number): boolean
+  /** Resizes the item, snapped to its spec. False for an unknown id. Commits with reason 'resize'. */
+  resize(id: string, size: SizeName): boolean
+  /** Removes the item, which becomes a hidden child. False for an unknown id. Commits with reason 'remove'. */
+  remove(id: string): boolean
+  /** The profile `override()` is showing, or null when the schedule (or the `profile` attribute) decides. */
+  readonly profileOverride: string | null
+  /** Set by `<ts-grid-controls>` while a picker is linked: the edit pill then shows Add, which calls this. */
+  openPicker: (() => void) | null
+  /**
    * The visible tiles' ids in visual order: row by row, left to right by each
    * tile's top-left cell. Where the browser has manual slot assignment (Safari
    * 16.4, Chrome 86, Firefox 92), the grid slots its tiles in this order, so
@@ -157,6 +189,7 @@ declare global {
   }
   interface HTMLElementEventMap {
     'ts-layout-change': CustomEvent<TsLayoutChangeDetail>
+    'ts-add-request': CustomEvent<TsAddRequestDetail>
     'ts-layout-issues': CustomEvent<{ issues: LayoutIssue[] }>
     'ts-edit-change': CustomEvent<{ editing: boolean }>
     'ts-reading-order-change': CustomEvent<TsReadingOrderChangeDetail>

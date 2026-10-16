@@ -110,7 +110,11 @@ const remeasuredAgain = (maxKb) => ({ ...entry(maxKb), target: 're-measured afte
 const remeasuredThird = (maxKb) => ({ ...entry(maxKb), target: 're-measured after overnight-sessions, theme-presets and reading-order, RFC 0003 §25' })
 const remeasuredFourth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after locale-formatting, RFC 0003 §25, maintainer approved', date: '2026-10-15' })
 const remeasuredFifth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-activation, RFC 0003 §25', date: '2026-10-16' })
+// A new entry (widget-picker-and-controls, 2026-10-16): the picker and the grid controls measure 13,594 B bundled
+// with the core, so 14,953 B with 10 %, which rounds up to 15 kB.
+const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-16' })
 const ENTRY_BUDGETS = {
+  controls: newEntry(15),
   grid: remeasuredAgain(27),
   card: remeasuredFifth(18),
   metric: remeasuredFourth(18.5),

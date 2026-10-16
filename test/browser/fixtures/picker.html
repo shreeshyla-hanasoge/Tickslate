@@ -1,0 +1,130 @@
+<!doctype html>
+<!-- The widget picker and the grid controls (RFC 0003 §18). A grid of five
+     tiles with a picker and the controls beside it. The host answers
+     ts-add-request by rendering a child, the way a framework would.
+       ?theme=dark       dark theme          ?preset=terminal   a theme preset
+       ?schedule         gives the grid a market schedule (frozen at 11:42 IST)
+       ?add=off          the host lists no addTypes
+       ?handle=off       the host ignores ts-add-request
+       ?late=1           the host answers after 100ms, as a framework does
+       ?implicit         no layout is set: the grid works from its children
+       ?link=off         no <ts-grid-controls>, so the pill keeps Add back
+       ?lang=de          the grid's locale and a small German table -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Picker fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+  #open { min-height: 44px; padding: 0 16px; font: inherit; }
+</style>
+<script>
+  window.__events = []
+  window.__requests = []
+  for (const name of ['ts-layout-change', 'ts-profile-change']) {
+    document.addEventListener(name, (e) => {
+      const d = e.detail
+      window.__events.push({
+        type: name,
+        reason: d.reason,
+        id: d.id,
+        profile: d.profile,
+        order: d.items ? d.items.map((item) => item.id) : undefined,
+        sizes: d.items ? d.items.map((item) => item.size) : undefined,
+      })
+    })
+  }
+  document.addEventListener('ts-add-request', (e) => {
+    window.__requests.push({ ...e.detail, cancelable: e.cancelable, composed: e.composed })
+  })
+  const params = new URLSearchParams(location.search)
+  // A preset is its own file, reached through the page's data-ts-theme.
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = `/src/themes/presets/${preset}.css`
+    document.head.appendChild(link)
+    document.addEventListener('DOMContentLoaded', () => { document.documentElement.dataset.tsTheme = preset })
+  }
+</script>
+<script type="module" src="/src/elements/index.js"></script>
+</head>
+<body>
+<main>
+  <h1>Picker fixture</h1>
+  <div class="bar">
+    <button id="open" type="button">Add a widget</button>
+    <ts-grid-controls id="c" for="g"></ts-grid-controls>
+  </div>
+  <ts-grid id="g" aria-label="Dashboard">
+    <ts-metric item="sales" label="Sales" size="Wide"></ts-metric>
+    <ts-card item="notes" label="Notes" size="S"><span slot="value">42</span></ts-card>
+    <ts-card item="tasks" label="Tasks" size="S"><span slot="value">7</span></ts-card>
+    <ts-chart item="traffic" label="Traffic" size="M"></ts-chart>
+    <ts-card item="queue" label="Queue" size="Wide"><span slot="value">3</span></ts-card>
+  </ts-grid>
+  <ts-widget-picker id="p" for="g"></ts-widget-picker>
+  <button id="outside" type="button">Outside button</button>
+</main>
+<script type="module">
+  const params = new URLSearchParams(location.search)
+  const { setup, calendar, frozenClock } = await import('./data.js')
+  await Promise.all([customElements.whenDefined('ts-grid'), customElements.whenDefined('ts-widget-picker'), customElements.whenDefined('ts-grid-controls')])
+  setup()
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const g = document.getElementById('g')
+  if (params.get('link') === 'off') document.getElementById('c').remove()
+  if (params.get('lang') === 'de') {
+    g.setAttribute('locale', 'de-DE')
+    g.messages = {
+      'picker.title': 'Widget hinzufügen',
+      'picker.empty': 'Jedes Widget ist schon in diesem Layout',
+      'controls.auto': 'Automatisch',
+      'controls.next': 'Wechselt zu {profile} um {time}',
+      'category.General': 'Allgemein',
+      'widget.card.label': 'Karte',
+      'widget.card.description': 'Eine Karte mit Titel.',
+    }
+  }
+  for (const el of g.children) el.clock = frozenClock
+  // Implicit mode (?implicit): the grid works from its children alone.
+  if (!params.has('implicit')) {
+    g.layout = [
+      { id: 'sales', type: 'metric', size: 'Wide' },
+      { id: 'notes', type: 'card', size: 'S' },
+      { id: 'tasks', type: 'card', size: 'S' },
+      { id: 'traffic', type: 'chart', size: 'M' },
+      { id: 'queue', type: 'card', size: 'Wide' },
+    ]
+  }
+  if (params.get('add') !== 'off') g.addTypes = ['card', 'metric', 'chart']
+  if (params.has('schedule')) {
+    g.clock = frozenClock
+    g.schedule = { calendar, market: { sessions: ['nse-fo'] } }
+  }
+  // What a host does with the request: render a child that carries the id.
+  g.addEventListener('ts-add-request', (e) => {
+    if (params.get('handle') === 'off') return
+    e.preventDefault()
+    const render = () => {
+      const el = document.createElement(`ts-${e.detail.type}`)
+      el.setAttribute('item', e.detail.id)
+      el.setAttribute('label', `New ${e.detail.type} ${e.detail.id}`)
+      el.clock = frozenClock
+      g.append(el)
+    }
+    if (params.get('late') === '1') setTimeout(render, 100)
+    else render()
+  })
+  document.getElementById('open').addEventListener('click', (e) => document.getElementById('p').show(e.currentTarget))
+  window.__fx = { grid: g, picker: document.getElementById('p') }
+  window.__ready = true
+</script>
+</body>
+</html>
