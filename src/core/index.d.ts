@@ -306,6 +306,7 @@ export interface Messages {
   'widget.table.empty': string
   'widget.watchlist.empty': string
   'widget.openPositions.empty': string
+  'widget.pnlCalendar.empty': string
   'size.S': string
   'size.Wide': string
   'size.Tall': string
@@ -509,6 +510,21 @@ export interface Messages {
   'positions.exitAll': string
   'positions.exitAllLabel.one': string
   'positions.exitAllLabel.other': string
+  'calendar.net': string
+  'calendar.best': string
+  'calendar.worst': string
+  'calendar.greenRate': string
+  'calendar.date': string
+  'calendar.cell': string
+  'calendar.cellNone': string
+  'calendar.cellUpcoming': string
+  'calendar.noDays': string
+  'calendar.dayCount.one': string
+  'calendar.dayCount.other': string
+  'calendar.aria': string
+  'calendar.ariaEmpty': string
+  'calendar.chartLabel': string
+  'calendar.chartEmpty': string
 }
 
 export type MessageKey = keyof Messages
@@ -668,3 +684,20 @@ export interface EquityStats {
 }
 
 export declare function equityStats(days: readonly DayResult[], options?: { timeZone?: string }): EquityStats
+
+export interface DayStats {
+  /** The sum of every day, weekend entries included. */
+  net: number
+  /** Days whose net is above zero. */
+  greenDays: number
+  /** Days whose net is below zero. */
+  redDays: number
+  /** greenDays over greenDays + redDays; null when no day was green or red. */
+  greenRate: number | null
+  /** The highest and lowest day net; null with no days. */
+  best: number | null
+  worst: number | null
+}
+
+/** Per-day figures of a daily P&L series. Rows with the same date are summed first. */
+export declare function dayStats(days: readonly DayResult[], options?: { timeZone?: string }): DayStats

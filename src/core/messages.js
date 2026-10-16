@@ -64,6 +64,7 @@ export const EN = Object.freeze({
   'widget.table.empty': 'No rows yet',
   'widget.watchlist.empty': 'No instruments yet',
   'widget.openPositions.empty': 'No open positions',
+  'widget.pnlCalendar.empty': 'No trading days yet',
 
   // Sizes: a size reads "Medium, 2 by 2"
   'size.S': 'Small',
@@ -298,6 +299,23 @@ export const EN = Object.freeze({
   'positions.exitAll': 'Exit all',
   'positions.exitAllLabel.one': 'Exit the position',
   'positions.exitAllLabel.other': 'Exit all {count} positions',
+
+  // <ts-pnl-calendar>
+  'calendar.net': 'Net',
+  'calendar.best': 'Best day',
+  'calendar.worst': 'Worst day',
+  'calendar.greenRate': 'Green days',
+  'calendar.date': '{weekday} {day}',
+  'calendar.cell': '{date}, {value}',
+  'calendar.cellNone': '{date}, no entry',
+  'calendar.cellUpcoming': '{date}, upcoming',
+  'calendar.noDays': 'No trading days in this period',
+  'calendar.dayCount.one': '{count} trading day',
+  'calendar.dayCount.other': '{count} trading days',
+  'calendar.aria': '{label}, net {net} over {days}',
+  'calendar.ariaEmpty': '{label}, no trading days',
+  'calendar.chartLabel': '{label}, {from} to {to}: best day {best}, worst day {worst}, net {net}',
+  'calendar.chartEmpty': '{label}, {from} to {to}: no trading days',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

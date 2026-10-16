@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- One <ts-pnl-calendar> for the calendar spec. ?size=Tall|M|Banner, ?width=px (the tile's width), ?height=px (default: one grid row,
+     or two for a Banner under 560px, as a phone's grid gives it), ?theme=light|dark, ?preset=terminal (or calm, signal...), ?wide uses
+     wide fonts, ?tz=Pacific/Kiritimati and ?locale=en-US change the formatter, ?days=n keeps only the last n entries, ?today=YYYY-MM-DD
+     sets the calendar's day. The spec drives it through window.__c. The numbers are made up and nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <div id="wrap"></div>
+</main>
+<script type="module">
+  import '/src/elements/index.js'
+  import { setup, frozenClock, pnlCalendar } from './data.js'
+
+  setup()
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+
+  // ?wide stands in for a runner whose fallback fonts are wider than ours: a wide family, and tracking on top.
+  if (params.has('wide')) {
+    const st = document.createElement('style')
+    st.textContent = ":root { --ts-font-ui: Verdana, 'DejaVu Sans', sans-serif; --ts-font-num: Verdana, 'DejaVu Sans', sans-serif; } body { letter-spacing: .05em; }"
+    document.head.append(st)
+  }
+
+  const size = params.get('size') || 'Banner'
+  const width = Number(params.get('width') || (size === 'Banner' ? 1264 : size === 'Tall' ? 304 : 624))
+  const el = document.createElement('ts-pnl-calendar')
+  el.setAttribute('size', size)
+  if (params.get('tz')) el.setAttribute('time-zone', params.get('tz'))
+  if (params.get('locale')) el.setAttribute('locale', params.get('locale'))
+  const height = Number(params.get('height') || (size === 'Tall' || size === 'M' || (size === 'Banner' && width < 560) ? 316 : 150))
+  el.style.height = `${height}px`
+  el.clock = frozenClock
+  const wrap = document.getElementById('wrap')
+  wrap.style.width = `${width}px`
+  if (params.has('fit')) wrap.style.maxWidth = '100%'
+  wrap.append(el)
+  const events = []
+  el.addEventListener('ts-action', (e) => events.push(e.detail))
+  const make = (step) => {
+    const data = pnlCalendar({ step })
+    if (params.get('days')) data.days = data.days.slice(-Number(params.get('days')))
+    if (params.get('today')) data.today = params.get('today')
+    return data
+  }
+  el.data = make(0)
+
+  window.__c = {
+    el,
+    events,
+    tick: (step) => { el.data = make(step) },
+    width: (px) => { wrap.style.width = `${px}px` },
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

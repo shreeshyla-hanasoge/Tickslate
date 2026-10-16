@@ -61,3 +61,31 @@ export function equityStats(days, options) {
   }
   return { net: equity, peak, maxDrawdown, tradingDays: rows.length, trades }
 }
+
+/**
+ * The day-by-day figures of a daily P&L series (RFC 0003 §21.1). Rows that
+ * share a date are summed first, because a day is one result however many
+ * rows a backend split it into; a day is then green when its net is above zero
+ * and red when below, and a day that nets to exactly zero is neither. The rate
+ * is over the days that were one or the other, so a flat day does not dilute it.
+ * With no days there is nothing to rank, so best, worst and the rate are null.
+ */
+export function dayStats(days, options) {
+  const { timeZone = 'UTC' } = options || {}
+  const byDate = new Map()
+  for (const row of clean(days, timeZone)) byDate.set(row.date, (byDate.get(row.date) || 0) + row.pnl)
+  let net = 0
+  let greenDays = 0
+  let redDays = 0
+  let best = null
+  let worst = null
+  for (const pnl of byDate.values()) {
+    net += pnl
+    if (pnl > 0) greenDays++
+    else if (pnl < 0) redDays++
+    if (best === null || pnl > best) best = pnl
+    if (worst === null || pnl < worst) worst = pnl
+  }
+  const counted = greenDays + redDays
+  return { net, greenDays, redDays, greenRate: counted ? greenDays / counted : null, best, worst }
+}

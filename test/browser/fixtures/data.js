@@ -145,6 +145,8 @@ export function dataFor(tag, scale = 1) {
       p.positions[0].instrument = `${p.positions[0].instrument} ${Math.floor(Math.log10(Math.abs(scale) + 1) * 10)}`
       return p
     }
+    case 'ts-pnl-calendar':
+      return pnlCalendar({ scale })
     case 'ts-today-pnl':
       return todayPnl(scale)
     case 'ts-equity-curve':
@@ -238,4 +240,27 @@ export function openPositions({ n = 9, step = 0, plain = false, scale = 1 } = {}
       return out
     }),
   }
+}
+
+/**
+ * About 400 days of daily P&L ending the day before TODAY: weekdays with a few holidays left out, runs of red,
+ * two weekend special sessions and a day with two rows. `scale` multiplies every figure.
+ */
+export function pnlCalendar({ scale = 1, step = 0 } = {}) {
+  const r = seeded(77)
+  const days = []
+  for (let i = 400; i >= 1; i--) {
+    const date = shiftDay(TODAY, -i)
+    const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
+    const weekend = dow === 0 || dow === 6
+    // Two Saturday special sessions; a holiday now and then.
+    if (weekend && !(dow === 6 && i % 97 === 0)) continue
+    if (!weekend && r() < 0.06) continue
+    const cold = Math.sin(i / 17) < -0.35
+    const pnl = Math.round(((r() - (cold ? 0.62 : 0.4)) * 9200 + (r() < 0.04 ? 14000 : 0)) * scale)
+    days.push({ date, pnl })
+    if (i === 30) days.push({ date, pnl: 450 * scale })
+  }
+  days.push({ date: TODAY, pnl: Math.round((1240 + step * 10) * scale) })
+  return { days, asOf: FROZEN, live: true }
 }

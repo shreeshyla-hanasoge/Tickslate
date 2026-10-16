@@ -538,6 +538,66 @@ export declare class TsOpenPositions extends TsWidget<OpenPositionsData> {
   static positionsModel(data: OpenPositionsData, variant: SizeName, ctx: ViewModelContext): OpenPositionsModel
 }
 
+export interface PnlCalendarData extends WidgetFreshness {
+  /** The same series as the equity curve; rows with the same date are summed. */
+  days: DayResult[]
+  /** Later days are drawn as upcoming. Default: the clock's day. */
+  today?: Time
+}
+
+export interface PnlCalendarCell {
+  /** 'YYYY-MM-DD'. */
+  date: string
+  /** pos and neg are a gain and a loss, flat a day that nets to nothing, none a day with no entry, up a day yet to come. */
+  kind: 'pos' | 'neg' | 'flat' | 'none' | 'up'
+  /** The day's net; null for a day with no entry or one yet to come. */
+  pnl: number | null
+  /** 0.22 + 0.78 x |pnl| / max|pnl| over the cells drawn; null for a flat, empty or upcoming day. */
+  strength: number | null
+  /** The accessible name: the date and the signed value. */
+  name: string
+}
+
+export interface CalendarModel {
+  variant: SizeName
+  /** True when a Banner is folded into two half-year bands. */
+  phone: boolean
+  /** One band, or two on a phone's Banner. Each holds week columns, oldest first. */
+  bands: Array<{ weeks: Array<{ month: string; cells: PnlCalendarCell[] }> }>
+  /** The weekday names down the side, one per row of cells. */
+  rowLabels: string[]
+  rows: number
+  dropped: number
+  live: boolean
+  empty: boolean
+  label: string
+  net: string
+  netNum: number
+  best: string
+  worst: string
+  rate: string
+  tradingDays: number
+  /** The summary the grid is named by. */
+  chartLabel: string
+  /** The date of the cell that starts as the tab stop. */
+  focusDate: string
+  ariaLabel: string
+}
+
+/**
+ * <ts-pnl-calendar>, sizes Tall · M · Banner. A heat map of daily profit and loss: Tall shows 6 weeks, M 13 and Banner a year, which folds into two half-year bands on a phone.
+ *
+ * @element ts-pnl-calendar
+ * @fires {CustomEvent<TsPnlCalendarAction>} ts-action - Retry and 'open'.
+ */
+export declare class TsPnlCalendar extends TsWidget<PnlCalendarData> {
+  addEventListener(type: 'ts-action', listener: (this: TsPnlCalendar, ev: CustomEvent<TsPnlCalendarAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsPnlCalendar, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: the week columns, each cell's name, kind and strength, the totals and the summary. `ctx.phone` folds a Banner into two bands. */
+  static calendarModel(data: PnlCalendarData, variant: SizeName, ctx: ViewModelContext & { phone?: boolean }): CalendarModel
+}
+
 export interface TodayPnlData extends WidgetFreshness {
   /** Shown exactly as given; the widget never recomputes it from the parts. */
   net: Numeric
@@ -626,6 +686,7 @@ export type TsTableAction = TsCommonAction | { action: 'sort'; value: string; di
 export type TsWatchlistAction = TsCommonAction | { action: 'add-instrument' }
 /** 'exit-position' and 'exit-all' only fire when the host opts in with `actions` (RFC 0003 §21.3). */
 export type TsOpenPositionsAction = TsCommonAction | { action: 'exit-position'; id: string | number } | { action: 'exit-all' }
+export type TsPnlCalendarAction = TsCommonAction
 export type TsTodayPnlAction = TsCommonAction
 export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
 export type TsSessionClockAction = TsCommonAction
