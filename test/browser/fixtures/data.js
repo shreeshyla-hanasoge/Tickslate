@@ -145,6 +145,10 @@ export function dataFor(tag, scale = 1) {
       p.positions[0].instrument = `${p.positions[0].instrument} ${Math.floor(Math.log10(Math.abs(scale) + 1) * 10)}`
       return p
     }
+    case 'ts-edge-stats':
+      return edgeStatsData(scale)
+    case 'ts-capital-funding':
+      return fundingData(scale)
     case 'ts-today-pnl':
       return todayPnl(scale)
     case 'ts-equity-curve':
@@ -237,5 +241,32 @@ export function openPositions({ n = 9, step = 0, plain = false, scale = 1 } = {}
       }
       return out
     }),
+  }
+}
+
+// ── Edge stats and capital funding ────────────────────────────────────────
+// The magnitude is in a count and a name, so the S size, which shows neither of the scaled figures, still shows the data changing.
+const magnitude = (scale) => Math.floor(Math.log10(Math.abs(scale) + 1) * 10)
+
+export function edgeStatsData(scale = 1) {
+  const m = magnitude(scale)
+  return {
+    stats: { trades: 40 + m, wins: 22, losses: 18, winRate: 0.55, profitFactor: 1.42, avgWin: 2400 * scale, avgLoss: -1700 * scale, expectancy: 560 * scale },
+    scope: 'Last 30 days',
+    distribution: ['−3k', '−2k', '−1k', '0', '1k', '2k', '3k'].map((label, i) => ({ label, count: 3 + ((i * 7 + m) % 11), sign: i < 3 ? -1 : 1 })),
+    asOf: FROZEN,
+    live: true,
+  }
+}
+
+export function fundingData(scale = 1) {
+  const m = magnitude(scale)
+  return {
+    accounts: [
+      { id: 'a', name: `Broker A ${m}`, balance: 18640.4 * scale, allocations: [{ id: 'a1', name: 'Opening range', detail: 'NIFTY 50 · 5m', amount: 25000 * scale, live: true, pnl: 1240.5 * scale }, { id: 'a2', name: 'Mean reversion', amount: 25000 * scale, pnl: -310 * scale }] },
+      { id: 'b', name: 'Broker B', balance: 452800.5 * scale, allocations: [{ id: 'b1', name: 'Trend follow', amount: 200000 * scale }, { id: 'b2', name: 'Gap fade', amount: 150000 * scale }] },
+    ],
+    asOf: FROZEN,
+    live: true,
   }
 }

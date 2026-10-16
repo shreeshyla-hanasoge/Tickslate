@@ -134,8 +134,12 @@ const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §2
 // rounds up to 21.5 kB.
 // Two new entries (watchlist-and-positions, 2026-10-16): the watchlist measures 21,398 B bundled with the core, so 23,538 B with
 // 10 %, which rounds up to 23 kB; the open positions measure 21,873 B, so 24,060 B with 10 %, which rounds up to 23.5 kB.
+// Two new entries (edge-stats-and-funding, 2026-10-16): the edge stats measure 22,349 B bundled with the core, so 24,584 B with 10 %,
+// which rounds up to 24.5 kB; the capital funding measures 23,555 B, so 25,911 B with 10 %, which rounds up to 25.5 kB.
 const ENTRY_BUDGETS = {
   controls: newEntry(15),
+  'edge-stats': newEntry(24.5),
+  'capital-funding': newEntry(25.5),
   grid: remeasuredSixth(30.5),
   card: remeasuredSeventh(21),
   metric: remeasuredEighth(23),
