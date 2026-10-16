@@ -111,6 +111,7 @@ export const EN = Object.freeze({
   'grid.undone': 'Undone.',
   'grid.add': 'Add',
   'grid.added': '{label} added.',
+  'grid.addFailed': '{label} could not be added.',
 
   // <ts-widget-picker>
   'picker.title': 'Add a widget',
@@ -121,6 +122,7 @@ export const EN = Object.freeze({
   'picker.addSized': 'Add {label} as {size}',
   'picker.empty': 'Every widget is already on this layout',
   'picker.noMatch': 'No widget matches your search',
+  'picker.noGrid': 'No dashboard to add to yet',
   'picker.count.one': '{count} widget',
   'picker.count.other': '{count} widgets',
 

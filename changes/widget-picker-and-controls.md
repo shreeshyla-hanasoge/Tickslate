@@ -1,15 +1,16 @@
 ### Added
 
-- `<ts-widget-picker for="grid-id">` in `tickslate/elements/controls`: a modal dialog (a bottom sheet below 700px, centred above) with search over label and description, results grouped by category, a size chip per supported size and an Add back button per hidden tile. It says "Every widget is already on this layout" when nothing is left, closes on Escape and returns focus to where it was opened, and has 44px targets. `show(opener?)`, `close()`, `open` and the parts `sheet`, `search`, `group`, `row`, `chip`, `empty` and `close`.
-- `<ts-grid-controls for="grid-id">` in the same entry: a profile switcher (Auto, Market hours, After close, with the next switch under it) that renders only when the grid has a `schedule`, and the link that makes the edit pill show **Add**, which opens the picker, in place of **Add back (n)**. `picker` names the picker to link; by default it is the one whose `for` is the same grid.
-- `grid.add({ type, id?, size? })`, `grid.addTypes` and the cancelable `ts-add-request { type, id, size }` event: the picker offers catalog types only for the types a host lists in `addTypes` (or `'*'`) and answers by calling `preventDefault()` and rendering a child with `item=id`, which the grid places at the size asked for and commits as an `'add'`.
-- `grid.move(id, toIndex)`, `grid.resize(id, size)`, `grid.remove(id)`, `grid.profileOverride` and `grid.openPicker`, so a host's own controls edit through the grid, each edit a commit with undo history and a `ts-layout-change`.
-- Optional `description` and `category` on a widget's spec, for the picker, filled in for every built-in; a missing one falls back to the messages `widget.<type>.description` and `category.<name>`.
-- Messages for the picker, the controls and the catalog's sentences and categories: `picker.*`, `controls.*`, `grid.add`, `grid.added`, `widget.<type>.description` and `category.*`.
+- `<ts-widget-picker>`: a sheet to add widgets from, with search, categories, a size button per size and Add back for hidden tiles.
+- `<ts-grid-controls>`: a Auto, Market hours and After close switcher for scheduled grids, and the link that makes the edit pill's Add open the picker.
+- `grid.add()`, `grid.addTypes` and the cancelable `ts-add-request` event, for the host to answer by rendering a tile.
+- `grid.move()`, `grid.resize()` and `grid.remove()`, which edit like a drag, with undo, a `ts-layout-change` and a spoken announcement.
+- `grid.profileOverride` and `grid.openPicker`.
+- `description` and `category` on a widget's spec, filled in for every built-in widget.
+- Messages for the picker, the controls, the catalog's descriptions and categories, and a failed add.
 
 ### Changed
 
-- A tile's type is now looked up in `widgetCatalog()` after the grid's own `catalog`, so a widget registered with `defineWidget()` is drawn without being added to `catalog`, and the grid draws again when one is registered.
+- A widget registered with `defineWidget()` is drawn by any grid without being added to its `catalog`.
 
 ### Internal
 
@@ -21,3 +22,5 @@
 - `define/controls.js` registers both elements. Test files outside the story's list changed for it, each by a line or two: `test/entries.test.mjs` (the tags of the controls module), `test/tile-chrome.test.mjs` (the controls module holds no widget), `test/docs-coverage.test.mjs` (the two elements are documented as non-widgets), `test/catalog.test.mjs` (the built-in specs now carry `description` and `category`) and `test/messages.test.mjs` (the unused-key allowlist). `src/elements/index.js` and `src/elements/index.d.ts` gather the new entry, and `scripts/pack-lib.mjs` ships `controls.d.ts`.
 - New browser fixture `test/browser/fixtures/picker.html` and `test/browser/picker.spec.mjs`.
 - Size: `tickslate/elements/controls` is 13,594 B min+gz bundled and has a new 15 kB budget. The core now carries the new messages and the catalog metadata, and the grid carries `add`, the editing methods and the picker link, so four existing rows are over their budgets and were not raised: equity-curve and today-pnl by 516 B each, the grid by 573 B and metric by 17 B. The maintainer decides.
+- Review fixes: a request the host takes with `preventDefault()` and never answers keeps the picker open until the child arrives, and after 10 seconds the grid announces `grid.addFailed`, releases the id and warns in development. A second `add()` for an id still waiting returns `null`. Two children with one waiting `item`, a non-size passed to `resize()` and a non-number passed to `move()` warn once in development. A picker with no grid says `picker.noGrid`. `<ts-grid-controls>` redraws only when its grid or picker changes, queues one `whenDefined` per tag and caches its formatter.
+- `test/non-widget-defines.mjs` lists the define modules whose elements are not widgets (`controls`), so the entries, tile-chrome and docs-coverage tests share one exception, and a later story adds one line there.

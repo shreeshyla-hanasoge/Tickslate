@@ -330,7 +330,103 @@ test.describe('adding a new tile', () => {
   })
 })
 
+test.describe('a request the host takes and never answers', () => {
+  test('keeps the sheet open, then reports the failure and frees the id', async ({ page }) => {
+    test.setTimeout(40000)
+    await load(page, '&handle=silent')
+    // The grid warns once in development when it gives up; that is expected here.
+    page.removeAllListeners('console')
+    await openSheet(page)
+    await press(page, chip(page, 'Small').first())
+    await expect(sheet(page)).toBeVisible()
+    await expect(page.locator('ts-widget-picker .results')).toHaveAttribute('aria-busy', 'true')
+    expect(await requests(page)).toHaveLength(1)
+    // The id is spoken for: a second request for it fires nothing, and the sheet ignores another chip.
+    expect(await page.evaluate(() => document.getElementById('g').add({ type: 'card', id: 'card' }))).toBeNull()
+    await press(page, chip(page, 'Wide').first())
+    expect(await requests(page)).toHaveLength(1)
+    await expect(status(page)).toHaveText('Card could not be added.', { timeout: 15000 })
+    await expect(page.locator('ts-widget-picker .fail')).toHaveText('Card could not be added.')
+    await expect(sheet(page)).toBeVisible()
+    await expect(page.locator('ts-widget-picker .results')).not.toHaveAttribute('aria-busy', 'true')
+    expect(await changes(page)).toEqual([])
+    // Released: the same id can be asked for again.
+    expect(await page.evaluate(() => document.getElementById('g').add({ type: 'card', id: 'card' }))).toBe('card')
+  })
+
+  test('two children with the one id warn in development, and the grid still adds the tile', async ({ page }) => {
+    await load(page, '&handle=silent')
+    const warnings = []
+    page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
+    await page.evaluate(() => {
+      const g = document.getElementById('g')
+      g.add({ type: 'card', id: 'dup' })
+      for (let i = 0; i < 2; i++) {
+        const el = document.createElement('ts-card')
+        el.setAttribute('item', 'dup')
+        g.append(el)
+      }
+    })
+    await expect.poll(async () => (await changes(page, 'add')).length).toBe(1)
+    expect(warnings.some((w) => w.includes('two children with item="dup"'))).toBe(true)
+  })
+})
+
+test.describe('the picker without a grid', () => {
+  test('says there is no dashboard, not that every widget is on the layout', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => {
+      const p = document.createElement('ts-widget-picker')
+      p.id = 'orphan'
+      p.setAttribute('for', 'no-such-grid')
+      document.body.append(p)
+      p.show()
+    })
+    await expect(page.locator('#orphan .empty')).toHaveText('No dashboard to add to yet')
+  })
+})
+
+test.describe('the controls on a page with no grid', () => {
+  test('queue one whenDefined per tag, however often the page changes', async ({ page }) => {
+    await page.goto('/test/browser/fixtures/controls-only.html')
+    await page.waitForFunction(() => window.__ready === true)
+    await page.evaluate(async () => {
+      for (let i = 0; i < 30; i++) {
+        document.body.append(document.createElement('p'))
+        await new Promise((r) => requestAnimationFrame(r))
+      }
+    })
+    const queued = await page.evaluate(() => window.__whenDefined)
+    expect(queued.filter((n) => n === 'ts-grid').length).toBe(1)
+    expect(queued.filter((n) => n === 'ts-widget-picker').length).toBeLessThanOrEqual(1)
+  })
+})
+
 test.describe('the editing methods', () => {
+  test('announce what they did, in the words a drag uses', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => document.getElementById('g').move('queue', 0))
+    await expect(status(page)).toHaveText('Queue, moved to position 1 of 5.')
+    await page.evaluate(() => document.getElementById('g').resize('notes', 'Wide'))
+    await expect(status(page)).toHaveText('Notes, size Wide.')
+    await page.evaluate(() => document.getElementById('g').remove('tasks'))
+    await expect(status(page)).toHaveText('Tasks removed.')
+  })
+
+  test('warn in development about a bad size or index, and keep their return values', async ({ page }) => {
+    await load(page)
+    const warnings = []
+    page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
+    const out = await page.evaluate(() => {
+      const g = document.getElementById('g')
+      return [g.resize('notes', 'giant'), g.move('notes', 'first'), g.resize('nope', 'giant')]
+    })
+    expect(out).toEqual([true, true, false])
+    expect(warnings.some((w) => w.includes('resize(id, size) needs a size name'))).toBe(true)
+    expect(warnings.some((w) => w.includes('move(id, toIndex) needs a number'))).toBe(true)
+  })
+
+
   test('move, resize and remove commit like a drag and return false for an unknown id', async ({ page }) => {
     await load(page)
     const out = await page.evaluate(() => {

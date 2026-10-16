@@ -1,7 +1,7 @@
 import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
-import { EN, SIZE_NAMES, WIDGETS, configure, createCalendar, createMessages, currentConfig, onConfigure, presets } from '../src/core/index.js'
+import { BUILT_IN_PROFILES, EN, SIZE_NAMES, WIDGETS, configure, createCalendar, createMessages, currentConfig, onConfigure, presets } from '../src/core/index.js'
 import { translator } from '../src/elements/messages-cache.js'
 import { sizeName } from '../src/core/messages.js'
 import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
@@ -1190,6 +1190,9 @@ describe('the source', () => {
   // The keys the code builds at run time, from the lists they are built from.
   const built = () => [
     ...Object.keys(WIDGETS).map((key) => `widget.${key}.label`),
+    // The picker reads each entry's sentence and group from the catalog, and the grid controls name a profile as controls.<profile>.
+    ...Object.entries(WIDGETS).flatMap(([key, spec]) => [`widget.${key}.description`, `category.${spec.category}`]),
+    ...BUILT_IN_PROFILES.map((profile) => `controls.${profile}`),
     ...['1W', '1M', '3M', 'YTD', 'All'].map((range) => `equity.range${range}`),
     ...['1W', '1M', '3M', 'YTD', 'All'].map((range) => `equity.range${range}.long`),
   ]
@@ -1209,15 +1212,6 @@ describe('the source', () => {
     // Size names are built by sizeName(), which the picker and the layout list will call; the grid reads the bare token for now.
     ...SIZE_NAMES.map((size) => `size.${size}`),
     'size.name',
-    // Read as widget.<type>.description and category.<name> by the picker, whose types and categories are data.
-    ...Object.keys(WIDGETS).map((key) => `widget.${key}.description`),
-    'category.General',
-    'category.Performance',
-    'category.Accounts',
-    'category.Markets',
-    // The grid controls name a profile as controls.<profile>.
-    'controls.market',
-    'controls.closed',
   ]
 
   test('every EN key is used by the code, or listed as unused on purpose', () => {

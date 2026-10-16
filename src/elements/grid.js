@@ -762,6 +762,8 @@ export class TsGrid extends Base {
     if (given && this.hiddenItems.some((h) => h.id === given)) return this.restore(given) ? given : null
     // An id already on a tile of this grid can't be given to a second one.
     if (given && [...this.children].some((el) => isTile(el) && el.getAttribute('item') === given)) return null
+    // An id the host has taken and not yet answered is spoken for: a second request would fire a second event for one tile.
+    if (given && this._pendingAdds.has(given)) return null
     const id = given || this._freshId(type)
     const spec = this._typeSpec({ id, type })
     if (!spec || !Array.isArray(spec.sizes) || !spec.sizes.length) return null
@@ -776,6 +778,9 @@ export class TsGrid extends Base {
     const timer = setTimeout(() => {
       this._pendingAdds.delete(id)
       if (DEV) warnOnce(`grid-add-late:${type}`, `<ts-grid> took ts-add-request for '${type}' but no child with item="${id}" appeared within ${ADD_WAIT_MS / 1000} seconds, so the request was forgotten.`)
+      // A request that is taken and never answered must not look like a success.
+      this._announce(this.t('grid.addFailed', { label: this._catalogLabel(spec, type) }))
+      this._stateChanged()
     }, ADD_WAIT_MS)
     this._pendingAdds.set(id, { type, size, timer })
     return id
@@ -794,7 +799,13 @@ export class TsGrid extends Base {
   /** The requests whose child has appeared. */
   _arrivedAdds() {
     if (!this._pendingAdds.size) return []
-    const ids = new Set([...this.children].filter(isTile).map((el) => el.getAttribute('item')))
+    const ids = new Set()
+    for (const el of this.children) {
+      if (!isTile(el)) continue
+      const id = el.getAttribute('item')
+      if (DEV && ids.has(id) && this._pendingAdds.has(id)) warnOnce(`grid-add-twice:${id}`, `<ts-grid> found two children with item="${id}" while waiting for the one asked for with ts-add-request. Render one child per request.`)
+      ids.add(id)
+    }
     return [...this._pendingAdds].filter(([id]) => ids.has(id))
   }
 
@@ -827,6 +838,8 @@ export class TsGrid extends Base {
   _edit(reason, id, items, extra) {
     const profile = this.profile
     const previous = this._layout
+    // Read before the edit: a removed tile has no label afterwards.
+    const label = this._label(id)
     this._cancelGesture()
     this._history.push(profile, previous)
     this._hideToast(false)
@@ -835,10 +848,16 @@ export class TsGrid extends Base {
     this._layout = withProfile(previous, profile, items)
     this._sync(true)
     this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason, id, ...extra })
+    // The words a drag or a key would have said, for a listener who can't see the board change.
+    const t = this.t
+    if (reason === 'move') this._announce(t('grid.moved', { label, position: this._position(id), total: this._order.length }))
+    else if (reason === 'resize') this._announce(t('grid.resized', { label, size: this._item(id) ? this._item(id).size : '' }))
+    else if (reason === 'remove') this._announce(t('grid.removedSaid', { label }))
   }
 
   /** Moves the item to `toIndex` in the active profile (clamped). False for an unknown id. */
   move(id, toIndex) {
+    if (DEV && !Number.isFinite(toIndex)) warnOnce('grid-move-index', `<ts-grid>.move(id, toIndex) needs a number for toIndex, and got ${String(toIndex)}, so the item goes to the start.`)
     const items = this._profileItems()
     if (!items.some((item) => item.id === id)) return false
     const next = moveItem(items, id, toIndex)
@@ -848,6 +867,7 @@ export class TsGrid extends Base {
 
   /** Snaps to the item's spec. False for an unknown id. */
   resize(id, size) {
+    if (DEV && !isSizeName(size)) warnOnce('grid-resize-size', `<ts-grid>.resize(id, size) needs a size name such as 'M' or 'Wide', and got ${String(size)}, so the size is left as it is.`)
     const items = this._profileItems()
     if (!items.some((item) => item.id === id)) return false
     const next = resizeItem(items, id, size, this._resolve)

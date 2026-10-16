@@ -64,6 +64,8 @@ const TEMPLATE = `
   .desc { display: block; margin-block-start: 2px; color: var(--ts-muted); font-size: 13px; }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .empty { margin: 0; padding-block: 24px; text-align: center; color: var(--ts-muted); }
+  .fail { margin: 0; padding: 10px 12px; border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm, 6px); font-weight: 600; }
+  .results[aria-busy="true"] { opacity: .6; }
   .sr { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   /* Below 700px it is a sheet that rises from the bottom edge, where a thumb reaches. */
   @media (max-width: 699.98px) {
@@ -91,6 +93,7 @@ const TEMPLATE = `
     <input class="search" part="search" type="search" autocomplete="off" spellcheck="false" enterkeyhint="search">
     <div class="results" tabindex="-1"></div>
     <p class="empty" part="empty" hidden></p>
+    <p class="fail" role="alert" hidden></p>
     <p class="sr count" role="status"></p>
   </div>
 </dialog>
@@ -120,15 +123,34 @@ export class TsWidgetPicker extends Base {
     this._search = root.querySelector('.search')
     this._results = root.querySelector('.results')
     this._empty = root.querySelector('.empty')
+    this._fail = root.querySelector('.fail')
     this._count = root.querySelector('.count')
     this._opener = null // where focus goes back to
     this._watched = null // the grid whose layout changes redraw the list while it is open
-    this._onLayout = () => {
+    this._waiting = null // { id, label } while the host has taken an add and not yet answered
+    this._offState = null
+    this._onLayout = (e) => {
+      const w = this._waiting
+      // The child the host rendered has been placed: the add is done.
+      if (w && e.detail && e.detail.reason === 'add' && e.detail.id === w.id) return this.close()
       if (this._dialog.open) this._renderList()
+    }
+    // The grid says so when it gave up waiting for the host's child.
+    this._onGridState = () => {
+      const w = this._waiting
+      const grid = this._watched
+      if (!w || !grid || grid._pendingAdds.has(w.id)) return
+      this._waiting = null
+      this._results.removeAttribute('aria-busy')
+      this._fail.textContent = this._translate(grid)('grid.addFailed', { label: w.label })
+      this._fail.hidden = false
     }
 
     this._close.addEventListener('click', () => this.close())
-    this._search.addEventListener('input', () => this._renderList())
+    this._search.addEventListener('input', () => {
+      this._fail.hidden = true
+      this._renderList()
+    })
     // The native cancel (Escape) and every other close end here.
     this._dialog.addEventListener('close', () => this._closed())
     this._dialog.addEventListener('click', (e) => {
@@ -209,6 +231,9 @@ export class TsWidgetPicker extends Base {
 
   _closed() {
     this.removeAttribute('open')
+    this._waiting = null
+    this._results.removeAttribute('aria-busy')
+    this._fail.hidden = true
     this._watch(null)
     const opener = this._opener
     this._opener = null
@@ -219,8 +244,13 @@ export class TsWidgetPicker extends Base {
   _watch(grid) {
     if (this._watched === grid) return
     if (this._watched) this._watched.removeEventListener('ts-layout-change', this._onLayout)
+    if (this._offState) this._offState()
+    this._offState = null
     this._watched = grid
-    if (grid) grid.addEventListener('ts-layout-change', this._onLayout)
+    if (grid) {
+      grid.addEventListener('ts-layout-change', this._onLayout)
+      if (typeof grid._onState === 'function') this._offState = grid._onState(this._onGridState)
+    }
   }
 
   _writeStatic(t) {
@@ -270,7 +300,8 @@ export class TsWidgetPicker extends Base {
     const none = total === 0
     this._empty.hidden = !none
     this._results.hidden = none
-    this._empty.textContent = none ? t(query.trim() ? 'picker.noMatch' : 'picker.empty') : ''
+    // No grid to add to is a third thing, and "Every widget is already on this layout" would be untrue of it.
+    this._empty.textContent = none ? t(!grid ? 'picker.noGrid' : query.trim() ? 'picker.noMatch' : 'picker.empty') : ''
     this._count.textContent = none ? this._empty.textContent : t('picker.count', {}, total)
     // A row that was focused and is gone leaves focus on the page behind a modal; the search field is the way back in.
     if (this._dialog.open && !this.shadowRoot.activeElement) this._search.focus()
@@ -297,7 +328,7 @@ export class TsWidgetPicker extends Base {
       chips.appendChild(this._chip(t('picker.addBack'), t('picker.addBackItem', { label: item.label }), { id: item.id }))
     } else {
       for (const size of item.sizes) {
-        chips.appendChild(this._chip(t(`size.${size}`), t('picker.addSized', { label: item.label, size: sizeName(t, size) }), { type: item.type, size }))
+        chips.appendChild(this._chip(t(`size.${size}`), t('picker.addSized', { label: item.label, size: sizeName(t, size) }), { type: item.type, size, label: item.label }))
       }
     }
     row.append(text, chips)
@@ -321,12 +352,20 @@ export class TsWidgetPicker extends Base {
   _choose(chip) {
     const grid = this._grid()
     if (!grid) return this.close()
+    // One request at a time: the host has not answered the last.
+    if (this._waiting) return
+    this._fail.hidden = true
     if (chip.dataset.id !== undefined) {
       const hidden = grid.hiddenItems.find((h) => h.id === chip.dataset.id)
       if (!hidden || !grid.restore(hidden.id)) return this._renderList()
       grid._announce(grid.t('grid.addedBack', { label: hidden.label }))
-    } else if (grid.add({ type: chip.dataset.type, size: chip.dataset.size }) === null) {
+    } else {
+      const id = grid.add({ type: chip.dataset.type, size: chip.dataset.size })
       // The host didn't take it (the grid says why in development); the sheet stays open to choose again.
+      if (id === null) return
+      // Taken is not done: the sheet stays until the child arrives (the layout change closes it) or the grid gives up.
+      this._waiting = { id, label: chip.dataset.label }
+      this._results.setAttribute('aria-busy', 'true')
       return
     }
     this.close()

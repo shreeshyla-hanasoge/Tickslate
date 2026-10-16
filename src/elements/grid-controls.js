@@ -10,7 +10,7 @@
  * schedule, clock or override changed (grid._onState) and draws what it finds.
  */
 
-import { activeProfile, createFormatter, localDate, nextProfileChange } from '../core/index.js'
+import { activeProfile, createFormatter, currentConfig, localDate, nextProfileChange } from '../core/index.js'
 import { ensureTokens } from './default-tokens.js'
 
 let template = null
@@ -65,6 +65,9 @@ export class TsGridControls extends Base {
     this._linkedPicker = null
     this._watch = null // watches the page for the grid and the picker arriving or leaving
     this._frame = 0
+    this._seen = null // the grid and the picker the last attach found, so a page's unrelated changes redraw nothing
+    this._waiting = new Set() // tags a whenDefined is already queued for
+    this._fmt = null // { key, fmt }: the formatter for the grid's attributes
     // One function, so "is the grid's openPicker ours" can be asked by identity.
     this._open = (opener) => {
       const picker = this._pickerEl()
@@ -151,6 +154,7 @@ export class TsGridControls extends Base {
     this._offState = null
     this._unlink()
     this._grid = null
+    this._seen = null
   }
 
   _unlink() {
@@ -165,7 +169,7 @@ export class TsGridControls extends Base {
     const ctor = typeof customElements === 'undefined' ? null : customElements.get('ts-grid')
     // A grid that isn't defined yet has no openPicker or schedule to read; wait for it.
     const grid = found && ctor && found instanceof ctor ? found : null
-    if (found && !grid && typeof customElements !== 'undefined') customElements.whenDefined('ts-grid').then(() => this._attach())
+    if (found && !grid) this._whenDefined('ts-grid')
     if (grid !== this._grid) {
       this._detach()
       this._grid = grid
@@ -174,14 +178,27 @@ export class TsGridControls extends Base {
     if (grid) {
       let picker = this._pickerEl()
       if (picker && typeof picker.show !== 'function') {
-        customElements.whenDefined('ts-widget-picker').then(() => this._attach())
+        this._whenDefined('ts-widget-picker')
         picker = null
       }
       if (picker && grid.openPicker !== this._open) grid.openPicker = this._open
       else if (!picker && grid.openPicker === this._open) grid.openPicker = null
       this._linkedPicker = picker
     }
+    // The page changed somewhere else: the grid and the picker are as they were, so there is nothing to draw again.
+    if (this._seen && this._seen.grid === grid && this._seen.picker === this._linkedPicker) return
+    this._seen = { grid, picker: this._linkedPicker }
     this._render()
+  }
+
+  /** Attach again when `tag` is defined. Once per tag: the page may change a hundred times before it is. */
+  _whenDefined(tag) {
+    if (typeof customElements === 'undefined' || this._waiting.has(tag)) return
+    this._waiting.add(tag)
+    customElements.whenDefined(tag).then(() => {
+      this._waiting.delete(tag)
+      this._attach()
+    })
   }
 
   _render() {
@@ -203,6 +220,14 @@ export class TsGridControls extends Base {
     if (this._next.textContent !== text) this._next.textContent = text
   }
 
+  /** One formatter per set of attributes and defaults: Intl objects are slow to build and this redraws on every clock tick of the grid. */
+  _formatter(options) {
+    const c = currentConfig()
+    const key = JSON.stringify([options, c.locale, c.timeZone, c.hourCycle])
+    if (!this._fmt || this._fmt.key !== key) this._fmt = { key, fmt: createFormatter(options) }
+    return this._fmt.fmt
+  }
+
   /** "Switches to After close at 15:35", or nothing when the schedule never changes. */
   _nextText(grid, schedule, t) {
     let at
@@ -218,7 +243,7 @@ export class TsGridControls extends Base {
     }
     const options = { locale: grid.getAttribute('locale') || undefined, timeZone: grid.getAttribute('time-zone') || undefined, hourCycle: grid.getAttribute('hour-cycle') || undefined }
     for (const key of Object.keys(options)) if (options[key] === undefined) delete options[key]
-    const fmt = createFormatter(options)
+    const fmt = this._formatter(options)
     // A change on another day names the day, or "15:35" would read as today's.
     const sameDay = localDate(at, fmt.timeZone) === localDate(now, fmt.timeZone)
     const time = sameDay ? fmt.time(at) : `${fmt.date(at, { style: 'weekday' })} ${fmt.time(at)}`

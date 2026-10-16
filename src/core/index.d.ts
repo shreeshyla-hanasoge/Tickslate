@@ -340,6 +340,7 @@ export interface Messages {
   'grid.undone': string
   'grid.add': string
   'grid.added': string
+  'grid.addFailed': string
   'picker.title': string
   'picker.search': string
   'picker.close': string
@@ -348,6 +349,7 @@ export interface Messages {
   'picker.addSized': string
   'picker.empty': string
   'picker.noMatch': string
+  'picker.noGrid': string
   'picker.count.one': string
   'picker.count.other': string
   'controls.profile': string

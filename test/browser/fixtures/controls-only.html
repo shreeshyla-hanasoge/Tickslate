@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- A page that imports only the controls entry: no <ts-grid> is ever defined, so the controls wait for one.
+     The test changes the page many times and counts what the controls queued. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Controls only</title>
+<script>
+  // Counted from before the module loads.
+  window.__whenDefined = []
+  const original = customElements.whenDefined.bind(customElements)
+  customElements.whenDefined = (name) => {
+    window.__whenDefined.push(name)
+    return original(name)
+  }
+</script>
+<script type="module">
+  import '/src/elements/define/controls.js'
+  window.__ready = true
+</script>
+</head>
+<body>
+<ts-grid-controls for="g"></ts-grid-controls>
+<ts-widget-picker for="g"></ts-widget-picker>
+<div id="g"></div>
+</body>
+</html>
