@@ -125,7 +125,7 @@ function registered(item) {
 let template = null
 const TEMPLATE = `
 <style>
-  :host { display: block; position: relative; max-width: var(--ts-grid-max-width, none); margin-inline: auto; -webkit-tap-highlight-color: transparent; }
+  :host { display: block; position: relative; inline-size: 100%; max-inline-size: var(--ts-grid-max-width, none); margin-inline: auto; -webkit-tap-highlight-color: transparent; }
   :host([hidden]) { display: none; }
   :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
@@ -534,7 +534,8 @@ export class TsGrid extends Base {
 
   set breakpoints(value) {
     if (DEV && !validThresholds(value)) warnOnce('grid-breakpoints', `<ts-grid>.breakpoints needs finite numbers above 0 with tablet below desktop, e.g. { tablet: 700, desktop: 1600 }, and got ${JSON.stringify(value)}, so the defaults are used.`)
-    this._breakpoints = value && typeof value === 'object' ? value : undefined
+    // A copy, so mutating the host's object later can't change columns without a re-measure, and the getter says what is in effect.
+    this._breakpoints = value != null && validThresholds(value) ? { ...value } : undefined
     this._measure(true)
   }
 

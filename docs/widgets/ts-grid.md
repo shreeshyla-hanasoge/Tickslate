@@ -20,7 +20,8 @@ track of their nodes. It positions each child and writes its `size` attribute.
 
 ## Columns and sizes
 
-The grid measures its own width (not the window's).
+The grid measures its own width (not the window's). The widths below are the
+defaults; the `breakpoints` property overrides them (see Large monitors).
 
 | Grid width | Columns | `device` |
 |---|---|---|
@@ -43,6 +44,10 @@ tile becomes a strip. Two controls keep tiles ordinary:
   1600px. A missing key keeps its default (`700` and `1200`). Anything that
   isn't a finite number above 0, or a `tablet` that isn't below `desktop`,
   is ignored with one development warning. Setting it re-measures.
+
+The grid fills its parent's width (`inline-size: 100%`), so it works in a block,
+flex or grid parent alike, and only a cap makes it narrower. Set
+`max-inline-size` on the grid itself to override the token.
 
 A size is a footprint in cells; the same size can render a different design when
 the grid is narrow.

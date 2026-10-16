@@ -92,12 +92,38 @@ test.describe('breakpoints', () => {
     expect(detail.device).toBe('phone')
   })
 
-  test('an invalid set is ignored and the defaults stay in force', async ({ page }) => {
+  test('an invalid set is ignored with one warning, and the defaults stay in force', async ({ page }) => {
+    const warnings = []
+    page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
     await load(page, 1300)
-    // The one development warning is a warn, not an error, so the afterEach holds.
-    await page.evaluate(() => { document.getElementById('g').breakpoints = { tablet: 2000, desktop: 1000 } })
+    await page.evaluate(() => { document.getElementById('g').breakpoints = { desktop: 1600 } })
     await settle(page)
+    expect(await columns(page)).toBe(3)
+    await page.evaluate(() => {
+      window.__colEvents = 0
+      document.getElementById('g').addEventListener('ts-columns-change', () => window.__colEvents++)
+      document.getElementById('g').breakpoints = { tablet: 2000, desktop: 1000 }
+    })
+    await settle(page)
+    // The invalid set puts the defaults back: 3 columns to 4, one change event.
     expect(await columns(page)).toBe(4)
+    expect(await page.evaluate(() => window.__colEvents)).toBe(1)
+    expect(await page.evaluate(() => ({ ...document.getElementById('g').breakpoints }))).toEqual({ tablet: 700, desktop: 1200 })
+    expect(warnings.filter((w) => w.includes('breakpoints'))).toHaveLength(1)
+  })
+
+  test('the setter keeps a copy: mutating the original later changes nothing', async ({ page }) => {
+    await load(page, 1300)
+    const result = await page.evaluate(async () => {
+      const g = document.getElementById('g')
+      const mine = { desktop: 1600 }
+      g.breakpoints = mine
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      mine.desktop = 800
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      return { columns: g.columns, bp: { ...g.breakpoints }, same: g.breakpoints === mine }
+    })
+    expect(result).toEqual({ columns: 3, bp: { desktop: 1600 }, same: false })
   })
 
   test('host breakpoints and the cap work together on a 2560px board', async ({ page }) => {
@@ -111,5 +137,120 @@ test.describe('breakpoints', () => {
     // 1400px is under the host's 1600px desktop threshold, so 3 columns.
     expect(await columns(page)).toBe(3)
     expect(await gridWidth(page)).toBeCloseTo(1400, 0)
+  })
+})
+
+// Parents that used to collapse the grid: its tiles are absolutely positioned,
+// so it has no width of its own, and auto margins switch off flex and grid stretch.
+test.describe('inside other layouts', () => {
+  const PARENTS = {
+    block: 'display: block',
+    'flex column': 'display: flex; flex-direction: column',
+    'flex row': 'display: flex; flex-direction: row',
+    grid: 'display: grid',
+  }
+  for (const [name, css] of Object.entries(PARENTS)) {
+    test(`a ${name} parent: full width by default, capped and centred with the token`, async ({ page }) => {
+      await load(page, 1600)
+      await page.evaluate((c) => { document.getElementById('wrap').style.cssText = `width: 1600px; ${c}` }, css)
+      await settle(page)
+      expect(await gridWidth(page)).toBeCloseTo(1600, 0)
+      expect(await columns(page)).toBe(4)
+      await page.evaluate(() => document.getElementById('g').style.setProperty('--ts-grid-max-width', '1000px'))
+      await settle(page)
+      expect(await gridWidth(page)).toBeCloseTo(1000, 0)
+      const sides = await page.evaluate(() => {
+        const g = document.getElementById('g').getBoundingClientRect()
+        const w = document.getElementById('wrap').getBoundingClientRect()
+        return [g.left - w.left, w.right - g.right]
+      })
+      expect(Math.abs(sides[0] - sides[1])).toBeLessThan(1)
+      expect(sides[0]).toBeGreaterThan(250)
+    })
+  }
+
+  test('right-to-left: a capped board is still centred', async ({ page }) => {
+    await load(page, 1600)
+    await page.evaluate(() => {
+      document.documentElement.dir = 'rtl'
+      document.getElementById('g').style.setProperty('--ts-grid-max-width', '1000px')
+    })
+    await settle(page)
+    const sides = await page.evaluate(() => {
+      const g = document.getElementById('g').getBoundingClientRect()
+      const w = document.getElementById('wrap').getBoundingClientRect()
+      return [g.left - w.left, w.right - g.right]
+    })
+    expect(Math.abs(sides[0] - sides[1])).toBeLessThan(1)
+    // 1000px is under the 1200px desktop threshold.
+    expect(await columns(page)).toBe(3)
+  })
+
+  test('max-inline-size set on the host beats the token', async ({ page }) => {
+    await load(page, 1600)
+    await page.evaluate(() => {
+      const g = document.getElementById('g')
+      g.style.setProperty('--ts-grid-max-width', '1000px')
+      g.style.maxInlineSize = '800px'
+    })
+    await settle(page)
+    expect(await gridWidth(page)).toBeCloseTo(800, 0)
+  })
+})
+
+// A real 2560px viewport, with edit chrome, drag and resize on the capped board.
+test.describe('a 2560px viewport, capped', () => {
+  async function wide(page) {
+    await page.setViewportSize({ width: 2560, height: 1000 })
+    await page.goto(`${PAGE}?mode=explicit`)
+    await page.waitForFunction(() => window.__ready === true && document.getElementById('g').columns > 0)
+    await page.evaluate(() => {
+      document.getElementById('g').style.setProperty('--ts-grid-max-width', '1400px')
+      document.getElementById('g').editing = true
+    })
+    await settle(page)
+  }
+  const center = async (locator) => {
+    const b = await locator.boundingBox()
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+  }
+
+  test('the board is 1400px wide, centred, with edit chrome inside it', async ({ page }) => {
+    await wide(page)
+    expect(await gridWidth(page)).toBeCloseTo(1400, 0)
+    expect(await columns(page)).toBe(4)
+    const box = await page.locator('#g').boundingBox()
+    expect(Math.abs(box.x - (2560 - box.x - box.width))).toBeLessThan(20)
+    const handle = await page.locator('ts-grid .chrome[data-id="tasks"] .handle').boundingBox()
+    expect(handle.x).toBeGreaterThan(box.x)
+    expect(handle.x + handle.width).toBeLessThanOrEqual(box.x + box.width)
+  })
+
+  test('dragging a tile moves it at the capped width', async ({ page }) => {
+    await wide(page)
+    const from = await center(page.locator('ts-grid .chrome[data-id="tasks"] .handle'))
+    const to = await center(page.locator('#g > [item="notes"]'))
+    await page.mouse.move(from.x, from.y)
+    await page.mouse.down()
+    await page.mouse.move(to.x - 20, to.y, { steps: 12 })
+    await page.waitForTimeout(300)
+    await page.mouse.up()
+    await settle(page)
+    const moves = await page.evaluate(() => window.__events.filter((e) => e.type === 'ts-layout-change' && e.reason === 'move'))
+    expect(moves).toHaveLength(1)
+  })
+
+  test('resizing a tile works at the capped width', async ({ page }) => {
+    await wide(page)
+    const resize = page.locator('ts-grid .chrome[data-id="notes"] .resize')
+    const c = await center(resize)
+    await page.mouse.move(c.x, c.y)
+    await page.mouse.down()
+    await page.mouse.move(c.x + 250, c.y, { steps: 10 })
+    await page.waitForTimeout(200)
+    await page.mouse.up()
+    await settle(page)
+    const resizes = await page.evaluate(() => window.__events.filter((e) => e.type === 'ts-layout-change' && e.reason === 'resize'))
+    expect(resizes.length).toBeGreaterThan(0)
   })
 })
