@@ -225,6 +225,7 @@ export function todayPnlModel(data, variant, ctx) {
     label: variant === 'S' ? t('pnl.today') : ctx.label,
     time,
     net: fmt.fit(d.net, HEADLINE_CHARS[variant] || HEADLINE_CHARS.Wide),
+    netNum: net,
     netTone: tone(d.net),
     realized: fmt.money(d.realized),
     realizedTone: tone(d.realized),
@@ -260,14 +261,14 @@ export function todayPnlModel(data, variant, ctx) {
 // root, so the clip-path ids can be fixed.
 const TEMPLATES = {
   S: `
-${header({ dot: true, meta: '<span class="sm mut n" data-k="time"></span>' })}
+${header({ dot: true, meta: true })}
 ${figure('big nv', 'net', 'value')}
 <span class="f1"></span>
 <span class="sm mut ell" data-k="footer"></span>`,
   Wide: `
 <div class="cols">
   <div class="col lhs">
-    ${header({ dot: true })}
+    ${header({ dot: true, meta: true })}
     ${figure('xbig nv', 'net', 'value')}
     <span class="sm mut" data-k="note"></span>
   </div>
@@ -278,7 +279,7 @@ ${figure('big nv', 'net', 'value')}
   </div>
 </div>`,
   M: `
-${header({ dot: true, meta: '<span class="sm mut" data-k="counts"></span>' })}
+${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"></span>' })}
 <div class="rowb base">${figure('xbig nv', 'net', 'value')}<span class="sm mut" data-k="summary"></span></div>
 <div class="chart" part="chart">
   <svg viewBox="0 0 ${CHART_BOX.width} ${CHART_BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">
@@ -426,11 +427,13 @@ export class TsTodayPnl extends TsWidget {
     if (variant === 'S') {
       text('time', vm.time)
       toned('net', 'big nv', vm.net, vm.netArrow, vm.netTone)
+      this.flash('net', vm.netNum)
       text('footer', vm.footer)
       return
     }
 
     toned('net', 'xbig nv', vm.net, vm.netArrow, vm.netTone)
+    this.flash('net', vm.netNum)
     text('lbRealised', this.t('pnl.realised'))
     text('lbUnrealised', this.t('pnl.unrealised'))
     text('lbFees', this.t('pnl.fees'))

@@ -676,3 +676,7 @@ describe('an open session with a close but no known start', () => {
     assert.equal(model(data, 'Banner', at('2026-10-12', '11:42')).lanes[0].track, true)
   })
 })
+
+test('a wall clock has no flash: nothing in either template is a flash target', () => {
+  assert.doesNotMatch(TsSessionClock.template('S') + TsSessionClock.template('Banner'), /data-flash/)
+})

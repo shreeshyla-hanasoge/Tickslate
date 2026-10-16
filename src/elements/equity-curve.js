@@ -226,6 +226,7 @@ export function equityCurveModel(data, variant, ctx) {
     axis,
     chart: { width, height, line: geo.line, area: geo.area, zeroY: geo.zeroY, peakLine, band },
     chartLabel,
+    netNum: stats.net,
     ariaLabel: empty ? t('equity.ariaEmpty', { label }) : t('equity.aria', { label, net, days: tradingDays }),
   }
 }
@@ -309,14 +310,14 @@ export class TsEquityCurve extends TsWidget {
   static template(variant) {
     if (variant === 'Wide') {
       return `<div class="rowl">
-<div class="col side">${header()}${figure('big', 'net', 'value')}<span class="sm mut" data-k="peakNote"></span></div>
+<div class="col side">${header({ dot: true, meta: true })}${figure('big', 'net', 'value')}<span class="sm mut" data-k="peakNote"></span></div>
 ${chartMarkup('Wide')}
 </div>`
     }
     if (variant === 'XL') {
       return `<div class="rowl xl">
 <div class="chartcol">
-${header({ meta: rangeButtons() })}
+${header({ dot: true, meta: true, extra: rangeButtons() })}
 ${chartMarkup('XL')}
 <div class="row sm mut ax"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span><span class="f1"></span><span data-k="ax2"></span></div>
 </div>
@@ -328,7 +329,7 @@ ${chartMarkup('XL')}
 </div>
 </div>`
     }
-    return `${header({ dot: true, meta: '<span class="sm mut" data-k="fees" hidden></span>' })}
+    return `${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="fees" hidden></span>' })}
 <div class="rowb">${figure('big', 'net', 'value')}<span class="sm mut" data-k="sub"></span></div>
 ${chartMarkup('M')}
 <div class="row sm mut ax"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span></div>
@@ -404,6 +405,7 @@ ${chartMarkup('M')}
     }
     text('label', vm.label)
     fig('net', 'big', vm.headline, vm.headlineArrow, vm.netClass)
+    this.flash('net', vm.netNum)
     text('empty', t('equity.noDays'))
 
     if (variant === 'Wide') text('peakNote', vm.peakNote)

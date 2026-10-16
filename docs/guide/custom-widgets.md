@@ -130,7 +130,11 @@ The third argument is the context the base class builds for you: `fmt` is the
 formatter for this tile's `locale`, `currency`, `time-zone` and `hour-cycle` (its own
 attributes, then its grid's, then `configure()`'s), `t` translates messages, and
 `label` is the tile's effective label. `now` is there too, from the tile's
-`clock`, for anything that depends on the time.
+`clock`, for anything that depends on the time. So is `freshness`, `{ asOf, ago, stale }`:
+`data.asOf` as a time (`null` without one), how long ago it was in words
+(`''` without `asOf`; one ahead of `now` reads `just now`), and whether live data
+is older than the tile's `stale-after` (a view model returns it when it wants to
+show its own staleness; the header needs no help, see below).
 
 Read numbers with `toNumber`, never `Number(…)` or `parseFloat`: it accepts
 what a host really sends (a number, a numeric string, a decimal-library value
@@ -341,6 +345,41 @@ wouldn't change anything is an optimisation you can leave out.
 
 Don't use `innerHTML` in `update` for data. Text goes through `textContent`;
 if you must build markup from data, escape it (below).
+
+### Freshness and flashes
+
+Put the base's two header parts in your head markup and the base does the rest:
+
+```js
+const head = `<div class="hd">
+<span class="dot live" data-k="dot" aria-hidden="true" hidden></span>
+<span class="lb ell" data-k="label"></span><span class="f1"></span>
+<span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>
+</div>`
+```
+
+With `live: true` and an `asOf` in the data, the dot pulses and the meta reads
+`just now`, `2 min. ago`; past the tile's `stale-after` (milliseconds, or `'90s'`,
+`'2m'`, `'1h'`; default 2 minutes) the dot turns `--ts-warn` and stops pulsing, the
+meta reads `Stale · 3 min` and the tile's name ends with `, stale`. With `asOf` and
+no `live` it reads `synced 11:42`. A live tile re-renders every 15 s on one timer
+that every tile shares. An `asOf` ahead of the clock reads as `just now`, never as
+a negative age.
+
+To tint a figure that changed, call `this.flash(key, number)` in `update()` after
+you wrote the figure, and mark the element `data-k="<key>"` or
+`data-flash="<key>"`:
+
+```js
+this.flash('value', vm.valueNum, { goodWhen: 'up' })  // 'down' swaps the colours, 'neither' uses the accent
+```
+
+Pass the number (put it in the view model beside the text), because `'1,234.50'`
+is not one. It tints for 700 ms: up in `--ts-profit`, down in `--ts-loss`. It skips
+the first render, a size change, an unchanged value, a second change within a
+second, reduced motion and `flash="off"` on the tile or its grid. An element
+that paints must carry the class: not a `<slot>`, which is `display: contents`.
+Don't flash a clock.
 
 ## 5. `emit`: tell the host something happened
 

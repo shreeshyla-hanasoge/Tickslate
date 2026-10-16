@@ -78,6 +78,9 @@ export const EN = Object.freeze({
   'time.synced': 'synced {time}',
   // Said after a tile's name while its data is live: "Signups, 1,204, up 12% vs last week, live".
   'time.live': 'live',
+  'time.staleWord': 'stale',
+  'time.justNow': 'just now',
+  'time.stale': 'Stale · {age}',
   'time.days.one': '{count} day',
   'time.days.other': '{count} days',
 

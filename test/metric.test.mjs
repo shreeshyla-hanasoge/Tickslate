@@ -458,3 +458,12 @@ describe('update()', () => {
     assert.equal(w.node('arrow').textContent, '')
   })
 })
+
+describe('metricModel valueNum', () => {
+  test('is the number behind the headline, not its text', () => {
+    assert.equal(model({ value: 1234.5 }).valueNum, 1234.5)
+    assert.equal(model({ value: '1234.50' }).valueNum, 1234.5)
+    assert.equal(model({ value: 1500000 }, 'Wide').valueNum, 1500000)
+    assert.ok(Number.isNaN(model({ value: 'n/a' }).valueNum))
+  })
+})

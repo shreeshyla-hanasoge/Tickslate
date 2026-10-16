@@ -157,6 +157,8 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `edit-controls="off"` | Hides the Edit layout button, the edit pill and the empty board's Add back button, for hosts with their own controls. Long press, Escape and the `editing` attribute still work |
 | `undo-toast="off"` | Suppresses the undo toast; the removal is announced instead |
 | `locale`, `currency`, `time-zone`, `hour-cycle` | Formatting for every tile that has none of its own: the widget's attribute, then these, then `configure()` |
+| `stale-after` | The `stale-after` every tile uses that has none of its own (milliseconds or a duration such as `'90s'`, `'2m'`, `'1h'`; default `120000`) |
+| `flash="off"` | Stops the change flash on every tile |
 | `dragging` | Set by the grid while a tile is lifted, so you can style around a drag. Do not set it |
 
 ## Properties and methods

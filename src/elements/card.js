@@ -24,7 +24,7 @@ import { SIZE_NAMES, isSize, toTime } from '../core/index.js'
 // its slotted content reflows into the box it is given.
 const TEMPLATE = `
 ${header({ dot: true, meta: true, actions: true })}
-<slot name="value" part="value"></slot>
+<div class="vw" data-k="vw" data-flash="value" hidden><slot name="value" part="value"></slot></div>
 <div class="body" data-k="body" part="body"><slot></slot></div>
 <slot name="footer"></slot>`
 
@@ -59,7 +59,26 @@ export function cardModel(data, variant, ctx) {
     time,
     synced: syncedParts(ctx.t),
     scrollable: ctx.scrollable === true,
+    valueText: ctx.valueText || '',
   }
+}
+
+/**
+ * The number in a formatted figure ('$1,234.50', '1.234,50 €'), or NaN: the
+ * card is given text, so this is the nearest thing it has to a value. The last
+ * separator followed by one or two digits (or the only one, if it is a point)
+ * is the decimal mark; every other separator groups.
+ */
+export function figureOf(text) {
+  const m = /[+\-\u2212]?\s*\d[\d.,\s\u00a0\u202f']*/.exec(text)
+  if (!m) return NaN
+  const neg = /^[\-\u2212]/.test(m[0]) || /^[^\d]*\(/.test(text)
+  let s = m[0].replace(/[^\d.,]/g, '')
+  const last = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','))
+  if (last >= 0 && (s.length - last - 1 <= 2 || (s[last] === '.' && !/[.,]/.test(s.slice(0, last))))) s = `${s.slice(0, last).replace(/[.,]/g, '')}.${s.slice(last + 1)}`
+  else s = s.replace(/[.,]/g, '')
+  const n = Number(s)
+  return Number.isFinite(n) ? (neg ? -n : n) : NaN
 }
 
 const flag = (el, name, on) => (on ? el.setAttribute(name, '') : el.removeAttribute(name))
@@ -78,6 +97,7 @@ export class TsCard extends TsWidget {
 
   static styles = `
 [hidden] { display: none; }
+.vw { flex: none; min-width: 0; align-self: flex-start; max-inline-size: 100%; }
 .body { flex: 1; min-height: 0; overflow: hidden; }
 .body.scroll { overflow: auto; scrollbar-width: thin; }
 /* The last 28px fade while there is more below, so a cut-off row reads as
@@ -213,6 +233,9 @@ slot[name="footer"]::slotted(*) {
     text('pre', vm.synced.pre)
     text('time', vm.time)
     text('post', vm.synced.post)
+    // The wrapper paints the tint: a slot is display: contents and has no box of its own.
+    flag(this.$('[data-k="vw"]'), 'hidden', !vm.valueText)
+    this.flash('value', figureOf(vm.valueText))
 
     const body = this.$('[data-k="body"]')
     body.setAttribute('class', vm.scrollable ? 'body scroll' : 'body')

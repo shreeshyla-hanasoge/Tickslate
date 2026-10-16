@@ -108,6 +108,11 @@ const BUDGETS = {
  * typings story): grid 28,353 B, metric 18,987 B, today-pnl 20,512 B,
  * equity-curve 20,509 B, each reset to measured + 10 %, rounded up to 30.5,
  * 20.5, 22.5 and 22.5 kB. No other row moved.
+ *
+ * Re-measured 2026-10-16 after freshness-and-flash (the shared ticker, flash and
+ * freshness header): card 19,250 B, chart 23,263 B, session-clock 21,760 B and
+ * table 22,328 B, each reset to measured + 10 %, rounded up to 21, 25, 23.5 and
+ * 24 kB. No other row moved.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
@@ -115,6 +120,7 @@ const remeasuredAgain = (maxKb) => ({ ...entry(maxKb), target: 're-measured afte
 const remeasuredThird = (maxKb) => ({ ...entry(maxKb), target: 're-measured after overnight-sessions, theme-presets and reading-order, RFC 0003 §25' })
 const remeasuredFourth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after locale-formatting, RFC 0003 §25, maintainer approved', date: '2026-10-15' })
 const remeasuredFifth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-activation, RFC 0003 §25', date: '2026-10-16' })
+const remeasuredSeventh = (maxKb) => ({ ...entry(maxKb), target: 're-measured after freshness-and-flash, RFC 0003 §25', date: '2026-10-16' })
 const remeasuredSixth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after widget-picker-and-controls, RFC 0003 §25', date: '2026-10-16' })
 // A new entry (widget-picker-and-controls, 2026-10-16): the picker and the grid controls measure 13,594 B bundled
 // with the core, so 14,953 B with 10 %, which rounds up to 15 kB.
@@ -124,13 +130,13 @@ const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §2
 const ENTRY_BUDGETS = {
   controls: newEntry(15),
   grid: remeasuredSixth(30.5),
-  card: remeasuredFifth(18),
+  card: remeasuredSeventh(21),
   metric: remeasuredSixth(20.5),
-  chart: remeasuredFifth(22.5),
+  chart: remeasuredSeventh(25),
   'today-pnl': remeasuredSixth(22.5),
   'equity-curve': remeasuredSixth(22.5),
-  'session-clock': remeasuredFifth(21),
-  table: newEntry(21.5),
+  'session-clock': remeasuredSeventh(23.5),
+  table: remeasuredSeventh(24),
 }
 
 /**

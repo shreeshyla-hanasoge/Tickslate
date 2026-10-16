@@ -32,6 +32,25 @@ export class FakeNode {
     this.listeners = new Map()
     // A widget writes inline custom properties (a figure's length) and positions; a test reads them back by name.
     this.style = { setProperty: (k, v) => { this.style[k] = v } }
+    // The part of the class API a widget uses, over the class attribute, so a test sees what a browser would.
+    // `classWrites` counts the writes that changed something: a real classList.add of a class already there writes nothing.
+    this.classWrites = 0
+    const list = () => (this.getAttribute('class') || '').split(/\s+/).filter(Boolean)
+    const write = (names) => {
+      this.classWrites++
+      this.setAttribute('class', names.join(' '))
+    }
+    this.classList = {
+      contains: (c) => list().includes(c),
+      add: (c) => {
+        const names = list()
+        if (!names.includes(c)) write([...names, c])
+      },
+      remove: (c) => {
+        const names = list()
+        if (names.includes(c)) write(names.filter((n) => n !== c))
+      },
+    }
   }
   setAttribute(k, v) {
     this.attrs.set(k, String(v))

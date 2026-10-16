@@ -268,7 +268,7 @@ export function chartModel(data, variant, ctx) {
   const outSeries = series.map((s) => {
     const pts = s.points
     const n = pts.length
-    if (!n) return { name: s.name, kind: s.kind, line: '', area: '', dot: '', last: DASH, empty: true }
+    if (!n) return { name: s.name, kind: s.kind, line: '', area: '', dot: '', last: DASH, lastNum: NaN, empty: true }
     const lastPt = pts[n - 1]
     const last = show(lastPt.y)
     // A lone point among longer series has no direction to draw, so it is a
@@ -276,11 +276,11 @@ export function chartModel(data, variant, ctx) {
     // as in the other widgets, so the tile isn't empty.
     if (n === 1 && x1 > x0) {
       const px = round(x(lastPt.x))
-      return { name: s.name, kind: s.kind, line: '', area: '', dot: `M${px} ${round(y(lastPt.y))}h0`, last, empty: false }
+      return { name: s.name, kind: s.kind, line: '', area: '', dot: `M${px} ${round(y(lastPt.y))}h0`, last, lastNum: lastPt.y, empty: false }
     }
     const { line, area } = areaPaths(pts, box)
     const dotX = n === 1 ? round(BOX.width - PAD) : round(x(lastPt.x))
-    return { name: s.name, kind: s.kind, line, area: s.kind === 'area' ? area : '', dot: `M${dotX} ${round(y(lastPt.y))}h0`, last, empty: false }
+    return { name: s.name, kind: s.kind, line, area: s.kind === 'area' ? area : '', dot: `M${dotX} ${round(y(lastPt.y))}h0`, last, lastNum: lastPt.y, empty: false }
   })
 
   // The axis: start, middle and end of the x domain.
@@ -615,6 +615,8 @@ export class TsChart extends TsWidget {
       text(`n${i}`, s.name)
       text(`v${i}`, s.last)
     }
+    const s1 = vm.series && vm.series[0]
+    if (s1 && Number.isFinite(s1.lastNum)) this.flash('v1', s1.lastNum, { goodWhen: this.data && this.data.goodWhen })
     attr('zero', 'd', vm.zeroPath)
     attr('grid', 'd', vm.grid)
     for (let i = 0; i < 4; i++) text(`y${i}`, vm.ticks[i] || '')

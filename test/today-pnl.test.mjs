@@ -366,3 +366,9 @@ describe('data shapes (RFC 0002 §4)', () => {
     assert.equal(model({ intraday: [{}, {}] }, 'M').dropped, 2)
   })
 })
+
+test('the view model carries the net as a number for the flash, whatever the text says', () => {
+  assert.equal(model(day, 'S').netNum, 2185.65)
+  assert.equal(model({ ...day, net: '-12.5' }, 'M').netNum, -12.5)
+  assert.ok(Number.isNaN(model({ ...day, net: 'n/a' }, 'S').netNum))
+})

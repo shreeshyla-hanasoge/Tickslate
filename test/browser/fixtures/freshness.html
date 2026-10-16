@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- Live tiles for the freshness spec: Today's P&L, a card with a value, a metric and a table, all live with an asOf a
+     few seconds before a clock the spec moves. ?theme=light|dark, ?preset=terminal (or calm, signal...), ?width=px
+     (each tile's width, default 304). The spec drives it through window.__f: set(clock) moves every tile's clock and
+     re-renders it. Nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freshness fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  main > * { max-width: 100%; }
+</style>
+</head>
+<body>
+<main id="stage"></main>
+<script type="module">
+  import '/src/elements/index.js'
+  import { setup, dataFor, frozenClock, FROZEN } from './data.js'
+
+  setup()
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+
+  const width = Number(params.get('width') || 304)
+  let now = frozenClock()
+  const stage = document.getElementById('stage')
+  const make = (tag, size, attrs = {}) => {
+    const el = document.createElement(tag)
+    el.setAttribute('size', size)
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
+    el.style.width = `min(${width}px, 100%)`
+    el.clock = () => now
+    stage.append(el)
+    return el
+  }
+
+  const pnl = make('ts-today-pnl', 'S')
+  const card = make('ts-card', 'S', { label: 'Subscribers', live: '' })
+  card.insertAdjacentHTML('beforeend', '<span slot="value">1,204</span>')
+  const metric = make('ts-metric', 'S', { label: 'Signups' })
+  const table = make('ts-table', 'M', { label: 'Strategies' })
+
+  // Seconds before "now" the data was taken, so every tile starts fresh.
+  const live = (data) => ({ ...data, asOf: now - 5000, live: true })
+  pnl.data = live({ net: 2185.65, realized: 1860, unrealized: 325.65, fees: 87.3, closedCount: 3, openCount: 1 })
+  card.data = { asOf: now - 5000, live: true }
+  metric.data = live({ value: 1204, previous: 1075, compareLabel: 'vs last week' })
+  table.data = live(dataFor('ts-table'))
+
+  window.__f = {
+    FROZEN,
+    pnl,
+    card,
+    metric,
+    table,
+    tiles: [pnl, card, metric, table],
+    /** Moves every tile's clock to `ms` and renders them, as a tick of the shared timer would. */
+    set(ms) {
+      now = ms
+      for (const el of this.tiles) el.requestRender()
+    },
+    now: () => now,
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

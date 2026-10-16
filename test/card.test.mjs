@@ -303,3 +303,25 @@ describe('scrollable', () => {
     assert.equal(body.getAttribute('data-more'), null)
   })
 })
+
+describe('the card flash', () => {
+  let figureOf
+  before(async () => {
+    figureOf = (await import('../src/elements/card.js?fake-card')).figureOf
+  })
+
+  test('reads the number behind a formatted figure, in either separator style', () => {
+    assert.equal(figureOf('1,234.50'), 1234.5)
+    assert.equal(figureOf('$1,234'), 1234)
+    assert.equal(figureOf('1.234,50 €'), 1234.5)
+    assert.equal(figureOf('₹12,34,567.80'), 1234567.8)
+    assert.equal(figureOf('−3.2%'), -3.2)
+    assert.equal(figureOf('+0.5'), 0.5)
+    assert.ok(Number.isNaN(figureOf('—')))
+    assert.ok(Number.isNaN(figureOf('')))
+  })
+
+  test('the value slot sits in a wrapper that paints', () => {
+    assert.match(Card.template('M'), /data-flash="value"[^>]*>\s*<slot name="value"/)
+  })
+})
