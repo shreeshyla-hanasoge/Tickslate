@@ -12,7 +12,7 @@
  */
 import { readFile, readdir, mkdtemp, mkdir, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, statSync, readdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { runInNewContext } from 'node:vm'
 import { resolve, dirname, relative, sep } from 'node:path'
@@ -43,7 +43,7 @@ const allTags = entries.flatMap((e) => e.tags)
 // A field that is missing altogether fails too: dropping "unpkg" would hide a
 // lost CDN build rather than fix it.
 
-const FIELDS = ['main', 'module', 'types', 'unpkg', 'jsdelivr', 'exports']
+const FIELDS = ['main', 'module', 'types', 'customElements', 'unpkg', 'jsdelivr', 'exports']
 const targets = []
 const collect = (value, where) => {
   if (typeof value === 'string') targets.push([value, where])
@@ -103,6 +103,13 @@ for (const [subpath, entry] of Object.entries(exportsMap)) {
   if (typeof entry === 'string') continue // tokens.css, the CDN files and package.json stay plain paths
   const keys = Object.keys(entry)
   const isElements = subpath === './elements' || subpath.startsWith('./elements/')
+  // The framework typings are types only, so they carry the `types` condition alone
+  // (RFC 0003 §22.1). pack-lib refuses a typings file that imports a framework without `import type`.
+  const typesOnly = keys.length === 1 && keys[0] === 'types' && /^\.\/types\/[\w-]+\.d\.ts$/.test(entry.types)
+  if (typesOnly) {
+    ok(`exports["${subpath}"] is types only`)
+    continue
+  }
   if (!isElements) {
     const missing = ['types', 'import', 'default'].filter((k) => !keys.includes(k))
     if (missing.length) fail(`exports["${subpath}"] has no ${missing.join(', ')} condition`)
@@ -125,6 +132,43 @@ for (const sub of expectedSubpaths) if (!actualSubpaths.includes(sub)) fail(`exp
 for (const sub of actualSubpaths) if (!expectedSubpaths.includes(sub)) fail(`exports["${sub}"] has no module in src/elements/define/`)
 if (actualSubpaths.length === expectedSubpaths.length && expectedSubpaths.every((s) => actualSubpaths.includes(s))) {
   ok(`exports has ./elements and one entry for each of the ${entries.length} define modules`)
+}
+
+// The types-only entries are the files in src/types/ (minus common.d.ts, which they share):
+// each needs an exports entry and a typesVersions one (node10 ignores exports), and nothing extra.
+{
+  const typeNames = readdirSync(resolve(root, 'src/types')).filter((n) => n.endsWith('.d.ts')).map((n) => n.slice(0, -'.d.ts'.length)).filter((n) => n !== 'common')
+  const isTypesEntry = (v) => v && typeof v === 'object' && Object.keys(v).length === 1 && /^\.\/types\//.test(v.types || '')
+  const inExports = Object.entries(exportsMap).filter(([, v]) => isTypesEntry(v)).map(([k]) => k.slice(2))
+  const inVersions = Object.entries(manifest.typesVersions?.['*'] || {}).filter(([, v]) => (v || []).some((p) => p.startsWith('types/'))).map(([k]) => k)
+  let good = true
+  for (const n of typeNames) {
+    if (!inExports.includes(n)) (good = false), fail(`exports has no types-only "./${n}", though src/types/${n}.d.ts exists`)
+    if (!inVersions.includes(n)) (good = false), fail(`typesVersions has no "${n}" path to types/${n}.d.ts, so moduleResolution node10 cannot find tickslate/${n}`)
+  }
+  for (const n of inExports) if (!typeNames.includes(n)) (good = false), fail(`exports["./${n}"] is types only but src/types/${n}.d.ts does not exist`)
+  for (const n of inVersions) if (!typeNames.includes(n)) (good = false), fail(`typesVersions["${n}"] points into types/ but src/types/${n}.d.ts does not exist`)
+  if (good) ok(`exports and typesVersions both have the ${typeNames.length} types-only entries (${typeNames.join(', ')})`)
+}
+
+// ------------------------------------------------ custom elements manifest (RFC 0003 §22.3)
+//
+// Both files must list every tag a define module registers, each with the
+// attribute, event, part and slot arrays a tool reads; a tag added by a story
+// that never documented it is caught here as well as in the generator.
+{
+  const cem = JSON.parse(await readFile(resolve(out, 'custom-elements.json'), 'utf8'))
+  const data = JSON.parse(await readFile(resolve(out, 'vscode.html-custom-data.json'), 'utf8'))
+  if (cem.schemaVersion !== '1.0.0') fail(`custom-elements.json has schemaVersion ${JSON.stringify(cem.schemaVersion)}, not "1.0.0"`)
+  const declared = new Map(cem.modules.flatMap((m) => m.declarations).filter((d) => d.tagName).map((d) => [d.tagName, d]))
+  const listed = new Set((data.tags || []).map((t) => t.name))
+  for (const tag of allTags) {
+    const d = declared.get(tag)
+    if (!d) fail(`custom-elements.json has no declaration for <${tag}>`)
+    else if (!['attributes', 'events', 'slots', 'cssParts', 'members'].every((k) => Array.isArray(d[k]))) fail(`custom-elements.json's <${tag}> lacks attributes, events, slots, cssParts or members`)
+    if (!listed.has(tag)) fail(`vscode.html-custom-data.json has no <${tag}>`)
+  }
+  if (allTags.every((tag) => declared.has(tag) && listed.has(tag))) ok(`custom-elements.json and vscode.html-custom-data.json list all ${allTags.length} tags`)
 }
 
 for (const field of ['unpkg', 'jsdelivr']) {
@@ -470,6 +514,8 @@ const ALLOWED = [
   'LICENSE',
   'CHANGELOG.md',
   '*.d.ts',
+  // The framework typings, and common.d.ts which they share (RFC 0003 §22.1).
+  'types/*.d.ts',
   'chunks/*.js',
   'chunks/*.js.map',
   'dev/chunks/*.js',

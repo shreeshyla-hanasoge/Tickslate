@@ -1,0 +1,6 @@
+{
+  // node10 ignores "exports", so every subpath below is found through typesVersions.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "module": "commonjs", "moduleResolution": "node10" },
+  "include": ["*.ts", "*.tsx"]
+}
