@@ -50,10 +50,10 @@ const BUDGETS = {
   // Measured 2026-10-13: core 8,484 B. The messages story put the EN table in
   // the core, so both figures below were re-measured on 2026-10-14: core
   // 10,394 B.
-  'dist-lib/index.js': { maxKb: 11.5, mode: 'enforce', target: 're-measured after messages, RFC 0003 §25, core, measured + 10 %', date: '2026-10-14' },
+  'dist-lib/index.js': { maxKb: 13, mode: 'enforce', target: 're-measured after locale-formatting, RFC 0003 §25, CI measurement', date: '2026-10-16' },
   // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-14, after
   // messages: 10,551 B.
-  'dist-lib/umd/tickslate.umd.js': { maxKb: 11.5, mode: 'enforce', target: 're-measured after messages, RFC 0003 §25, UMD, measured + 10 %', date: '2026-10-14' },
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 13, mode: 'enforce', target: 're-measured after locale-formatting, RFC 0003 §25, CI measurement', date: '2026-10-16' },
   // The all-in `tickslate/elements` and the two CDN files carry no budget:
   // P1 adds about a dozen widgets to them, so RFC 0002's 50 kB figure belongs
   // to the 0.1.0 widget set. They are reported, and 0.2.0 release preparation
@@ -95,6 +95,10 @@ const BUDGETS = {
  * Re-measured 2026-10-15 after locale-formatting (maintainer approved): metric
  * 17,193 B, reset to measured + 10 % (18,912 B), rounded up to 18.5 kB. No
  * other row moved.
+ *
+ * Re-measured 2026-10-16 from the CI run (gzip differs a little by machine)
+ * after locale-formatting: core 11,659 B (117 B of headroom) and UMD 11,808 B
+ * (32 B over), each reset to measured + 10 %, rounded up to 13 kB.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
