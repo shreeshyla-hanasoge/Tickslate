@@ -14,8 +14,8 @@ fetches anything.
 - **Generic widgets.** `<ts-metric>` (a KPI tile with change, sparkline and
   target), `<ts-chart>` (line and area trends) and `<ts-card>` (a themed tile
   for any content, such as your own Chart.js or ECharts chart).
-- **A finance set.** Today's P&L, an equity curve and an exchange session
-  clock, with more to come.
+- **A finance set.** Today's P&L, an equity curve, an exchange session clock,
+  a watchlist and open positions, plus a sortable `<ts-table>`.
 - **Accessible by default.** Each widget is a labelled group with a heading, charts state
   their result in words, gains and losses carry a sign and an arrow as well as a colour, and
   motion respects `prefers-reduced-motion`. See [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
@@ -31,34 +31,60 @@ import 'tickslate/elements' // registers <ts-grid> and the widgets
 ```
 
 Without a bundler, load it from jsDelivr. Pin an exact version so a release
-can never change your page. This works once 0.1.0 is published to npm.
+can never change your page.
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.1.0/elements.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.2.0/elements.js"></script>
 ```
 
 To use a named export from a page script, import it from the same URL:
-`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.1.0/elements.js'`.
+`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.2.0/elements.js'`.
 
 Pay only for the widgets you use: each one has its own entry, which registers
 just that tag.
 
 ```js
 import 'tickslate/elements/grid'
-import 'tickslate/elements/metric' // also: card, chart, today-pnl, equity-curve, session-clock
+import 'tickslate/elements/metric'
 ```
+
+The entries are `grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`,
+`session-clock`, `table`, `watchlist`, `open-positions` and `controls`
+(`<ts-widget-picker>` and `<ts-grid-controls>`). The development builds, with
+their warnings, load through the `development` export condition.
 
 Or, with no build step at all, one script tag loads the core and every element
 and sets `window.Tickslate`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/tickslate@0.1.0/cdn/tickslate.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tickslate@0.2.0/cdn/tickslate.iife.js"></script>
 ```
 
-Use that bundle or the package entries, not both: each carries its own copy of
-the core, so a page that loaded both would have two registries and two
-`configure()` states. The bundle and the core-only `umd/tickslate.umd.js` both
-set `window.Tickslate`, so load one of them.
+`cdn/tickslate.js` is the same code as a minified ES module. The `unpkg` and
+`jsdelivr` fields point at the IIFE, so a bare unpkg or jsDelivr URL for the
+package serves it. Use that bundle or the package entries, not both: each
+carries its own copy of the core, so a page that loaded both would have two
+registries and two `configure()` states. The bundle and the core-only
+`umd/tickslate.umd.js` both set `window.Tickslate`, so load one of them.
+
+### Types
+
+`tickslate/jsx`, `tickslate/vue` and `tickslate/svelte` are types-only entries
+that give every `ts-*` tag its attributes and a typed `data` in React, Vue and
+Svelte templates. Write `import type {} from 'tickslate/jsx'` (or `vue`,
+`svelte`) once. `tickslate/custom-elements.json` and
+`tickslate/vscode.html-custom-data.json` describe the tags for editors.
+
+### Themes
+
+`tokens.css` is the default theme. Six opt-in presets (`neutral`, `paper`,
+`graphite`, `calm`, `signal` and `terminal`) ship as `tickslate/themes/*.css`:
+link one after `tokens.css` and set `data-ts-theme="<name>"` on a grid or widget.
+
+```js
+import 'tickslate/tokens.css'
+import 'tickslate/themes/calm.css'
+```
 
 ### Fonts (optional)
 
@@ -79,7 +105,7 @@ stylesheet at all. Linking `tokens.css` is still the clearest way to see and
 override every variable, and it always beats the built-in defaults:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.1.0/tokens.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.2.0/tokens.css">
 ```
 
 ```js
@@ -208,8 +234,11 @@ is called Paper.
 
 ## Browser support
 
-Chrome 111, Safari 16.2 and Firefox 113 or later: the grid needs custom
-elements, shadow DOM, `ResizeObserver`, `color-mix()` and `:where()`.
+Chrome 111, Safari 16.4 and Firefox 113 or later: the grid needs custom
+elements, shadow DOM, `ResizeObserver`, `color-mix()` and `:where()`. Safari 16.4
+adds manual slot assignment, which keeps the reading and Tab order of tiles in
+step with what is on screen after they are rearranged. Below 16.4 nothing
+breaks: the grid keeps one slot, and reading and Tab order follow your DOM order.
 Server-side rendering is safe: importing the package where there is no DOM
 registers nothing.
 
@@ -248,6 +277,9 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 | `<ts-today-pnl>` | S, Wide, M | Today's net, realized and unrealized P&L |
 | `<ts-equity-curve>` | Wide, M, XL | Cumulative P&L with ranges and drawdown |
 | `<ts-session-clock>` | S, Banner | Exchange session status |
+| `<ts-table>` | Tall, M, L, XL | Typed, sortable columns |
+| `<ts-watchlist>` | S, Tall, M | Instruments with price, change and day range |
+| `<ts-open-positions>` | Wide, M, L | Open positions, profit or loss and stop-to-target bar |
 
 ## Development
 
