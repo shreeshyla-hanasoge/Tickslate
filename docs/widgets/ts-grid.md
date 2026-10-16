@@ -28,6 +28,22 @@ The grid measures its own width (not the window's).
 | 700px to 1199px | 3 | `'desktop'` |
 | under 700px | 2 | `'phone'` |
 
+### Large monitors
+
+Columns come from the grid's own width, and 4 is the most there are. On a
+2560px monitor a full-width grid gives four tiles about 600px wide, so an `S`
+tile becomes a strip. Two controls keep tiles ordinary:
+
+- **`--ts-grid-max-width`** (default `none`) caps the board and centres it:
+  `ts-grid { --ts-grid-max-width: 1600px }`. The grid's width is then 1600px,
+  so it stays at 4 columns of ordinary tiles with space either side.
+- **`breakpoints`** moves where the columns change. It is a property only, so
+  a markup-only host sets it from script:
+  `grid.breakpoints = { tablet: 700, desktop: 1600 }` gives 4 columns from
+  1600px. A missing key keeps its default (`700` and `1200`). Anything that
+  isn't a finite number above 0, or a `tablet` that isn't below `desktop`,
+  is ignored with one development warning. Setting it re-measures.
+
 A size is a footprint in cells; the same size can render a different design when
 the grid is narrow.
 
@@ -170,6 +186,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `profile` | `string` | The profile shown. Defaults to `'market'` |
 | `editing` | `boolean` | Edit mode |
 | `locked` | `boolean` | Read-only. While set, `editing = true` is ignored with one development warning; setting it while editing ends edit mode |
+| `breakpoints` | `{ tablet?: number, desktop?: number }` | Grid widths in px where columns change. Defaults to `{ tablet: 700, desktop: 1200 }`; setting it re-measures |
 | `columns` | `2 \| 3 \| 4` (readonly) | From the grid's width. `0` before the first measure |
 | `readingOrder` | `readonly string[]` (readonly) | The visible tiles' ids in visual order, which is the order they are read and tabbed in. Empty before the first render. While editing it holds the order from before, except that a tile removed meanwhile leaves it at once, and it takes the new order at Done |
 | `hiddenItems` | `{ id, type, label }[]` (readonly) | Children whose item is not in the active profile, which includes tiles the user removed |
