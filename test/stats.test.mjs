@@ -155,6 +155,11 @@ describe('edgeStats', () => {
     assert.deepEqual([s.avgWin, s.avgLoss, s.expectancy], [100.5, -50.25, 25.125])
   })
 
+  test('expectancy is over every readable trade, break-even ones included', () => {
+    assert.equal(edgeStats(trades(0, 3)).expectancy, 1.5)
+    assert.equal(edgeStats(trades(0, 0, 3)).expectancy, 1)
+  })
+
   test('a break-even trade counts as a trade, and is neither a win nor a loss', () => {
     const s = edgeStats(trades(0, 0, 10))
     assert.deepEqual([s.trades, s.wins, s.losses], [3, 1, 0])
@@ -249,6 +254,14 @@ describe('funding', () => {
     const none = funding({ id: 'a', name: 'A', balance: 'abc', allocations: [alloc('x', 10)] })
     assert.deepEqual([none.balance, none.allocations[0].funded, none.shortfall], [0, 0, 10])
     assert.equal(funding({ id: 'a', name: 'A', balance: -50, allocations: [alloc('x', 10)] }).allocations[0].funded, 0)
+  })
+
+  test('float drift over a million allocations is not a shortfall', () => {
+    const f = funding({ id: 'a', name: 'A', balance: 100000, allocations: Array.from({ length: 1000000 }, (_, i) => alloc(String(i), 0.1)) })
+    assert.deepEqual([f.free, f.shortfall], [0, 0])
+    assert.equal(f.fundedShare > 0.999999, true)
+    // A real shortfall of a cent is still one.
+    assert.equal(funding({ id: 'a', name: 'A', balance: 99.99, allocations: [alloc('x', 100)] }).shortfall, 0.01)
   })
 
   test('nothing allocated: no share, and the whole balance is free', () => {

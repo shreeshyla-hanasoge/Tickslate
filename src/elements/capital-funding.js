@@ -27,11 +27,32 @@ function shareText(share, fmt) {
   return fmt.percent(share < 1 && whole === 100 ? 0.99 : share, { sign: 'negative', decimals: 0 })
 }
 
+const idOf = (v) => (typeof v === 'string' && v !== '') || (typeof v === 'number' && Number.isFinite(v)) ? String(v) : ''
+
+function allocationsOf(list) {
+  const out = []
+  const seen = new Map()
+  let dropped = 0
+  if (!Array.isArray(list)) return { out, dropped }
+  list.forEach((a, i) => {
+    if (!isObj(a)) {
+      dropped++
+      return
+    }
+    const base = idOf(a.id) || `#${i + 1}`
+    const n = (seen.get(base) || 0) + 1
+    seen.set(base, n)
+    out.push({ ...a, id: n === 1 ? base : `${base}#${n}` })
+  })
+  return { out, dropped }
+}
+
 function accountRow(source, ctx) {
   const { fmt, t } = ctx
   const money = (n) => fmt.money(n, { sign: 'negative' })
-  // The widget needs ids to key its rows, so the allocations without a usable one are left out before funding() fills them.
-  const kept = readItems(source.allocations)
+  // Every allocation draws the balance, so none is dropped for its id: a missing or repeated one is made unique here ('x#2'),
+  // and only what is not an object at all is left out, and counted.
+  const kept = allocationsOf(source.allocations)
   const f = funding({ ...source, allocations: kept.out })
   const name = text(source.name) || f.id
   const share = shareText(f.fundedShare, fmt)
@@ -63,6 +84,7 @@ function accountRow(source, ctx) {
 
   return {
     id: f.id,
+    dropped: kept.dropped,
     name,
     balance: money(f.balance),
     allocated: money(f.allocated),
@@ -96,16 +118,20 @@ export function fundingModel(data, variant, ctx) {
   const { out, dropped } = readItems(d.accounts)
   const rows = (variant === 'S' ? out.slice(0, 1) : out).map((a) => accountRow(a, ctx))
 
+  const hidden = dropped + rows.reduce((n, r) => n + r.dropped, 0)
   let summary = t('funding.aria', { label: ctx.label, accounts: t('funding.accounts', {}, out.length) })
   if (variant === 'S' && rows.length) summary = t('funding.join', { head: summary, tail: rows[0].summary })
   if (variant === 'S' && out.length > 1) summary = t('funding.join', { head: summary, tail: t('funding.firstOnly') })
+  const note = hidden > 0 ? t('funding.hidden', {}, hidden) : ''
+  if (note) summary = t('funding.join', { head: summary, tail: note })
 
   const asOf = toTime(d.asOf)
   return {
     ariaLabel: summary,
     rows,
     total: out.length,
-    dropped,
+    dropped: hidden,
+    note,
     live: d.live === true,
     time: Number.isFinite(asOf) ? fmt.time(asOf) : '',
   }
@@ -131,6 +157,7 @@ const TEMPLATES = {
 <div class="scroll" data-k="scroll" role="group" tabindex="0">
   <ul class="accts" data-k="list"></ul>
   <div class="none mut" data-k="none" hidden></div>
+  <div class="sm mut note" data-k="note" hidden></div>
 </div>`,
 }
 
@@ -169,6 +196,10 @@ ul { list-style: none; margin: 0; padding: 0; }
 .am2 > * { white-space: nowrap; }
 @container (min-width: 280px) { .am2 { display: flex; } }
 .st { color: var(--ts-ink); }
+/* What is short is the one figure that must be read whole, so on a narrow tile it wraps at its space ("short" over the amount) and is never cut. */
+.ac .st, .al .st { white-space: normal; overflow-wrap: normal; min-inline-size: 0; }
+.note { padding-block: 6px 2px; }
+.note[hidden] { display: none; }
 .st.neg { color: var(--ts-loss); font-weight: 600; }
 .al-list { display: flex; flex-direction: column; gap: 7px; padding-block-start: 4px; }
 /* The narrowest tile gives each allocation its name, then its amount and what is short under it, then its bar. */
@@ -303,6 +334,8 @@ export class TsCapitalFunding extends TsWidget {
     setAttr(this.$('[data-k="scroll"]'), 'aria-label', vm.region)
     write('none', vm.noRows)
     hide('none', vm.rows.length > 0)
+    write('note', vm.note)
+    hide('note', !vm.note)
     this._bind()
     this._rows.sync(vm.rows)
   }

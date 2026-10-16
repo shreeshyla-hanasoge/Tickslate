@@ -266,6 +266,7 @@ export const EN = Object.freeze({
   'edge.winLoss': '{win} / {loss}',
   'edge.spoken': '{name} {value}',
   'edge.na': 'not available',
+  'edge.noLosses': 'no losses',
   'edge.trades.one': '{count} trade',
   'edge.trades.other': '{count} trades',
   'edge.meta': '{trades} · {scope}',
@@ -294,6 +295,8 @@ export const EN = Object.freeze({
   'funding.account': '{name}, balance {balance}, allocated {allocated}',
   'funding.bar': '{name}: {funded} of {amount} funded',
   'funding.live': 'live',
+  'funding.hidden.one': '{count} item not shown',
+  'funding.hidden.other': '{count} items not shown',
   'funding.rebalance': 'Rebalance',
   'funding.rebalanceLabel': 'Rebalance {name}',
 

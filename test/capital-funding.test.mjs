@@ -157,8 +157,22 @@ describe('rows and the accessible name', () => {
     const m = model({ accounts: [A, null, 'x', { name: 'no id', balance: 1 }, { ...B, id: 'a' }, B] })
     assert.deepEqual(m.rows.map((r) => r.id), ['a', 'b'])
     assert.equal(m.dropped, 4)
-    const [a] = model({ accounts: [{ id: 'a', name: 'A', balance: 100, allocations: [alloc('x', 10), { name: 'no id', amount: 10 }, alloc('x', 10), null] }] }).rows
-    assert.deepEqual(a.allocations.map((x) => x.id), ['x'])
+    assert.match(m.ariaLabel, /4 items not shown$/)
+  })
+
+  test('an allocation with a missing or repeated id still draws the balance, under an id of its own; only what is no object is left out', () => {
+    const [c] = model({ accounts: [{ id: 'c', name: 'C', balance: 100, allocations: [{ id: 1, name: 'one', amount: 100 }, { id: 1, name: 'two', amount: 50 }, { name: 'none', amount: 10 }, null] }] }).rows
+    assert.deepEqual(c.allocations.map((x) => x.id), ['1', '1#2', '#3'])
+    assert.deepEqual(c.allocations.map((x) => x.short), ['', 'short ₹50.00', 'short ₹10.00'])
+    assert.equal(c.short, 'short ₹60.00')
+    assert.equal(c.dropped, 1)
+    assert.equal(model({ accounts: [{ id: 'c', name: 'C', balance: 100, allocations: [null] }] }).ariaLabel, 'Funding, 1 account, 1 item not shown')
+  })
+
+  test('the note says how many are not shown, in the tile, with plural forms', () => {
+    assert.equal(model({ accounts: [A, null] }).note, '1 item not shown')
+    assert.equal(model({ accounts: [A, null, 3] }).note, '2 items not shown')
+    assert.equal(model(data()).note, '')
   })
 
   test('data that is not accounts gives an empty list rather than throwing', () => {

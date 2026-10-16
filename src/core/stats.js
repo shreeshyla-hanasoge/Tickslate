@@ -142,13 +142,15 @@ export function funding(account) {
     if (typeof item.detail === 'string') row.detail = item.detail
     allocations.push({ ...row, amount: tidy(amount), funded: tidy(funded), short: tidy(amount - funded), live: item.live === true, pnl: Number.isFinite(pnl) ? pnl : null })
   }
+  // Millions of float additions drift by more than tidy() rounds away; below a billionth of what is in play it is zero.
+  const eps = Math.max(allocated, Number.isFinite(balance) ? balance : 0) * 1e-9
   return {
     id: String(a.id),
     name: typeof a.name === 'string' ? a.name : String(a.id),
     balance: Number.isFinite(balance) ? balance : 0,
     allocated: tidy(allocated),
-    free: tidy(left),
-    shortfall: tidy(shortfall),
+    free: left < eps ? 0 : tidy(left),
+    shortfall: shortfall < eps ? 0 : tidy(shortfall),
     fundedShare: allocated > 0 ? fundedTotal / allocated : null,
     allocations,
   }

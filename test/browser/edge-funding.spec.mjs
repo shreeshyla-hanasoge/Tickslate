@@ -92,12 +92,24 @@ test.describe('<ts-edge-stats>', () => {
     expect(label).toMatch(/\+₹\d{1,2},\d{2},\d{3}\.\d{2}/)
   })
 
-  test('all wins show ∞, and no trades show dashes with nothing signed', async ({ page }) => {
+  test('all wins show ∞ with the words "no losses" as its text, and no trades show the empty state', async ({ page }) => {
     await open(page, `${EDGE}&size=S&width=304&stat=profit-factor&inf`)
     expect(await text(page, '[data-k="v0V"]')).toBe('∞')
-    await open(page, `${EDGE}&size=Wide&width=624&empty`)
-    const figures = await page.evaluate(() => [0, 1, 2, 3].map((i) => [window.__e.el.shadowRoot.querySelector(`[data-k="v${i}V"]`).textContent, window.__e.el.shadowRoot.querySelector(`[data-k="v${i}Ar"]`).textContent]))
-    expect(figures).toEqual([['—', ''], ['—', ''], ['—', ''], ['—', '']])
+    expect(await page.evaluate(() => window.__e.el.shadowRoot.querySelector('[data-k="v0V"]').getAttribute('aria-label'))).toBe('no losses')
+    for (const size of ['S', 'Wide', 'M']) {
+      await open(page, `${EDGE}&size=${size}&width=351&empty`)
+      const info = await page.evaluate(() => {
+        const root = window.__e.el.shadowRoot
+        const visible = (sel) => {
+          const n = root.querySelector(sel)
+          return !!n && getComputedStyle(n).display !== 'none'
+        }
+        return { none: root.querySelector('[data-k="none"]').textContent, noneShown: visible('[data-k="none"]'), stats: visible('[data-k="stats"]'), body: visible('[data-k="body"]') }
+      })
+      expect(info.none, size).toBe('No trades yet')
+      expect(info.noneShown, size).toBe(true)
+      expect(info.stats || info.body, size).toBe(false)
+    }
   })
 
   test('has no actions of its own', async ({ page }) => {
@@ -237,6 +249,18 @@ test.describe('Rebalance is off until listed, and asks rather than acts', () => 
     expect(names).toEqual(['Rebalance Broker A', 'Rebalance Broker B', 'Rebalance Broker C'])
   })
 
+  test('nothing fires while the grid is editing', async ({ page }) => {
+    await open(page, `${FUND}&size=Tall&width=304&actions`)
+    await page.evaluate(() => { window.__e.el._isEditing = () => true })
+    await page.locator('ts-capital-funding .reb').first().click({ force: true })
+    await page.locator('ts-capital-funding .reb').first().focus()
+    await page.keyboard.press('Enter')
+    expect(await page.evaluate(() => window.__e.events)).toEqual([])
+    await page.evaluate(() => { window.__e.el._isEditing = () => false })
+    await page.locator('ts-capital-funding .reb').first().click()
+    expect(await page.evaluate(() => window.__e.events)).toEqual([{ action: 'rebalance', id: 'a' }])
+  })
+
   test('S has an icon button for the first account', async ({ page }) => {
     await open(page, `${FUND}&size=S&width=170&actions`)
     const button = page.locator('ts-capital-funding .reb')
@@ -262,7 +286,7 @@ test.describe('fits its tile', () => {
   // [query, size, width]: the S tile at a phone is about 170px, Wide and M about 351px, and a desktop tile twice that.
   const CASES = [
     [EDGE, 'S', 170], [EDGE, 'S', 304], [EDGE, 'Wide', 351], [EDGE, 'Wide', 624], [EDGE, 'M', 351], [EDGE, 'M', 624],
-    [FUND, 'S', 170], [FUND, 'S', 304], [FUND, 'Tall', 170], [FUND, 'Tall', 304], [FUND, 'L', 468], [FUND, 'L', 936],
+    [FUND, 'S', 170], [FUND, 'S', 304], [FUND, 'Tall', 140], [FUND, 'Tall', 170], [FUND, 'Tall', 304], [FUND, 'L', 468], [FUND, 'L', 936],
   ]
 
   // Nothing sticks out of the tile sideways or downwards, no scroller scrolls sideways, and no figure is cut.
@@ -308,7 +332,7 @@ test.describe('fits its tile', () => {
   }
 
   // A runner with wider fallback fonts than ours must not push anything out of the tile: the same check, with wide type.
-  for (const [kind, size, width] of [[EDGE, 'S', 170], [EDGE, 'Wide', 351], [EDGE, 'M', 351], [FUND, 'S', 170], [FUND, 'Tall', 170], [FUND, 'L', 468]]) {
+  for (const [kind, size, width] of [[EDGE, 'S', 170], [EDGE, 'Wide', 351], [EDGE, 'M', 351], [FUND, 'S', 170], [FUND, 'Tall', 140], [FUND, 'Tall', 170], [FUND, 'L', 468]]) {
     for (const theme of ['light', 'dark']) {
       test(`${kind.slice(5)} ${size} at ${width}px in ${theme} with wide fonts: still inside the tile`, async ({ page }) => {
         await open(page, `${kind}&size=${size}&width=${width}&theme=${theme}&actions&fit&wide`)

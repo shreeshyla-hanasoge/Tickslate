@@ -63,9 +63,12 @@ the allocations after it, so two strategies are never both "nearly funded" by
 money that can be spent once. The same numbers are in the core's
 [`funding()`](../reference/core.md#fundingaccount).
 
-An account or an allocation needs an `id`, a string, and it must be unique among
-its siblings: that is how a live update finds the row to change. One with none, or
-a repeated one, is left out and counted once in development. An amount that cannot
+An account needs an `id`, a string, and it must be unique: that is how a live
+update finds the row to change. One with none, or a repeated one, is left out and
+counted once in development. An allocation with no id, or a repeated one, is still
+shown and still draws the balance, under an id of its own (`x#2`); only an entry
+that is not an object is left out. Anything left out is counted in a short note
+under the list ("2 items not shown") and in the tile's name. An amount that cannot
 be read is zero, and a balance that cannot be read, or is negative, funds nothing.
 
 Money is formatted with the tile's `currency` and `locale`, so with `en-IN` an

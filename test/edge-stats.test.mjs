@@ -85,7 +85,11 @@ describe('the stats', () => {
   test('profit factor is a ratio to two places; Infinity is ∞ and no trades is a dash', () => {
     assert.equal(cellOf(model(MIXED), 'profit-factor').main.text, '2.20')
     const wins = model({ stats: edgeStats(trades(10, 20)) })
-    assert.deepEqual([cellOf(wins, 'profit-factor').main.text, cellOf(wins, 'profit-factor').spoken], ['∞', 'Profit factor ∞'])
+    assert.deepEqual([cellOf(wins, 'profit-factor').main.text, cellOf(wins, 'profit-factor').spoken], ['∞', 'Profit factor no losses'])
+    // The glyph is what is seen; "no losses" is its accessible text, and the tile's name.
+    assert.equal(cellOf(wins, 'profit-factor').main.alt, 'no losses')
+    assert.match(wins.ariaLabel, /Profit factor no losses/)
+    assert.doesNotMatch(wins.ariaLabel, /∞/)
     const none = model({ stats: edgeStats([]) })
     assert.equal(cellOf(none, 'profit-factor').main.text, '—')
     assert.equal(cellOf(none, 'profit-factor').spoken, 'Profit factor not available')
@@ -132,6 +136,21 @@ describe('the stats', () => {
   test('an expectancy that rounds to zero shows no sign and no arrow', () => {
     const e = cellOf(model({ stats: { trades: 2, expectancy: 0.001 } }), 'expectancy')
     assert.deepEqual([e.main.arrow, e.main.tone], ['', 'mut'])
+  })
+
+  test('a rate that is not exactly 0 or 1 never reads as either', () => {
+    const rate = (winRate) => cellOf(model({ stats: { trades: 2500, winRate } }), 'win-rate').main.text
+    assert.equal(rate(2499 / 2500), '99.9%')
+    assert.equal(rate(1 / 2500), '0.1%')
+    assert.deepEqual([rate(1), rate(0), rate(0.5)], ['100%', '0%', '50%'])
+  })
+
+  test('a trade count of 0 is the empty state, not four unavailable figures', () => {
+    assert.equal(model({ stats: edgeStats([]), distribution: [] }).empty, true)
+    assert.equal(model({ stats: edgeStats([]) }).noRows, 'No trades yet')
+    assert.equal(model(MIXED).empty, false)
+    // Stats the host gave with no count are shown as they are.
+    assert.equal(model({ stats: { winRate: 0.5 } }).empty, false)
   })
 
   test('numeric strings in the stats are read, and figures that are not numbers are dashes', () => {
@@ -205,6 +224,10 @@ describe('the histogram', () => {
     const d = bars([{ label: '−1k', count: 4, sign: -1 }, { label: '0', count: 8, sign: 1 }, { label: '1k', count: 2, sign: 1 }])
     assert.equal(d.ariaLabel, 'Result distribution: 10 trades above zero, 4 trades below zero, most in 0')
     assert.equal(d.bars[0].title, '−1k: 4')
+  })
+
+  test('a numeric label is read as its text', () => {
+    assert.deepEqual(bars([{ label: 5, count: 1 }, { label: -2.5, count: 1 }, { label: NaN, count: 1 }]).bars.map((x) => x.label), ['5', '-2.5', ''])
   })
 
   test('a bucket that cannot be read is left out, and none at all draws nothing', () => {
@@ -330,6 +353,27 @@ describe('the element draws in place', () => {
     assert.equal(box.children.length, 1)
     view(MIXED)
     assert.equal(node('[data-k="dist"]').hasAttribute('hidden'), true)
+  })
+
+  test('no trades draw the empty words and hide the stats; trades bring them back', () => {
+    const { view, node } = build({ variant: 'M' })
+    view({ stats: edgeStats([]), distribution: [] })
+    assert.equal(node('[data-k="none"]').textContent, 'No trades yet')
+    assert.equal(node('[data-k="none"]').hasAttribute('hidden'), false)
+    assert.equal(node('[data-k="stats"]').hasAttribute('hidden'), true)
+    assert.equal(node('[data-k="dist"]').hasAttribute('hidden'), true)
+    view(MIXED)
+    assert.equal(node('[data-k="none"]').hasAttribute('hidden'), true)
+    assert.equal(node('[data-k="stats"]').hasAttribute('hidden'), false)
+  })
+
+  test('∞ is an image with the words "no losses"; a figure with digits has no role', () => {
+    const { view, node } = build({ variant: 'Wide' })
+    view({ stats: edgeStats(trades(10, 20)) })
+    const v = node('[data-k="v1V"]')
+    assert.deepEqual([v.textContent, v.getAttribute('role'), v.getAttribute('aria-label')], ['∞', 'img', 'no losses'])
+    view(MIXED)
+    assert.deepEqual([v.textContent, v.getAttribute('role'), v.getAttribute('aria-label')], ['2.20', null, null])
   })
 
   test('there is no action but retry: the element has no click handler of its own', () => {

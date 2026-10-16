@@ -54,19 +54,23 @@ function statCells(s, ctx, variant) {
   const spoken = (name, value) => t('edge.spoken', { name, value })
 
   // Whole percents read cleaner than "60.0%", a fraction of a percent is kept.
-  const rateText = Number.isFinite(rate) ? fmt.percent(rate, { sign: 'negative', decimals: Number.isInteger(Math.round(rate * 1000) / 10) ? 0 : 1 }) : DASH
+  // A rate that is not exactly 0 or 1 never reads as either: 1 loss in 2,500 is 99.9%, not "100%".
+  const shownRate = rate > 0 && rate < 1 ? Math.min(0.999, Math.max(0.001, rate)) : rate
+  const rateText = Number.isFinite(rate) ? fmt.percent(shownRate, { sign: 'negative', decimals: Number.isInteger(Math.round(shownRate * 1000) / 10) ? 0 : 1 }) : DASH
   const pfText = pf === Infinity ? INFINITY : Number.isFinite(pf) ? fmt.number(pf, { decimals: 2 }) : DASH
   const w = signed(win, fmt, chars)
   const l = signed(loss, fmt, chars)
   const e = signed(exp, fmt, chars)
   const na = t('edge.na')
+  // The glyph is for the eye; the words are what is spoken, and the figure's accessible text.
+  const noLosses = t('edge.noLosses')
   const perTrade = plain(t('edge.perTrade'))
   // The count is S's second line; the larger sizes have it in the note under the stats.
   const count = variant === 'S' && Number.isFinite(trades) ? plain(t('edge.trades', {}, trades)) : null
 
   return {
     'win-rate': { key: 'win-rate', label: t('edge.winRate'), main: plain(rateText, rate), sub: count, spoken: spoken(t('edge.winRate'), Number.isFinite(rate) ? rateText : na) },
-    'profit-factor': { key: 'profit-factor', label: t('edge.profitFactor'), main: plain(pfText, pf), sub: count, spoken: spoken(t('edge.profitFactor'), pfText === DASH ? na : pfText) },
+    'profit-factor': { key: 'profit-factor', label: t('edge.profitFactor'), main: pf === Infinity ? { ...plain(pfText, pf), alt: noLosses } : plain(pfText, pf), sub: count, spoken: spoken(t('edge.profitFactor'), pf === Infinity ? noLosses : pfText === DASH ? na : pfText) },
     'avg-win-loss': {
       key: 'avg-win-loss',
       label: t('edge.avgWinLoss'),
@@ -86,7 +90,7 @@ function distributionModel(list, ctx) {
     for (const b of list) {
       const count = isObj(b) ? numberOf(b.count) : NaN
       if (!Number.isFinite(count) || count < 0) continue
-      out.push({ label: str(b.label), count, loss: b.sign === -1 })
+      out.push({ label: typeof b.label === 'number' && Number.isFinite(b.label) ? String(b.label) : str(b.label), count, loss: b.sign === -1 })
     }
   }
   const max = out.reduce((m, b) => Math.max(m, b.count), 0)
@@ -143,6 +147,9 @@ export function edgeStatsModel(data, variant, ctx) {
     time: Number.isFinite(asOf) ? fmt.time(asOf) : '',
     synced: syncedParts(t),
     cells,
+    // Nothing traded is the empty view, not four figures that are each "not available".
+    empty: trades === 0,
+    noRows: t('widget.edgeStats.empty'),
     meta,
     dist: variant === 'M' ? distributionModel(d.distribution, ctx) : { bars: [], ariaLabel: '' },
     distLabel: t('edge.distribution'),
@@ -153,19 +160,23 @@ export function edgeStatsModel(data, variant, ctx) {
 
 const head = header({ dot: true, meta: true })
 const cell = (i) => `<div class="col cell" data-k="c${i}"><span class="lb ell" data-k="l${i}"></span>${figure('n md', `v${i}`)}${figure('n sm sub', `s${i}`)}</div>`
+const NONE = '<div class="none mut" data-k="none" hidden></div>'
 const note = (cls) => `<span class="sm mut ell${cls}" data-k="note"></span>`
 const DIST = `<div class="dist" data-k="dist" hidden><span class="lb" data-k="distLb"></span><div class="bars" part="chart" role="img" data-k="bars"></div></div>`
 
 // S has no room for the trade count and scope under its stat (they are in the tile's name), and a narrow Wide drops them too.
 const TEMPLATES = {
   S: `${head}
-<div class="col one"><span class="lb ell" data-k="l0"></span>${figure('big nv', 'v0', 'value')}${figure('n sm sub', 's0')}</div>`,
+<div class="col one" data-k="body"><span class="lb ell" data-k="l0"></span>${figure('big nv', 'v0', 'value')}${figure('n sm sub', 's0')}</div>
+${NONE}`,
   Wide: `${head}
 <div class="stats" data-k="stats">${[0, 1, 2, 3].map(cell).join('')}</div>
+${NONE}
 ${note(' wn')}`,
   M: `${head}
 <div class="stats" data-k="stats">${[0, 1, 2, 3].map(cell).join('')}</div>
 ${DIST}
+${NONE}
 ${note('')}`,
 }
 
@@ -185,6 +196,8 @@ const STYLES = `${FIGURE_CSS}
 .sub.pos { color: var(--ts-profit); }
 .sub.neg { color: var(--ts-loss); }
 .sub:empty { display: none; }
+.none { padding-block: 16px; text-align: center; }
+.stats[hidden], .col[hidden], .dist[hidden], .none[hidden] { display: none; }
 /* Four stats share a row when the tile is roomy; a narrow Wide or M tile stacks them two by two, the label above the figure. */
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
 @container (min-width: 440px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -297,12 +310,26 @@ export class TsEdgeStats extends TsWidget {
     write('pre', vm.synced.pre)
     write('time', vm.time)
     write('post', vm.synced.post)
-    write('note', vm.meta)
+    write('note', vm.empty ? '' : vm.meta)
+    write('none', vm.noRows)
+    hide('none', !vm.empty)
+    for (const k of ['body', 'stats']) hide(k, vm.empty)
 
     // The tone is the figure's class, so a flash that is running keeps its own (the base puts it back after update()).
     const figureOf = (k, base, f, size) => {
       write(`${k}Ar`, f.arrow)
       write(`${k}V`, f.text)
+      // ∞ is a glyph: the words are its accessible text, as an image's would be.
+      const v = this.$(`[data-k="${k}V"]`)
+      if (v) {
+        if (f.alt) {
+          setAttr(v, 'role', 'img')
+          setAttr(v, 'aria-label', f.alt)
+        } else if (v.hasAttribute('role')) {
+          v.removeAttribute('role')
+          v.removeAttribute('aria-label')
+        }
+      }
       const el = this.$(`[data-k="${k}"]`)
       if (el) {
         setAttr(el, 'class', f.tone === 'mut' ? base : `${base} ${f.tone}`)
@@ -323,7 +350,7 @@ export class TsEdgeStats extends TsWidget {
     if (variant !== 'M') return
 
     write('distLb', vm.distLabel)
-    hide('dist', vm.dist.bars.length === 0)
+    hide('dist', vm.empty || vm.dist.bars.length === 0)
     const bars = this.$('[data-k="bars"]')
     setAttr(bars, 'aria-label', vm.dist.ariaLabel)
     this._bind(bars)

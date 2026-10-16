@@ -49,7 +49,11 @@ interface EdgeStats {
 ```
 
 A figure that is `null` or missing shows as `—` and is read as "not available". A
-profit factor of `Infinity` (all wins) shows as `∞`. Money is formatted with the
+profit factor of `Infinity` (all wins) shows as `∞`, which is read as "no losses".
+**Keep `Infinity` if you send the stats through JSON:** `JSON.stringify` turns it
+into `null`, and a `null`, or the string `"Infinity"`, reads as `—`, "not available".
+A win rate that is not exactly 0 or 1 never shows as `0%` or `100%`: it shows
+one decimal (`99.9%`, `0.1%`). Money is formatted with the
 tile's `currency` and `locale`, so with `en-IN` an amount in the lakhs is grouped
 `1,24,500.00`; a long one drops to its compact form on a narrow tile.
 
@@ -135,13 +139,13 @@ See [Events](../reference/events.md).
 | State | When | What the tile shows |
 |---|---|---|
 | Loading | `data` is `undefined`, or `state="loading"` | A skeleton of the cells |
-| Empty | `data = null` | "No trades yet", or your `slot="empty"` content |
+| Empty | `data = null`, or `stats.trades` of 0 | "No trades yet", or your `slot="empty"` content (a count of 0 shows the words in the tile, with its header) |
 | Error | `state="error"`, `error` set, an unparseable `data` attribute, or a view model that throws | The message, and Retry if enabled |
-| Content | An object | The stats. With no trades every figure is a dash |
+| Content | An object | The stats. A figure the data lacks is a dash |
 
 ## Accessibility
 
-- The tile is named with its figures: "Edge stats, Win rate 62.5%, Profit factor 1.84, Avg win / loss +₹2,450.00 / −₹1,320.00, Expectancy +₹412.50 per trade, 60 trades · Last 30 days". A figure that is missing reads "not available".
+- The tile is named with its figures: "Edge stats, Win rate 62.5%, Profit factor 1.84, Avg win / loss +₹2,450.00 / −₹1,320.00, Expectancy +₹412.50 per trade, 60 trades · Last 30 days". A figure that is missing reads "not available", and `∞` reads "no losses" (it is an image with that text).
 - Money carries `+` or the true minus `−` and an `aria-hidden` ▲ or ▼, so a gain and a loss never differ by colour alone. A figure that rounds to zero has neither.
 - The histogram is `role="img"` with its own name ("Result distribution: 28 trades above zero, 14 trades below zero, most in 0 to 500"), and each bar has a title. A loss bucket is hatched as well as red, so the two sides differ without colour.
 - Figures use tabular numbers and keep their sign beside the digits in right-to-left pages. The histogram always runs left to right, from the worst result to the best.

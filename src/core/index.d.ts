@@ -479,6 +479,7 @@ export interface Messages {
   'edge.winLoss': string
   'edge.spoken': string
   'edge.na': string
+  'edge.noLosses': string
   'edge.trades.one': string
   'edge.trades.other': string
   'edge.meta': string
@@ -505,6 +506,8 @@ export interface Messages {
   'funding.account': string
   'funding.bar': string
   'funding.live': string
+  'funding.hidden.one': string
+  'funding.hidden.other': string
   'funding.rebalance': string
   'funding.rebalanceLabel': string
   'watchlist.aria': string
