@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- One <ts-chart> with bars for the chart-bars spec. ?size=Wide|M|L|XL, ?width=px (the tile's width), ?n=categories,
+     ?axis=category|time|number, ?theme=light|dark, ?preset=terminal (or calm, signal...), ?wide uses wide fonts, ?select turns on the
+     select action, ?long uses long category names, ?fit caps the width at the viewport's. window.__c.set(n) swaps in n categories.
+     Made-up numbers; nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chart bars fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+</style>
+</head>
+<body>
+<main><div id="wrap"></div></main>
+<script type="module">
+  import '/src/elements/index.js'
+
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+  if (params.has('wide')) {
+    const st = document.createElement('style')
+    st.textContent = ":root { --ts-font-ui: Verdana, 'DejaVu Sans', sans-serif; --ts-font-num: Verdana, 'DejaVu Sans', sans-serif; } body { letter-spacing: .05em; }"
+    document.head.append(st)
+  }
+
+  const axis = params.get('axis') || 'category'
+  const names = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const label = (i) => (params.has('long') ? `${names[i % 12]} quarter ${i + 1}` : names[i % 12] + (i >= 12 ? ` ${i + 1}` : ''))
+  const data = (n) => {
+    const xs = (i) => (axis === 'category' ? label(i) : axis === 'number' ? i * 10 : Date.UTC(2026, 8, 1 + i))
+    const pts = (f) => Array.from({ length: n }, (_, i) => ({ x: xs(i), y: f(i) }))
+    return {
+      xType: axis,
+      format: 'money',
+      series: [
+        { name: 'Profit', kind: 'bar', points: pts((i) => (i % 3 === 1 ? -400 - i * 10 : 900 + ((i * 137) % 500))) },
+        { name: 'Costs', kind: 'bar', points: pts((i) => 300 + ((i * 71) % 200)) },
+        { name: 'Target', points: pts(() => 800) },
+      ],
+    }
+  }
+  const el = document.createElement('ts-chart')
+  el.setAttribute('label', 'Monthly profit')
+  el.setAttribute('currency', 'USD')
+  el.setAttribute('size', params.get('size') || 'M')
+  el.style.height = params.get('size') === 'Wide' ? '150px' : '316px'
+  el.style.display = 'block'
+  if (params.has('select')) el.actions = ['select']
+  document.getElementById('wrap').append(el)
+  document.getElementById('wrap').style.width = `${params.get('width') || 640}px`
+  if (params.has('fit')) document.getElementById('wrap').style.maxWidth = '100%'
+  const events = []
+  el.addEventListener('ts-action', (e) => events.push(e.detail))
+  el.data = data(Number(params.get('n') || 6))
+  window.__c = {
+    el,
+    events,
+    set: (n) => { el.data = data(n) },
+    width: (px) => { document.getElementById('wrap').style.width = `${px}px` },
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

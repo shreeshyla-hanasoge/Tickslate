@@ -230,20 +230,20 @@ export declare class TsMetric extends TsWidget<MetricData> {
   static metricModel(data: MetricData, variant: SizeName, ctx: ViewModelContext): MetricModel
 }
 
-export type ChartKind = 'line' | 'area'
+export type ChartKind = 'line' | 'area' | 'bar'
 
 export interface ChartSeries {
   id?: string
   name: string
   /** Default 'line'. */
   kind?: ChartKind
-  /** Read in any order; x with `toTime` (or `toNumber` when `xType` is 'number'), y with `toNumber`. */
+  /** Read in any order; x with `toTime` (or `toNumber` when `xType` is 'number', or as text when it is 'category'), y with `toNumber`. */
   points: Array<{ x: Time; y: Numeric }>
 }
 
 export interface ChartOptions extends WidgetFreshness {
-  /** How x is read. Default 'time'. */
-  xType?: 'time' | 'number'
+  /** How x is read. 'category' places points and bars on a band scale, in order of first appearance. Default 'time'. */
+  xType?: 'time' | 'number' | 'category'
   /** How each series' last value is shown. Default 'number'; 'percent' takes fractions, 'duration' milliseconds. */
   format?: 'number' | 'money' | 'percent' | 'duration'
   decimals?: number
@@ -253,7 +253,7 @@ export interface ChartOptions extends WidgetFreshness {
   goodWhen?: 'up' | 'down' | 'neither'
 }
 
-/** Either named series, or rows with the keys to read. At most four series are drawn. */
+/** Either named series, or rows with the keys to read. At most six series are drawn. */
 export type ChartData = ChartOptions &
   (
     | { series: ChartSeries[] }
@@ -268,10 +268,12 @@ export type ChartData = ChartOptions &
 export interface ChartModel {
   /** What the svg's `aria-label` says: 'Revenue, last 12,400; Cost, last 8,100'. */
   ariaLabel: string
-  series: Array<{ name: string; kind: ChartKind; line: string; area: string; last: string }>
-  /** `index` 1 to 4 picks `--ts-series-<n>`. */
+  series: Array<{ name: string; kind: ChartKind; line: string; area: string; bars: string; last: string }>
+  /** `index` 1 to 6 picks `--ts-series-<n>`. */
   legend: Array<{ name: string; index: number }>
   axis: { start: string; middle: string; end: string }
+  /** Every category in order of first appearance; `[]` unless `xType` is 'category'. */
+  categories: string[]
   /** Where the zero line falls in the 400 by 100 drawing box, drawn in `--ts-axis`. */
   zeroY: number
   /** Rows or points that couldn't be read. */
@@ -279,7 +281,7 @@ export interface ChartModel {
 }
 
 /**
- * <ts-chart>, sizes Wide · M · L · XL. Lines and areas, up to four series, legend from M up.
+ * <ts-chart>, sizes Wide · M · L · XL. Lines, areas and bars, up to six series, legend from M up.
  *
  * @element ts-chart
  * @fires {CustomEvent<TsChartAction>} ts-action - Retry, 'open', and 'select' for a point when `actions` includes 'select'.

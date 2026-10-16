@@ -1,8 +1,8 @@
 # `<ts-chart>`
 
-Line and area trends for up to four series, from either named series or table
-rows. It is not finance-specific. For bars, candlesticks or maps, put your own
-chart in a [`<ts-card>`](ts-card.md).
+Line, area and bar series, up to six, from either named series or table rows,
+on a time, number or category axis. It is not finance-specific. For
+candlesticks or maps, put your own chart in a [`<ts-card>`](ts-card.md).
 
 ```js
 import 'tickslate/elements'
@@ -25,8 +25,8 @@ Either named series, or rows with the keys to read.
 
 ```ts
 interface ChartOptions {
-  /** How x is read. Default 'time'. */
-  xType?: 'time' | 'number'
+  /** How x is read. 'category' reads it as text and puts points and bars on a band scale. Default 'time'. */
+  xType?: 'time' | 'number' | 'category'
   /** How each series' last value is shown. Default 'number'. */
   format?: 'number' | 'money' | 'percent' | 'duration'
   decimals?: number
@@ -44,7 +44,7 @@ type ChartData = ChartOptions &
         series?: Array<{
           id?: string
           name?: string // default 'Series 1', 'Series 2'...
-          kind?: 'line' | 'area' // default 'line'
+          kind?: 'line' | 'area' | 'bar' // default 'line'
           points: Array<{ x: Time | number; y: Numeric }>
         }>
       }
@@ -53,7 +53,7 @@ type ChartData = ChartOptions &
         /** The row key for x. */
         x?: string
         /** One key, several, or { key, name?, kind? } objects. */
-        y?: string | string[] | Array<{ key: string; name?: string; kind?: 'line' | 'area' }>
+        y?: string | string[] | Array<{ key: string; name?: string; kind?: 'line' | 'area' | 'bar' }>
       }
   )
 ```
@@ -61,17 +61,54 @@ type ChartData = ChartOptions &
 All keys are optional in the checker, because either form alone is enough; the
 `points` of each series item are checked. `series` wins when both are given.
 Points are read in any order and sorted by x. Anything that cannot be read is
-dropped, counted, and reported once in development. Only the first four series
+dropped, counted, and reported once in development. Only the first six series
 are drawn (a warning says how many were given). x is read with `toTime`, or with
-`toNumber` when `xType` is `'number'`, and `xType` is also how a column called
-`time` stays unambiguous in the rows form.
+`toNumber` when `xType` is `'number'`, or as text when it is `'category'`; `xType`
+is also how a column called `time` stays unambiguous in the rows form.
 
 Axes: the y range is rounded to four evenly spaced "nice" labels at `M` and up;
-any area series anchors the range on zero. A zero line (dashed, `--ts-axis`)
+any area or bar series anchors the range on zero. A zero line (dashed, `--ts-axis`)
 shows when zero is in range. The x axis shows the start, middle and end, as
 clock times for a span under a day and as dates for longer ones. A single point
 on the whole chart draws as a level line; a lone point among longer series
 draws as a dot.
+
+## Bars and categories
+
+A series with `kind: 'bar'` is drawn as filled bars from the zero line: up for a
+positive value and down for a negative one. Several bar series sit side by side
+inside each band, grouped and never stacked. Bars mix with lines and areas on
+one chart.
+
+With `xType: 'category'`, x is read as text and each distinct value gets a band,
+in order of first appearance across all series. A point whose x is `null` or empty is
+dropped and counted. Lines and areas run through the centre of each band, so any
+kinds can share the axis. A single category takes the whole plot, and a series
+with one point on a category axis draws as a dot at its band's centre.
+
+Category labels sit under their bands, one per band, and truncate with an
+ellipsis. When the width cannot hold them all the chart skips labels evenly,
+always keeping the first and the last. `chartModel` returns every category in
+`categories`, and `[]` on the other axes.
+
+Bars are allowed on `'time'` and `'number'` axes too, at the x positions given.
+The bars' width is the smallest gap between them. Time and number charts show no
+category labels.
+
+```js
+chart.data = {
+  xType: 'category',
+  format: 'money',
+  series: [
+    { name: 'Profit', kind: 'bar', points: [{ x: 'Jan', y: 1200 }, { x: 'Feb', y: -400 }, { x: 'Mar', y: 800 }] },
+    { name: 'Target', points: [{ x: 'Jan', y: 1000 }, { x: 'Feb', y: 1000 }, { x: 'Mar', y: 1000 }] },
+  ],
+}
+```
+
+Bars never rely on colour: a loss is a bar below the zero line, its value is
+written with a true minus (`−400`), and every bar's value is also in text (see
+[Accessibility](#accessibility)).
 
 ## Minimal example
 
@@ -131,8 +168,12 @@ When the first series' latest value changes, it is tinted for 700 ms: `--ts-prof
 
 ## Actions
 
-`retry` only. With `actions = ['retry']` the error view's button fires
-`ts-action` with `{ action: 'retry' }`. See [Events](../reference/events.md).
+`retry`, and `select`. With `actions = ['retry']` the error view's button fires
+`ts-action` with `{ action: 'retry' }`. With `'select'`, each point and each bar
+is a button that fires `{ action: 'select', value, series, y, index }`, where
+`value` is the x as given (the category, for a category axis). One tab stop
+covers them all, and the arrow keys, Home and End move between them. See
+[Events](../reference/events.md).
 
 ## Parts
 
@@ -146,9 +187,9 @@ When the first series' latest value changes, it is tinted for 700 ms: `--ts-prof
 | `error` | The error view's container (only while the error view shows) |
 | `skeleton` | The loading view's container, around the skeleton blocks |
 
-Series colours are `--ts-series-1` to `--ts-series-4` in order; see
-[Theming](../theming.md). Area series get a legend swatch shaped as a filled
-square so line and area differ without colour.
+Series colours are `--ts-series-1` to `--ts-series-6` in order; see
+[Theming](../theming.md). Area and bar series get a legend swatch shaped as a
+square, so they differ from lines without colour.
 
 ## States
 
@@ -164,8 +205,13 @@ square so line and area differ without colour.
 - The tile is a `role="group"` named by its label alone, and the label is a heading. The plot is a `role="img"` svg
   whose label states the result, "Revenue, last 12,100; Cost, last 8,100", so
   the summary is spoken once.
-- Series are told apart by position, legend name and (for areas) swatch shape,
-  not only by colour. Series colours meet 3:1 on the surface.
+- Series are told apart by position, legend name and (for areas and bars) swatch
+  shape, not only by colour. Series colours meet 3:1 on the surface.
 - The axis labels are `aria-hidden`; the last values are in the svg's label and
   in the legend text.
+- Bars carry their values as text: with `select` on, every bar is a button named
+  "Profit: Feb, −400"; without it the same sentences sit in a visually hidden
+  list beside the plot. Negative values use the true minus.
+- Under forced colours bars take the system colours with a gap between them, and
+  lines use dash patterns, so six series stay apart.
 - The live pulse and the loading shimmer stop under `prefers-reduced-motion`.

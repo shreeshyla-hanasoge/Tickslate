@@ -1,22 +1,22 @@
 /**
- * <ts-chart>: line and area trends for up to four series, sizes Wide · M · L ·
- * XL (RFC 0002 §3.3). The class lives here, not in chart.js, which stays pure
+ * <ts-chart>: line, area and bar series, up to six, sizes Wide · M · L · XL
+ * (RFC 0002 §3.3, RFC 0003 §15). The class lives here, not in chart.js, which stays pure
  * geometry shared with the finance widgets.
  *
  * `chartModel` is the pure view model: it reads both data forms into series,
  * draws them on one shared domain, and returns strings (paths, labels, the
  * accessible name). The class is a template per size and an update() that
  * writes only `d` attributes and text, so a live feed moves the lines in
- * place. The series slots are fixed at four in every template and hidden when
+ * place. The series slots are fixed at six in every template and hidden when
  * unused, which is what lets new data never need new markup.
  */
 
 import { TsWidget, sk, describeElement, syncedParts, header, escapeHtml } from './widget.js'
-import { areaPaths, scale, seriesDomain } from './chart.js'
+import { areaPaths, bandGeometry, barPaths, scale, seriesDomain } from './chart.js'
 import { DEV, warnOnce } from './dev.js'
 import { EN, toNumber, toTime } from '../core/index.js'
 
-export const MAX_SERIES = 4
+export const MAX_SERIES = 6
 
 // The drawing box. It is stretched to the tile, so only its proportions
 // matter; the y axis labels are placed in percent of the plot's height, and
@@ -29,6 +29,9 @@ const DASH = '—'
 const MINUS = '−'
 const DAY_MS = 86400000
 const ACTION_SELECT = 'select'
+const BAND_PADDING = 0.2
+// Fewest pixels a category label gets before neighbours are skipped, so a crowded axis shows every nth.
+const CAT_MIN_PX = 56
 
 /**
  * Where an arrow key moves the focused point (index `from` of `count`), or -1
@@ -49,6 +52,14 @@ const str = (v) => (typeof v === 'string' ? v : '')
 
 // ── Reading the data (pure) ───────────────────────────────────────────────
 
+const kindOf = (k) => (k === 'area' || k === 'bar' ? k : 'line')
+
+// A category is read as text: strings as given, numbers by their digits; null, empty and anything else has none.
+function catLabel(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : ''
+  return typeof v === 'string' && v.trim() ? v : ''
+}
+
 // `y` as the rows form allows it: a key, keys, or { key, name, kind } objects.
 function yColumns(y) {
   const list = Array.isArray(y) ? y : y === undefined || y === null ? [] : [y]
@@ -60,7 +71,7 @@ function yColumns(y) {
         key: item.key,
         id: item.id != null ? String(item.id) : undefined,
         name: str(item.name) || item.key,
-        kind: item.kind === 'area' ? 'area' : 'line',
+        kind: kindOf(item.kind),
       })
     }
   }
@@ -74,9 +85,18 @@ const byX = (a, b) => a.x - b.x
  * points, and how many rows or points couldn't be read. Sorted because a line
  * drawn through points out of order doubles back on itself.
  */
-function readSeries(d, readX, t) {
+function readSeries(d, readX, t, cats) {
   const out = []
   let dropped = 0
+  // On a category axis x is a band index, handed out in order of first appearance across every series.
+  const read = cats
+    ? (v) => {
+        const label = catLabel(v)
+        if (!label) return NaN
+        if (!cats.has(label)) cats.set(label, cats.size)
+        return cats.get(label)
+      }
+    : readX
   if (Array.isArray(d.series)) {
     d.series.forEach((s, i) => {
       const item = isObj(s) ? s : {}
@@ -84,7 +104,7 @@ function readSeries(d, readX, t) {
       if (Array.isArray(item.points)) {
         for (let ptIdx = 0; ptIdx < item.points.length; ptIdx++) {
           const p = item.points[ptIdx]
-          const x = isObj(p) ? readX(p.x) : NaN
+          const x = isObj(p) ? read(p.x) : NaN
           const y = isObj(p) ? toNumber(p.y) : NaN
           if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y, rawX: isObj(p) ? p.x : undefined, index: ptIdx })
           else dropped++
@@ -93,7 +113,7 @@ function readSeries(d, readX, t) {
       out.push({
         id: item.id != null ? String(item.id) : undefined,
         name: str(item.name) || t('chart.series', { index: i + 1 }),
-        kind: item.kind === 'area' ? 'area' : 'line',
+        kind: kindOf(item.kind),
         points: points.sort(byX),
       })
     })
@@ -104,7 +124,7 @@ function readSeries(d, readX, t) {
     for (let rowIdx = 0; rowIdx < d.rows.length; rowIdx++) {
       const row = d.rows[rowIdx]
       const rawX = isObj(row) && xKey ? row[xKey] : undefined
-      const x = isObj(row) && xKey ? readX(rawX) : NaN
+      const x = isObj(row) && xKey ? read(rawX) : NaN
       if (!Number.isFinite(x)) {
         dropped++
         continue
@@ -194,9 +214,11 @@ export function chartModel(data, variant, ctx) {
   const format = ['money', 'percent', 'duration'].includes(d.format) ? d.format : 'number'
   const decimals = Number.isInteger(d.decimals) && d.decimals >= 0 && d.decimals <= 20 ? d.decimals : undefined
   const unit = str(d.unit)
-  const timeAxis = d.xType !== 'number'
+  const catAxis = d.xType === 'category'
+  const timeAxis = d.xType !== 'number' && !catAxis
+  const cats = catAxis ? new Map() : undefined
 
-  const { all, dropped } = readSeries(d, timeAxis ? toTime : toNumber, t)
+  const { all, dropped } = readSeries(d, timeAxis ? toTime : toNumber, t, cats)
   const series = []
   for (let i = 0; i < all.length && i < MAX_SERIES; i++) series.push(all[i])
 
@@ -237,7 +259,11 @@ export function chartModel(data, variant, ctx) {
   }
 
   const hasArea = series.some((s) => s.kind === 'area')
-  const dom = seriesDomain(series.map((s) => s.points), { includeZero: hasArea })
+  const barSeries = series.filter((s) => s.kind === 'bar')
+  const hasBar = barSeries.length > 0
+  // Areas and bars stand on the zero line, so the domain always reaches it.
+  const anchored = hasArea || hasBar
+  const dom = seriesDomain(series.map((s) => s.points), { includeZero: anchored })
   const [x0, x1] = dom.x
   const hasPoints = series.some((s) => s.points.length > 0)
   const ticked = variant === 'M' || variant === 'L' || variant === 'XL'
@@ -253,39 +279,72 @@ export function chartModel(data, variant, ctx) {
     ticks = nice.ticks
   } else if (hasPoints) {
     // Headroom above the line so the end dot and its stroke aren't clipped;
-    // an area is anchored on zero, so only lines get room below as well.
+    // an area or a bar is anchored on zero, so only lines get room below as well.
     const span = y1 - y0 || 1
     y1 += span * 0.12
-    if (!hasArea) y0 -= span * 0.12
+    if (!anchored) y0 -= span * 0.12
   }
 
-  const x = scale(x0, x1, PAD, BOX.width - PAD)
+  // Bars take a band each. On a category axis the bands are the categories; on a time or number axis they are slots
+  // as wide as the smallest gap between bars, so a bar sits at the x it was given. Lines and marks use the band
+  // centres, so every kind lines up on one axis.
+  const categories = cats ? [...cats.keys()] : []
+  let slots = 0
+  let slotOf = (v) => v
+  if (catAxis) slots = categories.length
+  else if (hasBar) {
+    const xs = []
+    for (const s of barSeries) for (const p of s.points) xs.push(p.x)
+    xs.sort((a, b) => a - b)
+    let gap = Infinity
+    for (let i = 1; i < xs.length; i++) if (xs[i] > xs[i - 1]) gap = Math.min(gap, xs[i] - xs[i - 1])
+    // One distinct x has no neighbour to size against: it takes half the span beside other series, or the whole plot alone.
+    if (gap === Infinity) gap = x1 - x0
+    slots = gap ? (x1 - x0) / gap + 1 : 1
+    slotOf = (v) => (gap ? (v - x0) / gap : 0)
+  }
+  const banded = slots > 0
+  const band = bandGeometry(slots, PAD, BOX.width - PAD, BAND_PADDING)
+  const linear = scale(x0, x1, PAD, BOX.width - PAD)
+  const x = banded ? (v) => band.centre(slotOf(v)) : linear
   const y = scale(y0, y1, BOX.height - PAD, PAD)
   const box = { width: BOX.width, height: BOX.height, pad: PAD, xDomain: [x0, x1], yDomain: [y0, y1] }
+  // On bands the points are placed already, in drawing units, so the line takes them through an identity x.
+  const lineBox = banded ? { ...box, xDomain: [PAD, BOX.width - PAD] } : box
+  const barDraw = hasBar
+    ? barPaths(barSeries.map((s) => s.points.map((p) => ({ x: slotOf(p.x), y: p.y }))), { width: BOX.width, height: BOX.height, pad: PAD, categories: slots, yDomain: [y0, y1], padding: BAND_PADDING })
+    : { paths: [] }
+  // Where a bar's own middle falls inside its band, for the mark that makes it selectable.
+  const barX = (s, p) => {
+    const g = barSeries.indexOf(s)
+    return band.start(slotOf(p.x)) + ((g + 0.5) * band.inner) / barSeries.length
+  }
   const hasZero = hasPoints && y0 <= 0 && y1 >= 0
   const zeroY = round(Math.min(BOX.height - PAD, Math.max(PAD, y(0))))
 
   const outSeries = series.map((s) => {
     const pts = s.points
     const n = pts.length
-    if (!n) return { name: s.name, kind: s.kind, line: '', area: '', dot: '', last: DASH, lastNum: NaN, empty: true }
+    if (!n) return { name: s.name, kind: s.kind, line: '', area: '', bars: '', dot: '', last: DASH, lastNum: NaN, empty: true }
     const lastPt = pts[n - 1]
     const last = show(lastPt.y)
+    if (s.kind === 'bar') return { name: s.name, kind: 'bar', line: '', area: '', bars: barDraw.paths[barSeries.indexOf(s)], dot: '', last, lastNum: lastPt.y, empty: false }
     // A lone point among longer series has no direction to draw, so it is a
     // dot where it falls. Alone on the whole chart it is a level line across,
     // as in the other widgets, so the tile isn't empty.
-    if (n === 1 && x1 > x0) {
+    // On bands it is a dot at its band's centre however many bands there are.
+    if (n === 1 && (x1 > x0 || banded)) {
       const px = round(x(lastPt.x))
-      return { name: s.name, kind: s.kind, line: '', area: '', dot: `M${px} ${round(y(lastPt.y))}h0`, last, lastNum: lastPt.y, empty: false }
+      return { name: s.name, kind: s.kind, line: '', area: '', bars: '', dot: `M${px} ${round(y(lastPt.y))}h0`, last, lastNum: lastPt.y, empty: false }
     }
-    const { line, area } = areaPaths(pts, box)
+    const { line, area } = areaPaths(banded ? pts.map((p) => ({ x: x(p.x), y: p.y })) : pts, lineBox)
     const dotX = n === 1 ? round(BOX.width - PAD) : round(x(lastPt.x))
-    return { name: s.name, kind: s.kind, line, area: s.kind === 'area' ? area : '', dot: `M${dotX} ${round(y(lastPt.y))}h0`, last, lastNum: lastPt.y, empty: false }
+    return { name: s.name, kind: s.kind, line, area: s.kind === 'area' ? area : '', bars: '', dot: `M${dotX} ${round(y(lastPt.y))}h0`, last, lastNum: lastPt.y, empty: false }
   })
 
   // The axis: start, middle and end of the x domain.
   const axis = { start: '', middle: '', end: '' }
-  if (hasPoints) {
+  if (hasPoints && !catAxis) {
     const label = timeAxis ? timeLabeller(fmt, x0, x1) : (v) => fmt.number(v, { sign: 'negative' })
     axis.start = label(x0)
     axis.middle = x1 > x0 ? label(x0 + (x1 - x0) / 2) : ''
@@ -305,13 +364,15 @@ export function chartModel(data, variant, ctx) {
   }
 
   const outPoints = []
+  // Each bar's value in words, for a reader who cannot see its length.
+  const barLabels = []
   if (hasPoints) {
     // A point's name reads its x as the axis does: a date, or a clock time inside a day, never the raw timestamp.
-    const xName = !timeAxis ? (v) => fmt.number(v, { sign: 'negative' }) : x1 - x0 < DAY_MS ? (v) => fmt.time(v) : (v) => fmt.date(v)
+    const xName = catAxis ? (v) => categories[v] : !timeAxis ? (v) => fmt.number(v, { sign: 'negative' }) : x1 - x0 < DAY_MS ? (v) => fmt.time(v) : (v) => fmt.date(v)
     for (const s of series) {
       const sKey = s.id != null && s.id !== '' ? s.id : s.name
       for (const p of s.points) {
-        const px = s.points.length === 1 && x1 === x0 ? round(BOX.width - PAD) : round(x(p.x))
+        const px = s.kind === 'bar' ? round(barX(s, p)) : s.points.length === 1 && x1 === x0 && !banded ? round(BOX.width - PAD) : round(x(p.x))
         const py = round(y(p.y))
         outPoints.push({
           series: sKey,
@@ -322,6 +383,7 @@ export function chartModel(data, variant, ctx) {
           yPct: round(py),
           label: `${s.name}: ${xName(p.x)}, ${show(p.y)}`,
         })
+        if (s.kind === 'bar') barLabels.push(`${s.name}: ${xName(p.x)}, ${show(p.y)}`)
       }
     }
   }
@@ -341,6 +403,8 @@ export function chartModel(data, variant, ctx) {
     points: outPoints,
     legend: outSeries.map((s, i) => ({ name: s.name, index: i + 1 })),
     axis,
+    categories,
+    barLabels,
     zeroY,
     zero: hasZero,
     zeroPath: hasZero ? `M0 ${zeroY}H${BOX.width}` : '',
@@ -356,7 +420,7 @@ export function chartModel(data, variant, ctx) {
 
 // ── Markup ────────────────────────────────────────────────────────────────
 
-const SLOTS = [1, 2, 3, 4]
+const SLOTS = [1, 2, 3, 4, 5, 6]
 
 // Wide names the first series up in the header, where the other sizes have a legend.
 const head = (wide) =>
@@ -370,12 +434,12 @@ const marks = (cls, prefix) => SLOTS.map((i) => `<path class="${cls} c-${i}" dat
 
 const plot = (ticked) => `<div class="prow"><div class="plot" part="chart"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
   ticked ? '<path class="gl" data-k="grid"></path>' : ''
-}<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sl', 'l')}${marks('sd', 'd')}</svg><ul class="pts" data-k="pts" hidden></ul></div>${
+}<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sb', 'b')}${marks('sl', 'l')}${marks('sd', 'd')}</svg><ul class="pts" data-k="pts" hidden></ul><ul class="visually-hidden" data-k="vals" hidden></ul></div>${
   ticked ? `<div class="yax n" aria-hidden="true"><div class="yin">${[0, 1, 2, 3].map((i) => `<span data-k="y${i}"></span>`).join('')}</div></div>` : ''
 }</div>`
 
 const xax = (gutter) =>
-  `<div class="xax n${gutter ? ' gut' : ''}" aria-hidden="true"><span data-k="x0"></span><span data-k="x1"></span><span data-k="x2"></span></div>`
+  `<div class="xax n${gutter ? ' gut' : ''}" aria-hidden="true"><div class="cats" data-k="cats" hidden></div><span data-k="x0"></span><span data-k="x1"></span><span data-k="x2"></span></div>`
 
 const chart = (ticked) => `<div class="chartcol">${plot(ticked)}${xax(ticked)}</div>`
 
@@ -440,12 +504,19 @@ export class TsChart extends TsWidget {
 .c-2 { --c: var(--ts-series-2); }
 .c-3 { --c: var(--ts-series-3); }
 .c-4 { --c: var(--ts-series-4); }
+.c-5 { --c: var(--ts-series-5); }
+.c-6 { --c: var(--ts-series-6); }
+.sb { fill: var(--c); stroke: none; }
+/* One label per band, centred under it. The width is set in update(), so a label never reaches into its neighbour or past the plot. */
+.xax > .cats { grid-column: 1 / -1; justify-self: stretch; position: relative; block-size: 14px; }
+.cats span { position: absolute; transform: translateX(-50%); text-align: center; }
 .sl { fill: none; stroke: var(--c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .sa { fill: color-mix(in srgb, var(--c) var(--ts-fill, 12%), transparent); stroke: none; }
 .sd { fill: none; stroke: var(--c); stroke-width: 7; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .gl { fill: none; stroke: var(--ts-line); stroke-dasharray: 2 4; vector-effect: non-scaling-stroke; }
 .zl { fill: none; stroke: var(--ts-axis); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .sw { width: 12px; height: 3px; border-radius: 2px; flex: none; background: var(--c); }
+.sw.bar { width: 10px; height: 10px; }
 .sw.area { width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--c) 30%, transparent); box-shadow: inset 0 2px 0 var(--c); }
 .sname { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ts-muted); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11px; }
@@ -463,14 +534,17 @@ export class TsChart extends TsWidget {
 .pt { display: block; width: 16px; height: 16px; transform: translate(-50%, -50%); background: transparent; border: 0; padding: 0; margin: 0; cursor: pointer; border-radius: 50%; pointer-events: auto; outline: none; }
 .pt:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
 /* Colours are not the host's to theme here, and backgrounds are dropped, so series differ by colour AND dash and the
-   swatches become coloured blocks again. Two system colours and a dash tell four series apart. */
+   swatches become coloured blocks again. Two system colours and two dash patterns tell six series apart; bars take the colour alone, as a block has no stroke to dash. */
 @media (forced-colors: active) {
   .sl, .sd { stroke: CanvasText; }
-  .sl.c-2, .sd.c-2, .sl.c-4, .sd.c-4 { stroke: Highlight; }
+  .sb { fill: CanvasText; stroke: ButtonFace; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  .sl.c-2, .sd.c-2, .sl.c-4, .sd.c-4, .sl.c-6, .sd.c-6 { stroke: Highlight; }
+  .sb.c-2, .sb.c-4, .sb.c-6 { fill: Highlight; }
   .sl.c-3, .sl.c-4 { stroke-dasharray: 6 3; }
+  .sl.c-5, .sl.c-6 { stroke-dasharray: 2 3; }
   .gl, .zl { stroke: CanvasText; }
   .sw { background: CanvasText; }
-  .sw.c-2, .sw.c-4 { background: Highlight; }
+  .sw.c-2, .sw.c-4, .sw.c-6 { background: Highlight; }
 }
 `
 
@@ -578,6 +652,10 @@ export class TsChart extends TsWidget {
 
     this._points = vm.points
     const ptsEl = this.$('[data-k="pts"]')
+    if (ptsEl !== this._ptsEl) {
+      this._ptsEl = ptsEl
+      this._ptsKey = ''
+    }
     if (ptsEl) {
       const selectable = this.actionEnabled('select') && Array.isArray(vm.points) && vm.points.length > 0
       ptsEl.toggleAttribute('hidden', !selectable)
@@ -605,13 +683,14 @@ export class TsChart extends TsWidget {
     for (const i of SLOTS) {
       const s = vm.series[i - 1]
       attr(`a${i}`, 'd', s ? s.area : '')
+      attr(`b${i}`, 'd', s ? s.bars : '')
       attr(`l${i}`, 'd', s ? s.line : '')
       attr(`d${i}`, 'd', s ? s.dot : '')
       // Wide's header holds series 1 alone; the others hold every slot.
       hide(`lg${i}`, !s)
       if (variant === 'Wide' && i === 1) hide('first', !s)
       if (!s) continue
-      attr(`sw${i}`, 'class', `sw c-${i}${s.kind === 'area' ? ' area' : ''}`)
+      attr(`sw${i}`, 'class', `sw c-${i}${s.kind === 'area' || s.kind === 'bar' ? ` ${s.kind}` : ''}`)
       text(`n${i}`, s.name)
       text(`v${i}`, s.last)
     }
@@ -623,5 +702,88 @@ export class TsChart extends TsWidget {
     text('x0', vm.axis.start)
     text('x1', vm.axis.middle)
     text('x2', vm.axis.end)
+    this._drawCategories(vm)
+    this._drawBarValues(vm, this.actionEnabled('select') && Array.isArray(vm.points) && vm.points.length > 0)
+  }
+
+  // Bars say their values in words, so colour and length are not the only way to read them. With selection on, every
+  // point is a button named with its value; without it the same sentences sit in a list a screen reader can walk.
+  _drawBarValues(vm, selectable) {
+    const lines = selectable || !vm.barLabels ? [] : vm.barLabels
+    const key = lines.join('\n')
+    const el = this.$('[data-k="vals"]')
+    // A new size is new markup, so what was written to the old list is gone with it.
+    if (el !== this._valsEl) {
+      this._valsEl = el
+      this._valsKey = ''
+    }
+    if (!el || key === this._valsKey) return
+    el.toggleAttribute('hidden', !lines.length)
+    this._valsKey = key
+    el.replaceChildren(...lines.map((text) => Object.assign(document.createElement('li'), { textContent: text })))
+  }
+
+  // One label per category, centred under its band. As many show as the width allows, always the first and the
+  // last; the rest are skipped evenly, and a shown label is as wide as the bands it stands for, then ellipsised.
+  _drawCategories(vm) {
+    const labels = vm.categories || []
+    if (!labels.length && !this._cats?.length) return
+    const el = this.$('[data-k="cats"]')
+    if (!el) return
+    if (el !== this._catsEl) {
+      this._catsEl = el
+      this._catsKey = ''
+    }
+    for (const k of ['x0', 'x1', 'x2']) this.$(`[data-k="${k}"]`)?.toggleAttribute('hidden', labels.length > 0)
+    el.toggleAttribute('hidden', !labels.length)
+    this._cats = labels
+    if (!labels.length) {
+      this._catsKey = ''
+      this._catsWatch?.disconnect()
+      this._catsWatch = null
+      return
+    }
+    const svg = this.$('[data-k="svg"]')
+    if (typeof ResizeObserver !== 'undefined' && svg && svg !== this._catsSvg) {
+      this._catsWatch?.disconnect()
+      this._catsSvg = svg
+      this._catsWatch = new ResizeObserver(() => this._layoutCategories())
+      this._catsWatch.observe(svg)
+    }
+    this._layoutCategories()
+  }
+
+  _layoutCategories() {
+    const el = this.$('[data-k="cats"]')
+    const labels = this._cats || []
+    if (!el || !labels.length) return
+    const px = this.$('[data-k="svg"]')?.getBoundingClientRect?.().width || 0
+    const n = labels.length
+        // Until the plot has a width, every label is offered and the ellipsis does the fitting.
+    const stride = px > 0 ? Math.max(1, Math.ceil(CAT_MIN_PX / (px / n))) : 1
+    const shown = []
+    for (let i = 0; i < n; i += stride) shown.push(i)
+    // The last band always has its label; it displaces the one before it when they would touch.
+    if (shown[shown.length - 1] !== n - 1) {
+      if (n - 1 - shown[shown.length - 1] < stride && shown.length > 1) shown.pop()
+      shown.push(n - 1)
+    }
+    const key = `${n}|${stride}|${labels.join('\n')}`
+    if (key === this._catsKey) return
+    this._catsKey = key
+    // BOX padding keeps the bands off the plot's edges: the same fraction here as in the drawing.
+    const inset = (PAD / BOX.width) * 100
+    const span = 100 - 2 * inset
+    const kids = shown.map((i) => {
+      const centre = inset + ((i + 0.5) * span) / n
+      const width = Math.min(stride * (span / n) * 0.9, 2 * centre, 2 * (100 - centre))
+      const node = document.createElement('span')
+      node.className = 'ell'
+      node.textContent = labels[i]
+      node.style.insetInlineStart = `${round(centre)}%`
+      node.style.maxInlineSize = `${round(width)}%`
+      return node
+    })
+    el.replaceChildren(...kids)
   }
 }

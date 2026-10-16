@@ -142,3 +142,77 @@ export function areaPaths(points, { width, height, pad = 4, xDomain, yDomain }) 
   const { line, area, zeroY } = linePaths(points, { width, height, pad, xDomain, yDomain, includeZero: false })
   return { line, area, zeroY }
 }
+
+/**
+ * Where `count` equal bands fall between r0 and r1, as plain numbers so the
+ * band scale below and `barPaths` share one set of positions. `count` may be
+ * fractional: a time axis with bars is read as slots of the smallest gap
+ * between bars, and its span is not always a whole number of them.
+ */
+export function bandGeometry(count, r0, r1, padding = 0.2) {
+  const gap = clamp(Number.isFinite(padding) ? padding : 0.2, 0, 1)
+  // Nothing to place has no band; a zero keeps every position finite.
+  const band = count > 0 ? (r1 - r0) / count : 0
+  return {
+    band,
+    start: (i) => r0 + i * band + (band * gap) / 2,
+    centre: (i) => r0 + (i + 0.5) * band,
+    // The width left for bars once the padding is taken out of the band.
+    inner: band * (1 - gap),
+  }
+}
+
+/**
+ * A band scale for a category axis: one equal band per label, the label's
+ * index picking where it falls. `padding` (0 to 1, default .2) is the share
+ * of a band left empty around its bars. A label that isn't there has index -1.
+ */
+export function bandScale(categories, r0, r1, { padding } = {}) {
+  const list = categories || []
+  const g = bandGeometry(list.length, r0, r1, padding)
+  const at = new Map()
+  for (let i = 0; i < list.length; i++) if (!at.has(list[i])) at.set(list[i], i)
+  return { band: g.band, start: g.start, centre: g.centre, index: (label) => (at.has(label) ? at.get(label) : -1) }
+}
+
+/**
+ * Bars for several series, grouped side by side inside each band and drawn
+ * from the zero line: up for positive values, down for negative. One path per
+ * series, so a live update rewrites one attribute. `x` is the band index (a
+ * fraction is fine, for bars on a time or number axis); `categories` is how
+ * many bands the plot holds. The y domain always takes in zero, so a bar has
+ * a base to stand on. `centres` are the bands' middles, for marks that share
+ * the axis.
+ */
+export function barPaths(groups, { width, height, pad = 4, categories = 0, yDomain, padding } = {}) {
+  const lists = (groups || []).map((g) => (g || []).filter(finite))
+  let [y0, y1] = yDomain || [Infinity, -Infinity]
+  if (!yDomain) for (const pts of lists) if (pts.length) {
+    const [lo, hi] = extent(pts, 'y')
+    y0 = Math.min(y0, lo)
+    y1 = Math.max(y1, hi)
+  }
+  if (!Number.isFinite(y0) || !Number.isFinite(y1)) [y0, y1] = [0, 1]
+  y0 = Math.min(y0, 0)
+  y1 = Math.max(y1, 0)
+  const y = scale(y0, y1, height - pad, pad)
+  const zeroY = round(clamp(y(0), pad, height - pad))
+  const g = bandGeometry(categories, pad, width - pad, padding)
+  const each = lists.length ? g.inner / lists.length : 0
+  const centres = []
+  for (let i = 0; i < categories; i++) centres.push(round(g.centre(i)))
+
+  const paths = lists.map((pts, n) => {
+    let d = ''
+    for (const p of pts) {
+      const vy = round(y(p.y))
+      // A zero bar has no height to draw; leaving it out keeps the path clean.
+      if (vy === zeroY) continue
+      const left = round(g.start(p.x) + n * each)
+      const right = round(g.start(p.x) + (n + 1) * each)
+      d += `${d ? ' ' : ''}M${left} ${zeroY}V${vy}H${right}V${zeroY}Z`
+    }
+    return d
+  })
+  return { paths, zeroY, centres }
+}
