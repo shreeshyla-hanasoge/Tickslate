@@ -234,8 +234,11 @@ is called Paper.
 
 ## Browser support
 
-Chrome 111, Safari 16.2 and Firefox 113 or later: the grid needs custom
-elements, shadow DOM, `ResizeObserver`, `color-mix()` and `:where()`.
+Chrome 111, Safari 16.4 and Firefox 113 or later: the grid needs custom
+elements, shadow DOM, `ResizeObserver`, `color-mix()` and `:where()`. Safari 16.4
+adds manual slot assignment, which keeps the reading and Tab order of tiles in
+step with what is on screen after they are rearranged. Below 16.4 nothing
+breaks: the grid keeps one slot, and reading and Tab order follow your DOM order.
 Server-side rendering is safe: importing the package where there is no DOM
 registers nothing.
 
