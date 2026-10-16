@@ -82,6 +82,31 @@ const wave = (base, amp, phase, drift, scale, n = 40) =>
   Array.from({ length: n }, (_, i) => (base + amp * Math.sin((i + phase) / 4.6) + drift * i) * scale)
 const pts = (values) => values.map((y, i) => ({ x: day(i), y }))
 
+const STRATEGIES = ['Opening range breakout', 'Mean reversion', 'Carry', 'Gap fade', 'Momentum', 'Pairs', 'Volatility', 'Calendar spread', 'Index arbitrage', 'Trend follow', 'Basis trade', 'Straddle', 'Iron condor', 'Scalper', 'Swing', 'Hedge']
+
+/** A strategies table: money in the account currency, signed P&L and returns, `rows` of them. */
+export function table(scale = 1, rows = 16, tick = 0) {
+  const rng = seeded(11)
+  return {
+    columns: [
+      { key: 'name', label: 'Strategy', priority: 0 },
+      { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', priority: 1 },
+      { key: 'ret', label: 'Return', format: 'percent', decimals: 1, tone: 'sign', priority: 3 },
+      { key: 'capital', label: 'Capital', format: 'money', decimals: 0, priority: 2 },
+      { key: 'trades', label: 'Trades', format: 'number', priority: 4 },
+      { key: 'avg', label: 'Avg hold', format: 'duration', priority: 5 },
+    ],
+    rows: Array.from({ length: rows }, (_, i) => {
+      const pnl = (rng() - 0.45) * 90000 * scale + (i === 3 ? tick * 137.5 : 0)
+      const capital = (200000 + rng() * 800000) * scale
+      return { id: `s${i}`, name: `${STRATEGIES[i % STRATEGIES.length]}${i >= STRATEGIES.length ? ` ${Math.floor(i / STRATEGIES.length) + 1}` : ''}`, pnl, ret: pnl / capital, capital, trades: 4 + Math.floor(rng() * 90), avg: (5 + rng() * 240) * 60000 }
+    }),
+    sort: { key: 'pnl', dir: 'desc' },
+    asOf: FROZEN,
+    live: true,
+  }
+}
+
 /** Data for a tag. `scale` multiplies every figure (1 is the ordinary size of the numbers). */
 export function dataFor(tag, scale = 1) {
   switch (tag) {
@@ -102,6 +127,13 @@ export function dataFor(tag, scale = 1) {
         ],
         asOf: FROZEN,
       }
+    case 'ts-table': {
+      // The first column carries the data's magnitude too, so a narrow size that shows only it still shows the data changing.
+      const t = table(scale)
+      const mag = Math.floor(Math.log10(Math.abs(scale) + 1) * 10)
+      t.rows.forEach((r, i) => { r.name = `${r.name} ${i}${mag}` })
+      return t
+    }
     case 'ts-today-pnl':
       return todayPnl(scale)
     case 'ts-equity-curve':

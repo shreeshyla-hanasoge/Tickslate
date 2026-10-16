@@ -1,7 +1,7 @@
 // The element classes, their data, and the typed `ts-action` event, under three module resolutions.
 // An `@ts-expect-error` that stops erroring fails the run (TS2578).
 import { TsMetric, TsGrid } from 'tickslate/elements'
-import type { TsChartAction, TsEquityCurveAction, TsMetricAction, TsCommonAction, MetricData } from 'tickslate/elements'
+import type { TsChartAction, TsEquityCurveAction, TsMetricAction, TsTableAction, TsCommonAction, MetricData } from 'tickslate/elements'
 import { TsCard } from 'tickslate/elements/card'
 import type { TsChartSelectAction } from 'tickslate/elements/chart'
 import type { TsOpenAction, TsMetricAction as MetricActionFromEntry } from 'tickslate/elements/metric'
@@ -58,4 +58,22 @@ const grid: TsGrid = document.createElement('ts-grid')
 grid.addEventListener('ts-layout-change', (e) => {
   const reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' = e.detail.reason
   void reason
+})
+
+// <ts-table>: typed columns, keyed rows, and sort and select actions.
+const table = document.createElement('ts-table')
+table.data = { columns: [{ key: 'pnl', label: 'P&L', format: 'money', tone: 'sign' }], rows: [{ id: 1, pnl: 3 }], sort: { key: 'pnl', dir: 'desc' } }
+// @ts-expect-error `bold` is not a column option
+table.data = { columns: [{ key: 'pnl', label: 'P&L', bold: true }], rows: [] }
+table.addEventListener('ts-action', (e) => {
+  const a: TsTableAction = e.detail
+  if (a.action === 'sort') {
+    const dir: 'asc' | 'desc' = a.dir
+    const key: string = a.value
+    void [dir, key]
+  }
+  if (a.action === 'select') {
+    const id: string | number = a.id
+    void id
+  }
 })

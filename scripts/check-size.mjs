@@ -119,6 +119,8 @@ const remeasuredSixth = (maxKb) => ({ ...entry(maxKb), target: 're-measured afte
 // A new entry (widget-picker-and-controls, 2026-10-16): the picker and the grid controls measure 13,594 B bundled
 // with the core, so 14,953 B with 10 %, which rounds up to 15 kB.
 const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-16' })
+// A new entry (ts-table, 2026-10-16): the table measures 20,005 B bundled with the core, so 22,006 B with 10 %, which
+// rounds up to 21.5 kB.
 const ENTRY_BUDGETS = {
   controls: newEntry(15),
   grid: remeasuredSixth(30.5),
@@ -128,6 +130,7 @@ const ENTRY_BUDGETS = {
   'today-pnl': remeasuredSixth(22.5),
   'equity-curve': remeasuredSixth(22.5),
   'session-clock': remeasuredFifth(21),
+  table: newEntry(21.5),
 }
 
 /**

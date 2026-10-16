@@ -72,6 +72,7 @@ export declare const WIDGETS: Readonly<{
   card: WidgetSpec
   metric: WidgetSpec
   chart: WidgetSpec
+  table: WidgetSpec
 }>
 
 /** The profile a layout uses when none is named. */
@@ -277,6 +278,7 @@ export interface Messages {
   'widget.card.label': string
   'widget.metric.label': string
   'widget.chart.label': string
+  'widget.table.label': string
   'widget.todayPnl.description': string
   'widget.equityCurve.description': string
   'widget.pnlCalendar.description': string
@@ -289,6 +291,7 @@ export interface Messages {
   'widget.card.description': string
   'widget.metric.description': string
   'widget.chart.description': string
+  'widget.table.description': string
   'category.General': string
   'category.Performance': string
   'category.Accounts': string
@@ -298,6 +301,7 @@ export interface Messages {
   'widget.sessionClock.empty': string
   'widget.metric.empty': string
   'widget.chart.empty': string
+  'widget.table.empty': string
   'size.S': string
   'size.Wide': string
   'size.Tall': string
@@ -447,6 +451,17 @@ export interface Messages {
   'chart.series': string
   'chart.last': string
   'chart.noData': string
+  'table.aria': string
+  'table.rows.one': string
+  'table.rows.other': string
+  'table.sortedBy': string
+  'table.ascending': string
+  'table.descending': string
+  'table.hidden.one': string
+  'table.hidden.other': string
+  'table.join': string
+  'table.select': string
+  'table.region': string
 }
 
 export type MessageKey = keyof Messages
