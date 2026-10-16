@@ -99,20 +99,25 @@ const BUDGETS = {
  * Re-measured 2026-10-16 from the CI run (gzip differs a little by machine)
  * after locale-formatting: core 11,659 B (117 B of headroom) and UMD 11,808 B
  * (32 B over), each reset to measured + 10 %, rounded up to 13 kB.
+ *
+ * Re-measured 2026-10-16 after tile-activation, which grew the shared base:
+ * card 16,499 B, chart 20,616 B, session-clock 19,151 B, each reset to
+ * measured + 10 %, rounded up to 18, 22.5 and 21 kB. No other row moved.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
 const remeasuredAgain = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-chrome and persist-attribute, RFC 0003 §25' })
 const remeasuredThird = (maxKb) => ({ ...entry(maxKb), target: 're-measured after overnight-sessions, theme-presets and reading-order, RFC 0003 §25' })
 const remeasuredFourth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after locale-formatting, RFC 0003 §25, maintainer approved', date: '2026-10-15' })
+const remeasuredFifth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-activation, RFC 0003 §25', date: '2026-10-16' })
 const ENTRY_BUDGETS = {
   grid: remeasuredAgain(27),
-  card: remeasuredThird(16),
+  card: remeasuredFifth(18),
   metric: remeasuredFourth(18.5),
-  chart: remeasuredThird(19.5),
+  chart: remeasuredFifth(22.5),
   'today-pnl': remeasuredAgain(19.5),
   'equity-curve': remeasuredAgain(19.5),
-  'session-clock': remeasuredAgain(18.5),
+  'session-clock': remeasuredFifth(21),
 }
 
 /**
