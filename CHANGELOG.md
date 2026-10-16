@@ -6,6 +6,110 @@ All notable changes to Tickslate are recorded here. The format follows
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-16
+
+The first feature release. It adds a table, a watchlist and open positions, a
+widget picker, translation of every string, six theme presets, framework
+typings and per-widget entries, and it makes the tile and package changes
+listed under Breaking. Read that list before upgrading.
+
+### Added
+
+New widgets and controls
+
+- `<ts-table>` (sizes Tall, M, L, XL): typed columns (`text`, `number`, `money`, `percent`, `duration`, `time`, `date`), a header that sorts, `tone: 'sign'` columns that show `+` or `−` with an arrow, columns that drop by `priority` when they do not fit, and live updates that change cells in place so focus and scroll position survive a tick. `ts-action` carries `{ action: 'sort', value, dir }` and, once `actions` lists `'select'`, `{ action: 'select', id }`.
+- `<ts-watchlist>` (sizes S, Tall, M): the instruments you follow, each with its last price, a signed change and a day-range bar, plus a sparkline at M. `change` and `changePct` are worked out from `prevClose` unless given.
+- `<ts-open-positions>` (sizes Wide, M, L): open positions with a signed profit or loss and the MTM total. M and L draw a bar from stop to target with the entry and last price marked, and L adds the price path and margin. A position with `pending: true` disables its Exit button while your order is in flight.
+- `ts-action` from the two lists, each off until `actions` lists it: `add-instrument`, `exit-position` and `exit-all`. The widgets ask; you confirm and send new data.
+- `<ts-widget-picker>`: a sheet to add widgets from, with search, categories, a size button per size and Add back for hidden tiles. `<ts-grid-controls>`: an Auto, Market hours and After close switcher for scheduled grids, and the link that makes the edit pill's Add open the picker. Both come from `tickslate/elements/controls`.
+- `grid.add()`, `grid.addTypes` and the cancelable `ts-add-request` event, for you to answer by rendering a tile; `grid.move()`, `grid.resize()` and `grid.remove(id)`, which edit like a drag, with undo, `ts-layout-change` and a spoken announcement; `grid.profileOverride` and `grid.openPicker`.
+- `description` and `category` on a widget's spec, filled in for every built-in widget.
+
+Saving layouts
+
+- `<ts-grid persist="my-dash">` saves the layout to `localStorage` per device and restores it, with no script. `grid.persist` reflects it. In development builds, the first edit to a grid that nothing saves warns that the edits will be lost on reload.
+- `persistLayout(grid, { adapter })` takes a `LayoutAdapter` (`load(device)`, `save(device, layout)`, optional `remove(device)`), any of which may return a promise, for layouts kept on a server. A late, stale or failing adapter never throws out of the grid.
+- `tickslate/elements/grid` exports `persistLayout`.
+
+Accessibility and reading order
+
+- `<ts-grid>` reads and tabs its tiles in the order they sit on screen after they are rearranged (WCAG 1.3.2 and 2.4.3), without moving your DOM nodes, so Vue and React keep patching their own. Below Safari 16.4 the grid keeps one slot and both orders follow your DOM.
+- `grid.readingOrder` and the `ts-reading-order-change` event (`detail.order`).
+- `heading-level` (1 to 6) on a widget or `<ts-grid>`: the level of each tile's heading, default 3.
+- Under `forced-colors: active`, the session-clock track, live dot, P&L marks, chart lines, selected range button and metric target bar stay visible in system colours.
+
+Tile actions
+
+- `href` on any widget turns the label into a real link across the whole tile; only `http:`, `https:`, `mailto:`, `tel:` and relative URLs are accepted. `activatable` makes the tile a button that fires `ts-action` with `{ action: 'open', id }` on click, Enter or Space.
+- `<ts-chart>` points become buttons when `actions` includes `'select'`, firing `ts-action` with `{ action: 'select', value, series, y, index }`; the arrow keys, Home and End move between them.
+
+Freshness
+
+- Live data with an `asOf` shows its age in the header of every widget that has one ("just now", "2 min. ago"), and past `stale-after` an amber, still dot, "Stale · 3 min" and a tile name ending ", stale". Data with an `asOf` and no `live` shows "synced 11:42".
+- `stale-after` (milliseconds, or `'90s'`, `'2m'`, `'1h'`; default 2 minutes) on a widget or `<ts-grid>`, `fmt.ago(t, now, opts)` and `ctx.freshness` (`{ asOf, ago, stale }`).
+- A changed headline figure tints for 700 ms in `--ts-profit` or `--ts-loss` (never on first render or under reduced motion). `flash="off"` stops it, and `this.flash(key, number, { goodWhen })` does the same for your own widgets.
+
+Translation and formatting
+
+- `EN` and `createMessages(overrides, locale)`: every visible and spoken string in one table, with `{param}` interpolation and plural forms from `Intl.PluralRules`. `configure({ messages })` translates every widget and grid, `currentConfig()` reads it back and `onConfigure(fn)` hears each change. A `messages` property on a widget or `<ts-grid>` overrides it for that subtree, and widgets expose `t` and pass `ctx.t` to view models. Types: `Messages`, `Translate`, `MessageOverrides` and `PluralBase`.
+- `configure()` and the `hour-cycle` attribute accept `h12`, `h23` or `auto`. `fmt.date()` formats dates for the active locale on the Gregorian calendar.
+
+Sessions
+
+- `createCalendar` accepts sessions that cross midnight or never close: a `close` before `open` is on the next local day, and a `close` equal to `open` is a 24-hour session. Windows that touch are one (Sunday 17:00 to Friday 17:00). `'24:00'` is still rejected.
+- `<ts-session-clock>` shows "Open 24/7" for a session that never closes, and an overnight window's lane and times name the day of any time that is not today.
+
+Themes
+
+- Six opt-in presets, `neutral`, `paper`, `graphite`, `calm`, `signal` and `terminal`: link `tickslate/themes/<name>.css` after `tokens.css` and set `data-ts-theme="<name>"` on a grid or widget. `neutral`, `calm`, `signal` and `terminal` have light and dark modes; `paper` and `graphite` are one mode each.
+- Typography tokens `--ts-label-size`, `--ts-label-case`, `--ts-label-tracking`, `--ts-label-weight` and `--ts-headline-weight`, and the parts `header`, `label`, `value`, `empty`, `skeleton` and `chart` on every widget.
+
+Packaging and typings
+
+- Per-widget entries: `tickslate/elements/grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`, `session-clock`, `table`, `watchlist`, `open-positions` and `controls`. Each registers only its own tag, so importing one no longer pulls in every widget. `tickslate/elements` still registers everything.
+- A one-script bundle for pages with no build step: `cdn/tickslate.iife.js` sets `window.Tickslate` and registers every element, and `cdn/tickslate.js` is the same code as a minified ES module.
+- `tickslate/jsx`, `tickslate/vue` and `tickslate/svelte`: types-only entries that add every `ts-*` tag, with its attributes and a typed `data`, to React, Vue and Svelte templates. `TsCommonAction` and one `ts-action` union per element, `TsOpenAction` and `TsChartSelectAction`.
+- `tickslate/custom-elements.json` (a Custom Elements Manifest) and `tickslate/vscode.html-custom-data.json`.
+
+Building your own widgets
+
+- `defineWidget(tag, Class, { type })` registers a widget and its `static spec` in the catalog in one call, and any grid then draws it without a `catalog` entry. `widgetCatalog()` returns the built-ins plus every registered widget, and `onCatalogChange(fn)` hears each registration.
+- `linePaths`, `scale` and `escapeHtml` are exported from `tickslate/elements` and are stable for 0.x.
+- A demo site (the playground, the widget gallery and the examples) and a custom widgets guide.
+
+### Changed
+
+- `<ts-grid>`'s board is the dashboard's one labelled region, named by the grid's `aria-label` or else "Dashboard". The grid no longer writes a `role` or `aria-label` to its own element.
+- Each tile's label is a heading. The tile's accessible name is rewritten only when it changes, so a ticking value no longer prompts a screen reader to read the tile again.
+- Today's P&L and the equity curve show a ▲ or ▼ beside a gain or a loss, as the metric already did. A signed figure never wraps apart from its arrow, in any theme.
+- Range buttons on the equity curve read as "1W, 1 week" to a screen reader, a Today's P&L exit mark is a diamond where an entry is a circle, and the equity curve's live dot sits before its label.
+- Time axes, progress tracks and chart plots stay left to right on a right-to-left page, and widget CSS uses logical properties only.
+- Every string the widgets and grid show or announce now comes from messages; English output is unchanged. A built-in widget's default label and empty text are the `widget.<key>.label` and `widget.<key>.empty` messages.
+- Word durations, time labels, fit decisions and axis ticks follow the active locale, 24-hour by default. English durations are unchanged. `<ts-grid>` passes changes to `locale`, `currency`, `time-zone` and `hour-cycle` on to its tiles.
+- Plain content slotted into a tile no longer blocks its click; only controls and the `actions` slot sit above it. Links, `activatable` tiles and chart points do nothing while the grid is editing.
+- `<ts-session-clock>` with a known close but no known start shows no progress track, only the countdown and the close.
+- `zonedTime` puts a wall time inside a spring-forward gap just after the gap, in every zone (02:30 on the day New York springs forward is 03:30 EDT); west of Greenwich it landed an hour early. A calendar reads its specs and holidays once, at `createCalendar`, and keeps a frozen copy.
+- Fixed: a `<ts-grid>` inside a closed shadow root no longer leaves edit mode when a tile, handle or the edit pill is tapped, and its Add back list is no longer closed by a press on its own items.
+- Fixed: a resize that loses its pointer now puts the tile back as it was, instead of leaving it lifted.
+- `TsCard`'s `spec` is declared as a property, matching `TsWidget`.
+
+### Breaking
+
+- **Tiles are `role="group"` with a heading, not region landmarks.** Each tile was a `<section>` region; it is now a group named by its headline, with the label as a heading inside, and the grid is the one labelled region. Do this instead: look tiles up with `getByRole('group', …)` rather than `'region'`, and set `heading-level` on the grid if the default of 3 does not fit your page.
+- **A live tile's accessible name ends with ", live" or ", stale".** The session clock's does while a session is open. A test that matches a name exactly, such as "Signups, 1,204", needs the suffix or a looser match.
+- **`elements.dev.js` is gone.** The development build is now `dev/elements.js` (and `dev/elements/<name>.js`), reached through the `development` export condition. Do this instead: import `tickslate/elements` and enable the `development` condition in your bundler or runtime, rather than importing `elements.dev.js` by path.
+- **The `unpkg` and `jsdelivr` fields point at the IIFE bundle**, `cdn/tickslate.iife.js`, which registers every element and sets `window.Tickslate`; they pointed at the core-only UMD. The UMD is unchanged and still ships at `umd/tickslate.umd.js`. Do this instead: if you want the core without elements from a CDN, name `umd/tickslate.umd.js` in the URL. Do not load the IIFE together with the UMD or the package entries, as they carry separate copies of the core.
+- **`SessionState.closesAt`, `startedAt` and `progress` can be `null` while `open` is `true`**, and `Calendar.nextChange` can return `null` for an open session. Do this instead: read `null` as "no close in sight", and in TypeScript handle the wider types.
+- **A calendar spec with a `close` at or before its `open` is now valid.** It used to throw `TypeError`; it now means a session that ends on the next day (or runs 24 hours when equal). A host that relied on the throw to catch a typo in `close` should check its specs.
+- **The bundles grew** with the new features and messages. The core is about 13.0 kB min+gz, up from 8.5 kB, and the core UMD is 13,222 B, up from 8,639 B. Each per-widget entry is also larger (for example `tickslate/elements/metric` is 21,220 B). Do this instead: import per-widget entries rather than `tickslate/elements` if size matters.
+
+### Internal
+
+- New contributor files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (contact still a placeholder), `SECURITY.md`, issue forms and a pull request template.
+- The real-browser suite runs on five Playwright projects (Chromium, WebKit, Firefox, mobile Safari and mobile Chrome), and CI builds and deploys the demo site to GitHub Pages once the maintainer enables it.
+- `npm run check:types` compiles type fixtures against `dist-lib/` under bundler, node16, node10, `exactOptionalPropertyTypes` and a CommonJS host.
+- `scripts/check-size.mjs` budgets every entry; the "grid plus one widget at 15 kB" rows are warnings, not enforced, because the grid alone is about 21 kB (RFC 0003 §25).
+
 ## 0.1.0 — 2026-10-14
 
 The first release. Version 0.0.0 was only ever a private scaffold, so nothing
