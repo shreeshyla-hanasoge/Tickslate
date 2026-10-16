@@ -134,6 +134,17 @@ export function dataFor(tag, scale = 1) {
       t.rows.forEach((r, i) => { r.name = `${r.name} ${i}${mag}` })
       return t
     }
+    case 'ts-watchlist': {
+      // Like the table, the first instrument's name carries the data's magnitude, so S still shows the data changing.
+      const w = watchlist({ scale })
+      w.instruments[0].symbol = `${w.instruments[0].symbol} ${Math.floor(Math.log10(Math.abs(scale) + 1) * 10)}`
+      return w
+    }
+    case 'ts-open-positions': {
+      const p = openPositions({ scale })
+      p.positions[0].instrument = `${p.positions[0].instrument} ${Math.floor(Math.log10(Math.abs(scale) + 1) * 10)}`
+      return p
+    }
     case 'ts-today-pnl':
       return todayPnl(scale)
     case 'ts-equity-curve':
@@ -161,3 +172,70 @@ export function fillCard(el, size) {
 
 /** A tag's label for the tiles that don't set one, so every tile has a name. */
 export const LABELS = { 'ts-card': 'Notes' }
+
+// ── The two trading lists ─────────────────────────────────────────────────
+// `step` moves the live figures the way a feed would: only some instruments tick at a step, so a test can count the
+// cells a tick touched. `plain` leaves the day range, the stop and the target out of the data.
+const NAMES = ['ALPHA 50', 'BETA BANK', 'GAMMA IT', 'DELTA AUTO', 'OMEGA PHARMA', 'SIGMA METALS', 'THETA ENERGY', 'KAPPA FMCG', 'LAMBDA INFRA', 'ZETA FIN',
+  'ETA 24500 CE', 'IOTA 24400 PE', 'MU CRUDE', 'NU GOLD', 'XI USDINR', 'PI MIDCAP', 'RHO SMALLCAP', 'TAU NEXT 50']
+const EXCHANGES = ['NSE', 'NSE', 'NSE', 'BSE', 'NSE', 'NSE', 'NSE', 'NSE', 'BSE', 'NSE', 'NFO', 'NFO', 'MCX', 'MCX', 'CDS', 'NSE', 'NSE', 'NSE']
+const PRICES = [24350.45, 52110.8, 3480.2, 1260.75, 9845.1, 1020.3, 410.65, 2765.9, 318.25, 1587.4, 133.4, 96.15, 6412, 71844, 83.4125, 55120, 18340.6, 68250]
+const T0 = FROZEN - 135 * 60000
+
+/** A watchlist of `n` instruments: a loss and a gain, one with its own change, one with no range, one with four decimals. */
+export function watchlist({ n = 14, step = 0, plain = false, scale = 1 } = {}) {
+  return {
+    live: true,
+    asOf: FROZEN + step * 1000,
+    instruments: Array.from({ length: n }, (_, i) => {
+      const r = seeded(100 + i)
+      const price = PRICES[i % 18] * scale
+      const drift = (r() - 0.5) * 0.03
+      const dp = i % 18 === 14 ? 4 : i % 4 === 3 ? 0 : 2
+      const ticking = (i + step) % 3 === 0 ? step * (r() - 0.45) * 0.0006 : 0
+      const spread = price * 0.012
+      const out = {
+        id: `i${i}`, symbol: NAMES[i % 18], exchange: EXCHANGES[i % 18], ltp: Number((price * (1 + drift + ticking)).toFixed(dp)), prevClose: price, decimals: dp,
+        ticks: Array.from({ length: 40 }, (_, k) => ({ t: T0 + k * 180000, price: price * (1 + drift * (k / 39) + Math.sin(k / 4 + i) * 0.002) })),
+      }
+      if (i === 2) {
+        out.change = 12.5 * scale
+        out.changePct = 0.0036
+      }
+      if (i !== 5 && !plain) {
+        out.dayLow = Number((price - spread).toFixed(dp))
+        out.dayHigh = Number((price + spread * 1.3).toFixed(dp))
+      }
+      return out
+    }),
+  }
+}
+
+/** `n` open positions, long and short: gains and losses, one with a stop and no target, one with neither. */
+export function openPositions({ n = 9, step = 0, plain = false, scale = 1 } = {}) {
+  return {
+    live: true,
+    asOf: FROZEN + step * 1000,
+    margin: 184500.5 * scale,
+    positions: Array.from({ length: n }, (_, i) => {
+      const r = seeded(200 + i)
+      const price = PRICES[(i + 10) % 18]
+      const long = i % 3 !== 1
+      const entry = Number((price * (1 + (r() - 0.5) * 0.01)).toFixed(2))
+      const ticking = (i + step) % 3 === 0 ? step * (r() - 0.45) * 0.0008 : 0
+      const ltp = Number((price * (1 + (r() - 0.5) * 0.018 + ticking)).toFixed(2))
+      const quantity = [50, 75, 120, 25, 200][i % 5]
+      const risk = price * 0.02
+      const out = {
+        id: `p${i}`, instrument: NAMES[(i + 10) % 18], side: long ? 'long' : 'short', quantity, entryPrice: entry, ltp, pnl: (long ? ltp - entry : entry - ltp) * quantity * scale,
+        strategy: ['Breakout', 'Carry', 'Mean reversion'][i % 3], account: 'Account A', lots: quantity / 25,
+        path: Array.from({ length: 30 }, (_, k) => ({ t: T0 + k * 270000, price: entry + (ltp - entry) * (k / 29) + Math.sin(k / 3 + i) * risk * 0.1 })),
+      }
+      if (i !== 4 && !plain) {
+        out.stop = Number((long ? entry - risk : entry + risk).toFixed(2))
+        out.target = i === 6 ? undefined : Number((long ? entry + risk * 2 : entry - risk * 2).toFixed(2))
+      }
+      return out
+    }),
+  }
+}

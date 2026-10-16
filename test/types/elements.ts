@@ -1,7 +1,7 @@
 // The element classes, their data, and the typed `ts-action` event, under three module resolutions.
 // An `@ts-expect-error` that stops erroring fails the run (TS2578).
 import { TsMetric, TsGrid } from 'tickslate/elements'
-import type { TsChartAction, TsEquityCurveAction, TsMetricAction, TsTableAction, TsCommonAction, MetricData } from 'tickslate/elements'
+import type { TsChartAction, TsEquityCurveAction, TsMetricAction, TsTableAction, TsWatchlistAction, TsOpenPositionsAction, TsCommonAction, MetricData } from 'tickslate/elements'
 import { TsCard } from 'tickslate/elements/card'
 import type { TsChartSelectAction } from 'tickslate/elements/chart'
 import type { TsOpenAction, TsMetricAction as MetricActionFromEntry } from 'tickslate/elements/metric'
@@ -76,4 +76,30 @@ table.addEventListener('ts-action', (e) => {
     const id: string | number = a.id
     void id
   }
+})
+
+// <ts-watchlist> and <ts-open-positions>: typed rows, and an action union each.
+const watchlist = document.createElement('ts-watchlist')
+watchlist.data = { instruments: [{ id: 'a', symbol: 'ALPHA 50', ltp: '24350.45', prevClose: 24300, dayLow: 24210, dayHigh: 24420, decimals: 2, ticks: [{ t: 1, price: 2 }] }] }
+// @ts-expect-error `last` is not a key of an instrument
+watchlist.data = { instruments: [{ id: 'a', ltp: 1, last: 2 }] }
+watchlist.addEventListener('ts-action', (e) => {
+  const a: TsWatchlistAction = e.detail
+  // @ts-expect-error a watchlist never sends 'exit-all'
+  if (a.action === 'exit-all') void 0
+  if (a.action === 'add-instrument') void a
+})
+
+const positions = document.createElement('ts-open-positions')
+positions.data = { positions: [{ id: 1, side: 'long', quantity: 50, entryPrice: 128, ltp: 133.4, pnl: 270, stop: 120, target: 140 }], mtm: 270, margin: 1000 }
+// @ts-expect-error a side is long or short
+positions.data = { positions: [{ id: 1, side: 'flat', quantity: 1, entryPrice: 1, ltp: 1, pnl: 0 }] }
+positions.addEventListener('ts-action', (e) => {
+  const a: TsOpenPositionsAction = e.detail
+  if (a.action === 'exit-position') {
+    const id: string | number = a.id
+    void id
+  }
+  // @ts-expect-error a list of positions never sends 'sort'
+  if (a.action === 'sort') void 0
 })

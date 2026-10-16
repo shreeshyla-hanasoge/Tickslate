@@ -62,6 +62,8 @@ export const EN = Object.freeze({
   'widget.metric.empty': 'No data yet',
   'widget.chart.empty': 'No data yet',
   'widget.table.empty': 'No rows yet',
+  'widget.watchlist.empty': 'No instruments yet',
+  'widget.openPositions.empty': 'No open positions',
 
   // Sizes: a size reads "Medium, 2 by 2"
   'size.S': 'Small',
@@ -249,6 +251,47 @@ export const EN = Object.freeze({
   'table.join': '{head}, {tail}',
   'table.select': 'Select {name}',
   'table.region': '{label}, rows',
+
+  // <ts-watchlist>
+  'watchlist.aria': '{label}, {instruments}',
+  'watchlist.instruments.one': '{count} instrument',
+  'watchlist.instruments.other': '{count} instruments',
+  'watchlist.firstOnly': 'showing the first',
+  'watchlist.join': '{head}, {tail}',
+  'watchlist.region': '{label}, instruments',
+  'watchlist.col.instrument': 'Instrument',
+  'watchlist.col.trend': 'Trend',
+  'watchlist.col.price': 'Last price and change',
+  'watchlist.range': 'Day range {low} to {high}, now {now}',
+  'watchlist.rangeOnly': 'Day range {low} to {high}',
+  'watchlist.trend': '{name} trend, from {from} to {to}',
+  'watchlist.add': 'Add instrument',
+
+  // <ts-open-positions>
+  'positions.aria': '{label}, {positions}',
+  'positions.count.one': '{count} position',
+  'positions.count.other': '{count} positions',
+  'positions.region': '{label}, positions',
+  'positions.col.instrument': 'Instrument',
+  'positions.col.trend': 'Price since entry',
+  'positions.col.last': 'Last price',
+  'positions.col.pnl': 'P&L',
+  'positions.col.actions': 'Actions',
+  'positions.mtm': 'MTM',
+  'positions.margin': 'Margin',
+  'positions.long': 'Long',
+  'positions.short': 'Short',
+  'positions.qtyAt': '{qty} @ {entry}',
+  'positions.lots.one': '{count} lot',
+  'positions.lots.other': '{count} lots',
+  'positions.join': '{head}, {tail}',
+  'positions.range': 'Between stop {stop} and target {target}',
+  'positions.rangeEntry': 'entry {entry}',
+  'positions.rangeNow': 'now {now}',
+  'positions.trend': '{name}, price since entry, from {from} to {to}',
+  'positions.exit': 'Exit',
+  'positions.exitLabel': 'Exit {name}',
+  'positions.exitAll': 'Exit all',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

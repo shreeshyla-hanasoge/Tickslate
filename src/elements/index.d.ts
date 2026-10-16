@@ -366,6 +366,170 @@ export declare class TsTable extends TsWidget<TableData> {
   static tableModel(data: TableData, variant: SizeName, ctx: ViewModelContext, o?: { width?: number }): TableModel
 }
 
+/** One instrument of a watchlist. Prices, times and the change are read as Numeric and Time. */
+export interface WatchlistInstrument {
+  /** Matched by `id`, so a live update changes cells in place. An instrument with no id, or a repeated one, is dropped. */
+  id: string | number
+  /** Shown as given: 'NIFTY 50'. Without one the id is shown. */
+  symbol?: string
+  exchange?: string
+  /** The last price. A price that cannot be read shows as a dash. */
+  ltp: Numeric
+  /** The change and the change % are worked out from it, unless they are given. */
+  prevClose?: Numeric
+  change?: Numeric
+  /** A fraction: 0.027 is +2.70%. */
+  changePct?: Numeric
+  /** Both draw the day-range bar; with only one there is no bar. */
+  dayLow?: Numeric
+  dayHigh?: Numeric
+  /** The instrument's tick precision, 0 to 20. Applies to the price, the change and the range. Default 2. */
+  decimals?: number
+  /** M: the sparkline. Readings need not arrive in order; at least two are needed. */
+  ticks?: Array<{ t: Time; price: Numeric }>
+}
+
+export interface WatchlistData extends WidgetFreshness {
+  instruments: WatchlistInstrument[]
+}
+
+export interface WatchlistModel {
+  /** 'Watchlist, 12 instruments'; at S with more than one, 'Watchlist, 12 instruments, showing the first'. */
+  ariaLabel: string
+  /** One entry per instrument shown: all of them, or the first at S. */
+  rows: Array<{
+    id: string | number
+    symbol: string
+    exchange: string
+    /** '24,350.45', or a dash. */
+    last: string
+    /** Signed: '+24.10' or '−12.50'. '' when there is no change to show. */
+    change: string
+    /** Signed: '+0.10%'. '' when there is none. */
+    pct: string
+    /** '' unless the change text carries a sign. aria-hidden in the template. */
+    arrow: '▲' | '▼' | ''
+    tone: 'pos' | 'neg' | 'mut'
+    /** null without both a low and a high. `now` is 0 to 100 along the bar, null when the price cannot be placed. */
+    bar: { now: number | null; label: string } | null
+    /** M only, with at least two readable ticks. */
+    spark: { line: string; label: string; tone: 'pos' | 'neg' | 'mut' } | null
+  }>
+  /** Instruments that can be read, shown or not. */
+  total: number
+  /** Instruments that could not be read: no id, a repeated id, or not an object. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-watchlist>, sizes S · Tall · M. The instruments you follow, with the last price, the signed change and the day range; S shows the first.
+ *
+ * @element ts-watchlist
+ * @fires {CustomEvent<TsWatchlistAction>} ts-action - Retry, 'open', and 'add-instrument' when `actions` includes it.
+ * @csspart table - The table.
+ * @csspart row - The body of one instrument: its row and its range bar.
+ * @csspart cell - A cell of an instrument's row.
+ * @csspart bar - A day-range bar.
+ * @csspart chart - A sparkline.
+ */
+export declare class TsWatchlist extends TsWidget<WatchlistData> {
+  addEventListener(type: 'ts-action', listener: (this: TsWatchlist, ev: CustomEvent<TsWatchlistAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsWatchlist, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: formatted prices, signed changes, bar marks and the accessible name. */
+  static watchlistModel(data: WatchlistData, variant: SizeName, ctx: ViewModelContext): WatchlistModel
+}
+
+/** One open position. Prices and times are read as Numeric and Time. */
+export interface OpenPosition {
+  /** Matched by `id`, so a live update changes cells in place. A position with no id, or a repeated one, is dropped. */
+  id: string | number
+  /** 'NIFTY 24500 CE'. Without one the id is shown. */
+  instrument?: string
+  /** Shown in the row's hover text. */
+  strategy?: string
+  account?: string
+  side: 'long' | 'short'
+  quantity: Numeric
+  /** Shown in the row's hover text. */
+  lots?: Numeric
+  entryPrice: Numeric
+  ltp: Numeric
+  /** Shown signed, in the money format. */
+  pnl: Numeric
+  /** Both a stop and a target draw the range bar, whatever the side; with only one there is no bar. */
+  stop?: Numeric
+  target?: Numeric
+  /** Accepted; not drawn yet. */
+  openedAt?: Time
+  /** L: the price since entry, as a sparkline. Readings need not arrive in order; at least two are needed. */
+  path?: Array<{ t: Time; price: Numeric }>
+}
+
+export interface OpenPositionsData extends WidgetFreshness {
+  positions: OpenPosition[]
+  /** Defaults to the sum of the positions' `pnl`. */
+  mtm?: Numeric
+  /** L: shown in the summary line. */
+  margin?: Numeric
+}
+
+export interface OpenPositionsModel {
+  /** 'Open positions, 3 positions'. */
+  ariaLabel: string
+  rows: Array<{
+    id: string | number
+    name: string
+    /** The strategy, the account and the lots, joined: the row's hover text. */
+    title: string
+    side: 'long' | 'short' | ''
+    sideText: string
+    /** '50 @ 128.00'; just the quantity without an entry price; '' without either. */
+    detail: string
+    last: string
+    /** Signed money: '+₹1,240.25' or '−₹310.00'. */
+    pnl: string
+    arrow: '▲' | '▼' | ''
+    tone: 'pos' | 'neg' | 'mut'
+    /**
+     * null without both a stop and a target. `entry` and `now` are 0 to 100 along the bar from the stop to the target,
+     * null when there is no entry price or no last price. `label` is the text alternative.
+     */
+    bar: { entry: number | null; now: number | null; label: string } | null
+    /** L only, with at least two readable points. */
+    spark: { line: string; label: string; tone: 'pos' | 'neg' | 'mut' } | null
+  }>
+  /** The given `mtm`, else the sum of the positions' `pnl`; null when neither can be read. */
+  mtm: { text: string; arrow: '▲' | '▼' | ''; tone: 'pos' | 'neg' | 'mut' } | null
+  /** L only; '' otherwise. */
+  margin: string
+  /** Positions that could not be read: no id, a repeated id, or not an object. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-open-positions>, sizes Wide · M · L. The open positions with their signed profit or loss; M and L add the bar from stop to target.
+ *
+ * @element ts-open-positions
+ * @fires {CustomEvent<TsOpenPositionsAction>} ts-action - Retry, 'open', and 'exit-position' and 'exit-all' when `actions` includes them.
+ * @csspart table - The table.
+ * @csspart row - The body of one position: its row and its range bar.
+ * @csspart cell - A cell of a position's row.
+ * @csspart bar - A range bar.
+ * @csspart chart - A sparkline.
+ */
+export declare class TsOpenPositions extends TsWidget<OpenPositionsData> {
+  addEventListener(type: 'ts-action', listener: (this: TsOpenPositions, ev: CustomEvent<TsOpenPositionsAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsOpenPositions, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: formatted prices, signed profit and loss, bar marks and the accessible name. */
+  static positionsModel(data: OpenPositionsData, variant: SizeName, ctx: ViewModelContext): OpenPositionsModel
+}
+
 export interface TodayPnlData extends WidgetFreshness {
   /** Shown exactly as given; the widget never recomputes it from the parts. */
   net: Numeric
@@ -450,6 +614,10 @@ export type TsMetricAction = TsCommonAction
 export type TsChartAction = TsCommonAction | TsChartSelectAction
 /** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1, Decision 36). */
 export type TsTableAction = TsCommonAction | { action: 'sort'; value: string; dir: 'asc' | 'desc' } | { action: 'select'; id: string | number }
+/** 'add-instrument' only fires when the host opts in with `actions = ['add-instrument']` (RFC 0003 §21.3). */
+export type TsWatchlistAction = TsCommonAction | { action: 'add-instrument' }
+/** 'exit-position' and 'exit-all' only fire when the host opts in with `actions` (RFC 0003 §21.3). */
+export type TsOpenPositionsAction = TsCommonAction | { action: 'exit-position'; id: string | number } | { action: 'exit-all' }
 export type TsTodayPnlAction = TsCommonAction
 export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
 export type TsSessionClockAction = TsCommonAction
@@ -561,6 +729,8 @@ declare global {
     'ts-metric': TsMetric
     'ts-chart': TsChart
     'ts-table': TsTable
+    'ts-watchlist': TsWatchlist
+    'ts-open-positions': TsOpenPositions
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock

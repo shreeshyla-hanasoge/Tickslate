@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- One <ts-watchlist> or <ts-open-positions> for the lists spec. ?kind=watchlist|positions, ?size=S|Tall|M|Wide|L,
+     ?width=px (the tile's width), ?n=rows, ?theme=light|dark, ?preset=terminal (or calm, signal...), ?fit caps the width at the
+     viewport's, ?actions lists every action the widget offers, ?plain leaves the stop, target and range out of the data.
+     The spec drives it through window.__l: tick(k) sends the same rows with the live figures of step k, and events collects every
+     ts-action. The numbers are made up and nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lists fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  #wrap { max-width: none; }
+</style>
+</head>
+<body>
+<main>
+  <div id="wrap"></div>
+</main>
+<script type="module">
+  import '/src/elements/index.js'
+  import { setup, frozenClock, watchlist, openPositions } from './data.js'
+
+  setup()
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+
+  const kind = params.get('kind') === 'positions' ? 'positions' : 'watchlist'
+  const n = Number(params.get('n') || (kind === 'positions' ? 9 : 14))
+  const plain = params.has('plain')
+  const tag = kind === 'positions' ? 'ts-open-positions' : 'ts-watchlist'
+  const el = document.createElement(tag)
+  const size = params.get('size') || (kind === 'positions' ? 'M' : 'Tall')
+  el.setAttribute('size', size)
+  // The grid gives a tile one row (150px) or two (316px, with the gap), so the fixture does too.
+  el.style.height = size === 'S' || size === 'Wide' ? '150px' : '316px'
+  el.clock = frozenClock
+  document.getElementById('wrap').append(el)
+  document.getElementById('wrap').style.width = `${params.get('width') || 640}px`
+  if (params.has('fit')) document.getElementById('wrap').style.maxWidth = '100%'
+  if (params.has('actions')) el.actions = kind === 'positions' ? ['exit-position', 'exit-all'] : ['add-instrument']
+  const events = []
+  el.addEventListener('ts-action', (e) => events.push(e.detail))
+  const data = (step) => (kind === 'positions' ? openPositions({ n, step, plain }) : watchlist({ n, step, plain }))
+  el.data = data(0)
+
+  window.__l = {
+    el,
+    events,
+    kind,
+    tick: (step) => { el.data = data(step) },
+    width: (px) => { document.getElementById('wrap').style.width = `${px}px` },
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>
