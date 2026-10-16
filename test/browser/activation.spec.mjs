@@ -1,6 +1,6 @@
 // Tile activation and point selection in real engines (RFC 0003 §7):
-// href, activatable, stretched-link pattern, focus ring, keyboard (Enter/Space),
-// chart point selection, and edit-mode suppression.
+// href, activatable, stretched-link pattern, slotted content, focus ring,
+// keyboard (Enter/Space), chart point selection and edit-mode suppression.
 import { test, expect } from '@playwright/test'
 
 const GRID = '/test/browser/fixtures/grid.html?mode=explicit'
@@ -28,24 +28,42 @@ async function load(page, query = '') {
   })
 }
 
+const actionsOf = (page) => page.evaluate(() => window.__actions)
+// Read from the page, not from page.url(): a same-document hash change reaches the test process a moment after the click does.
+const hashOf = (page) => page.evaluate(() => location.hash)
+const centre = (box) => [box.x + box.width / 2, box.y + box.height / 2]
+// A real pointer click at the element's centre. locator.click() would wait forever on an element the tile overlay sits above, which is the very thing under test.
+const clickOn = async (page, locator) => {
+  // The mouse only reaches what is on screen, and a phone stacks the tiles below the fold.
+  await locator.scrollIntoViewIfNeeded()
+  await page.mouse.click(...centre(await locator.boundingBox()))
+}
+
 test.describe('href stretched link pattern', () => {
   test('an href attribute makes the label a link and stretches across the tile', async ({ page }) => {
     await load(page)
     await page.evaluate(() => {
       const card = document.querySelector('ts-card[item="notes"]')
       card.setAttribute('href', '#notes-detail')
-      card.innerHTML = '<span slot="value">42</span>'
     })
 
     const card = page.locator('ts-card[item="notes"]')
-    const link = card.locator('[part~="link"]')
-    await expect(link).toHaveAttribute('href', '#notes-detail')
+    await expect(card.locator('[part~="link"]')).toHaveAttribute('href', '#notes-detail')
 
-    // Click on the tile surface (away from the label text)
+    // Away from the label text, in the tile's far corner.
     const box = await card.boundingBox()
     await page.mouse.click(box.x + box.width - 20, box.y + box.height - 20)
 
-    expect(page.url()).toContain('#notes-detail')
+    await expect(page).toHaveURL(/#notes-detail$/)
+  })
+
+  test('clicking slotted text inside an href tile follows the link', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => document.querySelector('ts-card[item="notes"]').setAttribute('href', '#from-value'))
+
+    // The seeded card has <span slot="value">42</span>; a user clicks the number, not the corner.
+    await clickOn(page, page.locator('ts-card[item="notes"] [slot="value"]'))
+    await expect(page).toHaveURL(/#from-value$/)
   })
 
   test('inner buttons inside an href tile still receive clicks without triggering the link', async ({ page }) => {
@@ -55,19 +73,37 @@ test.describe('href stretched link pattern', () => {
       const card = document.querySelector('ts-card[item="notes"]')
       card.setAttribute('href', '#should-not-reach')
       card.innerHTML = '<button type="button" id="inner-btn" slot="actions">Action</button>'
-      card.querySelector('#inner-btn').addEventListener('click', (e) => {
-        e.stopPropagation()
-        e.preventDefault()
+      card.querySelector('#inner-btn').addEventListener('click', () => {
         window.__innerClicked++
       })
     })
 
-    const innerBtn = page.locator('#inner-btn')
-    await innerBtn.click()
+    await page.locator('#inner-btn').click()
 
-    const clicked = await page.evaluate(() => window.__innerClicked)
-    expect(clicked).toBe(1)
-    expect(page.url()).not.toContain('#should-not-reach')
+    expect(await page.evaluate(() => window.__innerClicked)).toBe(1)
+    expect(await hashOf(page)).not.toBe('#should-not-reach')
+  })
+
+  test('a rejected href renders no link, and does not stop activatable from working', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => {
+      const card = document.querySelector('ts-card[item="tasks"]')
+      card.setAttribute('href', 'javascript:window.__pwned = true')
+      card.setAttribute('activatable', '')
+    })
+
+    const link = page.locator('ts-card[item="tasks"] [part~="link"]')
+    await expect(link).toHaveJSProperty('localName', 'button')
+    await link.focus()
+    await page.keyboard.press('Enter')
+    expect(await actionsOf(page)).toEqual([{ action: 'open', id: 'tasks' }])
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined()
+  })
+
+  test('a protocol-relative href is rejected like an unsupported scheme', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => document.querySelector('ts-card[item="notes"]').setAttribute('href', '//evil.example/x'))
+    await expect(page.locator('ts-card[item="notes"] [part~="link"]')).toHaveCount(0)
   })
 })
 
@@ -75,46 +111,93 @@ test.describe('activatable attribute and keyboard support', () => {
   test('clicking an activatable tile fires ts-action { action: "open", id }', async ({ page }) => {
     await load(page)
     await page.evaluate(() => {
-      const metric = document.querySelector('ts-metric[item="sales"]')
-      metric.setAttribute('activatable', '')
+      document.querySelector('ts-metric[item="sales"]').setAttribute('activatable', '')
     })
 
-    const metric = page.locator('ts-metric[item="sales"]')
-    const box = await metric.boundingBox()
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    const box = await page.locator('ts-metric[item="sales"]').boundingBox()
+    await page.mouse.click(...centre(box))
 
-    const actions = await page.evaluate(() => window.__actions)
-    expect(actions).toEqual([{ action: 'open', id: 'sales' }])
+    expect(await actionsOf(page)).toEqual([{ action: 'open', id: 'sales' }])
   })
 
-  test('Enter and Space activate the tile when focused and focus ring is visible', async ({ page }) => {
+  test('clicking slotted value text of an activatable card opens it once', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => document.querySelector('ts-card[item="notes"]').setAttribute('activatable', ''))
+
+    await clickOn(page, page.locator('ts-card[item="notes"] [slot="value"]'))
+
+    expect(await actionsOf(page)).toEqual([{ action: 'open', id: 'notes' }])
+  })
+
+  test('plain slotted content in the default slot does not block the tile', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => document.querySelector('ts-card[item="queue"]').setAttribute('activatable', ''))
+
+    // The queue card's list is plain content in the default slot.
+    await clickOn(page, page.locator('ts-card[item="queue"] li').first())
+    expect(await actionsOf(page)).toEqual([{ action: 'open', id: 'queue' }])
+  })
+
+  test('a slotted button gets its own click and does not open the tile', async ({ page }) => {
     await load(page)
     await page.evaluate(() => {
-      const card = document.querySelector('ts-card[item="tasks"]')
+      window.__innerClicked = 0
+      const card = document.querySelector('ts-card[item="notes"]')
       card.setAttribute('activatable', '')
+      card.insertAdjacentHTML('beforeend', '<button type="button" id="slotted-btn" slot="footer">More</button>')
+      card.querySelector('#slotted-btn').addEventListener('click', () => {
+        window.__innerClicked++
+      })
+    })
+
+    await page.locator('#slotted-btn').click()
+
+    expect(await page.evaluate(() => window.__innerClicked)).toBe(1)
+    expect(await actionsOf(page)).toEqual([])
+  })
+
+  test('a slotted link and an element with tabindex keep their own clicks', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => {
+      window.__innerClicked = 0
+      const card = document.querySelector('ts-card[item="notes"]')
+      card.setAttribute('activatable', '')
+      card.insertAdjacentHTML('beforeend', '<a href="#own" id="slotted-a" slot="footer">Own</a><span tabindex="0" id="slotted-ti" slot="footer">Focusable</span>')
+      card.querySelector('#slotted-ti').addEventListener('click', () => {
+        window.__innerClicked++
+      })
+    })
+
+    await page.locator('#slotted-a').click()
+    await expect(page).toHaveURL(/#own$/)
+    await page.locator('#slotted-ti').click()
+
+    expect(await page.evaluate(() => window.__innerClicked)).toBe(1)
+    expect(await actionsOf(page)).toEqual([])
+  })
+
+  test('Enter and Space activate the tile when focused, and the focus ring is on the link overlay', async ({ page }) => {
+    await load(page)
+    await page.evaluate(() => {
+      document.querySelector('ts-card[item="tasks"]').setAttribute('activatable', '')
     })
 
     const card = page.locator('ts-card[item="tasks"]')
-    const linkBtn = card.locator('[part~="link"]')
-    await linkBtn.focus()
+    // Focus from script, because WebKit's Tab skips buttons unless the user has opted in; with no pointer used yet it still matches :focus-visible.
+    await card.locator('[part~="link"]').focus()
 
-    // Focus ring on the whole tile via :has([part~="link"]:focus-visible)
-    const outline = await card.evaluate((el) => {
-      const tile = el.shadowRoot.querySelector('.tile')
-      const style = window.getComputedStyle(tile)
-      return {
-        outlineStyle: style.outlineStyle,
-      }
+    const ring = await card.evaluate((el) => {
+      const style = getComputedStyle(el.shadowRoot.querySelector('[part~="link"]'), '::after')
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth }
     })
-    expect(outline.outlineStyle).not.toBe('none')
+    expect(ring.outlineStyle).not.toBe('none')
+    expect(ring.outlineWidth).toBe('2px')
 
     await page.keyboard.press('Enter')
-    let actions = await page.evaluate(() => window.__actions)
-    expect(actions).toEqual([{ action: 'open', id: 'tasks' }])
+    expect(await actionsOf(page)).toEqual([{ action: 'open', id: 'tasks' }])
 
     await page.keyboard.press('Space')
-    actions = await page.evaluate(() => window.__actions)
-    expect(actions).toEqual([
+    expect(await actionsOf(page)).toEqual([
       { action: 'open', id: 'tasks' },
       { action: 'open', id: 'tasks' },
     ])
@@ -122,38 +205,94 @@ test.describe('activatable attribute and keyboard support', () => {
 })
 
 test.describe('chart point selection', () => {
+  const series = (n, x0 = 1700000000000, step = 3600000) => ({
+    series: [{ name: 'Requests', points: Array.from({ length: n }, (_, i) => ({ x: x0 + i * step, y: 10 + (i % 7) })) }],
+  })
+
+  async function setChart(page, data) {
+    await page.evaluate((d) => {
+      const chart = document.querySelector('ts-chart[item="traffic"]')
+      chart.data = d
+      chart.actions = ['select']
+    }, data)
+  }
+
   test('chart points fire ts-action { action: "select", value } on click and Enter', async ({ page }) => {
     await load(page)
-    await page.evaluate(() => {
-      const chart = document.querySelector('ts-chart[item="traffic"]')
-      chart.data = {
-        series: [
-          { name: 'Requests', points: [{ x: 1, y: 10 }, { x: 2, y: 20 }, { x: 3, y: 15 }] },
-        ],
-      }
-      chart.actions = ['select']
-    })
+    await setChart(page, { series: [{ name: 'Requests', points: [{ x: 1, y: 10 }, { x: 2, y: 20 }, { x: 3, y: 15 }] }] })
 
-    const chart = page.locator('ts-chart[item="traffic"]')
-    const points = chart.locator('.pt')
-    await expect(points.first()).toBeVisible()
-    const count = await points.count()
-    expect(count).toBe(3)
+    const points = page.locator('ts-chart[item="traffic"] .pt')
+    await expect(points).toHaveCount(3)
 
-    // Click the first point
     await points.first().click()
-    let actions = await page.evaluate(() => window.__actions)
+    let actions = await actionsOf(page)
     expect(actions.length).toBe(1)
     expect(actions[0].action).toBe('select')
     expect(actions[0].index).toBe(0)
 
-    // Focus the second point and press Enter
     await points.nth(1).focus()
     await page.keyboard.press('Enter')
-    actions = await page.evaluate(() => window.__actions)
+    actions = await actionsOf(page)
     expect(actions.length).toBe(2)
-    expect(actions[1].action).toBe('select')
     expect(actions[1].index).toBe(1)
+
+    await page.keyboard.press('Space')
+    expect((await actionsOf(page)).length).toBe(3)
+  })
+
+  test('a time axis names points by date, in the page locale, and keeps the raw x in the event', async ({ page }) => {
+    await load(page)
+    await setChart(page, series(3, 1700000000000, 86400000))
+
+    const first = page.locator('ts-chart[item="traffic"] .pt').first()
+    const label = await first.getAttribute('aria-label')
+    expect(label).not.toMatch(/\d{9,}/)
+    expect(label).toMatch(/2023/)
+    expect(label).toContain('Requests')
+
+    await first.click()
+    expect((await actionsOf(page))[0].value).toBe(1700000000000)
+  })
+
+  test('200 points are one tab stop, and the arrow keys move between them', async ({ page }) => {
+    await load(page)
+    await setChart(page, series(200))
+    const chart = page.locator('ts-chart[item="traffic"]')
+    await expect(chart.locator('.pt')).toHaveCount(200)
+
+    expect(await chart.locator('.pt[tabindex="0"]').count()).toBe(1)
+    expect(await chart.locator('.pt[tabindex="-1"]').count()).toBe(199)
+
+    // One Tab from the control before the chart lands on the group; another leaves it.
+    await page.locator('ts-card[item="tasks"]').evaluate((el) => el.setAttribute('tabindex', '0'))
+    await page.locator('ts-card[item="tasks"]').focus()
+    await page.keyboard.press('Tab')
+    const active = () => chart.evaluate((el) => el.shadowRoot.activeElement?.getAttribute('data-index') ?? null)
+    expect(await active()).toBe('0')
+
+    await page.keyboard.press('ArrowRight')
+    expect(await active()).toBe('1')
+    await page.keyboard.press('ArrowDown')
+    expect(await active()).toBe('2')
+    await page.keyboard.press('ArrowLeft')
+    expect(await active()).toBe('1')
+    await page.keyboard.press('End')
+    expect(await active()).toBe('199')
+    await page.keyboard.press('ArrowRight')
+    expect(await active()).toBe('199')
+    await page.keyboard.press('Home')
+    expect(await active()).toBe('0')
+
+    // The tab stop followed the arrows, so Tab and Shift+Tab come back to where the user was.
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowRight')
+    expect(await chart.locator('.pt[tabindex="0"]').count()).toBe(1)
+    await page.keyboard.press('Enter')
+    expect((await actionsOf(page)).pop().index).toBe(2)
+    await page.keyboard.press('Tab')
+    expect(await active()).toBeNull()
+    await page.keyboard.press('Shift+Tab')
+    expect(await active()).toBe('2')
   })
 })
 
@@ -161,33 +300,38 @@ test.describe('edit-mode suppression', () => {
   test('activatable tiles, href links and chart points are inert while grid is editing', async ({ page }) => {
     await load(page)
     await page.evaluate(() => {
-      const metric = document.querySelector('ts-metric[item="sales"]')
-      metric.setAttribute('activatable', '')
-      const card = document.querySelector('ts-card[item="notes"]')
-      card.setAttribute('href', '#suppressed')
-      const chart = document.querySelector('ts-chart[item="traffic"]')
-      chart.actions = ['select']
-
-      const grid = document.getElementById('g')
-      grid.editing = true
+      document.querySelector('ts-metric[item="sales"]').setAttribute('activatable', '')
+      document.querySelector('ts-card[item="notes"]').setAttribute('href', '#suppressed')
+      document.querySelector('ts-chart[item="traffic"]').actions = ['select']
     })
 
-    // Try clicking activatable tile
-    const metric = page.locator('ts-metric[item="sales"]')
-    const mBox = await metric.boundingBox()
-    await page.mouse.click(mBox.x + mBox.width / 2, mBox.y + mBox.height / 2)
+    const chart = page.locator('ts-chart[item="traffic"]')
+    const points = chart.locator('.pt')
+    // The points exist before editing starts, so the assertions below cannot pass for want of buttons.
+    expect(await points.count()).toBeGreaterThan(0)
+    const pointBox = await points.first().boundingBox()
 
-    // Try clicking chart point
-    const point = page.locator('ts-chart[item="traffic"] .pt').first()
-    await point.click({ force: true })
+    await page.evaluate(() => {
+      document.getElementById('g').editing = true
+    })
 
-    // Try clicking href tile
-    const card = page.locator('ts-card[item="notes"]')
-    const cBox = await card.boundingBox()
-    await page.mouse.click(cBox.x + cBox.width / 2, cBox.y + cBox.height / 2)
+    // The grid takes the tiles out of the tab order and the pointer's reach while editing.
+    expect(await chart.evaluate((el) => el.inert)).toBe(true)
+    await points.first().focus()
+    expect(await page.evaluate(() => document.activeElement?.localName)).not.toBe('ts-chart')
+    expect(await chart.evaluate((el) => el.shadowRoot.activeElement)).toBeNull()
 
-    const actions = await page.evaluate(() => window.__actions)
-    expect(actions).toEqual([])
-    expect(page.url()).not.toContain('#suppressed')
+    await page.mouse.click(...centre(pointBox))
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Space')
+
+    const mBox = await page.locator('ts-metric[item="sales"]').boundingBox()
+    await page.mouse.click(...centre(mBox))
+    const cBox = await page.locator('ts-card[item="notes"]').boundingBox()
+    await page.mouse.click(...centre(cBox))
+
+    expect(await actionsOf(page)).toEqual([])
+    expect(await hashOf(page)).not.toBe('#suppressed')
+    expect(await points.count()).toBeGreaterThan(0)
   })
 })

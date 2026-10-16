@@ -1,13 +1,14 @@
 ### Added
 
-- `href` attribute on any widget: wraps the tile label in `<a part="link" href="...">` with a stretched-link pseudo-element (`[part~="link"]::after`) that makes the whole tile clickable while inner buttons and slotted action controls continue to receive clicks. Only `http:`, `https:`, `mailto:`, `tel:` and relative URLs are accepted; unsupported schemes (like `javascript:` or `data:`) are rejected with a development warning.
-- `activatable` attribute and property on any widget: turns the tile into an interactive trigger, firing a bubbling `ts-action` event with `{ action: 'open', id }` (where `id` is the tile's `item` attribute) on click, Enter or Space. A visible `--ts-focus` ring outlines the tile on keyboard focus (`:focus-visible`).
-- Point selection on `<ts-chart>`: when `actions` includes `'select'`, data points render as interactive targets (`.pt`), firing `ts-action` with `{ action: 'select', value, series, y, index }` on click or Enter.
-- Edit-mode suppression: activation clicks, links and chart point selection are disabled while the enclosing `<ts-grid>` is in editing mode (`grid.editing`).
+- `href` attribute and property on any widget: the label becomes a real link that stretches across the whole tile, while buttons, links and other controls inside the tile keep their own clicks. Only `http:`, `https:`, `mailto:`, `tel:` and relative URLs are accepted; other schemes (`javascript:`, `data:`) and protocol-relative URLs (`//host`, `\\host`) are ignored, with a development warning. A rejected `href` does not stop `activatable` from working.
+- `activatable` attribute and property on any widget: the label becomes a button that fires a bubbling `ts-action` event with `{ action: 'open', id }` (the tile's `item`) on click, Enter or Space, with a focus ring around the tile. `href` wins only when it is valid.
+- Point selection on `<ts-chart>`: when `actions` includes `'select'`, the points are buttons named by series, formatted x (a date or time on a time axis) and value, firing `ts-action` with `{ action: 'select', value, series, y, index }` on click, Enter or Space. The points are one tab stop, and the arrow keys, Home and End move between them.
+
+### Changed
+
+- Plain content slotted into a tile (text, spans, lists) no longer blocks the tile's click; only controls (buttons, links, inputs, anything with `tabindex`) and the `actions` slot sit above it.
+- Links, `activatable` tiles and chart points do nothing while the enclosing `<ts-grid>` is editing.
 
 ### Internal
 
-- Added `validateHref` validator in `src/elements/widget.js` and TypeScript types for `TsOpenAction` and `TsChartSelectAction` in `src/elements/widget.d.ts`.
-- `test/tile-activation.test.mjs` covers URL validation, stretched link CSS rules, `href` and `activatable` reflection, keyboard activation, edit-mode suppression, and chart point select calculations.
-- `test/browser/activation.spec.mjs` validates full browser interactions across Chromium, WebKit, Mobile Safari, Firefox, and Mobile Chrome.
-- Size measurements: `chart (bundled)` measures 20,024 B (19.55 kB min+gz), which is 56 B over its 19.5 kB (19,968 B) budget. `session-clock (bundled)` is 18,939 B (18.49 kB min+gz, within its 18.5 kB budget). In accordance with AGENTS.md, the budget was not raised and strings were preserved; reported for maintainer baseline update.
+- `validateHref` and the `TsOpenAction` and `TsChartSelectAction` types are added to the base widget typings.

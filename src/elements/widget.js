@@ -233,6 +233,11 @@ export function validateHref(raw, el) {
   if (typeof raw !== 'string') return null
   const stripped = raw.replace(/[\u0000-\u0020]/g, '')
   if (!stripped) return null
+  // //host and \\host carry no scheme but are cross-origin, so they are rejected like one.
+  if (/^[\\/]{2}/.test(stripped)) {
+    if (DEV && el) warnOnce(`href-scheme:${el._uid || el.localName}`, `${describeElement(el)} href="${raw}" is a protocol-relative URL; use a full http or https URL or a path.`)
+    return null
+  }
   const match = SCHEME.exec(stripped)
   if (match) {
     const scheme = match[1].toLowerCase()
@@ -428,8 +433,10 @@ ${standaloneCss()}
   cursor: pointer; outline: none; display: inline;
 }
 [part~="link"]::after { content: ''; position: absolute; inset: 0; z-index: 1; }
-.tile:has([part~="link"]:focus-visible) { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; }
-slot[name="actions"], ::slotted(*) { position: relative; z-index: 2; }
+/* The ring is on the link's own overlay, which already covers the tile, so it works in engines without the parent selector (Firefox before 121). */
+[part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
+/* Plain slotted content stays under the overlay, so a click on it opens the tile. Only controls, and whatever the host puts in the actions slot, are lifted above it to take their own clicks. */
+::slotted(:is(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="link"])), ::slotted([slot="actions"]) { position: relative; z-index: 2; }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
 @media (pointer: coarse) { .btn { min-height: 44px; min-width: 44px; } }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
@@ -615,7 +622,8 @@ export class TsWidget extends Base {
         e.stopPropagation?.()
         return
       }
-      if (this.activatable && !this.hasAttribute('href')) {
+      // Only the button exists when the tile opens; a valid href renders a real link and navigates natively.
+      if (link.localName === 'button') {
         e.preventDefault?.()
         this.emit(ACTION_OPEN, { id: this.getAttribute('item') || '' })
       }
@@ -625,8 +633,6 @@ export class TsWidget extends Base {
         if (this._isEditing()) {
           e.preventDefault?.()
           e.stopPropagation?.()
-        } else if (typeof window === 'undefined' && this.activatable && !this.hasAttribute('href')) {
-          this.emit(ACTION_OPEN, { id: this.getAttribute('item') || '' })
         }
       }
     })
@@ -1073,7 +1079,8 @@ export class TsWidget extends Base {
   _applyActivation(heading, label) {
     const hasHref = this.hasAttribute('href')
     const href = hasHref ? validateHref(this.getAttribute('href'), this) : null
-    const act = !hasHref && this.activatable
+    // href wins only when it is valid, so a rejected one leaves the tile free to open.
+    const act = this.activatable && href === null
     const cur = heading.querySelector ? heading.querySelector('[part~="link"]') : null
 
     if (href !== null) {

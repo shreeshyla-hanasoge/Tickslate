@@ -30,6 +30,19 @@ const MINUS = '−'
 const DAY_MS = 86400000
 const ACTION_SELECT = 'select'
 
+/**
+ * Where an arrow key moves the focused point (index `from` of `count`), or -1
+ * when the key is not one of ours. Left and right swap in a right-to-left page,
+ * because the points are laid out from the inline start.
+ */
+export function stepPoint(from, count, key, rtl) {
+  if (from < 0 || count < 1) return -1
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  const step = key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : key === 'ArrowRight' ? (rtl ? -1 : 1) : key === 'ArrowLeft' ? (rtl ? 1 : -1) : 0
+  return step ? Math.min(count - 1, Math.max(0, from + step)) : -1
+}
+
 const round = (v) => Math.round(v * 10) / 10
 const isObj = (v) => v !== null && typeof v === 'object'
 const str = (v) => (typeof v === 'string' ? v : '')
@@ -293,6 +306,8 @@ export function chartModel(data, variant, ctx) {
 
   const outPoints = []
   if (hasPoints) {
+    // A point's name reads its x as the axis does: a date, or a clock time inside a day, never the raw timestamp.
+    const xName = !timeAxis ? (v) => fmt.number(v, { sign: 'negative' }) : x1 - x0 < DAY_MS ? (v) => fmt.time(v) : (v) => fmt.date(v)
     for (const s of series) {
       const sKey = s.id != null && s.id !== '' ? s.id : s.name
       for (const p of s.points) {
@@ -305,7 +320,7 @@ export function chartModel(data, variant, ctx) {
           index: p.index,
           xPct: round(px / 4),
           yPct: round(py),
-          label: `${s.name}: ${p.rawX !== undefined ? p.rawX : p.x}, ${show(p.y)}`,
+          label: `${s.name}: ${xName(p.x)}, ${show(p.y)}`,
         })
       }
     }
@@ -501,13 +516,39 @@ export class TsChart extends TsWidget {
     }
     this._section.addEventListener('click', onActivate)
     this._section.addEventListener('keydown', (e) => {
-      if (this._isEditing() && (e.key === 'Enter' || e.key === ' ') && e.target?.closest?.('.pt')) {
-        e.preventDefault?.()
-        e.stopPropagation?.()
-      } else if (typeof window === 'undefined' && (e.key === 'Enter' || e.key === ' ')) {
-        onActivate(e)
+      const btn = e.target?.closest?.('.pt')
+      if (!btn) return
+      if (this._isEditing()) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault?.()
+          e.stopPropagation?.()
+        }
+        return
       }
+      // Enter and Space reach onActivate as a click on the native button; only the arrows are ours.
+      if (!/^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) return
+      const btns = [...this.$('[data-k="pts"]').querySelectorAll('.pt')]
+      const from = btns.indexOf(btn)
+      const to = stepPoint(from, btns.length, e.key, getComputedStyle(this).direction === 'rtl')
+      if (to < 0) return
+      e.preventDefault()
+      this._rove(btns, to)
+      btns[to].focus()
     })
+    // Pointer focus moves the tab stop too, so Tab leaves from where the user last was.
+    this._section.addEventListener('focusin', (e) => {
+      const btn = e.target?.closest?.('.pt')
+      if (btn) this._rove([...this.$('[data-k="pts"]').querySelectorAll('.pt')], undefined, btn)
+    })
+  }
+
+  // One tab stop for the whole group of points: the rest are reached with the arrow keys.
+  _rove(btns, to, btn) {
+    const next = to === undefined ? btns.indexOf(btn) : to
+    if (next < 0 || next === this._active) return
+    btns[this._active]?.setAttribute('tabindex', '-1')
+    btns[next].setAttribute('tabindex', '0')
+    this._active = next
   }
 
   update(vm, variant) {
@@ -541,12 +582,22 @@ export class TsChart extends TsWidget {
       const selectable = this.actionEnabled('select') && Array.isArray(vm.points) && vm.points.length > 0
       ptsEl.toggleAttribute('hidden', !selectable)
       if (selectable) {
+        // Arrow keys move the tab stop in place, so the markup is only rewritten when the points change, never to follow focus.
+        const active = Math.min(this._active || 0, vm.points.length - 1)
         let html = ''
-        for (const pt of vm.points) {
-          html += `<li style="inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;"><button type="button" class="pt" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
+        let key = ''
+        vm.points.forEach((pt, i) => {
+          const item = (tab) => `<li style="inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;"><button type="button" class="pt" tabindex="${tab}" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
+          html += item(i === active ? 0 : -1)
+          key += item(-1)
+        })
+        if (this._ptsKey !== key) {
+          this._ptsKey = key
+          this._active = active
+          ptsEl.innerHTML = html
         }
-        if (ptsEl.innerHTML !== html) ptsEl.innerHTML = html
       } else if (ptsEl.innerHTML) {
+        this._ptsKey = ''
         ptsEl.innerHTML = ''
       }
     }

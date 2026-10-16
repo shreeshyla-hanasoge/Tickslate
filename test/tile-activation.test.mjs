@@ -55,6 +55,15 @@ describe('validateHref (RFC 0003 §7)', () => {
     assert.equal(W.validateHref('\t\njavascript:alert(1)'), null)
   })
 
+  test('rejects protocol-relative URLs, which are cross-origin without a scheme', () => {
+    assert.equal(W.validateHref('//evil.example/path'), null)
+    assert.equal(W.validateHref('\\\\evil.example'), null)
+    assert.equal(W.validateHref('/\\evil.example'), null)
+    assert.equal(W.validateHref('\\/evil.example'), null)
+    assert.equal(W.validateHref('  //evil.example'), null)
+    assert.equal(W.validateHref('/one/slash'), '/one/slash')
+  })
+
   test('returns null for empty, null or non-string values', () => {
     assert.equal(W.validateHref(null), null)
     assert.equal(W.validateHref(undefined), null)
@@ -64,11 +73,15 @@ describe('validateHref (RFC 0003 §7)', () => {
 })
 
 describe('shared CSS rules for tile activation', () => {
-  test('includes stretched link, whole-tile focus ring and actions slot elevation', () => {
+  test('stretches the link, rings its own overlay, and lifts only controls above it', () => {
     const css = W.SHARED_CSS
     assert.match(css, /\[part~="link"\]::after\s*\{\s*content:\s*'';\s*position:\s*absolute;\s*inset:\s*0;\s*z-index:\s*1;\s*\}/)
-    assert.match(css, /\.tile:has\(\[part~="link"\]:focus-visible\)\s*\{\s*outline:\s*2px solid var\(--ts-focus, var\(--ts-accent\)\);\s*outline-offset:\s*-2px;\s*\}/)
-    assert.match(css, /slot\[name="actions"\],\s*::slotted\(\*\)\s*\{\s*position:\s*relative;\s*z-index:\s*2;\s*\}/)
+    assert.match(css, /\[part~="link"\]:focus-visible::after\s*\{[^}]*outline:\s*2px solid var\(--ts-focus, var\(--ts-accent\)\)/)
+    assert.doesNotMatch(css, /:has\(/, 'a focus ring that needs :has() is missing before Firefox 121')
+    assert.doesNotMatch(css, /::slotted\(\*\)\s*\{[^}]*z-index/, 'lifting all slotted content would block the tile click')
+    const lifted = /::slotted\(:is\(([^{}]*)\)\),\s*::slotted\(\[slot="actions"\]\)\s*\{\s*position:\s*relative;\s*z-index:\s*2;\s*\}/.exec(css)
+    assert.ok(lifted, 'controls and the actions slot are lifted')
+    for (const sel of ['a', 'button', 'input', 'select', 'textarea', 'summary', '[tabindex]', '[role="button"]', '[role="link"]']) assert.ok(lifted[1].includes(sel), sel)
   })
 })
 
@@ -116,6 +129,40 @@ describe('href attribute and property (RFC 0003 §7)', () => {
     const heading = el.shadowRoot.section.querySelector('[part="label"]')
     assert.ok(!heading.html.includes('javascript:'))
     assert.ok(!heading.html.includes('part="link"'))
+  })
+
+  test('a rejected href leaves a plain label and no link', async () => {
+    const el = new DummyTile()
+    el.setAttribute('label', 'Revenue')
+    el.setAttribute('href', '//evil.example')
+    el.connect()
+    await tick()
+
+    const heading = el.shadowRoot.section.querySelector('[part="label"]')
+    assert.ok(!heading.html.includes('part="link"'))
+  })
+
+  test('a rejected href does not disable activatable', async () => {
+    for (const bad of ['javascript:alert(1)', '//evil.example']) {
+      const el = new DummyTile()
+      el.setAttribute('label', 'Revenue')
+      el.setAttribute('item', 'rev')
+      el.setAttribute('href', bad)
+      el.setAttribute('activatable', '')
+      el.connect()
+      await tick()
+
+      const heading = el.shadowRoot.section.querySelector('[part="label"]')
+      assert.ok(heading.html.includes('<button'), `${bad} falls back to the open button`)
+      assert.ok(!heading.html.includes('<a '), bad)
+      assert.ok(!heading.html.includes('javascript:'), bad)
+
+      const actions = []
+      el.addEventListener('ts-action', (e) => actions.push(e.detail))
+      const btn = { closest: (sel) => sel === '[part~="link"]' ? btn : null, localName: 'button', getAttribute: (k) => k === 'part' ? 'link' : null }
+      el.shadowRoot.section.dispatch('click', { target: btn })
+      assert.deepEqual(actions, [{ action: 'open', id: 'rev' }], bad)
+    }
   })
 
   test('clicks on an href link do not fire ts-action open', async () => {
@@ -202,7 +249,7 @@ describe('activatable attribute and property (RFC 0003 §7)', () => {
     assert.deepEqual(actions, [{ action: 'open', id: '' }])
   })
 
-  test('Enter or Space keydown fires ts-action open', async () => {
+  test('Enter and Space open the tile through the native button click, once each', async () => {
     const el = new DummyTile()
     el.setAttribute('label', 'Orders')
     el.setAttribute('item', 'tile-orders')
@@ -210,13 +257,19 @@ describe('activatable attribute and property (RFC 0003 §7)', () => {
     el.connect()
     await tick()
 
+    const heading = el.shadowRoot.section.querySelector('[part="label"]')
+    assert.ok(heading.html.includes('<button type="button"'), 'a real button, so the browser turns Enter and Space into a click')
+
     const actions = []
     el.addEventListener('ts-action', (e) => actions.push(e.detail))
-
     const btn = { closest: (sel) => sel === '[part~="link"]' ? btn : null, localName: 'button', getAttribute: (k) => k === 'part' ? 'link' : null }
-    el.shadowRoot.section.dispatch('keydown', { key: 'Enter', target: btn })
-    el.shadowRoot.section.dispatch('keydown', { key: ' ', target: btn })
-
+    // What a browser does for each key: a keydown, then the click it synthesises.
+    for (const key of ['Enter', ' ']) {
+      const before = actions.length
+      el.shadowRoot.section.dispatch('keydown', { key, target: btn })
+      assert.equal(actions.length, before, 'keydown alone opens nothing, so the click cannot double it')
+      el.shadowRoot.section.dispatch('click', { target: btn })
+    }
     assert.deepEqual(actions, [
       { action: 'open', id: 'tile-orders' },
       { action: 'open', id: 'tile-orders' },
@@ -240,6 +293,23 @@ describe('activatable attribute and property (RFC 0003 §7)', () => {
     const link = { closest: (sel) => sel === '[part~="link"]' ? link : null, localName: 'a', getAttribute: (k) => k === 'part' ? 'link' : null }
     el.shadowRoot.section.dispatch('click', { target: link })
     assert.equal(actions.length, 0, 'href wins; no open action fired')
+  })
+
+  test('a valid href with activatable renders the link, and a rejected one gives way to the button', async () => {
+    const el = new DummyTile()
+    el.setAttribute('label', 'Orders')
+    el.setAttribute('href', '/orders')
+    el.setAttribute('activatable', '')
+    el.connect()
+    await tick()
+    el.setAttribute('href', 'javascript:void(0)')
+    await tick()
+    const heading = el.shadowRoot.section.querySelector('[part="label"]')
+    assert.ok(heading.html.includes('<button'))
+    el.setAttribute('href', '/orders')
+    await tick()
+    assert.ok(heading.html.includes('<a '))
+    assert.ok(!heading.html.includes('<button'))
   })
 })
 
@@ -280,7 +350,7 @@ describe('chart point selection (RFC 0003 §7.1)', () => {
 
   test('chartModel computes points with values, y, index, logical percentages and accessible label', () => {
     const ctx = {
-      fmt: { number: (n) => String(n), money: (n) => `$${n}` },
+      fmt: { number: (n) => String(n), money: (n) => `$${n}`, time: (n) => `T${n}`, date: (n) => `D${n}` },
       t: (k) => k,
       now: 0,
       label: 'Trend',
@@ -295,7 +365,7 @@ describe('chart point selection (RFC 0003 §7.1)', () => {
       index: 0,
       xPct: 0.8,
       yPct: 81.3,
-      label: 'Revenue: 2026-09-01, 100',
+      label: 'Revenue: D1788220800000, 100',
     })
     assert.deepEqual(vm.points[1], {
       series: 'rev',
@@ -304,7 +374,7 @@ describe('chart point selection (RFC 0003 §7.1)', () => {
       index: 1,
       xPct: 99.3,
       yPct: 3,
-      label: 'Revenue: 2026-09-02, 200',
+      label: 'Revenue: D1788307200000, 200',
     })
   })
 
@@ -317,7 +387,7 @@ describe('chart point selection (RFC 0003 §7.1)', () => {
         { date: '2026-09-02', cost: 60 },
       ],
     }
-    const ctx = { fmt: { number: (n) => String(n) }, t: (k) => k, now: 0, label: 'Rows' }
+    const ctx = { fmt: { number: (n) => String(n), date: (n) => `D${n}`, time: (n) => `T${n}` }, t: (k) => k, now: 0, label: 'Rows' }
     const vm = S.chartModel(rowsData, 'M', ctx)
     assert.equal(vm.points.length, 2)
     assert.equal(vm.points[0].series, 'cost-col')
@@ -327,6 +397,46 @@ describe('chart point selection (RFC 0003 §7.1)', () => {
     assert.equal(vm.points[1].value, '2026-09-02')
     assert.equal(vm.points[1].y, 60)
     assert.equal(vm.points[1].index, 1)
+  })
+
+  test('a point is named by the formatted x, in the formatter locale, and keeps the raw x in its detail', () => {
+    const day = 86400000
+    const t0 = Date.UTC(2026, 8, 1, 12)
+    const fmt = Object.freeze({ number: (n) => String(n), time: (n) => `time ${n - t0}`, date: (n) => `date ${(n - t0) / day}` })
+    const ctx = { fmt, t: (k) => k, now: 0, label: 'Trend' }
+    const span = S.chartModel({ series: [{ name: 'R', points: [{ x: t0, y: 1 }, { x: t0 + 2 * day, y: 5 }] }] }, 'M', ctx)
+    assert.equal(span.points[0].label, 'R: date 0, 1')
+    assert.equal(span.points[1].label, 'R: date 2, 5')
+    assert.equal(span.points[1].value, t0 + 2 * day, 'the raw x stays in the event detail')
+    const within = S.chartModel({ series: [{ name: 'R', points: [{ x: t0, y: 1 }, { x: t0 + 3600000, y: 5 }] }] }, 'M', ctx)
+    assert.equal(within.points[1].label, 'R: time 3600000, 5', 'inside a day it reads as a clock time')
+    const numeric = S.chartModel({ xType: 'number', series: [{ name: 'R', points: [{ x: 3, y: 1 }, { x: 4, y: 5 }] }] }, 'M', ctx)
+    assert.equal(numeric.points[0].label, 'R: 3, 1')
+  })
+
+  test('with the real formatter a time axis reads as a date, never the timestamp', async () => {
+    const core = await import('../src/core/index.js')
+    const fmt = core.createFormatter({ locale: 'de-DE', timeZone: 'UTC' })
+    const ctx = { fmt, t: (k) => k, now: 0, label: 'Trend' }
+    const day = 86400000
+    const vm = S.chartModel({ series: [{ name: 'R', points: [{ x: 1700000000000, y: 1 }, { x: 1700000000000 + 5 * day, y: 5 }] }] }, 'M', ctx)
+    assert.ok(!vm.points[0].label.includes('1700000000000'))
+    assert.match(vm.points[0].label, /^R: 14\. Nov\.? 2023, /)
+  })
+
+  test('arrow keys step between points: Home and End jump, the ends clamp, and right-to-left flips left and right', () => {
+    assert.equal(S.stepPoint(1, 5, 'ArrowRight', false), 2)
+    assert.equal(S.stepPoint(1, 5, 'ArrowDown', false), 2)
+    assert.equal(S.stepPoint(1, 5, 'ArrowLeft', false), 0)
+    assert.equal(S.stepPoint(1, 5, 'ArrowUp', false), 0)
+    assert.equal(S.stepPoint(0, 5, 'ArrowLeft', false), 0)
+    assert.equal(S.stepPoint(4, 5, 'ArrowRight', false), 4)
+    assert.equal(S.stepPoint(2, 5, 'Home', false), 0)
+    assert.equal(S.stepPoint(2, 5, 'End', false), 4)
+    assert.equal(S.stepPoint(1, 5, 'ArrowRight', true), 0)
+    assert.equal(S.stepPoint(1, 5, 'ArrowLeft', true), 2)
+    assert.equal(S.stepPoint(1, 5, 'Enter', false), -1)
+    assert.equal(S.stepPoint(-1, 5, 'ArrowRight', false), -1)
   })
 
   function makeChart({ data, actions = [] } = {}) {
@@ -379,7 +489,7 @@ describe('chart point selection (RFC 0003 §7.1)', () => {
     ])
   })
 
-  test('Enter on a point button fires ts-action select', async () => {
+  test('Enter and Space select through the native button click, so keydown alone fires nothing', async () => {
     const chart = makeChart({ data: named, actions: ['select'] })
     chart.connect()
     await tick()
@@ -392,10 +502,19 @@ describe('chart point selection (RFC 0003 §7.1)', () => {
       getAttribute: (k) => k === 'data-series' ? 'rev' : k === 'data-index' ? '0' : null,
     }
     chart.shadowRoot.section.dispatch('keydown', { key: 'Enter', target: ptBtn })
+    assert.deepEqual(actions, [], 'the click the browser sends next is the one that selects')
+    chart.shadowRoot.section.dispatch('click', { target: ptBtn })
+    assert.equal(actions.length, 1)
+  })
 
-    assert.deepEqual(actions, [
-      { action: 'select', value: '2026-09-01', series: 'rev', y: 100, index: 0 },
-    ])
+  test('only the first point is a tab stop; the rest wait for the arrow keys', async () => {
+    const chart = makeChart({ data: named, actions: ['select'] })
+    chart.connect()
+    await tick()
+    const html = chart.shadowRoot.section.querySelector('[data-k="pts"]').html
+    assert.equal(html.match(/tabindex="0"/g).length, 1)
+    assert.equal(html.match(/tabindex="-1"/g).length, 1)
+    assert.ok(html.indexOf('tabindex="0"') < html.indexOf('tabindex="-1"'))
   })
 
   test('point selection is inert while the grid is editing', async () => {
