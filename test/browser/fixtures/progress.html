@@ -1,0 +1,70 @@
+<!doctype html>
+<!-- One <ts-progress> for the progress spec. ?size=S|Wide, ?width=px (the tile's width), ?value=, ?target=, ?mode=goal|limit,
+     ?warnAt=, ?format=money, ?caption=, ?theme=light|dark, ?preset=terminal (or calm, signal...), ?wide uses wide fonts,
+     ?long puts long figures in. The spec drives it through window.__p: set(data) replaces the data. Nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Progress fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <div id="wrap"><ts-progress id="p" label="Daily loss limit"></ts-progress></div>
+</main>
+<script type="module">
+  import '/src/elements/index.js'
+  import { setup, frozenClock } from './data.js'
+
+  setup()
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+  // ?wide stands in for a runner whose fallback fonts are wider than ours: a wide family, and tracking on top.
+  if (params.has('wide')) {
+    const st = document.createElement('style')
+    st.textContent = ":root { --ts-font-ui: Verdana, 'DejaVu Sans', sans-serif; --ts-font-num: Verdana, 'DejaVu Sans', sans-serif; } body { letter-spacing: .05em; }"
+    document.head.append(st)
+  }
+
+  const el = document.getElementById('p')
+  const size = params.get('size') || 'Wide'
+  el.setAttribute('size', size)
+  el.style.height = '150px'
+  document.getElementById('wrap').style.width = `${params.get('width') || (size === 'S' ? 170 : 351)}px`
+  el.clock = frozenClock
+  const long = params.has('long')
+  const data = {
+    value: Number(params.get('value') ?? (long ? 123456789.5 : 6400)),
+    target: Number(params.get('target') ?? (long ? 987654321 : 10000)),
+    mode: params.get('mode') || 'limit',
+    caption: params.get('caption') ?? 'Resets at 09:15',
+  }
+  if (params.has('warnAt')) data.warnAt = Number(params.get('warnAt'))
+  if (params.has('format')) data.format = params.get('format')
+  el.data = data
+
+  window.__p = {
+    el,
+    set: (d) => { el.data = d },
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

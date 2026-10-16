@@ -127,6 +127,9 @@ export function dataFor(tag, scale = 1) {
         ],
         asOf: FROZEN,
       }
+    case 'ts-progress':
+      // The target stays positive for a negative scale, so every set draws a gauge; the magnitude is in the figures.
+      return { value: 6400 * scale, target: 10000 * Math.abs(scale), mode: 'limit', format: 'money', caption: 'Resets at 09:15', asOf: FROZEN }
     case 'ts-table': {
       // The first column carries the data's magnitude too, so a narrow size that shows only it still shows the data changing.
       const t = table(scale)

@@ -37,6 +37,7 @@ export const EN = Object.freeze({
   'widget.metric.label': 'Metric',
   'widget.chart.label': 'Chart',
   'widget.table.label': 'Table',
+  'widget.progress.label': 'Progress',
   // The picker's sentence for each catalog entry
   'widget.todayPnl.description': "Today's profit or loss, with an intraday line.",
   'widget.equityCurve.description': 'Account value over time, with peak and drawdown.',
@@ -51,6 +52,7 @@ export const EN = Object.freeze({
   'widget.metric.description': 'One figure with a label and a change.',
   'widget.chart.description': 'A line, area or bar chart of any series.',
   'widget.table.description': 'A sortable table of rows with typed columns.',
+  'widget.progress.description': 'Progress toward a goal, or use of a limit, with warning and danger states.',
   // The picker's groups. A host's own category name is shown as it is unless it adds category.<name>.
   'category.General': 'General',
   'category.Performance': 'Performance',
@@ -62,6 +64,7 @@ export const EN = Object.freeze({
   'widget.metric.empty': 'No data yet',
   'widget.chart.empty': 'No data yet',
   'widget.table.empty': 'No rows yet',
+  'widget.progress.empty': 'No data yet',
   'widget.watchlist.empty': 'No instruments yet',
   'widget.openPositions.empty': 'No open positions',
 
@@ -254,6 +257,15 @@ export const EN = Object.freeze({
   'table.join': '{head}, {tail}',
   'table.select': 'Select {name}',
   'table.region': '{label}, rows',
+  // <ts-progress>
+  'progress.text': '{value} of {target} · {pct}',
+  'progress.result': '{value} of {target}, {pct}',
+  'progress.withState': '{text}, {state}',
+  'progress.aria': '{label}, {text}',
+  'progress.noTarget': '{label}, no target set',
+  'progress.near': 'near limit',
+  'progress.over': 'over limit',
+  'progress.done': 'goal reached',
 
   // <ts-watchlist>
   'watchlist.aria': '{label}, {instruments}',
