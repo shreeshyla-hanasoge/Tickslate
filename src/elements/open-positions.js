@@ -31,6 +31,7 @@ function positionRow(p, variant, ctx) {
   const ltp = numberOf(p.ltp)
 
   const qtyText = Number.isFinite(qty) ? fmt.number(qty) : ''
+  const sideText = side ? t(side === 'long' ? 'positions.long' : 'positions.short') : ''
   const pnlText = fmt.money(p.pnl, { sign: 'always' })
   const arrow = arrowFor(pnlText)
 
@@ -70,7 +71,10 @@ function positionRow(p, variant, ctx) {
     name,
     title,
     side,
-    sideText: side ? t(side === 'long' ? 'positions.long' : 'positions.short') : '',
+    sideText,
+    // Two positions in one instrument must not share a button name, so the name says the side and the quantity.
+    exitLabel: [sideText, qtyText].some(Boolean) ? t('positions.exitLabel', { name, detail: [sideText, qtyText].filter(Boolean).join(' ') }) : t('positions.exitLabelBare', { name }),
+    pending: p.pending === true,
     detail: !qtyText ? '' : Number.isFinite(entry) ? t('positions.qtyAt', { qty: qtyText, entry: price(entry) }) : qtyText,
     last: price(ltp),
     pnl: pnlText,
@@ -103,7 +107,7 @@ export function positionsModel(data, variant, ctx) {
   if (Number.isFinite(total)) {
     const textOf = fmt.money(total, { sign: 'always' })
     const arrow = arrowFor(textOf)
-    mtm = { text: textOf, arrow, tone: arrow === '▲' ? 'pos' : arrow === '▼' ? 'neg' : 'mut' }
+    mtm = { value: total, text: textOf, arrow, tone: arrow === '▲' ? 'pos' : arrow === '▼' ? 'neg' : 'mut' }
   }
   const margin = numberOf(d.margin)
 
@@ -165,7 +169,7 @@ tbody:last-of-type > tr:last-child > * { border-block-end: 0; }
 .br > td { padding: 2px 6px 9px; }
 tbody:last-of-type .br > td { padding-block-end: 2px; }
 .id { max-inline-size: 0; inline-size: 100%; overflow: hidden; }
-.sym { display: block; font-size: 13px; font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sym { display: block; unicode-bidi: isolate; font-size: 13px; font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sub { display: flex; align-items: baseline; gap: 6px; min-inline-size: 0; font-size: 10px; color: var(--ts-muted); white-space: nowrap; }
 .sub > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .side { font-weight: var(--ts-label-weight, 600); text-transform: var(--ts-label-case, uppercase); letter-spacing: var(--ts-label-tracking, .12em); color: var(--ts-ink); }
@@ -174,6 +178,7 @@ tbody:last-of-type .br > td { padding-block-end: 2px; }
 .pnl { font-weight: var(--ts-num-weight, 500); }
 .act { text-align: end; padding-inline-start: 10px; vertical-align: middle; }
 .act .btn { min-block-size: 28px; white-space: nowrap; }
+.btn[aria-disabled="true"] { color: var(--ts-muted); cursor: default; }
 .skrow { display: flex; justify-content: space-between; gap: 10px; }
 .skr { align-items: flex-end; }
 .none { padding-block: 16px; text-align: center; }
@@ -241,6 +246,10 @@ export class TsOpenPositions extends TsWidget {
         e.stopPropagation?.()
         return
       }
+      if (one && one.getAttribute('aria-disabled') === 'true') {
+        e.preventDefault?.()
+        return
+      }
       if (one && this.actionEnabled(ACTION_EXIT)) {
         const body = one.closest('tbody')
         if (!body || !this._ids.has(body)) return
@@ -277,11 +286,14 @@ export class TsOpenPositions extends TsWidget {
     hide('sum', !vm.mtm && !exitAll)
     hide('exitAll', !exitAll)
     write('exitAll', this.t('positions.exitAll'))
+    setAttr(this.$('[data-k="exitAll"]'), 'aria-label', this.t('positions.exitAllLabel', {}, vm.rows.length))
     if (vm.mtm) {
       write('mtmLabel', this.t('positions.mtm'))
       write('mtmAr', vm.mtm.arrow)
       write('mtm', vm.mtm.text)
       setAttr(this.$('[data-k="mtmBox"]'), 'class', `n md${vm.mtm.tone === 'mut' ? '' : ` ${vm.mtm.tone}`}`)
+      // The one headline figure: it tints when the total moves. Rows have no headline of their own to tint.
+      this.flash('mtmBox', vm.mtm.value, { goodWhen: 'up' })
       hide('marginBox', !vm.margin)
       write('marginLabel', this.t('positions.margin'))
       write('margin', vm.margin)
@@ -310,6 +322,13 @@ export class TsOpenPositions extends TsWidget {
     this._rows = createRows(table, {
       create: (row) => this._createRow(row, doc),
       update: (tb, row) => this._writeRow(tb, row, doc),
+      // A removed row that held focus (its Exit button) hands it to the neighbour's button, else Exit all, else the scroller.
+      rescue: (tb) => {
+        const btn = tb && tb.firstChild.lastChild.firstChild
+        const all = this.$('[data-k="exitAll"]')
+        const target = btn && btn.localName === 'button' ? btn : !all.hasAttribute('hidden') ? all : this.$('[data-k="scroll"]')
+        if (target && target.focus) target.focus({ preventScroll: true })
+      },
     })
   }
 
@@ -406,7 +425,10 @@ export class TsOpenPositions extends TsWidget {
         act.appendChild(btn)
       }
       setText(btn, this.t('positions.exit'))
-      setAttr(btn, 'aria-label', this.t('positions.exitLabel', { name: row.name }))
+      setAttr(btn, 'aria-label', row.exitLabel)
+      // A host that has asked for this exit and is waiting says so with `pending`: the button stays, and says it is unavailable.
+      if (row.pending) setAttr(btn, 'aria-disabled', 'true')
+      else if (btn.getAttribute('aria-disabled') !== null) btn.removeAttribute('aria-disabled')
     }
 
     if (this._variant !== 'Wide') {

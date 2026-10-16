@@ -104,6 +104,10 @@ To update, set `data` again with the same ids, for example from a socket. The
 instruments whose figures did not change are not touched, and a price that moves
 writes its own cells and moves the dot on the bar, and nothing more.
 
+**Freshness.** Send `asOf` with `live: true` and the header says how old the data is: the dot pulses and the header reads `just now`, then `2 min. ago`. Past `stale-after` the dot turns `--ts-warn` and stops pulsing, the header reads `Stale · 3 min`, and the tile's name ends with `, stale` where it would end with `, live`. With `asOf` and no `live` the header reads `synced 11:42`. A watchlist has no single headline figure, so nothing flashes; `flash` is accepted for the day a host's own tile adds one.
+
+**How many.** There is no virtualisation: every instrument is a row in the table. Building the model for 2,000 instruments with 300 ticks each takes about 55 ms on a laptop, and a tick that touches a few of them writes only those cells. Past a few hundred instruments, page the list or give the tile a shorter list.
+
 ## Attributes and properties
 
 | Name | Type | What it does |
@@ -115,6 +119,8 @@ writes its own cells and moves the dot on the bar, and nothing more.
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
 | `actions` | property | Names of the actions offered: `'retry'`, and `'add-instrument'` to show the add button |
+| `stale-after` | attribute | How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default `120000`. Falls back to the nearest `<ts-grid>`'s `stale-after` |
+| `flash` | attribute | `'off'` stops the brief tint on a headline figure that changed; the grid's `flash` applies too |
 | `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Formatting. Resolved from the tile, then the nearest `<ts-grid>`, then `configure()` |
 | `item` | attribute | The id a grid matches this child by |
 
@@ -166,6 +172,7 @@ Nothing fires while the grid is in edit mode. See [Events](../reference/events.m
 
 ## Accessibility
 
+- Symbols and exchanges are bidi-isolated, so a name in another script keeps its place beside the figures.
 - A real `<table>`: a header row whose cells are visually hidden but read ("Instrument",
   "Last price and change"), a row header (`<th scope="row">`) for each symbol, and a
   visually hidden caption that says what a sighted reader sees: "Markets, 12

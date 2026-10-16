@@ -464,6 +464,8 @@ export interface OpenPosition {
   /** Both a stop and a target draw the range bar, whatever the side; with only one there is no bar. */
   stop?: Numeric
   target?: Numeric
+  /** True while the host has an exit for this position in flight: its Exit button stays, is marked `aria-disabled` and fires nothing. */
+  pending?: boolean
   /** Accepted; not drawn yet. */
   openedAt?: Time
   /** L: the price since entry, as a sparkline. Readings need not arrive in order; at least two are needed. */
@@ -488,6 +490,10 @@ export interface OpenPositionsModel {
     title: string
     side: 'long' | 'short' | ''
     sideText: string
+    /** The Exit button's name: 'Exit ETA 24500 CE, Long 50'. */
+    exitLabel: string
+    /** The row's `pending`. */
+    pending: boolean
     /** '50 @ 128.00'; just the quantity without an entry price; '' without either. */
     detail: string
     last: string
@@ -504,7 +510,7 @@ export interface OpenPositionsModel {
     spark: { line: string; label: string; tone: 'pos' | 'neg' | 'mut' } | null
   }>
   /** The given `mtm`, else the sum of the positions' `pnl`; null when neither can be read. */
-  mtm: { text: string; arrow: '▲' | '▼' | ''; tone: 'pos' | 'neg' | 'mut' } | null
+  mtm: { value: number; text: string; arrow: '▲' | '▼' | ''; tone: 'pos' | 'neg' | 'mut' } | null
   /** L only; '' otherwise. */
   margin: string
   /** Positions that could not be read: no id, a repeated id, or not an object. */

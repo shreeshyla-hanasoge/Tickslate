@@ -1,4 +1,5 @@
 import { test, describe, before, after } from 'node:test'
+import { readFileSync as readFile } from 'node:fs'
 import assert from 'node:assert/strict'
 import { createFormatter, createMessages, EN, WIDGETS } from '../src/core/index.js'
 import { checkShape } from '../src/elements/dev.js'
@@ -178,8 +179,8 @@ describe('profit and loss, quantity and the summary', () => {
   })
 
   test('mtm is the sum of the pnl unless the host gives it', () => {
-    assert.deepEqual(model(data()).mtm, { text: '−₹12.50', arrow: '▼', tone: 'neg' })
-    assert.deepEqual(model(data({ mtm: 1500 })).mtm, { text: '+₹1,500.00', arrow: '▲', tone: 'pos' })
+    assert.deepEqual(model(data()).mtm, { value: -12.5, text: '−₹12.50', arrow: '▼', tone: 'neg' })
+    assert.deepEqual(model(data({ mtm: 1500 })).mtm, { value: 1500, text: '+₹1,500.00', arrow: '▲', tone: 'pos' })
     // A given mtm is the host's; an unreadable one falls back to the sum.
     assert.equal(model(data({ mtm: -2 })).mtm.text, '−₹2.00')
     assert.equal(model(data({ mtm: 'n/a' })).mtm.text, '−₹12.50')
@@ -189,7 +190,7 @@ describe('profit and loss, quantity and the summary', () => {
     assert.equal(model({ positions: [LONG, { ...SHORT, pnl: 'x' }] }).mtm.text, '+₹270.00')
     assert.equal(model({ positions: [{ ...LONG, pnl: undefined }] }).mtm, null)
     assert.equal(model({ positions: [] }).mtm, null)
-    assert.deepEqual(model({ positions: [LONG, { ...SHORT, pnl: -270 }] }).mtm, { text: '₹0.00', arrow: '', tone: 'mut' })
+    assert.deepEqual(model({ positions: [LONG, { ...SHORT, pnl: -270 }] }).mtm, { value: 0, text: '₹0.00', arrow: '', tone: 'mut' })
   })
 
   test('a given mtm shows even with no positions, and the margin is L\'s', () => {
@@ -251,11 +252,49 @@ describe('rows and the accessible name', () => {
     assert.deepEqual([m.live, m.time], [true, '11:42'])
   })
 
-  test('500 positions with a path take under 250 ms (a loaded machine included)', () => {
-    const big = { positions: Array.from({ length: 500 }, (_, i) => ({ ...LONG, id: `i${i}`, path: path(300) })) }
-    const t0 = performance.now()
-    model(big, 'L')
-    assert.ok(performance.now() - t0 < 250, `${performance.now() - t0} ms`)
+  test('the model\'s cost grows in step with the rows: four times the rows is well under ten times the work', () => {
+    const run = (n) => {
+      const big = { positions: Array.from({ length: n }, (_, i) => ({ ...LONG, id: `i${i}`, path: path(300) })) }
+      let best = Infinity
+      for (let k = 0; k < 7; k++) {
+        const t0 = performance.now()
+        model(big, 'L')
+        best = Math.min(best, performance.now() - t0)
+      }
+      return best
+    }
+    run(60)
+    const ratio = run(480) / run(120)
+    // Linear is 4; a quadratic step (each row looking at the others) would be 16.
+    assert.ok(ratio > 1.5 && ratio < 10, `ratio ${ratio}`)
+  })
+
+  test('a tiny previous close is not an excuse for a sign', () => {
+    assert.equal(model({ positions: [{ ...LONG, pnl: 1e-9 }] }).rows[0].arrow, '')
+  })
+
+  test('a development warning counts the rows dropped for want of an id', () => {
+    const el = new P.TsOpenPositions()
+    const warned = []
+    const was = console.warn
+    console.warn = (m) => warned.push(m)
+    try {
+      el._checkDropped(model({ positions: [LONG, { side: 'long' }, null] }))
+      el._checkDropped(model({ positions: [LONG, { side: 'long' }, null] }))
+    } finally {
+      console.warn = was
+    }
+    assert.equal(warned.length, 1)
+    assert.match(warned[0], /dropped 2 rows/)
+  })
+
+  test('the exit button is named for its side and quantity, so two positions in one instrument differ', () => {
+    const [a, b, c] = model({ positions: [LONG, { ...LONG, id: 'x', side: 'short', quantity: 25 }, { id: 'y', instrument: 'ZZ' }] }).rows
+    assert.deepEqual([a.exitLabel, b.exitLabel, c.exitLabel], ['Exit ETA 24500 CE, Long 50', 'Exit ETA 24500 CE, Short 25', 'Exit ZZ'])
+  })
+
+  test('pending is read as true or nothing', () => {
+    assert.deepEqual(model({ positions: [{ ...LONG, pending: true }, { ...LONG, id: 'b', pending: 'yes' }, SHORT] }).rows.map((r) => r.pending), [true, false, false])
   })
 })
 
@@ -281,7 +320,7 @@ describe('words', () => {
   test('the keys exist', () => {
     for (const key of ['positions.aria', 'positions.region', 'positions.col.instrument', 'positions.col.trend', 'positions.col.last', 'positions.col.pnl', 'positions.col.actions', 'positions.mtm', 'positions.margin',
       'positions.long', 'positions.short', 'positions.qtyAt', 'positions.join', 'positions.range', 'positions.rangeEntry', 'positions.rangeNow', 'positions.trend', 'positions.exit', 'positions.exitLabel',
-      'positions.exitAll', 'widget.openPositions.empty']) {
+      'positions.exitAll', 'positions.exitAllLabel.one', 'positions.exitAllLabel.other', 'positions.exitLabelBare', 'widget.openPositions.empty']) {
       assert.ok(key in EN, key)
     }
   })
@@ -297,10 +336,12 @@ function build({ actions = [], variant = 'M' } = {}) {
   el.ownerDocument = doc
   el.actions = actions
   el.requestRender = () => {}
+  const flashes = []
+  el.flash = (...args) => flashes.push(args)
   const events = []
   el.addEventListener('ts-action', (e) => events.push(e.detail))
   const view = (d, v = variant) => el.update(P.TsOpenPositions.viewModel(d, v, ctx), v)
-  return { el, doc, view, events, section: el._section, table: node('[data-k="table"]'), node }
+  return { el, doc, view, events, flashes, section: el._section, table: node('[data-k="table"]'), node }
 }
 
 // A position's cells, by name: the row is [th, (spark), last, pnl, act].
@@ -461,7 +502,7 @@ describe('exit-position and exit-all', () => {
       assert.equal(btn.textContent, 'Exit')
       return btn.getAttribute('aria-label')
     })
-    assert.deepEqual(names, ['Exit ETA 24500 CE', 'Exit IOTA 24400 PE', 'Exit MU CRUDE'])
+    assert.deepEqual(names, ['Exit ETA 24500 CE, Long 50', 'Exit IOTA 24400 PE, Short 75', 'Exit MU CRUDE, Long 10'])
     assert.equal(b.node('[data-k="h4c"]').hasAttribute('hidden'), false)
     // The bar's cell spans the actions column too.
     assert.equal(b.table.children[0].children[1].firstChild.getAttribute('colspan'), '4')
@@ -554,5 +595,67 @@ describe('exit-position and exit-all', () => {
     btn.setAttribute('class', 'btn exit')
     click(b, btn)
     assert.equal(b.table.children.length, 3)
+  })
+})
+
+describe('focus, the exit scope and a request in flight', () => {
+  test('a removed row that held focus hands it to the neighbour\'s Exit button', () => {
+    const b = build({ actions: ['exit-position', 'exit-all'] })
+    b.view(data())
+    const third = b.table.children[2].children[0].lastChild.firstChild
+    third.focus()
+    assert.equal(b.doc.activeElement, third)
+    b.view({ positions: [LONG, SHORT] })
+    assert.equal(b.doc.activeElement, b.table.children[1].children[0].lastChild.firstChild)
+    // The first goes: the next one takes it.
+    b.table.children[0].children[0].lastChild.firstChild.focus()
+    b.view({ positions: [SHORT] })
+    assert.equal(b.doc.activeElement, b.table.children[0].children[0].lastChild.firstChild)
+  })
+
+  test('with no row left, focus goes to Exit all if it shows, else to the scroller', () => {
+    const b = build({ actions: ['exit-position'] })
+    b.view(data())
+    b.table.children[0].children[0].lastChild.firstChild.focus()
+    b.view({ positions: [] })
+    assert.equal(b.doc.activeElement, b.node('[data-k="scroll"]'))
+  })
+
+  test('Exit all is named for how many it exits, in the plural forms', () => {
+    const b = build({ actions: ['exit-all'] })
+    b.view(data())
+    assert.equal(b.node('[data-k="exitAll"]').getAttribute('aria-label'), 'Exit all 3 positions')
+    b.view({ positions: [LONG] })
+    assert.equal(b.node('[data-k="exitAll"]').getAttribute('aria-label'), 'Exit the position')
+  })
+
+  test('a pending position keeps its button, marked aria-disabled, and fires nothing', () => {
+    const b = build({ actions: ['exit-position'] })
+    b.view({ positions: [{ ...LONG, pending: true }, SHORT] })
+    const [pend, free] = b.table.children.map((tb) => tb.children[0].lastChild.firstChild)
+    assert.equal(pend.getAttribute('aria-disabled'), 'true')
+    assert.equal(free.hasAttribute('aria-disabled'), false)
+    pend.setAttribute('class', 'btn exit')
+    free.setAttribute('class', 'btn exit')
+    b.section.dispatch('click', { target: pend, preventDefault() {} })
+    assert.deepEqual(b.events, [])
+    b.view({ positions: [LONG, SHORT] })
+    assert.equal(pend.hasAttribute('aria-disabled'), false)
+    b.section.dispatch('click', { target: pend, preventDefault() {} })
+    assert.deepEqual(b.events, [{ action: 'exit-position', id: 'p1' }])
+  })
+
+  test('the exit event is cancelable, so a host can refuse a repeat', () => {
+    assert.match(readFile(new URL('../src/elements/widget.js', import.meta.url), 'utf8'), /cancelable: true/)
+  })
+
+  test('the MTM is the headline figure that flashes, with its number', () => {
+    const b = build()
+    b.view(data())
+    assert.deepEqual(b.flashes.at(-1), ['mtmBox', -12.5, { goodWhen: 'up' }])
+  })
+
+  test('symbols are bidi-isolated', () => {
+    assert.match(P.TsOpenPositions.styles, /\.sym \{[^}]*unicode-bidi: isolate/)
   })
 })

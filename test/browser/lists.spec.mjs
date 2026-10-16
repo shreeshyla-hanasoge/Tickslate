@@ -312,7 +312,7 @@ test.describe('actions are off until listed, and ask rather than act', () => {
     await open(page, `${POS}&size=M&width=624&actions&fit`)
     const buttons = page.locator('ts-open-positions .exit')
     await expect(buttons).toHaveCount(9)
-    await expect(buttons.nth(1)).toHaveAttribute('aria-label', /^Exit IOTA 24400 PE$/)
+    await expect(buttons.nth(1)).toHaveAttribute('aria-label', /^Exit IOTA 24400 PE, Short 75$/)
     await buttons.nth(1).click()
     await buttons.nth(2).focus()
     await page.keyboard.press('Enter')
@@ -328,6 +328,48 @@ test.describe('actions are off until listed, and ask rather than act', () => {
     await expect(all).toHaveText('Exit all')
     await all.click()
     expect(await page.evaluate(() => window.__l.events)).toEqual([{ action: 'exit-all' }])
+  })
+
+  test('closing the position whose Exit button has focus moves focus to the neighbour\'s button, never to the page', async ({ page }) => {
+    await open(page, `${POS}&size=M&width=624&actions&fit`)
+    await page.locator('ts-open-positions .exit').nth(2).focus()
+    await page.evaluate(() => { window.__l.el.data = { ...window.__l.el.data, positions: window.__l.el.data.positions.filter((p) => p.id !== 'p2') } })
+    await page.evaluate(() => window.__l.nextFrame())
+    const where = await page.evaluate(() => {
+      const root = window.__l.el.shadowRoot
+      const a = root.activeElement
+      return { isExit: !!a && a.classList.contains('exit'), label: a && a.getAttribute('aria-label'), body: document.activeElement === document.body }
+    })
+    expect(where.isExit).toBe(true)
+    expect(where.label).toMatch(/^Exit /)
+    // With every position gone, focus lands on Exit all or the list, not the page.
+    await page.evaluate(() => { window.__l.el.shadowRoot.querySelector('.exit').focus(); window.__l.el.data = { ...window.__l.el.data, positions: [] } })
+    await page.evaluate(() => window.__l.nextFrame())
+    const end = await page.evaluate(() => { const a = window.__l.el.shadowRoot.activeElement; return a ? a.getAttribute('data-k') : null })
+    expect(end).toBe('scroll')
+  })
+
+  test('a pending position\'s button is aria-disabled and asks for nothing; Exit all names its count', async ({ page }) => {
+    await open(page, `${POS}&size=M&width=624&actions&fit`)
+    await page.evaluate(() => { const d = window.__l.el.data; window.__l.el.data = { ...d, positions: d.positions.map((p, i) => (i === 0 ? { ...p, pending: true } : p)) } })
+    await page.evaluate(() => window.__l.nextFrame())
+    const first = page.locator('ts-open-positions .exit').first()
+    await expect(first).toHaveAttribute('aria-disabled', 'true')
+    await first.click({ force: true })
+    expect(await page.evaluate(() => window.__l.events)).toEqual([])
+    await expect(page.locator('ts-open-positions .exitall')).toHaveAttribute('aria-label', 'Exit all 9 positions')
+  })
+
+  test('stale live data reads as stale in the header and the tile\'s name', async ({ page }) => {
+    for (const q of [WATCH, POS]) {
+      await open(page, `${q}&size=M&width=624`)
+      await page.evaluate(() => { const d = window.__l.el.data; window.__l.el.data = { ...d, asOf: d.asOf - 10 * 60000, live: true } })
+      await page.evaluate(() => window.__l.nextFrame())
+      const info = await page.evaluate(() => { const r = window.__l.el.shadowRoot; return { dot: r.querySelector('[data-k="dot"]').getAttribute('class'), meta: r.querySelector('[data-k="meta"]').textContent, name: r.querySelector('.tile').getAttribute('aria-label') } })
+      expect(info.dot).toContain('stale')
+      expect(info.meta).toContain('Stale')
+      expect(info.name).toMatch(/, stale$/)
+    }
   })
 
   test('the exit buttons keep focus through a tick', async ({ page }) => {

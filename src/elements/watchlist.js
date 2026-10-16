@@ -155,8 +155,8 @@ th, td { box-sizing: border-box; padding: 7px 0 3px; text-align: start; vertical
 .br > td { padding: 2px 6px 9px; border-block-end: 1px solid var(--ts-line); }
 tbody:last-of-type .br > td { border-block-end: 0; padding-block-end: 2px; }
 .id { max-inline-size: 0; inline-size: 100%; overflow: hidden; }
-.sym { display: block; font-size: 13px; font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex { display: block; font-size: 10px; color: var(--ts-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sym { display: block; unicode-bidi: isolate; font-size: 13px; font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex { display: block; unicode-bidi: isolate; font-size: 10px; color: var(--ts-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex:empty { display: none; }
 .fig { inline-size: 1%; padding-inline-start: 10px; text-align: end; white-space: nowrap; }
 .last { display: block; font-size: 13px; }

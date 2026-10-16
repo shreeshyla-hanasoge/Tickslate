@@ -7,6 +7,9 @@
 - The `TsWatchlistAction`, `WatchlistData`, `WatchlistInstrument`, `WatchlistModel`, `TsOpenPositionsAction`, `OpenPositionsData`, `OpenPosition` and `OpenPositionsModel` types, `TsWatchlist.watchlistModel()` and `TsOpenPositions.positionsModel()`.
 - The `watchlist.*` and `positions.*` messages, and `widget.watchlist.empty` and `widget.openPositions.empty`.
 
+- A position's `pending: true` marks its Exit button `aria-disabled` so it fires nothing while the host's order is in flight. Exit buttons are named for the side and quantity ("Exit ETA 24500 CE, Long 50"), and Exit all for its count.
+- The MTM flashes when the total moves, and both lists show the stale header and `, stale` name of the shared freshness.
+
 ### Internal
 
 - Built on `src/elements/rows.js`: each instrument or position is one `<tbody>` (its row, then a row holding the bar), keyed by `id`, inside one `<table>`. `src/elements/list-parts.js` is new and holds what the two share: reading the rows, the bar's marks (`barPosition`), the sparkline's path (`sparkModel`) and the nodes that draw them. Marks are placed with one CSSOM custom property (`--n`, `--e`) so a strict `style-src` cannot blank them.
@@ -16,4 +19,5 @@
 - A long `ticks` or `path` series is thinned to 96 points (first and last kept) before it is drawn.
 - The new types are `OpenPosition` and `WatchlistInstrument`; `scripts/pack-lib.mjs` lists `OpenPosition` under `open-positions` in `TYPE_EXTRAS`, because its name does not start with its widget's.
 - Tests: `test/watchlist.test.mjs` and `test/open-positions.test.mjs` run against `test/mini-dom.mjs` with `test/list-dom.mjs`, which adds the CSSOM `style` and `createElementNS` and logs them, so every write is counted. `test/browser/lists.spec.mjs` and `fixtures/lists.html` cover both in five browsers, and `fixtures/data.js` gained `watchlist()`, `openPositions()` and their cases in `dataFor`. Existing tests that list widgets changed by a line each: `tile-chrome`, `entries` and the types fixture `test/types/elements.ts`. `docs/reference/events.md` gained the three actions by hand (they are emitted through constants) and `docs/reference/core.md` lists the two catalog entries as shipped.
-- Size: `tickslate/elements/watchlist` is 21,398 B min+gz bundled and `tickslate/elements/open-positions` 21,873 B, with new 23 and 23.5 kB budgets. The 37 new messages put the core's UMD at 12,953 B against its 13 kB budget.
+- Size, after merging freshness-and-flash: `tickslate/elements/watchlist` is 23,099 B min+gz bundled and `tickslate/elements/open-positions` 23,821 B, with 25 and 26 kB budgets; the core UMD is 13,222 B (14.5 kB) and `metric` 21,220 B (23 kB), both re-measured.
+- A removed row that held focus hands it to the next Exit button, then Exit all, then the list.

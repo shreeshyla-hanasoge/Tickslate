@@ -45,6 +45,8 @@ interface OpenPosition {
   /** Both a stop and a target draw the range bar, whatever the side; with only one there is no bar. */
   stop?: Numeric
   target?: Numeric
+  /** True while an exit for this position is in flight: its button stays, is `aria-disabled` and fires nothing. */
+  pending?: boolean
   /** Accepted; not drawn yet. */
   openedAt?: Time
   /** L: the price since entry, as a sparkline. Readings need not arrive in order; at least two are needed. */
@@ -110,6 +112,10 @@ To update, set `data` again with the same ids, for example from a socket. A pric
 that moves writes the last price, the profit, the bar's words and the one mark
 that places the dot, and nothing in the rows around it.
 
+**Freshness.** Send `asOf` with `live: true` and the header says how old the data is: the dot pulses and the header reads `just now`, then `2 min. ago`. Past `stale-after` the dot turns `--ts-warn` and stops pulsing, the header reads `Stale · 3 min`, and the tile's name ends with `, stale` where it would end with `, live`. With `asOf` and no `live` the header reads `synced 11:42`. The MTM, the one headline figure, tints for a moment when the total moves: green up, red down.
+
+**How many.** There is no virtualisation: every position is a row in the table. Building the model for 2,000 positions with 300-point paths takes about 55 ms on a laptop, and a tick that touches a few of them writes only those cells. Past a few hundred positions, page the list.
+
 ## Attributes and properties
 
 | Name | Type | What it does |
@@ -121,6 +127,8 @@ that places the dot, and nothing in the rows around it.
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
 | `actions` | property | Names of the actions offered: `'retry'`, `'exit-position'` and `'exit-all'` |
+| `stale-after` | attribute | How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default `120000`. Falls back to the nearest `<ts-grid>`'s `stale-after` |
+| `flash` | attribute | `'off'` stops the brief tint on a headline figure that changed; the grid's `flash` applies too |
 | `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Formatting. Resolved from the tile, then the nearest `<ts-grid>`, then `configure()` |
 | `item` | attribute | The id a grid matches this child by |
 
@@ -147,7 +155,16 @@ for tests and server rendering.
 
 These are requests. The widget does not close anything, remove a row or ask "are you
 sure"; your app confirms, places the order and sends the new `positions`. Nothing
-fires while the grid is in edit mode. See [Events](../reference/events.md).
+fires while the grid is in edit mode.
+
+**Repeated presses.** The widget does not stop a second press, because it acts on
+nothing itself: **your app must dedupe or confirm** an exit. Two things help. The event
+is cancelable, so a handler can call `preventDefault()` to say it refused. And a
+position with `pending: true` keeps its Exit button but marks it `aria-disabled` and
+fires nothing, so set it while the order is in flight and clear it when you send the
+result. The buttons are named for what they exit: "Exit ETA 24500 CE, Long 50" (two
+positions in one instrument differ by side and quantity) and, for Exit all, "Exit all
+3 positions". See [Events](../reference/events.md).
 
 ## Parts
 
@@ -189,8 +206,10 @@ fires while the grid is in edit mode. See [Events](../reference/events.md).
   and the last price (a dot) differ in shape as well as place.
 - The scrolling list is a focusable group named "<label>, positions", so the keyboard
   can scroll it. Live updates never move focus or the scroll position.
+- When a position closes while its Exit button has focus, focus moves to the next position's Exit button, then to Exit all, then to the list, never to the page.
 - The Exit and Exit all buttons are real `<button>`s with names, at least 44px tall on a
   touch screen, and a focus ring. They exist only when you list them in `actions`.
+- Instrument names are bidi-isolated.
 - Figures use tabular numbers and keep their sign beside the digits in right-to-left
   pages. The bar always runs from stop to target, left to right, in every direction.
 - Under forced colours the bar keeps an outline, the entry tick is drawn in the

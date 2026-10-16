@@ -505,7 +505,10 @@ export interface Messages {
   'positions.trend': string
   'positions.exit': string
   'positions.exitLabel': string
+  'positions.exitLabelBare': string
   'positions.exitAll': string
+  'positions.exitAllLabel.one': string
+  'positions.exitAllLabel.other': string
 }
 
 export type MessageKey = keyof Messages

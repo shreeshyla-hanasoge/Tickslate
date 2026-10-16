@@ -53,7 +53,7 @@ const BUDGETS = {
   'dist-lib/index.js': { maxKb: 13, mode: 'enforce', target: 're-measured after locale-formatting, RFC 0003 §25, CI measurement', date: '2026-10-16' },
   // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-14, after
   // messages: 10,551 B.
-  'dist-lib/umd/tickslate.umd.js': { maxKb: 13, mode: 'enforce', target: 're-measured after locale-formatting, RFC 0003 §25, CI measurement', date: '2026-10-16' },
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 14.5, mode: 'enforce', target: 're-measured after watchlist-and-positions, RFC 0003 §25', date: '2026-10-16' },
   // The all-in `tickslate/elements` and the two CDN files carry no budget:
   // P1 adds about a dozen widgets to them, so RFC 0002's 50 kB figure belongs
   // to the 0.1.0 widget set. They are reported, and 0.2.0 release preparation
@@ -113,6 +113,10 @@ const BUDGETS = {
  * freshness header): card 19,250 B, chart 23,263 B, session-clock 21,760 B and
  * table 22,328 B, each reset to measured + 10 %, rounded up to 21, 25, 23.5 and
  * 24 kB. No other row moved.
+ *
+ * Re-measured 2026-10-16 after watchlist-and-positions (merged with freshness-and-flash): the core UMD 13,222 B
+ * (14.5 kB), metric 21,220 B (23 kB), watchlist 23,099 B (25 kB) and open-positions 23,821 B (26 kB), each reset to
+ * measured + 10 %, rounded up to the next 0.5 kB. No other row moved.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
@@ -124,6 +128,7 @@ const remeasuredSeventh = (maxKb) => ({ ...entry(maxKb), target: 're-measured af
 const remeasuredSixth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after widget-picker-and-controls, RFC 0003 §25', date: '2026-10-16' })
 // A new entry (widget-picker-and-controls, 2026-10-16): the picker and the grid controls measure 13,594 B bundled
 // with the core, so 14,953 B with 10 %, which rounds up to 15 kB.
+const remeasuredEighth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after watchlist-and-positions, RFC 0003 §25', date: '2026-10-16' })
 const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-16' })
 // A new entry (ts-table, 2026-10-16): the table measures 20,005 B bundled with the core, so 22,006 B with 10 %, which
 // rounds up to 21.5 kB.
@@ -133,14 +138,14 @@ const ENTRY_BUDGETS = {
   controls: newEntry(15),
   grid: remeasuredSixth(30.5),
   card: remeasuredSeventh(21),
-  metric: remeasuredSixth(20.5),
+  metric: remeasuredEighth(23),
   chart: remeasuredSeventh(25),
   'today-pnl': remeasuredSixth(22.5),
   'equity-curve': remeasuredSixth(22.5),
   'session-clock': remeasuredSeventh(23.5),
   table: remeasuredSeventh(24),
-  watchlist: newEntry(23),
-  'open-positions': newEntry(23.5),
+  watchlist: remeasuredEighth(25),
+  'open-positions': remeasuredEighth(26),
 }
 
 /**

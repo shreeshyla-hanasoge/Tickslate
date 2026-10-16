@@ -293,8 +293,11 @@ export const EN = Object.freeze({
   'positions.rangeNow': 'now {now}',
   'positions.trend': '{name}, price since entry, from {from} to {to}',
   'positions.exit': 'Exit',
-  'positions.exitLabel': 'Exit {name}',
+  'positions.exitLabel': 'Exit {name}, {detail}',
+  'positions.exitLabelBare': 'Exit {name}',
   'positions.exitAll': 'Exit all',
+  'positions.exitAllLabel.one': 'Exit the position',
+  'positions.exitAllLabel.other': 'Exit all {count} positions',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

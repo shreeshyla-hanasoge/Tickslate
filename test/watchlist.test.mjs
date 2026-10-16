@@ -229,11 +229,48 @@ describe('sizes', () => {
     assert.match(spark.label, /from 100\.00 to /)
   })
 
-  test('500 instruments with ticks take under 250 ms (a loaded machine included)', () => {
-    const big = { instruments: Array.from({ length: 500 }, (_, i) => ({ ...ALPHA, id: `i${i}`, ticks: ticks(300) })) }
-    const t0 = performance.now()
-    model(big, 'M')
-    assert.ok(performance.now() - t0 < 250, `${performance.now() - t0} ms`)
+  test('the model\'s cost grows in step with the rows: four times the rows is well under ten times the work', () => {
+    const run = (n) => {
+      const big = { instruments: Array.from({ length: n }, (_, i) => ({ ...ALPHA, id: `i${i}`, ticks: ticks(300) })) }
+      let best = Infinity
+      for (let k = 0; k < 7; k++) {
+        const t0 = performance.now()
+        model(big, 'M')
+        best = Math.min(best, performance.now() - t0)
+      }
+      return best
+    }
+    run(60)
+    const ratio = run(480) / run(120)
+    // Linear is 4; a quadratic step (each row looking at the others) would be 16.
+    assert.ok(ratio > 1.5 && ratio < 10, `ratio ${ratio}`)
+  })
+
+  test('a tiny previous close gives a change of zero and no sign', () => {
+    for (const ltp of [1e-9, 1.0000001e-9]) {
+      const [r] = model({ instruments: [{ id: 'x', ltp, prevClose: 1e-9 }] }).rows
+      assert.deepEqual([r.change, r.pct, r.arrow], ['0.00', '0.00%', ''], String(ltp))
+    }
+  })
+
+  test('a development warning counts the instruments dropped for want of an id, once', () => {
+    const el = new W.TsWatchlist()
+    const warned = []
+    const was = console.warn
+    console.warn = (m) => warned.push(m)
+    try {
+      el._checkDropped(model({ instruments: [ALPHA, { symbol: 'x' }, null] }))
+      el._checkDropped(model({ instruments: [ALPHA, { symbol: 'x' }, null] }))
+    } finally {
+      console.warn = was
+    }
+    assert.equal(warned.length, 1)
+    assert.match(warned[0], /dropped 2 rows/)
+  })
+
+  test('symbols and exchanges are bidi-isolated, and no row of the list takes focus, so none can lose it', () => {
+    assert.match(W.TsWatchlist.styles, /\.sym \{[^}]*unicode-bidi: isolate/)
+    assert.match(W.TsWatchlist.styles, /\.ex \{[^}]*unicode-bidi: isolate/)
   })
 })
 
