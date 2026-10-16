@@ -222,6 +222,35 @@ export function describeElement(el) {
   return `<${el.localName}${item ? ` item="${item}"` : ''}>`
 }
 
+const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/
+const ALLOWED_SCHEMES = ['http', 'https', 'mailto', 'tel']
+
+/**
+ * Only http:, https:, mailto:, tel: and relative URLs are accepted (RFC 0003 §7);
+ * any other scheme (javascript:, data:) is ignored with one development warning.
+ */
+export function validateHref(raw, el) {
+  if (typeof raw !== 'string') return null
+  const stripped = raw.replace(/[\u0000-\u0020]/g, '')
+  if (!stripped) return null
+  // //host and \\host carry no scheme but are cross-origin, so they are rejected like one.
+  if (/^[\\/]{2}/.test(stripped)) {
+    if (DEV && el) warnOnce(`href-scheme:${el._uid || el.localName}`, `${describeElement(el)} href="${raw}" is a protocol-relative URL; use a full http or https URL or a path.`)
+    return null
+  }
+  const match = SCHEME.exec(stripped)
+  if (match) {
+    const scheme = match[1].toLowerCase()
+    if (!ALLOWED_SCHEMES.includes(scheme)) {
+      if (DEV && el) {
+        warnOnce(`href-scheme:${el._uid || el.localName}`, `${describeElement(el)} href="${raw}" has an unsupported scheme; only http, https, mailto, tel and relative URLs are accepted.`)
+      }
+      return null
+    }
+  }
+  return raw
+}
+
 // A character no translation contains, to find where the time goes in "synced {time}".
 const TIME_MARK = '\uE000'
 
@@ -390,7 +419,7 @@ ${standaloneCss()}
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .btn {
   font: 500 11px var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
-  border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer; position: relative;
+  border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer; position: relative; z-index: 2;
 }
 .btn.on { background: var(--ts-surface-2); color: var(--ts-ink); box-shadow: inset 0 -2px 0 var(--ts-accent); }
 .visually-hidden {
@@ -398,6 +427,16 @@ ${standaloneCss()}
   clip-path: inset(50%); white-space: nowrap;
 }
 .btn:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
+/* Stretched link for href and activatable tiles (RFC 0003 §7). */
+[part~="link"] {
+  color: inherit; text-decoration: none; font: inherit; background: none; border: 0; padding: 0; margin: 0;
+  cursor: pointer; outline: none; display: inline;
+}
+[part~="link"]::after { content: ''; position: absolute; inset: 0; z-index: 1; }
+/* The ring is on the link's own overlay, which already covers the tile, so it works in engines without the parent selector (Firefox before 121). */
+[part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
+/* Plain slotted content stays under the overlay, so a click on it opens the tile. Only controls, and whatever the host puts in the actions slot, are lifted above it to take their own clicks. */
+::slotted(:is(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="link"])), ::slotted([slot="actions"]) { position: relative; z-index: 2; }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
 @media (pointer: coarse) { .btn { min-height: 44px; min-width: 44px; } }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
@@ -489,6 +528,10 @@ const FORMAT_ATTR = { locale: 'locale', currency: 'currency', timeZone: 'time-zo
 
 /** The nearest ancestor <ts-grid>, looking out through shadow roots. */
 function findGrid(el) {
+  if (el.closest) {
+    const g = el.closest('ts-grid')
+    if (g) return g
+  }
   let node = el.parentElement || (el.getRootNode && el.getRootNode().host)
   while (node) {
     if (node.localName === 'ts-grid') return node
@@ -516,9 +559,12 @@ function unmount(widget) {
   }
 }
 
+const ACTION_OPEN = 'open'
+const findLink = (t) => t?.closest ? t.closest('[part~="link"]') : (t?.getAttribute?.('part') === 'link' ? t : null)
+
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level', 'href', 'activatable']
   }
 
   constructor() {
@@ -560,10 +606,35 @@ export class TsWidget extends Base {
     const root = this.attachShadow({ mode: 'open' })
     root.innerHTML = `<style>${cssFor(this.constructor)}</style><div class="tile" part="tile" role="group"></div>`
     this._section = root.querySelector('.tile')
-    // One delegated listener: the Retry button is rebuilt with the error view.
+
+    // One delegated listener: Retry button in error view; tile activation for links and open actions (RFC 0003 §7).
     this._section.addEventListener('click', (e) => {
-      const target = e.target && e.target.closest ? e.target.closest('[data-action]') : null
-      if (target && target.getAttribute('data-action') === 'retry' && this.actionEnabled('retry')) this.emit('retry')
+      const t = e.target
+      const retry = t?.closest?.('[data-action]')
+      if (retry && retry.getAttribute('data-action') === 'retry' && this.actionEnabled('retry')) {
+        this.emit('retry')
+        return
+      }
+      const link = findLink(t)
+      if (!link) return
+      if (this._isEditing()) {
+        e.preventDefault?.()
+        e.stopPropagation?.()
+        return
+      }
+      // Only the button exists when the tile opens; a valid href renders a real link and navigates natively.
+      if (link.localName === 'button') {
+        e.preventDefault?.()
+        this.emit(ACTION_OPEN, { id: this.getAttribute('item') || '' })
+      }
+    })
+    this._section.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && findLink(e.target)) {
+        if (this._isEditing()) {
+          e.preventDefault?.()
+          e.stopPropagation?.()
+        }
+      }
     })
   }
 
@@ -612,7 +683,7 @@ export class TsWidget extends Base {
   }
 
   actionEnabled(name) {
-    return this._actions.includes(name)
+    return Boolean(this._actions && this._actions.includes(name))
   }
 
   get size() {
@@ -665,6 +736,23 @@ export class TsWidget extends Base {
   set label(value) {
     if (value === null || value === undefined) this.removeAttribute('label')
     else this.setAttribute('label', value)
+  }
+
+  get href() {
+    return this.getAttribute('href')
+  }
+
+  set href(value) {
+    if (value === null || value === undefined) this.removeAttribute('href')
+    else this.setAttribute('href', String(value))
+  }
+
+  get activatable() {
+    return this.hasAttribute('activatable')
+  }
+
+  set activatable(value) {
+    this.toggleAttribute('activatable', !!value)
   }
 
   get clock() {
@@ -815,7 +903,7 @@ export class TsWidget extends Base {
   connectedCallback() {
     // Before the first render, so the tile never paints unstyled; cheap after the first call.
     ensureTokens()
-    this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions', 'messages')
+    this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions', 'messages', 'href', 'activatable')
     mount(this)
     this._link(findGrid(this))
     this._normaliseSize()
@@ -943,7 +1031,7 @@ export class TsWidget extends Base {
    */
   _headingLevel(grid) {
     for (const [source, whose] of [[this, ''], [grid, "grid's "]]) {
-      const raw = source ? source.getAttribute('heading-level') : null
+      const raw = source && typeof source.getAttribute === 'function' ? source.getAttribute('heading-level') : null
       if (!raw) continue
       if (/^\s*[1-6]\s*$/.test(raw)) return Number(raw)
       if (DEV) warnOnce(`level:${this._uid}:${whose}`, `${describeElement(this)} ${whose}heading-level="${raw}" is not a number from 1 to 6, so it is ignored.`)
@@ -959,6 +1047,11 @@ export class TsWidget extends Base {
     if (value === null) {
       if (el.getAttribute(name) !== null) el.removeAttribute(name)
     } else if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+  }
+
+  _isEditing() {
+    const grid = findGrid(this)
+    return Boolean(grid && (grid.editing || grid.hasAttribute('editing')))
   }
 
   /**
@@ -980,6 +1073,31 @@ export class TsWidget extends Base {
     const named = !!this.label
     this._setAttr(heading, 'aria-hidden', named ? null : 'true')
     this._setAttr(heading, 'aria-label', named && heading.textContent !== label ? label : null)
+    this._applyActivation(heading, label)
+  }
+
+  _applyActivation(heading, label) {
+    const hasHref = this.hasAttribute('href')
+    const href = hasHref ? validateHref(this.getAttribute('href'), this) : null
+    // href wins only when it is valid, so a rejected one leaves the tile free to open.
+    const act = this.activatable && href === null
+    const cur = heading.querySelector ? heading.querySelector('[part~="link"]') : null
+
+    if (href !== null) {
+      if (!cur || (cur.localName !== 'a' && cur.tagName !== 'A')) {
+        const p = 'part' + '="link"'
+        heading.innerHTML = `<a ${p} href="${escapeHtml(href)}">${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</a>`
+      } else if (cur.getAttribute('href') !== href) {
+        cur.setAttribute('href', href)
+      }
+    } else if (act) {
+      if (!cur || (cur.localName !== 'button' && cur.tagName !== 'BUTTON')) {
+        const p = 'part' + '="link"'
+        heading.innerHTML = `<button type="button" ${p}>${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</button>`
+      }
+    } else if (cur) {
+      heading.innerHTML = escapeHtml(cur.textContent || label)
+    }
   }
 
   /** The tile's name: the view model's, then ", live" while it is live (a stale tile will say so too). */
