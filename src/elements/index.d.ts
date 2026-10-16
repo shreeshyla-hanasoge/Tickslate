@@ -1,12 +1,12 @@
 import type { Calendar, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
 import { TsWidget } from './widget.js'
-import type { ViewModelContext } from './widget.js'
+import type { ViewModelContext, TsOpenAction, TsChartSelectAction } from './widget.js'
 
 export { version } from '../core/index.js'
 // widget.d.ts is shipped beside this file (scripts/pack-lib.mjs), so this
 // import resolves both in the repo and in the published package.
 export { TsWidget } from './widget.js'
-export type { ViewModelContext, WidgetState } from './widget.js'
+export type { ViewModelContext, WidgetState, TsOpenAction, TsChartSelectAction } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
 import type { TsGrid, LayoutAdapter } from './grid.js'
@@ -94,6 +94,38 @@ export declare function linePaths(
 /** Stable for 0.x. Escapes `& < > " '` in `String(s)`, for text a template writes into markup. */
 export declare function escapeHtml(s: unknown): string
 
+/** The `ts-action` detail every widget can send: the error view's Retry and tile activation (RFC 0003 §7, §22.2). */
+export type TsCommonAction = { action: 'retry' } | TsOpenAction
+
+/**
+ * What every widget inherits, for the manifest (scripts/gen-manifest.mjs): the attributes, parts and
+ * slots of the TsWidget base. They are written here, in a block of their own, because widget.d.ts
+ * describes the properties and this describes the markup a host sees. A tag's own `@element` block
+ * adds to these and does not repeat them.
+ *
+ * @base TsWidget
+ * @attr {'S' | 'Wide' | 'Tall' | 'M' | 'L' | 'XL' | 'Banner'} size - The size to draw, snapped to the sizes the widget supports.
+ * @attr {string} label - The tile's heading and accessible name; defaults to the widget's catalog label.
+ * @attr {string} locale - BCP 47 tag for number, date and plural formatting; defaults to the grid's, then configure()'s.
+ * @attr {string} currency - ISO 4217 code for money; defaults to the grid's, then configure()'s.
+ * @attr {string} time-zone - IANA zone for times and dates; defaults to the grid's, then configure()'s.
+ * @attr {string} hour-cycle - 'h12', 'h23' or the locale's own ('auto'); defaults to the grid's, then configure()'s.
+ * @attr {'loading' | 'error'} state - Shows the skeleton or the error view, even over existing data.
+ * @attr {string} data - JSON (starting with { or [) used as the data until the `data` property is set.
+ * @attr {string} heading-level - The aria-level of the label heading, 1 to 6. Default 3.
+ * @attr {string} href - Makes the label a link to this URL: http, https, mailto, tel or relative.
+ * @attr {boolean} activatable - Makes the label a button that fires `ts-action` with action 'open'.
+ * @attr {string} item - The id the grid matches this tile to, and the `id` of an 'open' action.
+ * @csspart tile - The tile: a role="group" box named by the widget's result.
+ * @csspart header - The row holding the live dot, the label and the meta.
+ * @csspart label - The heading text.
+ * @csspart link - The label's link or button when `href` or `activatable` is set.
+ * @csspart skeleton - The loading view.
+ * @csspart empty - The empty view, shown for `data = null`.
+ * @csspart error - The error view and its Retry button.
+ * @slot empty - Replaces the empty view's text.
+ */
+
 /** Freshness, allowed on every widget's data (RFC 0001 §8.1). */
 export interface WidgetFreshness {
   /** When the data was taken: any Time, read with toTime (RFC 0002 §4.1). */
@@ -108,11 +140,27 @@ export interface CardData extends WidgetFreshness {}
  * <ts-card>, every size. Slots: default (the body), value, actions, footer and empty.
  * Attributes: label, sizes (whitespace-separated, default all seven), live, as-of, scrollable.
  * `data` only updates the header; `data = null` never replaces slotted content.
+ *
+ * @element ts-card
+ * @attr {string} sizes - Whitespace-separated sizes the card may snap to. Default all seven.
+ * @attr {boolean} live - Shows the live dot.
+ * @attr {string} as-of - When the content was taken: a time, shown as "synced 11:42".
+ * @attr {boolean} scrollable - Lets the body scroll instead of clipping.
+ * @fires {CustomEvent<TsCardAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart body - The box around the default slot.
+ * @csspart value - The slot for a headline figure.
+ * @slot - The card's body.
+ * @slot value - A headline figure above the body.
+ * @slot actions - Controls in the header, right of the meta.
+ * @slot footer - Content below the body.
  */
 export declare class TsCard extends TsWidget<CardData> {
+  addEventListener(type: 'ts-action', listener: (this: TsCard, ev: CustomEvent<TsCardAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsCard, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
   static dataOptional: true
   /** From the sizes and label attributes. */
-  get spec(): { label: string; sizes: SizeName[] }
+  readonly spec: { label: string; sizes: SizeName[] }
 }
 
 export interface MetricData extends WidgetFreshness {
@@ -162,8 +210,18 @@ export interface MetricModel {
   dropped: number
 }
 
-/** <ts-metric>, sizes S · Wide · M. */
+/**
+ * <ts-metric>, sizes S · Wide · M.
+ *
+ * @element ts-metric
+ * @fires {CustomEvent<TsMetricAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart value - The headline figure.
+ * @csspart chart - The sparkline's box.
+ */
 export declare class TsMetric extends TsWidget<MetricData> {
+  addEventListener(type: 'ts-action', listener: (this: TsMetric, ev: CustomEvent<TsMetricAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsMetric, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
   /** Pure: data to display strings, paths and the accessible name. */
   static metricModel(data: MetricData, variant: SizeName, ctx: ViewModelContext): MetricModel
 }
@@ -216,8 +274,17 @@ export interface ChartModel {
   dropped: number
 }
 
-/** <ts-chart>, sizes Wide · M · L · XL. Lines and areas, up to four series, legend from M up. */
+/**
+ * <ts-chart>, sizes Wide · M · L · XL. Lines and areas, up to four series, legend from M up.
+ *
+ * @element ts-chart
+ * @fires {CustomEvent<TsChartAction>} ts-action - Retry, 'open', and 'select' for a point when `actions` includes 'select'.
+ * @csspart chart - The drawing box.
+ */
 export declare class TsChart extends TsWidget<ChartData> {
+  addEventListener(type: 'ts-action', listener: (this: TsChart, ev: CustomEvent<TsChartAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsChart, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
   /** Pure: data to paths, labels and the accessible name. */
   static chartModel(data: ChartData, variant: SizeName, ctx: ViewModelContext): ChartModel
 }
@@ -239,8 +306,18 @@ export interface TodayPnlData extends WidgetFreshness {
   window?: { from: Time; to: Time }
 }
 
-/** <ts-today-pnl>, sizes S · Wide · M. */
-export declare class TsTodayPnl extends TsWidget<TodayPnlData> {}
+/**
+ * <ts-today-pnl>, sizes S · Wide · M.
+ *
+ * @element ts-today-pnl
+ * @fires {CustomEvent<TsTodayPnlAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart chart - The intraday curve's box.
+ */
+export declare class TsTodayPnl extends TsWidget<TodayPnlData> {
+  addEventListener(type: 'ts-action', listener: (this: TsTodayPnl, ev: CustomEvent<TsTodayPnlAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsTodayPnl, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+}
 
 export type EquityRange = '1W' | '1M' | '3M' | 'YTD' | 'All'
 
@@ -253,8 +330,18 @@ export interface EquityCurveData extends WidgetFreshness {
   trades?: number
 }
 
-/** <ts-equity-curve>, sizes Wide · M · XL. XL's range buttons fire `ts-action` with action 'range'. */
+/**
+ * <ts-equity-curve>, sizes Wide · M · XL. XL's range buttons fire `ts-action` with action 'range'.
+ *
+ * @element ts-equity-curve
+ * @attr {'1W' | '1M' | '3M' | 'YTD' | 'All'} range - The range shown. Reflects `range`; an unknown value reads as 'All'.
+ * @fires {CustomEvent<TsEquityCurveAction>} ts-action - Retry, 'open', and 'range' when a range button is pressed.
+ * @csspart chart - The curve's box.
+ */
 export declare class TsEquityCurve extends TsWidget<EquityCurveData> {
+  addEventListener(type: 'ts-action', listener: (this: TsEquityCurve, ev: CustomEvent<TsEquityCurveAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsEquityCurve, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
   /** Reflects the `range` attribute; an unknown value reads as 'All'. */
   range: EquityRange
 }
@@ -267,8 +354,97 @@ export interface SessionClockData {
   timeframes?: number[]
 }
 
-/** <ts-session-clock>, sizes S · Banner. Ticks by itself every second; set `clock` to freeze it. */
-export declare class TsSessionClock extends TsWidget<SessionClockData> {}
+/**
+ * <ts-session-clock>, sizes S · Banner. Ticks by itself every second; set `clock` to freeze it.
+ *
+ * @element ts-session-clock
+ * @fires {CustomEvent<TsSessionClockAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart value - The clock reading.
+ */
+export declare class TsSessionClock extends TsWidget<SessionClockData> {
+  addEventListener(type: 'ts-action', listener: (this: TsSessionClock, ev: CustomEvent<TsSessionClockAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsSessionClock, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+}
+
+export type TsCardAction = TsCommonAction
+export type TsMetricAction = TsCommonAction
+/** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1). */
+export type TsChartAction = TsCommonAction | TsChartSelectAction
+export type TsTodayPnlAction = TsCommonAction
+export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
+export type TsSessionClockAction = TsCommonAction
+
+/**
+ * The markup of <ts-grid>, for the manifest. Its class, with the prose above its members, is in
+ * grid.d.ts, which this story does not own; the generator finds the class from
+ * `HTMLElementTagNameMap` and reads the tags from here.
+ *
+ * @element ts-grid
+ * @attr {boolean} editing - Edit mode. Reflected by `editing`.
+ * @attr {string} profile - The profile shown. Default 'market'.
+ * @attr {boolean} locked - A read-only dashboard: no edit mode, no edit controls.
+ * @attr {'off'} edit-controls - 'off' hides the built-in edit button and pill, for hosts with their own.
+ * @attr {'off'} undo-toast - 'off' suppresses the undo toast after a remove.
+ * @attr {string} locale - BCP 47 tag for the grid's strings and its tiles' formatting.
+ * @attr {string} currency - ISO 4217 code its tiles format money with.
+ * @attr {string} time-zone - IANA zone its tiles format times with.
+ * @attr {string} hour-cycle - The hour cycle its tiles use.
+ * @attr {string} persist - A key that saves the layout to localStorage per device.
+ * @attr {string} aria-label - The name of the grid's region.
+ * @fires {CustomEvent<TsLayoutChangeDetail>} ts-layout-change - A move, resize, remove, add or undo; save `detail.layout`.
+ * @fires {CustomEvent<{ issues: LayoutIssue[] }>} ts-layout-issues - A layout was repaired when read.
+ * @fires {CustomEvent<{ editing: boolean }>} ts-edit-change - Edit mode started or ended.
+ * @fires {CustomEvent<TsReadingOrderChangeDetail>} ts-reading-order-change - The order of the visible tiles changed.
+ * @fires {CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone'; initial: boolean }>} ts-columns-change - The grid's column count changed.
+ * @fires {CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>} ts-profile-change - The shown profile changed.
+ * @csspart board - The box the tiles sit in.
+ * @csspart placeholder - The drop target shown while a tile is dragged.
+ * @csspart toast - The undo toast.
+ * @csspart edit-pill - The floating Done and Add back controls.
+ * @csspart empty - The panel shown when no tile is visible.
+ * @slot - The tiles.
+ * @slot empty - Content that replaces the empty board's text.
+ */
+
+/** The attributes of the TsWidget base, as the framework typings (`tickslate/jsx`, `vue`, `svelte`) offer them. Kept in step with the `@base` block above by test/manifest.test.mjs. */
+export interface TsWidgetAttributes {
+  size?: SizeName
+  label?: string
+  locale?: string
+  currency?: string
+  'time-zone'?: string
+  'hour-cycle'?: string
+  state?: 'loading' | 'error'
+  'heading-level'?: number | string
+  href?: string
+  activatable?: boolean
+  item?: string
+}
+
+/**
+ * The attributes each tag adds to `TsWidgetAttributes` (or, for a tag that is no widget, all it has),
+ * keyed by tag. A story that adds an element adds its line here, and the framework typings pick it
+ * up; a tag with no extra attribute needs none. test/manifest.test.mjs fails when a key here and the
+ * tag's `@attr` lines disagree.
+ */
+export interface TsElementAttributes {
+  'ts-card': { sizes?: string; live?: boolean; 'as-of'?: string; scrollable?: boolean }
+  'ts-equity-curve': { range?: EquityRange }
+  'ts-grid': {
+    editing?: boolean
+    profile?: string
+    locked?: boolean
+    'edit-controls'?: 'off'
+    'undo-toast'?: 'off'
+    locale?: string
+    currency?: string
+    'time-zone'?: string
+    'hour-cycle'?: string
+    persist?: string
+    'aria-label'?: string
+  }
+}
 
 declare global {
   interface HTMLElementTagNameMap {

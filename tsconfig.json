@@ -1,0 +1,17 @@
+{
+  // The base for test/types/tsconfig.*.json, which add the module resolution each one checks.
+  // It includes nothing itself: the library is JavaScript with hand-written declarations, and
+  // this project only checks that those declarations work for a host (npm run check:types).
+  "compilerOptions": {
+    "target": "es2019",
+    "lib": ["es2019", "dom", "dom.iterable"],
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    // Off on purpose: the declarations in dist-lib/ are what is being tested.
+    "skipLibCheck": false,
+    // Nothing from @types/* is global here; each fixture imports what it uses.
+    "types": []
+  },
+  "include": []
+}

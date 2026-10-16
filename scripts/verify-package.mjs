@@ -43,7 +43,7 @@ const allTags = entries.flatMap((e) => e.tags)
 // A field that is missing altogether fails too: dropping "unpkg" would hide a
 // lost CDN build rather than fix it.
 
-const FIELDS = ['main', 'module', 'types', 'unpkg', 'jsdelivr', 'exports']
+const FIELDS = ['main', 'module', 'types', 'customElements', 'unpkg', 'jsdelivr', 'exports']
 const targets = []
 const collect = (value, where) => {
   if (typeof value === 'string') targets.push([value, where])
@@ -103,6 +103,13 @@ for (const [subpath, entry] of Object.entries(exportsMap)) {
   if (typeof entry === 'string') continue // tokens.css, the CDN files and package.json stay plain paths
   const keys = Object.keys(entry)
   const isElements = subpath === './elements' || subpath.startsWith('./elements/')
+  // The framework typings are types only, so they carry the `types` condition alone
+  // (RFC 0003 §22.1). pack-lib refuses a typings file that imports a framework without `import type`.
+  const typesOnly = keys.length === 1 && keys[0] === 'types' && /^\.\/types\/[\w-]+\.d\.ts$/.test(entry.types)
+  if (typesOnly) {
+    ok(`exports["${subpath}"] is types only`)
+    continue
+  }
   if (!isElements) {
     const missing = ['types', 'import', 'default'].filter((k) => !keys.includes(k))
     if (missing.length) fail(`exports["${subpath}"] has no ${missing.join(', ')} condition`)
@@ -125,6 +132,26 @@ for (const sub of expectedSubpaths) if (!actualSubpaths.includes(sub)) fail(`exp
 for (const sub of actualSubpaths) if (!expectedSubpaths.includes(sub)) fail(`exports["${sub}"] has no module in src/elements/define/`)
 if (actualSubpaths.length === expectedSubpaths.length && expectedSubpaths.every((s) => actualSubpaths.includes(s))) {
   ok(`exports has ./elements and one entry for each of the ${entries.length} define modules`)
+}
+
+// ------------------------------------------------ custom elements manifest (RFC 0003 §22.3)
+//
+// Both files must list every tag a define module registers, each with the
+// attribute, event, part and slot arrays a tool reads; a tag added by a story
+// that never documented it is caught here as well as in the generator.
+{
+  const cem = JSON.parse(await readFile(resolve(out, 'custom-elements.json'), 'utf8'))
+  const data = JSON.parse(await readFile(resolve(out, 'vscode.html-custom-data.json'), 'utf8'))
+  if (cem.schemaVersion !== '1.0.0') fail(`custom-elements.json has schemaVersion ${JSON.stringify(cem.schemaVersion)}, not "1.0.0"`)
+  const declared = new Map(cem.modules.flatMap((m) => m.declarations).filter((d) => d.tagName).map((d) => [d.tagName, d]))
+  const listed = new Set((data.tags || []).map((t) => t.name))
+  for (const tag of allTags) {
+    const d = declared.get(tag)
+    if (!d) fail(`custom-elements.json has no declaration for <${tag}>`)
+    else if (!['attributes', 'events', 'slots', 'cssParts', 'members'].every((k) => Array.isArray(d[k]))) fail(`custom-elements.json's <${tag}> lacks attributes, events, slots, cssParts or members`)
+    if (!listed.has(tag)) fail(`vscode.html-custom-data.json has no <${tag}>`)
+  }
+  if (allTags.every((tag) => declared.has(tag) && listed.has(tag))) ok(`custom-elements.json and vscode.html-custom-data.json list all ${allTags.length} tags`)
 }
 
 for (const field of ['unpkg', 'jsdelivr']) {
@@ -470,6 +497,8 @@ const ALLOWED = [
   'LICENSE',
   'CHANGELOG.md',
   '*.d.ts',
+  // The framework typings, and common.d.ts which they share (RFC 0003 §22.1).
+  'types/*.d.ts',
   'chunks/*.js',
   'chunks/*.js.map',
   'dev/chunks/*.js',
