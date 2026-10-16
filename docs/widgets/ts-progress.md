@@ -16,7 +16,7 @@ import 'tickslate/elements'
 | `S` | 1 x 1 | Label, the percentage, the bar, then the figures ("6,400 of 10,000 · 64%") and the state in words |
 | `Wide` | 2 x 1 | Label, the percentage and state, the bar, the figures and the caption |
 
-Any other size snaps to the nearest of these.
+Any other size snaps to the nearest of these. Wide is designed for a tile of at least 300px, as in a two-column grid.
 
 ## Data shape
 
@@ -135,12 +135,12 @@ See [Events](../reference/events.md).
   limit, 6,400 of 10,000, 64%, near limit" ("over limit", "goal reached"; no
   state word below the warning). With no target: "Daily loss limit, no target
   set". Its label is a heading.
-- The bar is a `role="meter"` from 0 to 100 whose `aria-valuetext` repeats the
+- The bar is a `role="meter"` from 0 to 100, named by the label alone, whose `aria-valuetext` repeats the
   result and the state, so a screen reader hears words and not a bare number.
 - The state is never colour alone: it is written beside the figure, and the
   over-limit bar is striped.
 - Figures use tabular numbers and keep their sign beside the digits in
-  right-to-left pages. The track always fills from its start edge.
+  right-to-left pages. The track fills from its inline start edge, so from the right in a right-to-left page.
 - In forced colours the track gets an outline and the bar uses the user's own
   highlight colour; the stripes stay.
 - The live pulse, the loading shimmer and the change flash stop under

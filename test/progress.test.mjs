@@ -182,3 +182,39 @@ describe('the freshness parts', () => {
     assert.equal(vm.time, '14:05')
   })
 })
+
+describe('float drift and tiny figures', () => {
+  test('a ratio a hair under warnAt still counts as at it', () => {
+    const vm = model({ value: 0.21, target: 0.28, mode: 'limit', warnAt: 0.75 })
+    assert.equal(vm.pct, '75%')
+    assert.equal(vm.state, 'near')
+  })
+
+  test('0.1 + 0.2 against 0.3 is met, either way round', () => {
+    assert.equal(model({ value: 0.1 + 0.2, target: 0.3, mode: 'limit' }).state, 'over')
+    assert.equal(model({ value: 0.3, target: 0.1 + 0.2, mode: 'limit' }).state, 'over')
+    assert.equal(model({ value: 0.1 + 0.2, target: 0.3 }).state, 'done')
+    assert.equal(model({ value: 0.3, target: 0.1 + 0.2 }).pct, '100%')
+  })
+
+  test('the drawn fill is not full until the target is met', () => {
+    assert.ok(limit(9999).fill < 1)
+    assert.equal(limit(9999).fill, 0.999)
+    assert.equal(limit(10000).fill, 1)
+  })
+
+  test('a target that formats to zero is no target', () => {
+    assert.equal(model({ value: 3, target: 1e-9 }).state, 'none')
+    assert.equal(model({ value: 3, target: 1e-9 }).text, '—')
+  })
+
+  test('a negative duration keeps its sign, and a zero one has none', () => {
+    assert.equal(model({ value: -90000, target: 600000, format: 'duration' }).text.startsWith('−'), true)
+    assert.doesNotMatch(model({ value: -0.4, target: 600000, format: 'duration' }).text, /^−/)
+  })
+
+  test('the stripes survive forced colours', () => {
+    assert.match(TsProgress.styles, /forced-colors: active[\s\S]*\.bar \{ forced-color-adjust: none; \}/)
+    assert.doesNotMatch(TsProgress.styles, /direction:\s*ltr/)
+  })
+})

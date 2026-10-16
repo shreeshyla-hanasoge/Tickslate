@@ -139,3 +139,52 @@ test.describe('fit', () => {
     }
   }
 })
+
+test.describe('direction, forced colours and names', () => {
+  test('the bar fills from the inline start: the right edge in a right-to-left page', async ({ page }) => {
+    await open(page, 'size=Wide&value=4000&rtl')
+    const g = await page.evaluate(() => {
+      const root = window.__p.el.shadowRoot
+      const t = root.querySelector('[data-k="meter"]').getBoundingClientRect()
+      const b = root.querySelector('[data-k="bar"]').getBoundingClientRect()
+      return { fromRight: Math.abs(t.right - b.right), fromLeft: Math.abs(b.left - t.left), fill: b.width / t.width }
+    })
+    expect(g.fromRight).toBeLessThan(1)
+    expect(g.fromLeft).toBeGreaterThan(10)
+    expect(g.fill).toBeGreaterThan(0.38)
+    expect(g.fill).toBeLessThan(0.42)
+  })
+
+  for (const [name, query] of [['ok', 'value=4000'], ['near', 'value=8000'], ['over', 'value=12000'], ['goal reached', 'mode=goal&value=10000']]) {
+    test(`forced colours: the ${name} bar is painted`, async ({ page }) => {
+      await page.emulateMedia({ forcedColors: 'active' })
+      await open(page, `size=Wide&${query}`)
+      const g = await page.evaluate(() => {
+        const bar = window.__p.el.shadowRoot.querySelector('[data-k="bar"]')
+        const cs = getComputedStyle(bar)
+        return { w: bar.getBoundingClientRect().width, image: cs.backgroundImage, color: cs.backgroundColor }
+      })
+      expect(g.w).toBeGreaterThan(10)
+      expect(g.image !== 'none' || g.color !== 'rgba(0, 0, 0, 0)').toBe(true)
+      if (name === 'over') expect(g.image).toContain('repeating-linear-gradient')
+    })
+  }
+
+  test('the meter is named by the label alone and the tile by the full sentence', async ({ page }) => {
+    await open(page, 'size=Wide&value=8000')
+    const names = await page.evaluate(() => {
+      const root = window.__p.el.shadowRoot
+      return { meter: root.querySelector('[data-k="meter"]').getAttribute('aria-label'), tile: root.querySelector('[role="group"]').getAttribute('aria-label'), text: root.querySelector('[data-k="meter"]').getAttribute('aria-valuetext') }
+    })
+    expect(names.meter).toBe('Daily loss limit')
+    expect(names.tile).toBe('Daily loss limit, 8,000 of 10,000, 80%, near limit')
+    expect(names.text).toBe('8,000 of 10,000, 80%, near limit')
+  })
+
+  test('9,999 of 10,000 draws a bar that is not full', async ({ page }) => {
+    await open(page, 'size=Wide&value=9999')
+    const fill = (await read(page)).fill
+    expect(fill).toBeLessThan(0.9995)
+    expect((await read(page)).pct).toBe('99%')
+  })
+})

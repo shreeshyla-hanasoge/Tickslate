@@ -42,6 +42,7 @@
     document.head.append(st)
   }
 
+  if (params.has('rtl')) document.documentElement.dir = 'rtl'
   const el = document.getElementById('p')
   const size = params.get('size') || 'Wide'
   el.setAttribute('size', size)

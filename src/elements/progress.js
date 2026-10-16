@@ -37,7 +37,11 @@ export function progressModel(data, variant, ctx) {
       case 'percent':
         return fmt.percent(n, o)
       case 'duration':
-        return n < 0 ? `−${fmt.duration(-n)}` : fmt.duration(n)
+{
+        // The formatter clamps below zero, so the sign is added here, and only to a figure that is not zero.
+        const m = fmt.duration(Math.abs(n))
+        return n < 0 && /[1-9]/.test(m) ? `−${m}` : m
+      }
       default:
         return unit ? fmt.unit(n, unit, o) : fmt.number(n, o)
     }
@@ -45,7 +49,8 @@ export function progressModel(data, variant, ctx) {
 
   const value = toNumber(d.value)
   const target = toNumber(d.target)
-  const valid = Number.isFinite(value) && Number.isFinite(target) && target > 0
+  // A target that formats to zero (1e-9 as "0") would read "3 of 0", so it is no target.
+  const valid = Number.isFinite(value) && Number.isFinite(target) && target > 0 && /[1-9]/.test(show(target))
   const label = ctx.label
 
   const vm = {
@@ -73,13 +78,17 @@ export function progressModel(data, variant, ctx) {
   // 145 of 1,000 is exactly 14.5 and not 14.499…, and a tiny epsilon covers
   // what is left. Below the target it never reads 100%, so a gauge that says
   // 100% always means met.
-  let whole = Math.floor((value * 100) / target + 0.5 + 1e-9)
-  if (ratio < 1 && whole >= 100) whole = 99
+  const exact = (value * 100) / target
+  // The same tolerance decides every threshold, so 0.1 + 0.2 against 0.3 is met and 0.21 of 0.28 is at 75%.
+  const EPS = 1e-9
+  const met = exact >= 100 - EPS
+  let whole = Math.floor(exact + 0.5 + EPS)
+  if (!met && whole >= 100) whole = 99
   const pct = fmt.percent(whole / 100, { sign: 'negative', decimals: 0 })
 
   let state = 'ok'
-  if (mode === 'limit') state = ratio >= 1 ? 'over' : ratio >= warnAt ? 'near' : 'ok'
-  else if (ratio >= 1) state = 'done'
+  if (mode === 'limit') state = met ? 'over' : exact >= warnAt * 100 - EPS ? 'near' : 'ok'
+  else if (met) state = 'done'
   const stateText = state === 'over' ? t('progress.over') : state === 'near' ? t('progress.near') : state === 'done' ? t('progress.done') : ''
 
   const shownValue = show(value)
@@ -87,7 +96,8 @@ export function progressModel(data, variant, ctx) {
   const result = t('progress.result', { value: shownValue, target: shownTarget, pct })
   vm.text = t('progress.text', { value: shownValue, target: shownTarget, pct })
   vm.pct = pct
-  vm.fill = Math.round(Math.min(1, Math.max(0, ratio)) * 1000) / 1000
+  // Not quite full until the target is met, or 99.97% would draw as a bar that looks like 100%.
+  vm.fill = met ? 1 : Math.min(0.999, Math.round(Math.max(0, ratio) * 1000) / 1000)
   vm.state = state
   vm.stateText = stateText
   vm.valueText = stateText ? t('progress.withState', { text: result, state: stateText }) : result
@@ -149,8 +159,8 @@ export class TsProgress extends TsWidget {
 .sm.wrapt { line-height: 1.25; }
 .st { font-weight: 600; min-width: 0; }
 .st:empty { display: none; }
-/* The track fills from the start edge in every script, so only the drawing is forced ltr, like a time axis. */
-.track { block-size: 8px; border-radius: 4px; background: var(--ts-surface-2); overflow: hidden; direction: ltr; flex: none; }
+/* The fill starts at the inline start, so it grows from the right in a right-to-left page. */
+.track { block-size: 8px; border-radius: 4px; background: var(--ts-surface-2); overflow: hidden; flex: none; }
 .bar { block-size: 100%; inline-size: var(--w, 0%); border-radius: inherit; background: var(--ts-accent); }
 .track.warn .bar { background: var(--ts-warn); }
 .track.done .bar { background: var(--ts-profit); }
@@ -158,6 +168,8 @@ export class TsProgress extends TsWidget {
 .track.over .bar { background: repeating-linear-gradient(135deg, var(--ts-loss) 0 6px, color-mix(in srgb, var(--ts-loss) 45%, var(--ts-surface-2)) 6px 12px); }
 @media (forced-colors: active) {
   .track { box-sizing: border-box; border: 1px solid CanvasText; background: ButtonFace; }
+  /* Forced colours drops a background image, which the stripes are, unless the bar opts out; only system colours are used. */
+  .bar { forced-color-adjust: none; }
   .bar, .track.warn .bar, .track.done .bar { background: Highlight; }
   .track.over .bar { background: repeating-linear-gradient(135deg, Highlight 0 6px, ButtonFace 6px 12px); }
 }
@@ -205,7 +217,8 @@ export class TsProgress extends TsWidget {
     meter.toggleAttribute('hidden', vm.state === 'none')
     if (vm.state === 'none') return
     attr(meter, 'class', `track${vm.state === 'near' ? ' warn' : vm.state === 'ok' ? '' : ` ${vm.state}`}`)
-    attr(meter, 'aria-label', vm.ariaLabel)
+    // The tile already carries the full sentence; the meter is named by the label alone so it is not read twice.
+    attr(meter, 'aria-label', vm.label)
     attr(meter, 'aria-valuenow', String(vm.pctNum))
     attr(meter, 'aria-valuetext', vm.valueText)
     const bar = this.$('[data-k="bar"]')

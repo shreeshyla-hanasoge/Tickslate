@@ -400,6 +400,12 @@ export interface ProgressModel {
   label: string
   live: boolean
   time: string
+  /** The "synced" prefix and suffix of the header. */
+  synced: { pre: string; post: string }
+  /** The value as a number, NaN without one. */
+  valueNum: number
+  /** 0 to 100, the meter's aria-valuenow. */
+  pctNum: number
   /** The state in words: 'near limit', 'over limit', 'goal reached', or ''. */
   stateText: string
   /** The meter's aria-valuetext: the result and the state in words. */
