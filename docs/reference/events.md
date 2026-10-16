@@ -45,6 +45,9 @@ interface TsActionDetail {
 | `retry` | every widget | The user presses Retry in the error view. The button only exists when the widget's `actions` includes `'retry'` | none |
 | `range` | `<ts-equity-curve>` | The user presses a range button at `XL` and the range changes. The element's `range` is already updated | `value`: `'1W'`, `'1M'`, `'3M'`, `'YTD'` or `'All'` |
 | `sort` | `<ts-table>` | The user activates a sortable column header. The table has already re-sorted; send the same `sort` back in `data` to remember it | `value`: the column key, `dir`: `'asc'` or `'desc'` |
+| `add-instrument` | `<ts-watchlist>` | The user presses the add button in the header, and `actions` includes `'add-instrument'`. The widget has no form of its own: show yours, then send the new `instruments` in `data` | none |
+| `exit-position` | `<ts-open-positions>` | The user presses a row's Exit button, and `actions` includes `'exit-position'`. Nothing is closed or removed by the widget: place the order, then send the new `positions` | `id`: the position's id, as given |
+| `exit-all` | `<ts-open-positions>` | The user presses Exit all, and `actions` includes `'exit-all'`. The button only shows while a position is open | none |
 | `select` | `<ts-table>`, `<ts-chart>` | The user activates a row, or a chart point, and `actions` includes `'select'` | A table sends `id`, the row's id as given; a chart sends `value`, `series`, `y` and `index` |
 
 ```js

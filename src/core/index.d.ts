@@ -304,6 +304,8 @@ export interface Messages {
   'widget.metric.empty': string
   'widget.chart.empty': string
   'widget.table.empty': string
+  'widget.watchlist.empty': string
+  'widget.openPositions.empty': string
   'size.S': string
   'size.Wide': string
   'size.Tall': string
@@ -467,6 +469,46 @@ export interface Messages {
   'table.join': string
   'table.select': string
   'table.region': string
+  'watchlist.aria': string
+  'watchlist.instruments.one': string
+  'watchlist.instruments.other': string
+  'watchlist.firstOnly': string
+  'watchlist.join': string
+  'watchlist.region': string
+  'watchlist.col.instrument': string
+  'watchlist.col.trend': string
+  'watchlist.col.price': string
+  'watchlist.range': string
+  'watchlist.rangeOnly': string
+  'watchlist.trend': string
+  'watchlist.add': string
+  'positions.aria': string
+  'positions.count.one': string
+  'positions.count.other': string
+  'positions.region': string
+  'positions.col.instrument': string
+  'positions.col.trend': string
+  'positions.col.last': string
+  'positions.col.pnl': string
+  'positions.col.actions': string
+  'positions.mtm': string
+  'positions.margin': string
+  'positions.long': string
+  'positions.short': string
+  'positions.qtyAt': string
+  'positions.lots.one': string
+  'positions.lots.other': string
+  'positions.join': string
+  'positions.range': string
+  'positions.rangeEntry': string
+  'positions.rangeNow': string
+  'positions.trend': string
+  'positions.exit': string
+  'positions.exitLabel': string
+  'positions.exitLabelBare': string
+  'positions.exitAll': string
+  'positions.exitAllLabel.one': string
+  'positions.exitAllLabel.other': string
 }
 
 export type MessageKey = keyof Messages

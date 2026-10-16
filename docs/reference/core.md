@@ -126,8 +126,8 @@ const catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Ta
 | `pnlCalendar` | `ts-pnl-calendar` | Tall, M, Banner (phone: Banner is 2 rows) | catalog entry only; the element is not yet shipped |
 | `edgeStats` | `ts-edge-stats` | S, Wide, M | catalog entry only |
 | `capitalFunding` | `ts-capital-funding` | S, Tall, L | catalog entry only |
-| `openPositions` | `ts-open-positions` | Wide, M, L | catalog entry only |
-| `watchlist` | `ts-watchlist` | S, Tall, M | catalog entry only |
+| `openPositions` | `ts-open-positions` | Wide, M, L | shipped |
+| `watchlist` | `ts-watchlist` | S, Tall, M | shipped |
 | `miniChart` | `ts-mini-chart` | M, L, XL | catalog entry only |
 
 ### `DEFAULT_PROFILE`

@@ -14,6 +14,8 @@ import { TsCard } from './define/card.js'
 import { TsMetric } from './define/metric.js'
 import { TsChart } from './define/series-chart.js'
 import { TsTable } from './define/table.js'
+import { TsWatchlist } from './define/watchlist.js'
+import { TsOpenPositions } from './define/open-positions.js'
 import { TsTodayPnl } from './define/today-pnl.js'
 import { TsEquityCurve } from './define/equity-curve.js'
 import { TsSessionClock } from './define/session-clock.js'
@@ -23,6 +25,6 @@ import { linePaths, scale } from './chart.js'
 import { defineWidget, widgetCatalog, onCatalogChange } from './registry.js'
 import { persistLayout } from './persist.js'
 
-export { version, persistLayout, TsGrid, TsWidget, TsCard, TsMetric, TsChart, TsTable, TsTodayPnl, TsEquityCurve, TsSessionClock, TsWidgetPicker, TsGridControls }
+export { version, persistLayout, TsGrid, TsWidget, TsCard, TsMetric, TsChart, TsTable, TsWatchlist, TsOpenPositions, TsTodayPnl, TsEquityCurve, TsSessionClock, TsWidgetPicker, TsGridControls }
 // The authoring kit (RFC 0003 §3): register a widget of your own, and the helpers the built-in widgets draw with.
 export { defineWidget, widgetCatalog, onCatalogChange, linePaths, scale, escapeHtml }
