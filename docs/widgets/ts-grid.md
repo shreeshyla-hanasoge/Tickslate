@@ -135,7 +135,8 @@ order:
    [your own widget](../guide/your-own-widget.md) can too); for a plain element,
    its `sizes` and `label` attributes;
 2. your `catalog[type]` (an object, or a function from an item to a spec);
-3. the built-in `WIDGETS[type]`.
+3. `widgetCatalog()`: the built-in `WIDGETS[type]` and every widget registered
+   with `defineWidget()`. The grid draws again when one is registered.
 
 So two `<ts-card>`s can allow different sizes, and a tile that upgrades after
 the grid rendered is resolved again on its next render. Set `catalog` to add
@@ -172,6 +173,13 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `hiddenItems` | `{ id, type, label }[]` (readonly) | Children whose item is not in the active profile, which includes tiles the user removed |
 | `undo()` | `() => boolean` | Restores the active profile's previous layout (up to 20 steps per profile); fires `ts-layout-change` with reason `'undo'`. `false` when there is nothing to undo. Works while locked, because the lock is for the user's hands |
 | `restore(id)` | `(id) => boolean` | Adds a hidden child back at the end of the profile, at its declared size (else its first supported one); fires `ts-layout-change` with reason `'add'` and records an undo step. `false` when no hidden child has that id |
+| `addTypes` | `readonly string[] \| '*' \| null` | The catalog types you answer `ts-add-request` for. The picker offers new tiles of these only. Default `null`: none |
+| `add({ type, id?, size? })` | `(request) => string \| null` | Asks for a new tile: restores a hidden child with that `id`, or fires the cancelable `ts-add-request` and places the child you render. Returns the id, or `null` when the type is unknown or nobody took the request |
+| `move(id, toIndex)` | `(id, number) => boolean` | Moves the item to that index in the active profile (clamped). Commits with reason `'move'`. `false` for an unknown id |
+| `resize(id, size)` | `(id, SizeName) => boolean` | Snaps to the item's spec. Commits with reason `'resize'`. `false` for an unknown id |
+| `remove(id)` | `(id) => boolean` | Removes the item, which becomes a hidden child. Commits with reason `'remove'`. `false` for an unknown id |
+| `profileOverride` | `string \| null` (readonly) | The profile `override()` is showing, or `null` when the schedule decides |
+| `openPicker` | `(() => void) \| null` | Set by [`<ts-grid-controls>`](ts-grid-controls.md) while a picker is linked. The edit pill then shows **Add**, which calls it |
 | `schedule` | `(ProfileSchedule & { calendar }) \| null` | Switches between `'market'` and `'closed'` on time |
 | `override(profile)` | `(string \| null) => void` | Show a profile until the schedule next changes (or until `override(null)` with no schedule) |
 | `clock` | `() => number` | What the grid takes the time to be. Defaults to `Date.now` |
@@ -207,6 +215,11 @@ Add back opens a list headed "Hidden from this layout"; choosing a tile calls
 `restore(id)`, announces it, and moves focus to the restored tile's handle.
 Arrow keys move through the list and Escape closes it without leaving edit
 mode. The pill is hidden when `locked` or `edit-controls="off"`.
+
+With a [`<ts-widget-picker>`](ts-widget-picker.md) linked by
+[`<ts-grid-controls>`](ts-grid-controls.md), the pill shows **Add** instead,
+which opens the picker. The picker lists the hidden children first, so nothing
+Add back did is lost.
 
 ### Moving and resizing
 
@@ -269,6 +282,7 @@ All bubble and are composed. Details and types are in
 | `ts-reading-order-change` | The order of the visible tiles changed: at Done after an edit that moved or removed tiles (before `ts-edit-change`), or when a `layout` you set, a new column count or a tile appearing or going changes it. Not for the first order with a tile in it, nor for your first `layout` before any edit, nor mid-edit |
 | `ts-columns-change` | The column count changed, and once after the first measure |
 | `ts-profile-change` | The shown profile changed by schedule or `override()` |
+| `ts-add-request` | `add()` or the picker asks for a new tile. Cancelable: `preventDefault()` and render a child with `item=id` |
 
 ## Parts and slots
 

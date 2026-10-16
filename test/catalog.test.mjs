@@ -2,6 +2,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   WIDGETS,
+  EN,
   DEFAULT_PROFILE,
   typeForTag,
   place,
@@ -84,9 +85,30 @@ describe('DEFAULT_PROFILE and typeForTag', () => {
 
 describe('the generic WIDGETS entries', () => {
   test('card, metric and chart', () => {
-    assert.deepEqual(WIDGETS.card, { tag: 'ts-card', label: 'Card', sizes: ['S', 'Wide', 'Tall', 'M', 'L', 'Banner', 'XL'] })
-    assert.deepEqual(WIDGETS.metric, { tag: 'ts-metric', label: 'Metric', sizes: ['S', 'Wide', 'M'] })
-    assert.deepEqual(WIDGETS.chart, { tag: 'ts-chart', label: 'Chart', sizes: ['Wide', 'M', 'L', 'XL'] })
+    // description and category are the picker's (RFC 0003 §18.1); the other fields are what each entry always had.
+    const core = ({ tag, label, sizes }) => ({ tag, label, sizes })
+    assert.deepEqual(core(WIDGETS.card), { tag: 'ts-card', label: 'Card', sizes: ['S', 'Wide', 'Tall', 'M', 'L', 'Banner', 'XL'] })
+    assert.deepEqual(core(WIDGETS.metric), { tag: 'ts-metric', label: 'Metric', sizes: ['S', 'Wide', 'M'] })
+    assert.deepEqual(core(WIDGETS.chart), { tag: 'ts-chart', label: 'Chart', sizes: ['Wide', 'M', 'L', 'XL'] })
     assert.ok(Object.isFrozen(WIDGETS.card) && Object.isFrozen(WIDGETS.card.sizes))
+  })
+})
+
+describe('the picker metadata of the built-in entries (RFC 0003 §18.1)', () => {
+  const CATEGORIES = ['General', 'Performance', 'Accounts', 'Markets']
+
+  test('every entry has a description and one of the four categories', () => {
+    for (const [key, spec] of Object.entries(WIDGETS)) {
+      assert.equal(typeof spec.description, 'string', `${key} description`)
+      assert.ok(spec.description.length > 0, `${key} description`)
+      assert.ok(CATEGORIES.includes(spec.category), `${key}: ${spec.category}`)
+    }
+  })
+
+  test('the messages the picker falls back to exist for every entry', () => {
+    for (const [key, spec] of Object.entries(WIDGETS)) {
+      assert.equal(EN[`widget.${key}.description`], spec.description, `widget.${key}.description`)
+      assert.equal(typeof EN[`category.${spec.category}`], 'string', `category.${spec.category}`)
+    }
   })
 })

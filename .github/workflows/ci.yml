@@ -43,6 +43,11 @@ jobs:
       # build:dev, build:umd, build:cdn, pack:lib, verify:package, size), so CI can't pass a
       # package that a local release would refuse.
       - run: npm run release
+      # The fixtures in test/types/ compile against dist-lib/ (just built) under
+      # moduleResolution bundler, node16 and node10. Not part of the install-free
+      # unit job: it needs typescript, @types/react and vue from npm ci.
+      - name: Type fixtures
+        run: npm run check:types
       - name: What would be published
         run: npm pack --dry-run ./dist-lib
       # The exact files a release would publish, kept for inspection or a

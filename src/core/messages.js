@@ -36,11 +36,32 @@ export const EN = Object.freeze({
   'widget.card.label': 'Card',
   'widget.metric.label': 'Metric',
   'widget.chart.label': 'Chart',
+  'widget.table.label': 'Table',
+  // The picker's sentence for each catalog entry
+  'widget.todayPnl.description': "Today's profit or loss, with an intraday line.",
+  'widget.equityCurve.description': 'Account value over time, with peak and drawdown.',
+  'widget.pnlCalendar.description': 'Each trading day coloured by its profit or loss.',
+  'widget.edgeStats.description': 'Win rate, payoff and expectancy at a glance.',
+  'widget.capitalFunding.description': 'How much capital each account has put to work.',
+  'widget.openPositions.description': 'The positions that are open now, with their profit or loss.',
+  'widget.watchlist.description': 'Prices and changes for the instruments you follow.',
+  'widget.sessionClock.description': 'Whether the market is open, and the time to the next change.',
+  'widget.miniChart.description': 'A small price chart for one instrument.',
+  'widget.card.description': 'A titled card for any content.',
+  'widget.metric.description': 'One figure with a label and a change.',
+  'widget.chart.description': 'A line, area or bar chart of any series.',
+  'widget.table.description': 'A sortable table of rows with typed columns.',
+  // The picker's groups. A host's own category name is shown as it is unless it adds category.<name>.
+  'category.General': 'General',
+  'category.Performance': 'Performance',
+  'category.Accounts': 'Accounts',
+  'category.Markets': 'Markets',
   'widget.todayPnl.empty': 'No trades today',
   'widget.equityCurve.empty': 'No trading days yet',
   'widget.sessionClock.empty': 'No sessions set up',
   'widget.metric.empty': 'No data yet',
   'widget.chart.empty': 'No data yet',
+  'widget.table.empty': 'No rows yet',
 
   // Sizes: a size reads "Medium, 2 by 2"
   'size.S': 'Small',
@@ -94,6 +115,29 @@ export const EN = Object.freeze({
   'grid.resized': '{label}, size {size}.',
   'grid.profile': 'Showing the {profile} layout.',
   'grid.undone': 'Undone.',
+  'grid.add': 'Add',
+  'grid.added': '{label} added.',
+  'grid.addFailed': '{label} could not be added.',
+
+  // <ts-widget-picker>
+  'picker.title': 'Add a widget',
+  'picker.search': 'Search widgets',
+  'picker.close': 'Close',
+  'picker.addBack': 'Add back',
+  'picker.addBackItem': 'Add back {label}',
+  'picker.addSized': 'Add {label} as {size}',
+  'picker.empty': 'Every widget is already on this layout',
+  'picker.noMatch': 'No widget matches your search',
+  'picker.noGrid': 'No dashboard to add to yet',
+  'picker.count.one': '{count} widget',
+  'picker.count.other': '{count} widgets',
+
+  // <ts-grid-controls>
+  'controls.profile': 'Layout',
+  'controls.auto': 'Auto',
+  'controls.market': 'Market hours',
+  'controls.closed': 'After close',
+  'controls.next': 'Switches to {profile} at {time}',
 
   // <ts-today-pnl>
   'pnl.today': 'Today',
@@ -195,6 +239,19 @@ export const EN = Object.freeze({
   'chart.series': 'Series {index}',
   'chart.last': '{name}, last {value}',
   'chart.noData': '{name}, no data',
+
+  // <ts-table>
+  'table.aria': '{label}, {rows}',
+  'table.rows.one': '{count} row',
+  'table.rows.other': '{count} rows',
+  'table.sortedBy': 'sorted by {column}, {dir}',
+  'table.ascending': 'ascending',
+  'table.descending': 'descending',
+  'table.hidden.one': '{count} column hidden',
+  'table.hidden.other': '{count} columns hidden',
+  'table.join': '{head}, {tail}',
+  'table.select': 'Select {name}',
+  'table.region': '{label}, rows',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

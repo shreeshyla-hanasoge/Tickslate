@@ -8,24 +8,35 @@
 
 import { SIZE_NAMES } from './sizes.js'
 
-const widget = (tag, label, sizes, phoneRows) =>
-  Object.freeze({ tag, label, sizes: Object.freeze(sizes), ...(phoneRows ? { phoneRows: Object.freeze(phoneRows) } : {}) })
+// The picker's sentence and group are English defaults that equal the
+// widget.<key>.description and category.<name> messages, so a translation
+// reaches them (the same arrangement as the label).
+const widget = (tag, label, sizes, category, description, phoneRows) =>
+  Object.freeze({
+    tag,
+    label,
+    sizes: Object.freeze(sizes),
+    description,
+    category,
+    ...(phoneRows ? { phoneRows: Object.freeze(phoneRows) } : {}),
+  })
 
 export const WIDGETS = Object.freeze({
-  todayPnl: widget('ts-today-pnl', "Today's P&L", ['S', 'Wide', 'M']),
-  equityCurve: widget('ts-equity-curve', 'Equity curve', ['Wide', 'M', 'XL']),
+  todayPnl: widget('ts-today-pnl', "Today's P&L", ['S', 'Wide', 'M'], 'Performance', "Today's profit or loss, with an intraday line."),
+  equityCurve: widget('ts-equity-curve', 'Equity curve', ['Wide', 'M', 'XL'], 'Performance', 'Account value over time, with peak and drawdown.'),
   // On phones the year wraps into two half-year bands, so Banner gets 2 rows.
-  pnlCalendar: widget('ts-pnl-calendar', 'Daily P&L calendar', ['Tall', 'M', 'Banner'], { Banner: 2 }),
-  edgeStats: widget('ts-edge-stats', 'Edge stats', ['S', 'Wide', 'M']),
-  capitalFunding: widget('ts-capital-funding', 'Capital funding', ['S', 'Tall', 'L']),
-  openPositions: widget('ts-open-positions', 'Open positions', ['Wide', 'M', 'L']),
-  watchlist: widget('ts-watchlist', 'Watchlist', ['S', 'Tall', 'M']),
-  sessionClock: widget('ts-session-clock', 'Session clock', ['S', 'Banner']),
-  miniChart: widget('ts-mini-chart', 'Mini chart', ['M', 'L', 'XL']),
+  pnlCalendar: widget('ts-pnl-calendar', 'Daily P&L calendar', ['Tall', 'M', 'Banner'], 'Performance', 'Each trading day coloured by its profit or loss.', { Banner: 2 }),
+  edgeStats: widget('ts-edge-stats', 'Edge stats', ['S', 'Wide', 'M'], 'Performance', 'Win rate, payoff and expectancy at a glance.'),
+  capitalFunding: widget('ts-capital-funding', 'Capital funding', ['S', 'Tall', 'L'], 'Accounts', 'How much capital each account has put to work.'),
+  openPositions: widget('ts-open-positions', 'Open positions', ['Wide', 'M', 'L'], 'Accounts', 'The positions that are open now, with their profit or loss.'),
+  watchlist: widget('ts-watchlist', 'Watchlist', ['S', 'Tall', 'M'], 'Markets', 'Prices and changes for the instruments you follow.'),
+  sessionClock: widget('ts-session-clock', 'Session clock', ['S', 'Banner'], 'Markets', 'Whether the market is open, and the time to the next change.'),
+  miniChart: widget('ts-mini-chart', 'Mini chart', ['M', 'L', 'XL'], 'Markets', 'A small price chart for one instrument.'),
   // The generic widgets: not finance-specific, usable for any dashboard.
-  card: widget('ts-card', 'Card', [...SIZE_NAMES]),
-  metric: widget('ts-metric', 'Metric', ['S', 'Wide', 'M']),
-  chart: widget('ts-chart', 'Chart', ['Wide', 'M', 'L', 'XL']),
+  card: widget('ts-card', 'Card', [...SIZE_NAMES], 'General', 'A titled card for any content.'),
+  metric: widget('ts-metric', 'Metric', ['S', 'Wide', 'M'], 'General', 'One figure with a label and a change.'),
+  chart: widget('ts-chart', 'Chart', ['Wide', 'M', 'L', 'XL'], 'General', 'A line, area or bar chart of any series.'),
+  table: widget('ts-table', 'Table', ['Tall', 'M', 'L', 'XL'], 'General', 'A sortable table of rows with typed columns.'),
 })
 
 /** The item's widget type: `type` when given, else its `id`. */

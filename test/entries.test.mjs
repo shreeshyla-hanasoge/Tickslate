@@ -22,6 +22,8 @@ class FakeRegistry {
   }
 }
 
+import { NON_WIDGET_DEFINES } from './non-widget-defines.mjs'
+
 const defineDir = new URL('../src/elements/define/', import.meta.url)
 const files = (await readdir(defineDir)).filter((n) => n.endsWith('.js')).map((n) => n.slice(0, -'.js'.length)).sort()
 
@@ -30,6 +32,8 @@ const files = (await readdir(defineDir)).filter((n) => n.endsWith('.js')).map((n
 // a pair. An exception is one line here.
 const TAGS = {
   'series-chart': ['ts-chart'],
+  // Modules whose elements are not widgets name their own tags (test/non-widget-defines.mjs).
+  ...NON_WIDGET_DEFINES,
 }
 const tagsOf = (file) => TAGS[file] || [`ts-${file}`]
 
@@ -44,7 +48,7 @@ describe('define modules', () => {
   })
 
   test('there is a define module for each built-in widget', () => {
-    for (const file of ['grid', 'card', 'metric', 'series-chart', 'today-pnl', 'equity-curve', 'session-clock']) {
+    for (const file of ['grid', 'card', 'metric', 'series-chart', 'today-pnl', 'equity-curve', 'session-clock', 'table']) {
       assert.ok(files.includes(file), `src/elements/define/${file}.js is missing`)
     }
   })

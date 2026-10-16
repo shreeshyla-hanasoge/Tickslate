@@ -16,6 +16,8 @@ import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { elementEntries, describeEntry } from './entries.mjs'
+import { writeManifests } from './gen-manifest.mjs'
+import { runtimeFrameworkImports } from './types-guard.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const out = resolve(root, 'dist-lib')
@@ -26,6 +28,13 @@ if (!existsSync(out)) {
 }
 
 const entries = elementEntries().map(describeEntry)
+
+// The framework typings (RFC 0003 §22.1): every src/types/<name>.d.ts is a types-only
+// entry `tickslate/<name>`, except common.d.ts, which they share and which is not an
+// entry. Found rather than listed, like the element entries.
+const typesDir = resolve(root, 'src/types')
+const typeFiles = existsSync(typesDir) ? (await readdir(typesDir)).filter((n) => n.endsWith('.d.ts')).sort() : []
+const typeEntries = typeFiles.map((n) => n.slice(0, -'.d.ts'.length)).filter((n) => n !== 'common')
 
 // 1. manifest. package.lib.json holds what is written by hand; the element
 // entries are generated from src/elements/define/ (RFC 0003 §2.1), so adding a
@@ -47,6 +56,8 @@ const exports = {
   ...Object.fromEntries(entries.map((e) => [`./elements/${e.name}`, conditions(`elements/${e.name}.d.ts`, `elements/${e.name}.js`)])),
   './cdn/tickslate.js': './cdn/tickslate.js',
   './cdn/tickslate.iife.js': './cdn/tickslate.iife.js',
+  // Types only, so a single `types` condition: the one exception to the three-condition rule (RFC 0003 §22.1).
+  ...Object.fromEntries(typeEntries.map((n) => [`./${n}`, { types: `./types/${n}.d.ts` }])),
   ...staticExports,
 }
 // The entry files register elements, so a bundler must not drop an import of
@@ -65,6 +76,7 @@ const typesVersions = {
   '*': {
     elements: ['elements.d.ts'],
     ...Object.fromEntries(entries.map((e) => [`elements/${e.name}`, [`elements/${e.name}.d.ts`]])),
+    ...Object.fromEntries(typeEntries.map((n) => [n, [`types/${n}.d.ts`]])),
   },
 }
 
@@ -103,6 +115,7 @@ const types = [
   ['src/elements/index.d.ts', 'elements.d.ts'],
   ['src/elements/widget.d.ts', 'widget.d.ts'],
   ['src/elements/grid.d.ts', 'grid.d.ts'],
+  ['src/elements/controls.d.ts', 'controls.d.ts'],
 ]
 const shipped = []
 for (const [from, to] of types) {
@@ -110,6 +123,24 @@ for (const [from, to] of types) {
   if (!existsSync(src)) continue
   const text = (await readFile(src, 'utf8')).replace(/(['"])\.\.\/core\/index\.js\1/g, '$1./index.js$1')
   const dest = resolve(out, to)
+  await mkdir(dirname(dest), { recursive: true })
+  await writeFile(dest, text)
+  shipped.push(dest)
+}
+
+// 4b. the framework typings, at types/<name>.d.ts. In the repo they import the
+// element declarations as '../elements/index.js'; in the package those are
+// elements.d.ts at the root, so the path is rewritten, as for the core above.
+// Each entry must stay types only: an import from react, vue or svelte that is
+// not `import type` would load the framework when the host's bundler follows it.
+for (const name of typeFiles) {
+  const text = (await readFile(resolve(typesDir, name), 'utf8')).replace(/(['"])\.\.\/elements\/index\.js\1/g, '$1../elements.js$1')
+  const runtime = runtimeFrameworkImports(text)
+  if (runtime.length) {
+    console.error(`src/types/${name} imports ${runtime[0]} other than with \`import type\`; the framework typings are types only.`)
+    process.exit(1)
+  }
+  const dest = resolve(out, 'types', name)
   await mkdir(dirname(dest), { recursive: true })
   await writeFile(dest, text)
   shipped.push(dest)
@@ -129,11 +160,12 @@ const declaredTypes = [
 // Types every widget's data and view model are built from. Each widget stub
 // exports them, so `MetricData extends WidgetFreshness` can be named from the
 // same import as `MetricData`.
-const SHARED_TYPES = ['WidgetFreshness', 'ViewModelContext', 'WidgetState']
+const SHARED_TYPES = ['WidgetFreshness', 'ViewModelContext', 'WidgetState', 'TsCommonAction', 'TsOpenAction']
 // Types whose names don't start with their widget's, or that belong to no
-// widget (the layout persistence options go with the grid). A type that fits
-// neither rule fails the check below, so it is placed on purpose.
-const TYPE_EXTRAS = { grid: ['PersistLayoutOptions'], 'equity-curve': ['EquityRange'] }
+// widget (the layout persistence options go with the grid, and so do the
+// attribute tables the framework typings read). A type that fits neither rule
+// fails the check below, so it is placed on purpose.
+const TYPE_EXTRAS = { grid: ['PersistLayoutOptions', 'TsWidgetAttributes', 'TsElementAttributes'], 'equity-curve': ['EquityRange'] }
 const stubTypes = new Set()
 for (const entry of entries) {
   const lines = []
@@ -147,7 +179,8 @@ for (const entry of entries) {
     extras.forEach((n) => stubTypes.add(n))
   } else {
     const stems = entry.exports.map((name) => name.replace(/^Ts/, ''))
-    const own = declaredTypes.filter((name) => stems.some((stem) => name.startsWith(stem)) || extras.includes(name))
+    // MetricData and TsMetricAction both belong to `metric`: older names start with the stem, the action unions (§22.2) with Ts and the stem.
+    const own = declaredTypes.filter((name) => stems.some((stem) => name.startsWith(stem) || name.startsWith(`Ts${stem}`)) || extras.includes(name))
     const types = [...new Set([...SHARED_TYPES, ...own])]
     lines.push(`export { ${entry.exports.join(', ')} } from '../elements.js'`)
     lines.push(`export type { ${types.join(', ')} } from '../elements.js'`)
@@ -179,6 +212,18 @@ for (const file of shipped) {
       process.exit(1)
     }
   }
+}
+
+// 6. the custom elements manifest and VS Code's HTML custom data (RFC 0003 §22.3),
+// read from the same declarations. This throws, and so fails the release, when a
+// tag a define module registers has no `@element` block.
+try {
+  const { tags, notBuilt } = await writeManifests(out)
+  console.log(`wrote custom-elements.json and vscode.html-custom-data.json (${tags.length} tags)`)
+  if (notBuilt.length) console.log(`note: the catalog lists ${notBuilt.join(', ')}, which have no define module yet`)
+} catch (err) {
+  console.error(err.message)
+  process.exit(1)
 }
 
 console.log('packed dist-lib/ — publish with: npm publish ./dist-lib')

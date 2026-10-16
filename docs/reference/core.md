@@ -122,6 +122,7 @@ const catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Ta
 | `card` | `ts-card` | all seven | shipped |
 | `metric` | `ts-metric` | S, Wide, M | shipped |
 | `chart` | `ts-chart` | Wide, M, L, XL | shipped |
+| `table` | `ts-table` | Tall, M, L, XL | shipped |
 | `pnlCalendar` | `ts-pnl-calendar` | Tall, M, Banner (phone: Banner is 2 rows) | catalog entry only; the element is not yet shipped |
 | `edgeStats` | `ts-edge-stats` | S, Wide, M | catalog entry only |
 | `capitalFunding` | `ts-capital-funding` | S, Tall, L | catalog entry only |

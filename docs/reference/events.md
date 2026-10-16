@@ -1,10 +1,11 @@
 # Events
 
-Tickslate fires seven events, all named `ts-*`. Every one is a `CustomEvent`
+Tickslate fires eight events, all named `ts-*`. Every one is a `CustomEvent`
 that **bubbles and is composed**, so one listener on the grid, a wrapper or the
-document hears it, even from inside a shadow root. Only `ts-action` is
-cancelable: `preventDefault()` on it stops the widget's built-in follow-up
-(an equity curve keeps its old `range`). On the others it changes nothing.
+document hears it, even from inside a shadow root. Only `ts-action` and
+`ts-add-request` are cancelable: `preventDefault()` on `ts-action` stops the
+widget's built-in follow-up (an equity curve keeps its old `range`), and on
+`ts-add-request` it says the host will answer. On the others it changes nothing.
 
 | Event | Fired by | `detail` | Bubbles | Composed |
 |---|---|---|---|---|
@@ -15,6 +16,7 @@ cancelable: `preventDefault()` on it stops the widget's built-in follow-up
 | [`ts-reading-order-change`](#ts-reading-order-change) | `<ts-grid>` | `{ order: string[] }` | yes | yes |
 | [`ts-columns-change`](#ts-columns-change) | `<ts-grid>` | `{ columns, device, initial }` | yes | yes |
 | [`ts-profile-change`](#ts-profile-change) | `<ts-grid>` | `{ profile, reason }` | yes | yes |
+| [`ts-add-request`](#ts-add-request) | `<ts-grid>` | `{ type, id, size }` | yes | yes |
 
 The types are in the package's `.d.ts` files, so
 `grid.addEventListener('ts-layout-change', (e) => ...)` is typed.
@@ -42,6 +44,8 @@ interface TsActionDetail {
 |---|---|---|---|
 | `retry` | every widget | The user presses Retry in the error view. The button only exists when the widget's `actions` includes `'retry'` | none |
 | `range` | `<ts-equity-curve>` | The user presses a range button at `XL` and the range changes. The element's `range` is already updated | `value`: `'1W'`, `'1M'`, `'3M'`, `'YTD'` or `'All'` |
+| `sort` | `<ts-table>` | The user activates a sortable column header. The table has already re-sorted; send the same `sort` back in `data` to remember it | `value`: the column key, `dir`: `'asc'` or `'desc'` |
+| `select` | `<ts-table>`, `<ts-chart>` | The user activates a row, or a chart point, and `actions` includes `'select'` | A table sends `id`, the row's id as given; a chart sends `value`, `series`, `y` and `index` |
 
 ```js
 document.addEventListener('ts-action', (e) => {
@@ -193,3 +197,42 @@ announcement is skipped then, the event is not).
   reason: 'schedule' | 'override' | 'override-ended'
 }
 ```
+
+## `ts-add-request`
+
+The grid wants a new tile and children belong to you, so it asks. It fires from
+`grid.add({ type, id?, size? })`, which the widget picker calls when a user
+chooses a catalog type. It is **cancelable**, and cancelling it is the answer
+"I'll render that".
+
+```ts
+// detail
+{
+  /** The catalog key. */
+  type: string
+  /** The item id the child you render must carry. */
+  id: string
+  /** The size the grid will place it at. */
+  size: SizeName
+}
+```
+
+```js
+grid.addTypes = ['card', 'metric'] // the picker offers only these
+grid.addEventListener('ts-add-request', (e) => {
+  e.preventDefault() // you will answer
+  const el = document.createElement(e.detail.type === 'card' ? 'ts-card' : 'ts-metric')
+  el.setAttribute('item', e.detail.id)
+  grid.append(el) // in a framework: render a child with item={id}
+})
+```
+
+- Not calling `preventDefault()` means nobody handled it: `add()` returns `null`
+  and development warns once.
+- The grid expects the child within 10 seconds. When it appears the grid places
+  it at `size`, records an undo step, announces it and fires `ts-layout-change`
+  with reason `'add'`. If none appears the request is forgotten, with one
+  development warning.
+- A hidden child with the same `id` is restored instead, and no event fires.
+- `grid.addTypes` is only for the picker, which offers catalog types it knows
+  you answer. A host that calls `add()` from its own button has already decided.

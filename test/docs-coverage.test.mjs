@@ -2,6 +2,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { nonWidgetTags } from './non-widget-defines.mjs'
 
 // Keeps the reference docs honest: anything a user can reach in the code has to
 // be written up. It fails when an export of the core, a tag, an event, an action,
@@ -161,8 +162,19 @@ describe('docs/widgets', () => {
     }
   })
 
+  // Elements that are not widgets (test/non-widget-defines.mjs): no data shape, no states and no ts-action. Their pages are checked below.
+  const NOT_WIDGETS = nonWidgetTags()
+  for (const tag of NOT_WIDGETS) {
+    describe(tag, () => {
+      const page = has(`docs/widgets/${tag}.md`) ? read(`docs/widgets/${tag}.md`) : ''
+      for (const heading of ['Attributes and properties', 'Parts', 'Accessibility']) {
+        test(`has "${heading}"`, () => assert.match(page, new RegExp(`^## ${heading}\\b`, 'm')))
+      }
+    })
+  }
+
   for (const { tag, className } of tags) {
-    if (tag === 'ts-grid') continue
+    if (tag === 'ts-grid' || NOT_WIDGETS.includes(tag)) continue
     const shape = widgetClasses.get(className)
     describe(tag, () => {
       const page = has(`docs/widgets/${tag}.md`) ? read(`docs/widgets/${tag}.md`) : ''

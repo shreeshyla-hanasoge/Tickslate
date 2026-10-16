@@ -47,6 +47,10 @@ export interface WidgetSpec {
   tag: string
   label: string
   sizes: readonly SizeName[]
+  /** One plain sentence for the picker. Falls back to t('widget.<key>.description'). */
+  description?: string
+  /** Groups the picker. Falls back to t('category.<name>'). */
+  category?: string
   /** Rows a size takes on phones when the default doesn't suit, e.g. { Banner: 2 }. */
   phoneRows?: Readonly<Partial<Record<SizeName, number>>>
 }
@@ -68,6 +72,7 @@ export declare const WIDGETS: Readonly<{
   card: WidgetSpec
   metric: WidgetSpec
   chart: WidgetSpec
+  table: WidgetSpec
 }>
 
 /** The profile a layout uses when none is named. */
@@ -275,11 +280,30 @@ export interface Messages {
   'widget.card.label': string
   'widget.metric.label': string
   'widget.chart.label': string
+  'widget.table.label': string
+  'widget.todayPnl.description': string
+  'widget.equityCurve.description': string
+  'widget.pnlCalendar.description': string
+  'widget.edgeStats.description': string
+  'widget.capitalFunding.description': string
+  'widget.openPositions.description': string
+  'widget.watchlist.description': string
+  'widget.sessionClock.description': string
+  'widget.miniChart.description': string
+  'widget.card.description': string
+  'widget.metric.description': string
+  'widget.chart.description': string
+  'widget.table.description': string
+  'category.General': string
+  'category.Performance': string
+  'category.Accounts': string
+  'category.Markets': string
   'widget.todayPnl.empty': string
   'widget.equityCurve.empty': string
   'widget.sessionClock.empty': string
   'widget.metric.empty': string
   'widget.chart.empty': string
+  'widget.table.empty': string
   'size.S': string
   'size.Wide': string
   'size.Tall': string
@@ -323,6 +347,25 @@ export interface Messages {
   'grid.resized': string
   'grid.profile': string
   'grid.undone': string
+  'grid.add': string
+  'grid.added': string
+  'grid.addFailed': string
+  'picker.title': string
+  'picker.search': string
+  'picker.close': string
+  'picker.addBack': string
+  'picker.addBackItem': string
+  'picker.addSized': string
+  'picker.empty': string
+  'picker.noMatch': string
+  'picker.noGrid': string
+  'picker.count.one': string
+  'picker.count.other': string
+  'controls.profile': string
+  'controls.auto': string
+  'controls.market': string
+  'controls.closed': string
+  'controls.next': string
   'pnl.today': string
   'pnl.realised': string
   'pnl.unrealised': string
@@ -413,6 +456,17 @@ export interface Messages {
   'chart.series': string
   'chart.last': string
   'chart.noData': string
+  'table.aria': string
+  'table.rows.one': string
+  'table.rows.other': string
+  'table.sortedBy': string
+  'table.ascending': string
+  'table.descending': string
+  'table.hidden.one': string
+  'table.hidden.other': string
+  'table.join': string
+  'table.select': string
+  'table.region': string
 }
 
 export type MessageKey = keyof Messages

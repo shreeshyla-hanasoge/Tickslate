@@ -16,6 +16,7 @@
   "main": "./index.js",
   "module": "./index.js",
   "types": "./index.d.ts",
+  "customElements": "./custom-elements.json",
   "unpkg": "./cdn/tickslate.iife.js",
   "jsdelivr": "./cdn/tickslate.iife.js",
   "exports": {
@@ -26,7 +27,9 @@
     },
     "./tokens.css": "./tokens.css",
     "./themes/*.css": "./themes/*.css",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./custom-elements.json": "./custom-elements.json",
+    "./vscode.html-custom-data.json": "./vscode.html-custom-data.json"
   },
   "peerDependencies": {
     "emberwick": ">=0.14.0"
