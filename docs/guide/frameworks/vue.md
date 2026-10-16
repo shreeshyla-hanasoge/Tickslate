@@ -20,6 +20,11 @@ export default {
 }
 ```
 
+For typed templates, add `import type {} from 'tickslate/vue'` once (for
+example in `env.d.ts`). Every `ts-*` tag then checks its attributes, its `data`
+and its `@ts-…` listeners. `isCustomElement` is still needed: the types do not
+stop Vue trying to resolve the tags as components.
+
 Register the elements once, in your entry file:
 
 ```js
@@ -42,6 +47,30 @@ add `.prop`:
 ```vue
 <ts-chart label="Revenue" size="Wide" :data.prop="revenue" />
 ```
+
+### Objects, and elements that are not defined yet
+
+Vue decides between a property and an attribute by checking `key in element`.
+If the element has not been upgraded yet (its script loads after Vue renders,
+for example a lazy `import('tickslate/elements')`), `data` is not a property, so
+a plain `:data="stats"` sets the attribute `data="[object Object]"`. The tile
+then shows its error view, with a development warning, until something sets the
+`data` property. Use `.prop`, which assigns the property whatever the element
+is; the element applies a value set before it was defined once it upgrades:
+
+```vue
+<ts-metric label="Signups" size="S" :data.prop="stats" />
+```
+
+Or set `data` from script, which also keeps large objects out of the template:
+
+```js
+const metric = ref(null)
+onMounted(() => { metric.value.data = stats.value })
+```
+
+Use `.prop` on every object or array binding (`data`, `actions`, `messages`),
+and a plain binding only for strings and numbers.
 
 `undefined` (not yet loaded) shows the loading skeleton and `null` the empty
 state, so a `ref(undefined)` that you fill after a fetch needs no extra

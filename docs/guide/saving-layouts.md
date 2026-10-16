@@ -4,6 +4,28 @@ Users rearrange the grid, so a dashboard that forgets their arrangement on
 reload feels broken. `persistLayout` is the one-line fix; the rest of this page
 covers what it does in edge cases and how to save somewhere else.
 
+## The `persist` attribute
+
+For `localStorage` there is no script to write: name a key on the grid.
+
+```html
+<ts-grid persist="ops-dashboard">
+  <ts-metric item="signups" label="Signups" size="S"></ts-metric>
+</ts-grid>
+```
+
+The grid saves each edit per device and restores it on the next visit. The
+layout it has once its device is known is what a device with nothing saved
+shows, so an implicit grid keeps tiles that arrive late. `grid.persist`
+reflects the attribute; changing or removing it re-keys or stops saving, and a
+grid taken off the page stops saving until it is put back. `persist=""` is off,
+with one development warning.
+
+In development builds, the first edit to a grid that nothing saves warns that
+the arrangement will be lost on reload and links to this page. Setting
+`persist`, or calling `persistLayout()`, silences it, and a locked grid never
+warns. Using both on one grid works but says so once in development.
+
 ## `persistLayout`
 
 ```js
@@ -71,6 +93,26 @@ persistLayout(grid, {
 })
 ```
 
+## Device-specific tile sets
+
+Each device's layout lists its own tiles. A tile that is in the desktop layout
+and not in the phone layout is not drawn on a phone: it stays in the DOM, hidden,
+and `grid.hiddenItems` lists it so Add back can offer it. So a phone can show
+three tiles where the desktop shows eight. Give each device the items it should
+show through `defaults`:
+
+```js
+persistLayout(grid, {
+  key: 'ops-dashboard',
+  defaults: {
+    desktop: [{ id: 'signups', size: 'S' }, { id: 'revenue', size: 'Wide' }, { id: 'notes', size: 'M' }],
+    phone: [{ id: 'signups', size: 'S' }, { id: 'revenue', size: 'Wide' }],
+  },
+})
+```
+
+Edits on one device never change the other's set.
+
 ## Storage that throws
 
 `localStorage` throws in some private windows and when a quota is full.
@@ -84,7 +126,33 @@ defaults are applied. To use another store, pass anything with
 persistLayout(grid, { key: 'ops-dashboard', storage: window.sessionStorage })
 ```
 
-For a server, skip `persistLayout` and save from the event instead:
+## Saving to a server: `LayoutAdapter`
+
+Pass an `adapter` instead of `key` and `storage`. It has `load(device)`,
+`save(device, layout)` and an optional `remove(device)`, and each may return a
+promise:
+
+```js
+persistLayout(grid, {
+  adapter: {
+    load: (device) => fetch(`/api/layout/${device}`).then((r) => (r.ok ? r.json() : null)),
+    save: (device, layout) => fetch(`/api/layout/${device}`, { method: 'PUT', body: JSON.stringify(layout) }),
+    remove: (device) => fetch(`/api/layout/${device}`, { method: 'DELETE' }),
+  },
+  defaults: [{ id: 'signups', size: 'S' }],
+})
+```
+
+- An adapter needs no `key`, and wins over `storage`.
+- While `load` is pending the grid shows its defaults. A result that arrives
+  after the device changed, after `reset()` or `dispose()`, after a later load
+  started, or after the user edited is ignored.
+- An adapter never throws out of the grid. A `load` that rejects, throws or
+  returns something that is not a layout counts as nothing stored, and a failing
+  `save` or `remove` leaves the edit on screen. Each case logs one development
+  warning.
+
+To keep full control instead, skip `persistLayout` and save from the event:
 
 ```js
 grid.addEventListener('ts-layout-change', (e) => {
