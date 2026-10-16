@@ -248,6 +248,7 @@ export const EN = Object.freeze({
   'table.hidden.other': '{count} columns hidden',
   'table.join': '{head}, {tail}',
   'table.select': 'Select {name}',
+  'table.region': '{label}, rows',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

@@ -60,6 +60,7 @@
     el,
     events,
     tick: (n) => { el.data = data(n) },
+    scale: (k) => { el.data = { ...table(k, rows, 0), sort: undefined } },
     width: (px) => { document.getElementById('wrap').style.width = `${px}px` },
     nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   }

@@ -412,7 +412,8 @@ describe('the element draws in place', () => {
     const { view, node } = build()
     view(data({ rows: [] }))
     assert.equal(node('caption').textContent, 'Strategies, 0 rows')
-    assert.equal(node('scroll').getAttribute('aria-label'), 'Strategies')
+    // Named apart from the tile, which the label already names.
+    assert.equal(node('scroll').getAttribute('aria-label'), 'Strategies, rows')
     assert.equal(node('none').textContent, 'No rows yet')
     assert.equal(node('none').hasAttribute('hidden'), false)
     view(data())
@@ -527,6 +528,118 @@ describe('columns that still overflow', () => {
     assert.equal(el.viewContext().width, 56)
     el._width = 0
     assert.equal(el.viewContext().width, 0)
+  })
+})
+
+describe('overflow is not a ratchet', () => {
+  test('new data starts again from what the width allows, and drops only what it must', () => {
+    const { el, view, node } = build()
+    const scroll = node('scroll')
+    scroll.clientWidth = 400
+    scroll.scrollWidth = 400
+    el._data = data()
+    el.viewContext()
+    view(data())
+    // A spike: the figures overflow twice over.
+    scroll.scrollWidth = 520
+    view(data())
+    scroll.scrollWidth = 460
+    view(data())
+    assert.equal(el._extra, 2)
+    assert.equal(el.viewContext().width, 400 - 112)
+    // The same data drawn again keeps what it dropped; a new tick gives the columns back.
+    assert.equal(el._extra, 2)
+    el._data = data({ rows: ROWS.map((r) => ({ ...r })) })
+    assert.equal(el.viewContext().width, 400)
+    assert.equal(el._extra, 0)
+  })
+
+  test('a different set of columns starts again too', () => {
+    const { el, view, node } = build()
+    const scroll = node('scroll')
+    scroll.clientWidth = 400
+    scroll.scrollWidth = 400
+    el._data = data()
+    el.viewContext()
+    view(data())
+    scroll.scrollWidth = 600
+    view(data())
+    assert.ok(el._extra > 0)
+    scroll.scrollWidth = 400
+    el._data = { columns: COLUMNS.slice(1, 5), rows: ROWS }
+    el.viewContext()
+    assert.equal(el._extra, 0)
+  })
+})
+
+describe('focus, titles and tab stops', () => {
+  test('a removed focused row hands focus to its neighbour\'s button, and to the scroller when none is left', () => {
+    const b = build({ actions: ['select'] })
+    b.node('scroll').focus = () => { b.doc.activeElement = b.node('scroll') }
+    b.el._scrollEl = b.node('scroll')
+    b.view(data())
+    b.body.children[1].all('button')[0].focus()
+    b.view(data({ rows: [ROWS[0], ROWS[2]] }))
+    assert.equal(b.doc.activeElement, b.body.children[1].all('button')[0])
+    assert.equal(b.body.children[1].getAttribute('part'), 'row')
+    b.body.children[1].all('button')[0].focus()
+    b.view(data({ rows: [] }))
+    assert.equal(b.doc.activeElement, b.node('scroll'))
+  })
+
+  test('a text cell\'s title is its text, a figure has none, and an unchanged cell is not rewritten', () => {
+    const { view, body, doc } = build()
+    view(data())
+    const tds = body.children[0].children
+    assert.equal(tds[0].getAttribute('title'), 'Breakout')
+    assert.deepEqual(body.children[0].children.map((td) => td.getAttribute('title')), ['Breakout', null, null, null, null])
+    doc.take()
+    view(data({ rows: ROWS.map((r) => ({ ...r })) }))
+    assert.deepEqual(doc.take(), [])
+    view(data({ rows: [{ ...ROWS[0], name: '' }, ROWS[1], ROWS[2]] }))
+    assert.equal(tds[0].getAttribute('title'), null)
+  })
+
+  test('rows have one tab stop, and the arrows, Home and End move it in place', () => {
+    const b = build({ actions: ['select'] })
+    b.view(data())
+    const stops = () => b.body.children.map((tr) => tr.all('button')[0].getAttribute('tabindex'))
+    assert.deepEqual(stops(), ['0', '-1', '-1'])
+    const key = (code, target) => b.section.dispatch('keydown', { key: code, target, preventDefault() {} })
+    const btn = (i) => b.body.children[i].all('button')[0]
+    key('ArrowDown', btn(0))
+    assert.deepEqual(stops(), ['-1', '0', '-1'])
+    assert.equal(b.doc.activeElement, btn(1))
+    key('End', btn(1))
+    assert.deepEqual(stops(), ['-1', '-1', '0'])
+    key('ArrowDown', btn(2))
+    assert.deepEqual(stops(), ['-1', '-1', '0'])
+    key('Home', btn(2))
+    key('ArrowUp', btn(0))
+    assert.deepEqual(stops(), ['0', '-1', '-1'])
+    // A live tick keeps the stop on the same row, rewriting nothing.
+    key('ArrowDown', btn(0))
+    b.doc.take()
+    b.view(data({ rows: ROWS.map((r) => ({ ...r })) }))
+    assert.deepEqual(stops(), ['-1', '0', '-1'])
+    assert.deepEqual(b.doc.take(), [])
+    // The row that held the stop going away moves it to the first.
+    b.view(data({ rows: [ROWS[0], ROWS[2]] }))
+    assert.deepEqual(stops(), ['0', '-1'])
+  })
+
+  test('a development warning counts the rows dropped for want of an id', () => {
+    const { el } = build()
+    const warned = []
+    const was = console.warn
+    console.warn = (m) => warned.push(m)
+    try {
+      el._checkDropped(model({ columns: COLUMNS, rows: [{ name: 'x' }, { id: 'a' }, null] }))
+    } finally {
+      console.warn = was
+    }
+    assert.equal(warned.length, 1)
+    assert.match(warned[0], /dropped 2 rows/)
   })
 })
 

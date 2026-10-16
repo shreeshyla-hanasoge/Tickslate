@@ -461,6 +461,7 @@ export interface Messages {
   'table.hidden.other': string
   'table.join': string
   'table.select': string
+  'table.region': string
 }
 
 export type MessageKey = keyof Messages

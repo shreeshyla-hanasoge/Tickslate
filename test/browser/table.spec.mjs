@@ -35,7 +35,7 @@ test.describe('a real table', () => {
     })
     expect(info.table).toBe(true)
     expect(info.caption).toBe('Strategies, 16 rows, sorted by P&L, descending')
-    expect(info.scroller).toEqual({ tabindex: '0', label: 'Strategies' })
+    expect(info.scroller).toEqual({ tabindex: '0', label: 'Strategies, rows' })
     expect(info.sorted.filter((s) => s === 'descending')).toHaveLength(1)
     expect(info.sorted.filter((s) => s === 'none').length).toBeGreaterThan(0)
   })
@@ -274,5 +274,73 @@ test.describe('the empty table', () => {
     await expect(headers(page)).toHaveCount(1)
     await expect(rowsOf(page)).toHaveCount(0)
     expect(await page.evaluate(() => window.__t.el.shadowRoot.querySelector('[data-k="none"]').textContent)).toBe('No rows yet')
+  })
+})
+
+test.describe('overflow follows the values', () => {
+  const shown = (page) => headers(page).allTextContents().then((all) => all.map((t) => t.replace(/[↑↓]/g, '').trim()))
+
+  test('columns dropped for a spike come back when the values are ordinary again', async ({ page }) => {
+    await open(page, 'width=351&size=M&sort=0')
+    const before = await shown(page)
+    await page.evaluate(() => window.__t.scale(1e8))
+    await page.waitForFunction((n) => window.__t.el.shadowRoot.querySelectorAll('thead th').length < n, before.length)
+    await page.evaluate(() => window.__t.scale(1))
+    await page.waitForFunction((n) => window.__t.el.shadowRoot.querySelectorAll('thead th').length === n, before.length)
+    expect(await shown(page)).toEqual(before)
+    const over = await page.evaluate(() => { const s = window.__t.el.shadowRoot.querySelector('[data-k="scroll"]'); return s.scrollWidth - s.clientWidth })
+    expect(over).toBeLessThanOrEqual(1)
+  })
+
+  test('a new set of columns is judged on its own', async ({ page }) => {
+    await open(page, 'width=351&size=M&sort=0')
+    await page.evaluate(() => window.__t.scale(1e8))
+    await page.waitForFunction(() => window.__t.el.shadowRoot.querySelectorAll('thead th').length < 4)
+    await page.evaluate(() => {
+      window.__t.el.data = { columns: ['A', 'B', 'C', 'D'].map((k) => ({ key: k, label: k, format: 'number' })), rows: [{ id: 1, A: 1, B: 2, C: 3, D: 4 }] }
+    })
+    await page.waitForFunction(() => window.__t.el.shadowRoot.querySelectorAll('thead th').length === 4)
+  })
+})
+
+test.describe('keyboard and touch', () => {
+  test('rows have one tab stop and the arrows, Home and End move it, with 200 rows, through a live tick', async ({ page }) => {
+    await open(page, 'select&rows=200&size=XL&width=900&sort=0')
+    const stops = () => page.evaluate(() => [...window.__t.el.shadowRoot.querySelectorAll('tbody button')].filter((b) => b.tabIndex === 0).length)
+    expect(await stops()).toBe(1)
+    await page.locator('ts-table tbody tr').first().locator('button').focus()
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    expect(await page.evaluate(() => [...window.__t.el.shadowRoot.querySelectorAll('tbody tr')].indexOf(window.__t.el.shadowRoot.activeElement.closest('tr')))).toBe(2)
+    await page.keyboard.press('End')
+    expect(await page.evaluate(() => [...window.__t.el.shadowRoot.querySelectorAll('tbody tr')].indexOf(window.__t.el.shadowRoot.activeElement.closest('tr')))).toBe(199)
+    await page.evaluate(() => window.__t.tick(30))
+    await page.evaluate(() => window.__t.nextFrame())
+    expect(await stops()).toBe(1)
+    expect(await page.evaluate(() => [...window.__t.el.shadowRoot.querySelectorAll('tbody tr')].indexOf(window.__t.el.shadowRoot.activeElement.closest('tr')))).toBe(199)
+    await page.keyboard.press('Home')
+    await page.keyboard.press('Enter')
+    expect((await page.evaluate(() => window.__t.events)).at(-1)).toEqual({ action: 'select', id: 's0' })
+  })
+
+  test('a removed focused row passes focus to a neighbour', async ({ page }) => {
+    await open(page, 'select&rows=10&sort=0&fit')
+    await page.locator('ts-table tbody tr').nth(3).locator('button').focus()
+    await page.evaluate(() => { const d = window.__t.el.data; window.__t.el.data = { ...d, rows: d.rows.filter((r) => r.id !== 's3') } })
+    await page.evaluate(() => window.__t.nextFrame())
+    expect(await page.evaluate(() => window.__t.el.shadowRoot.activeElement && window.__t.el.shadowRoot.activeElement.classList.contains('rowbtn'))).toBe(true)
+  })
+
+  test('sort buttons are 44px targets under a coarse pointer, and cut-off text has a title', async ({ page }) => {
+    await open(page, 'width=351&size=M&fit')
+    const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches)
+    if (coarse) {
+      const sizes = await page.evaluate(() => [...window.__t.el.shadowRoot.querySelectorAll('thead .sort')].map((b) => { const r = b.getBoundingClientRect(); return [r.width, r.height] }))
+      for (const [w, h] of sizes) {
+        expect(w).toBeGreaterThanOrEqual(43.5)
+        expect(h).toBeGreaterThanOrEqual(43.5)
+      }
+    }
+    expect(await page.evaluate(() => window.__t.el.shadowRoot.querySelector('tbody td.t').getAttribute('title'))).toBeTruthy()
   })
 })

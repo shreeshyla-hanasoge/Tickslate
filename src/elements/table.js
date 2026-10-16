@@ -255,7 +255,9 @@ th.end .sort { flex-direction: row-reverse; }
 .none { padding-block: 16px; text-align: center; }
 @media (pointer: coarse) {
   tbody td { block-size: 44px; }
-  .sort { min-block-size: 44px; }
+  .sort { min-block-size: 44px; min-inline-size: 44px; justify-content: center; }
+  th.end .sort { justify-content: flex-end; }
+  th.start .sort { justify-content: flex-start; }
 }
 `
 
@@ -315,6 +317,8 @@ export class TsTable extends TsWidget {
     this._width = 0
     this._slots = 0
     this._extra = 0
+    this._fitData = undefined
+    this._active = undefined
     this._userSort = null
     this._sortSeen = ''
     this._sort = null
@@ -343,6 +347,36 @@ export class TsTable extends TsWidget {
         this.emit(ACTION_SELECT, { id: this._ids.get(row.closest('tr')) })
       }
     })
+    // A click or a programmatic focus on a row's button makes it the one tab stop.
+    this._section.addEventListener('focusin', (e) => {
+      const row = e.target?.closest?.('.rowbtn')
+      if (row) this._setActive(row.closest('tr'))
+    })
+    this._section.addEventListener('keydown', (e) => {
+      const row = e.target?.closest?.('.rowbtn')
+      if (!row || !/^(ArrowUp|ArrowDown|Home|End)$/.test(e.key)) return
+      const tr = row.closest('tr')
+      const rows = [...this._bodyEl.children]
+      const at = rows.indexOf(tr)
+      const to = e.key === 'Home' ? 0 : e.key === 'End' ? rows.length - 1 : at + (e.key === 'ArrowDown' ? 1 : -1)
+      if (to < 0 || to >= rows.length) return
+      e.preventDefault?.()
+      const btn = this._setActive(rows[to])
+      if (btn) btn.focus()
+    })
+  }
+
+  /** Makes `tr`'s button the rows' one tab stop, in place. */
+  _setActive(tr) {
+    const btn = tr && tr.firstChild && tr.firstChild.firstChild
+    if (!btn || btn.localName !== 'button' || !this._ids.has(tr)) return null
+    for (const other of this._bodyEl.children) {
+      const b = other.firstChild && other.firstChild.firstChild
+      if (b && b !== btn && b.getAttribute('tabindex') === '0') b.setAttribute('tabindex', '-1')
+    }
+    this._active = this._ids.get(tr)
+    setAttr(btn, 'tabindex', '0')
+    return btn
   }
 
   /** Ascending, then descending, then ascending again; a different column starts ascending. */
@@ -359,6 +393,12 @@ export class TsTable extends TsWidget {
     if (want !== this._sortSeen) {
       this._sortSeen = want
       this._userSort = null
+    }
+    // Overflow is a fact about the values on screen, not a ratchet: new data (a live tick, or another set of columns)
+    // starts again from what the width allows, and drops only what it must.
+    if (this._data !== this._fitData) {
+      this._fitData = this._data
+      this._extra = 0
     }
     // Each column dropped for overflow takes one slot off the width the budget sees.
     return { width: this._width > 0 ? Math.max(MIN_COLUMN, this._width - this._extra * MIN_COLUMN) : 0, sort: this._userSort }
@@ -388,13 +428,14 @@ export class TsTable extends TsWidget {
     text('post', vm.synced.post)
     text('caption', vm.summary)
     const scroll = this.$('[data-k="scroll"]')
-    setAttr(scroll, 'aria-label', vm.label)
+    setAttr(scroll, 'aria-label', this.t('table.region', { label: vm.label }))
     text('none', vm.noRows)
     hide('none', vm.rows.length > 0)
 
     this._sort = vm.sort
     this._cols = vm.columns
     this._selectable = this.actionEnabled(ACTION_SELECT)
+    if (this._selectable && !vm.rows.some((r) => r.id === this._active)) this._active = vm.rows.length ? vm.rows[0].id : undefined
     this._bind()
     this._heads.sync(vm.columns.map((c) => ({ ...c, id: c.key })))
     this._rows.sync(vm.rows)
@@ -426,6 +467,11 @@ export class TsTable extends TsWidget {
           return tr
         },
         update: (tr, row) => this._writeRow(tr, row, doc),
+        rescue: (tr) => {
+          const first = tr && tr.firstChild && tr.firstChild.firstChild
+          const target = first && first.localName === 'button' ? first : this._scrollEl
+          if (target && target.focus) target.focus({ preventScroll: true })
+        },
       })
     }
   }
@@ -478,6 +524,11 @@ export class TsTable extends TsWidget {
       // The arrow and the value are the last two children; the row button, when there is one, is first.
       setText(td.children[td.children.length - 2], cell.arrow)
       setText(td.children[td.children.length - 1], cell.text)
+      // A text cell may end in an ellipsis, so its full text is its title; a figure is never cut.
+      const title = col.numeric || !cell.text ? null : cell.text
+      if (title === null) {
+        if (td.getAttribute('title') !== null) td.removeAttribute('title')
+      } else setAttr(td, 'title', title)
       if (i === 0) this._writeSelect(td, row, doc)
     })
   }
@@ -498,6 +549,8 @@ export class TsTable extends TsWidget {
       td.insertBefore(btn, first)
     }
     setAttr(btn, 'aria-label', this.t('table.select', { name: row.cells[0].text || String(row.id) }))
+    // One tab stop for all the rows; the arrows move it.
+    setAttr(btn, 'tabindex', row.id === this._active ? '0' : '-1')
   }
 
   /**

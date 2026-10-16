@@ -48,8 +48,10 @@ function stableRun(seq) {
  * writes what changed into it (`prev` is the row it last showed, or undefined
  * for a new element). A row is an object with an `id`, a string or a number.
  * A second row with an id already seen in the same `sync` is skipped.
+ * `rescue(el)` is called when the row holding focus was removed, with the
+ * element now in its place (or null when no row is left), to move focus there.
  */
-export function createRows(container, { create, update }) {
+export function createRows(container, { create, update, rescue }) {
   // id → { el, row }, and the ids in the order the elements are in the container.
   let held = new Map()
   let order = []
@@ -63,12 +65,15 @@ export function createRows(container, { create, update }) {
       const root = container.getRootNode ? container.getRootNode() : null
       const focused = root && root.activeElement && container.contains(root.activeElement) ? root.activeElement : null
 
-      for (const id of order) {
+      let lostAt = -1
+      order.forEach((id, i) => {
         if (!next.has(id)) {
-          container.removeChild(held.get(id).el)
+          const { el } = held.get(id)
+          if (focused && el.contains(focused)) lostAt = i
+          container.removeChild(el)
           held.delete(id)
         }
-      }
+      })
 
       // Where each surviving element is now, to find the ones that can stay.
       const was = new Map()
@@ -105,7 +110,11 @@ export function createRows(container, { create, update }) {
       }
       order = ids
 
-      if (focused && root.activeElement !== focused && focused.isConnected !== false) focused.focus({ preventScroll: true })
+      if (lostAt >= 0) {
+        const near = ids.length ? held.get(ids[Math.min(lostAt, ids.length - 1)]).el : null
+        if (rescue) rescue(near)
+        else if (near && near.focus) near.focus({ preventScroll: true })
+      } else if (focused && root.activeElement !== focused && focused.isConnected !== false) focused.focus({ preventScroll: true })
     },
   }
 }
