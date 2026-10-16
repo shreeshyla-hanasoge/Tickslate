@@ -158,6 +158,8 @@ export declare class TsGrid extends HTMLElement {
   resize(id: string, size: SizeName): boolean
   /** Removes the item, which becomes a hidden child. False for an unknown id. Commits with reason 'remove'. */
   remove(id: string): boolean
+  /** The DOM's own `remove()`, which the grid keeps: it takes the grid off the page. TypeScript needs it declared, because `remove(id)` alone is not assignable to `Element.remove()`. */
+  remove(): void
   /** The profile `override()` is showing, or null when the schedule (or the `profile` attribute) decides. */
   readonly profileOverride: string | null
   /** Set by `<ts-grid-controls>` while a picker is linked: the edit pill then shows Add, which calls this. */

@@ -875,8 +875,9 @@ export class TsGrid extends Base {
     return true
   }
 
-  /** Removes the item; it becomes a hidden child. False for an unknown id. */
+  /** Removes the item; it becomes a hidden child. False for an unknown id. With no id it is the DOM's own remove(), which takes the grid off the page. */
   remove(id) {
+    if (id === undefined) return super.remove()
     const items = this._profileItems()
     const index = items.findIndex((item) => item.id === id)
     if (index < 0) return false
