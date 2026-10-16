@@ -51,7 +51,7 @@ describe('without a DOM', () => {
       assert.match(html, /<table part="table"/)
       assert.match(html, /<caption class="visually-hidden" data-k="caption"><\/caption>/)
       assert.match(html, /data-k="scroll" role="group" tabindex="0"/)
-      assert.equal((html.match(/<th scope="col">/g) || []).length, v === 'M' ? 3 : 2)
+      assert.equal((html.match(/<th scope="col"/g) || []).length, v === 'M' ? 3 : 2)
       assert.doesNotMatch(html, />[^<]*\p{L}[^<]*</u)
       assert.doesNotMatch(html, /\s(aria-label|title)="[^"]*\p{L}/u)
       assert.match(W.TsWatchlist.skeleton(v), /class="sk /)

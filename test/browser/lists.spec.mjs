@@ -412,6 +412,24 @@ test.describe('fits its tile', () => {
     }
   }
 
+  // A runner with wider fallback fonts than ours must not push anything out of the tile: the same check, with wide type.
+  for (const [kind, size, width] of [[WATCH, 'S', 170], [WATCH, 'Tall', 170], [WATCH, 'M', 351], [POS, 'Wide', 351], [POS, 'M', 351], [POS, 'L', 468], [POS, 'L', 936]]) {
+    for (const theme of ['light', 'dark']) {
+      test(`${kind.slice(5)} ${size} at ${width}px in ${theme} with wide fonts: still inside the tile`, async ({ page }) => {
+        await open(page, `${kind}&size=${size}&width=${width}&theme=${theme}&actions&fit&wide`)
+        const info = await page.evaluate(() => {
+          const root = window.__l.el.shadowRoot
+          const tile = root.querySelector('.tile').getBoundingClientRect()
+          const scroll = root.querySelector('.scroll')
+          const out = [...root.querySelectorAll('.tile *')].filter((n) => !n.closest('.scroll') && !n.closest('[hidden]') && !n.closest('.visually-hidden') && n.getBoundingClientRect().width > 0 && n.getBoundingClientRect().right > tile.right + 0.5)
+          return { overflow: scroll.scrollWidth - scroll.clientWidth, out: out.map((n) => `${n.className || n.localName} +${Math.round(n.getBoundingClientRect().right - tile.right)}`) }
+        })
+        expect(info.out, 'sticks out of the tile').toEqual([])
+        expect(info.overflow, 'the list scrolls sideways').toBeLessThanOrEqual(1)
+      })
+    }
+  }
+
   test('under the terminal preset (a monospace face) the figures still fit', async ({ page }) => {
     for (const [kind, size, width] of [[WATCH, 'Tall', 170], [WATCH, 'M', 351], [POS, 'M', 351], [POS, 'L', 468]]) {
       await open(page, `${kind}&size=${size}&width=${width}&preset=terminal&actions&fit`)

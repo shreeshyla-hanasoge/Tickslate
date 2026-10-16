@@ -116,8 +116,8 @@ export function watchlistModel(data, variant, ctx) {
 
 // Static: the header cells say what a column is for a screen reader, in a row that takes no room. The words are
 // written by update(). M adds the trend column in front of the price.
-const head = (k) => `<th scope="col"><span class="visually-hidden" data-k="${k}"></span></th>`
-const heads = (trend) => `${head('h0')}${trend ? head('h1') : ''}${head(`h${trend ? 2 : 1}`)}`
+const head = (k, cls = '') => `<th scope="col"${cls}><span class="visually-hidden" data-k="${k}"></span></th>`
+const heads = (trend) => `${head('h0')}${trend ? head('h1', ' class="sp"') : ''}${head(`h${trend ? 2 : 1}`)}`
 
 // The add button ends the header, after the synced time: a tile as short as S has no room for a row of its own under the list.
 const ADD = '<button type="button" class="btn add" data-k="add" hidden><span aria-hidden="true">+</span></button>'

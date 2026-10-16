@@ -173,7 +173,7 @@ export const HIDDEN_CSS = `
 
 /** The rules of the bar and the sparkline, for each widget's own styles. Tokens and logical properties only. */
 export const PARTS_CSS = `
-.sp { box-sizing: border-box; inline-size: 84px; min-inline-size: 84px; padding-inline: 10px; vertical-align: middle; }
+.sp { box-sizing: border-box; inline-size: 66px; min-inline-size: 66px; padding-inline: 5px 8px; vertical-align: middle; }
 .sprk { display: block; inline-size: 100%; block-size: 24px; direction: ltr; overflow: visible; }
 .sprk path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .sprk.pos { color: var(--ts-profit); }

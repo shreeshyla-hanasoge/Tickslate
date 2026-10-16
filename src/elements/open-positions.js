@@ -140,7 +140,7 @@ ${header({ dot: true, meta: true })}
 <div class="scroll" data-k="scroll" role="group" tabindex="0">
 <table part="table" data-k="table">
 <caption class="visually-hidden" data-k="caption"></caption>
-<thead><tr>${head('h0')}${variant === 'L' ? head('h1') : ''}${head('h2')}${head('h3')}${head('h4', ' hidden')}</tr></thead>
+<thead><tr>${head('h0')}${variant === 'L' ? head('h1', ' class="sp"') : ''}${head('h2')}${head('h3')}${head('h4', ' hidden')}</tr></thead>
 </table>
 <div class="none mut" data-k="none" hidden></div>
 </div>
@@ -157,7 +157,12 @@ const SKELETONS = {
 
 const STYLES = `
 ${PARTS_CSS}
-.sum { display: flex; align-items: center; gap: 8px; min-block-size: 28px; }
+/* A narrow tile drops the sparkline column, as the table drops a column that does not fit: the figures matter more, and the trend is the one decoration. */
+@container (max-width: 400px) { .sp { display: none; } }
+.sum { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-block-size: 28px; }
+/* The MTM, the margin and Exit all share one line while they fit; wider type wraps the last of them down instead of out of the tile. */
+.sum > .n, .sum > .rowb { min-inline-size: 0; }
+.sum > .f1 { flex: 1 1 0; }
 .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .scroll:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
 table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
