@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readsOf } from './ops.mjs'
 import {
   SIZES,
   SIZE_NAMES,
@@ -465,9 +466,7 @@ describe('dropIndex', () => {
   // dropIndex tries every slot and lays out the first i + 1 tiles for each, so
   // it is O(n^3) in the tile count by construction (measured: about 40x from
   // 30 to 120 tiles). The tests below catch an accidental step beyond that
-  // without a wall-clock threshold that a loaded CI machine can cross: they
-  // compare two sizes timed in the same process, and take the best of several
-  // batches, because load only ever adds time to a batch.
+  // without comparing two small timings, which flake under load.
   const tiles = (n) => Array.from({ length: n }, (_, i) => s(`t${i}`, SIZE_NAMES[i % SIZE_NAMES.length]))
   const bestBatchMs = (n, calls, batches) => {
     const items = tiles(n)
@@ -483,14 +482,22 @@ describe('dropIndex', () => {
   }
 
   test('does not grow faster than cubically with the tile count', () => {
-    const small = bestBatchMs(30, 20, 15)
-    const large = bestBatchMs(120, 3, 15)
-    // 4x the tiles is 64x the work at O(n^3), measured about 40x. An extra
-    // factor of n would be 256x or more, so 150 leaves room for noise on the
-    // small side (a 30 tile call takes tens of microseconds) and still fails
-    // on that.
-    const ratio = large / small
-    assert.ok(ratio < 150, `120 tiles took ${ratio.toFixed(0)}x as long as 30 (${small.toFixed(3)} ms and ${large.toFixed(3)} ms per call)`)
+    // Counts reads of the tiles instead of timing two sizes. Each of the n
+    // slots lays out a prefix, so the tiles are read O(n^2) times: 4x the tiles
+    // is 16x the reads (measured 15.2). An extra loop over the tiles would make
+    // it 64x, so 17 leaves room only for constants.
+    const reads = (n) => readsOf(tiles(n), (items) => dropIndex(items, `t${n >> 1}`, { col: 2, row: 5 }, 4, {}, 2))
+    const ratio = reads(120) / reads(30)
+    assert.ok(ratio > 8 && ratio <= 17, `120 tiles read the tiles ${ratio.toFixed(1)}x as often as 30`)
+  })
+
+  test('a step past cubic in the cell scan is still caught by a generous ceiling', () => {
+    // The scan inside placement is not observable from here, so this one is
+    // timed: 120 tiles take about 2 ms idle, and a ceiling of 100 ms (50x) is
+    // reached only by a regression of another factor of n. The best of 15
+    // batches, because load only ever adds time.
+    const each = bestBatchMs(120, 3, 15)
+    assert.ok(each < 100, `${each.toFixed(1)} ms per call for 120 tiles`)
   })
 
   test('stays far inside a frame for 30 tiles', () => {
