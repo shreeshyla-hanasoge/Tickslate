@@ -30,9 +30,11 @@ describe('custom elements manifest', () => {
   test('every tag has attributes, events, parts and slots, and the inherited ones are there', () => {
     for (const [tag, d] of byTag) {
       assert.ok(d.attributes.length > 0, `${tag} attributes`)
-      assert.ok(d.events.length > 0, `${tag} events`)
+      // The picker and the grid controls are no widgets and fire nothing of their own; a grid or a widget does.
+      const fires = d.superclass?.name === 'TsWidget' || tag === 'ts-grid'
+      if (fires) assert.ok(d.events.length > 0, `${tag} events`)
       assert.ok(d.cssParts.length > 0, `${tag} parts`)
-      assert.ok(d.slots.length > 0, `${tag} slots`)
+      if (fires) assert.ok(d.slots.length > 0, `${tag} slots`)
       assert.ok(d.members.length > 0, `${tag} members`)
     }
     const metric = byTag.get('ts-metric')
@@ -94,7 +96,7 @@ describe('the attribute tables that type the frameworks', () => {
 
 describe('the generator on a tree that gains an element', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tickslate-manifest-'))
-  for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
+  for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts', 'controls.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
   const entry = { file: 'gauge', name: 'gauge', input: '', tags: ['ts-gauge'], exports: ['TsGauge'] }
 
   test('fails the build for a tag with no @element block', () => {
@@ -140,7 +142,7 @@ declare global { interface HTMLElementTagNameMap { 'ts-gauge': TsGauge } }
 describe('malformed tags and unresolved classes', () => {
   const tree = (dts) => {
     const dir = mkdtempSync(join(tmpdir(), 'tickslate-manifest-'))
-    for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
+    for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts', 'controls.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
     writeFileSync(join(dir, 'gauge.d.ts'), dts)
     return dir
   }
@@ -190,7 +192,8 @@ declare global { interface HTMLElementTagNameMap { 'ts-gauge': TsGauge } }
 describe('observed attributes are documented', () => {
   // `item` is read with getAttribute by the grid and by open actions, and `undo-toast` by the grid's
   // toast: both are real attributes that observedAttributes does not list. `data` is observed by the base.
-  const READ_WITHOUT_OBSERVING = new Set(['item', 'undo-toast'])
+  // The picker reads `for` when it opens, so it never needs to observe it.
+  const READ_WITHOUT_OBSERVING = new Set(['item', 'undo-toast', 'for'])
   const src = (f) => readFileSync(new URL(`../src/elements/${f}`, import.meta.url), 'utf8')
   const observed = (file) => {
     // Comments first: widget.js's header shows an example of the same getter.
@@ -202,12 +205,15 @@ describe('observed attributes are documented', () => {
   for (const entry of entries) {
     for (const tag of entry.tags) {
       test(`${tag}: every observed attribute has an @attr line, and every @attr is observed or exempt`, () => {
-        const files = [...src(`define/${entry.file}.js`).matchAll(/from '\.\.\/([\w-]+\.js)'/g)].map((m) => m[1])
         const d = byTag.get(tag)
+        // A define module can register two tags (controls.js does); read the file of this tag's class only.
+        const imports = [...src(`define/${entry.file}.js`).matchAll(/import \{([^}]*)\} from '\.\.\/([\w-]+\.js)'/g)]
+        const own = imports.filter((m) => m[1].split(',').map((n) => n.trim()).includes(d.name))
+        const files = (own.length ? own : imports).map((m) => m[2])
         if (d.superclass?.name === 'TsWidget') files.push('widget.js')
         const seen = new Set(files.flatMap(observed))
-        assert.ok(seen.size > 0, `read observedAttributes of ${files.join(', ')}`)
         const documented = new Set(d.attributes.map((a) => a.name))
+        assert.ok(seen.size > 0 || [...documented].every((a) => READ_WITHOUT_OBSERVING.has(a)), `read observedAttributes of ${files.join(', ')}`)
         for (const a of seen) assert.ok(documented.has(a), `${tag} observes "${a}" but no @attr documents it`)
         for (const a of documented) assert.ok(seen.has(a) || READ_WITHOUT_OBSERVING.has(a), `${tag} documents "${a}", which nothing observes`)
       })

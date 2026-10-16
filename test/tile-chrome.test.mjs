@@ -2,6 +2,7 @@ import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { configure, createFormatter, createMessages } from '../src/core/index.js'
+import { nonWidgetFiles } from './non-widget-defines.mjs'
 import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 
 // The shared tile chrome (RFC 0003 §5): one header, group and heading
@@ -10,8 +11,9 @@ import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
 // installed, so this file imports nothing from src/elements/ statically.
 
 // The grid is not a widget: it has no tile chrome, and its geometry is another story's (see the logical-properties scan).
+// Nor are the elements in test/non-widget-defines.mjs.
 const DEFINE_MODULES = readdirSync(new URL('../src/elements/define/', import.meta.url))
-  .filter((f) => f.endsWith('.js') && f !== 'grid.js')
+  .filter((f) => f.endsWith('.js') && f !== 'grid.js' && !nonWidgetFiles().includes(f.slice(0, -3)))
   .map((f) => f.slice(0, -3))
   .sort()
 

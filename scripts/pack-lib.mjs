@@ -115,6 +115,7 @@ const types = [
   ['src/elements/index.d.ts', 'elements.d.ts'],
   ['src/elements/widget.d.ts', 'widget.d.ts'],
   ['src/elements/grid.d.ts', 'grid.d.ts'],
+  ['src/elements/controls.d.ts', 'controls.d.ts'],
 ]
 const shipped = []
 for (const [from, to] of types) {

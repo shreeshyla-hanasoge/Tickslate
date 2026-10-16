@@ -9,6 +9,8 @@ export { TsWidget } from './widget.js'
 export type { ViewModelContext, WidgetState, TsOpenAction, TsChartSelectAction } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
+// controls.d.ts (the picker and the grid controls) ships beside this file too.
+export * from './controls.js'
 import type { TsGrid, LayoutAdapter } from './grid.js'
 
 export interface PersistLayoutOptions {
@@ -407,6 +409,34 @@ export type TsSessionClockAction = TsCommonAction
  * @slot empty - Content that replaces the empty board's text.
  */
 
+/**
+ * The markup of <ts-widget-picker>, for the manifest. Its class, with the prose above its members, is in
+ * controls.d.ts; the generator finds the class from `HTMLElementTagNameMap` and reads the tags from here.
+ * It fires no event of its own: an add it makes reaches the host as the grid's `ts-layout-change`.
+ *
+ * @element ts-widget-picker
+ * @attr {string} for - The id of the <ts-grid> it adds to.
+ * @csspart sheet - The dialog's box, a bottom sheet below 700px and centred above.
+ * @csspart search - The search field.
+ * @csspart group - A heading and the rows under it.
+ * @csspart row - One widget or hidden tile.
+ * @csspart chip - A size button on a row.
+ * @csspart empty - The text shown when nothing matches.
+ * @csspart close - The close button.
+ */
+
+/**
+ * The markup of <ts-grid-controls>, for the manifest. Its class is in controls.d.ts. It fires no event of
+ * its own: a profile it picks reaches the host as the grid's `ts-profile-change`.
+ *
+ * @element ts-grid-controls
+ * @attr {string} for - The id of the <ts-grid> it controls.
+ * @attr {string} picker - The id of a <ts-widget-picker> to link; the one whose `for` is the same grid when absent.
+ * @csspart switcher - The profile buttons' group.
+ * @csspart option - One profile button.
+ * @csspart next - The line naming the next scheduled switch.
+ */
+
 /** The attributes of the TsWidget base, as the framework typings (`tickslate/jsx`, `vue`, `svelte`) offer them. Kept in step with the `@base` block above by test/manifest.test.mjs. */
 export interface TsWidgetAttributes {
   size?: SizeName | undefined
@@ -431,6 +461,8 @@ export interface TsWidgetAttributes {
 export interface TsElementAttributes {
   'ts-card': { sizes?: string | undefined; live?: boolean | undefined; 'as-of'?: string | undefined; scrollable?: boolean | undefined }
   'ts-equity-curve': { range?: EquityRange | undefined }
+  'ts-widget-picker': { for?: string | undefined }
+  'ts-grid-controls': { for?: string | undefined; picker?: string | undefined }
   'ts-grid': {
     editing?: boolean | undefined
     profile?: string | undefined

@@ -184,6 +184,7 @@ All events bubble and are composed, so you can listen on the grid or higher up.
 | `ts-reading-order-change` | `<ts-grid>`, when the order tiles are read and tabbed in changes; not for the first order | `{ order }` |
 | `ts-columns-change` | `<ts-grid>`, also once after the first measure | `{ columns, device, initial }` |
 | `ts-profile-change` | `<ts-grid>`, when a schedule or override switches profile | `{ profile, reason }` |
+| `ts-add-request` | `<ts-grid>`, when `grid.add()` or the picker asks for a new tile; cancelable | `{ type, id, size }`. Call `preventDefault()` and render a child with `item=id` |
 | `ts-action` | any widget | `{ action, ... }`, such as `retry` or an equity curve's `range` |
 
 ## Theming
