@@ -32,6 +32,10 @@ const ACTION_SELECT = 'select'
 const BAND_PADDING = 0.2
 // Fewest pixels a category label gets before neighbours are skipped, so a crowded axis shows every nth.
 const CAT_MIN_PX = 56
+// Bars on a time or number axis get at most this many slots: 394 drawing units over 2, so a bar keeps about 2px.
+const MAX_SLOTS = 197
+// Beyond this a figure is written compact in labels, so 1e300 is not 300 digits in a screen reader's ear.
+const BIG = 1e15
 
 /**
  * Where an arrow key moves the focused point (index `from` of `count`), or -1
@@ -226,6 +230,8 @@ export function chartModel(data, variant, ctx) {
   // decimals unless the host sets some, as in <ts-metric>.
   const show = (n) => {
     const o = { sign: 'negative', decimals }
+    // Compact formats stop at trillions, so a figure this large is written as a power of ten, whatever the format.
+    if (Math.abs(n) >= BIG) return `${n < 0 ? MINUS : ''}${Math.abs(n).toExponential(2)}`
     switch (format) {
       case 'money':
         return fmt.money(n, o)
@@ -296,12 +302,23 @@ export function chartModel(data, variant, ctx) {
     const xs = []
     for (const s of barSeries) for (const p of s.points) xs.push(p.x)
     xs.sort((a, b) => a - b)
-    let gap = Infinity
-    for (let i = 1; i < xs.length; i++) if (xs[i] > xs[i - 1]) gap = Math.min(gap, xs[i] - xs[i - 1])
-    // One distinct x has no neighbour to size against: it takes half the span beside other series, or the whole plot alone.
-    if (gap === Infinity) gap = x1 - x0
-    slots = gap ? (x1 - x0) / gap + 1 : 1
-    slotOf = (v) => (gap ? (v - x0) / gap : 0)
+    const gaps = []
+    for (let i = 1; i < xs.length; i++) if (xs[i] > xs[i - 1]) gaps.push(xs[i] - xs[i - 1])
+    gaps.sort((a, b) => a - b)
+    const span = x1 - x0
+    if (!(span > 0) || !Number.isFinite(span)) {
+      // Nothing to space against: all bars share one slot, the whole plot.
+      slots = 1
+      slotOf = () => 0
+    } else {
+      // The typical gap, not the smallest: one stray neighbour (a point a minute after another on a daily chart) must
+      // not shrink every bar to nothing. The slot count is capped so each bar keeps a few pixels, and with no gap at
+      // all (one distinct x beside other series) a bar takes half the span.
+      const typical = gaps.length ? gaps[gaps.length >> 1] : span
+      const gap = Math.max(typical, span / (MAX_SLOTS - 1))
+      slots = span / gap + 1
+      slotOf = (v) => (v - x0) / gap
+    }
   }
   const banded = slots > 0
   const band = bandGeometry(slots, PAD, BOX.width - PAD, BAND_PADDING)
@@ -313,12 +330,7 @@ export function chartModel(data, variant, ctx) {
   const lineBox = banded ? { ...box, xDomain: [PAD, BOX.width - PAD] } : box
   const barDraw = hasBar
     ? barPaths(barSeries.map((s) => s.points.map((p) => ({ x: slotOf(p.x), y: p.y }))), { width: BOX.width, height: BOX.height, pad: PAD, categories: slots, yDomain: [y0, y1], padding: BAND_PADDING })
-    : { paths: [] }
-  // Where a bar's own middle falls inside its band, for the mark that makes it selectable.
-  const barX = (s, p) => {
-    const g = barSeries.indexOf(s)
-    return band.start(slotOf(p.x)) + ((g + 0.5) * band.inner) / barSeries.length
-  }
+    : { paths: [], rects: [] }
   const hasZero = hasPoints && y0 <= 0 && y1 >= 0
   const zeroY = round(Math.min(BOX.height - PAD, Math.max(PAD, y(0))))
 
@@ -366,25 +378,35 @@ export function chartModel(data, variant, ctx) {
   const outPoints = []
   // Each bar's value in words, for a reader who cannot see its length.
   const barLabels = []
+  // Two bars of one series at one x sit on top of each other; counted so development can say so.
+  let duplicates = 0
   if (hasPoints) {
     // A point's name reads its x as the axis does: a date, or a clock time inside a day, never the raw timestamp.
     const xName = catAxis ? (v) => categories[v] : !timeAxis ? (v) => fmt.number(v, { sign: 'negative' }) : x1 - x0 < DAY_MS ? (v) => fmt.time(v) : (v) => fmt.date(v)
-    for (const s of series) {
+    const keys = []
+    series.forEach((s, si) => {
       const sKey = s.id != null && s.id !== '' ? s.id : s.name
-      for (const p of s.points) {
-        const px = s.kind === 'bar' ? round(barX(s, p)) : s.points.length === 1 && x1 === x0 && !banded ? round(BOX.width - PAD) : round(x(p.x))
-        const py = round(y(p.y))
-        outPoints.push({
-          series: sKey,
-          value: p.rawX !== undefined ? p.rawX : p.x,
-          y: p.y,
-          index: p.index,
-          xPct: round(px / 4),
-          yPct: round(py),
-          label: `${s.name}: ${xName(p.x)}, ${show(p.y)}`,
-        })
-        if (s.kind === 'bar') barLabels.push(`${s.name}: ${xName(p.x)}, ${show(p.y)}`)
-      }
+      const bi = barSeries.indexOf(s)
+      s.points.forEach((p, k) => {
+        const box = bi >= 0 ? barDraw.rects[bi][k] : null
+        const px = box ? box.x + box.w / 2 : s.points.length === 1 && x1 === x0 && !banded ? round(BOX.width - PAD) : round(x(p.x))
+        const py = box ? (p.y < 0 ? box.y + box.h : box.y) : round(y(p.y))
+        const label = `${s.name}: ${xName(p.x)}, ${show(p.y)}`
+        const pt = { series: sKey, value: p.rawX !== undefined ? p.rawX : p.x, y: p.y, index: p.index, xPct: round(px / 4), yPct: round(py), label }
+        // A bar is selected by its whole rectangle, as percentages of the plot like the other marks.
+        if (box) pt.bar = { x: round((box.x + box.w / 2) / 4), y: round(box.y), w: round(box.w / 4), h: round(box.h) }
+        outPoints.push(pt)
+        keys.push([banded ? slotOf(p.x) : 0, si, k])
+        if (box) barLabels.push(label)
+        if (box && k > 0 && p.x === s.points[k - 1].x) duplicates++
+      })
+    })
+    // Grouped bars are read band by band, as they look: Profit January, Costs January, Profit February.
+    if (hasBar) {
+      const order = keys.map((_, i) => i).sort((a, b) => keys[a][0] - keys[b][0] || keys[a][1] - keys[b][1] || keys[a][2] - keys[b][2])
+      const sorted = order.map((i) => outPoints[i])
+      outPoints.length = 0
+      for (const pt of sorted) outPoints.push(pt)
     }
   }
 
@@ -405,6 +427,7 @@ export function chartModel(data, variant, ctx) {
     axis,
     categories,
     barLabels,
+    duplicates,
     zeroY,
     zero: hasZero,
     zeroPath: hasZero ? `M0 ${zeroY}H${BOX.width}` : '',
@@ -533,18 +556,36 @@ export class TsChart extends TsWidget {
 .pts { inset: 0; pointer-events: none; }
 .pt { display: block; width: 16px; height: 16px; transform: translate(-50%, -50%); background: transparent; border: 0; padding: 0; margin: 0; cursor: pointer; border-radius: 50%; pointer-events: auto; outline: none; }
 .pt:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
+/* A bar is selected by its whole rectangle, at least 24px each way. The rectangles may overlap on a crowded axis, so they
+   take no pointer events and a click is given to the nearest bar (_nearestBar), which a thin bar needs. */
+.pts li.pb { transform: translateX(-50%); min-inline-size: 24px; min-block-size: 24px; pointer-events: none; }
+.pt.bar { inline-size: 100%; block-size: 100%; transform: none; border-radius: 0; pointer-events: none; }
 /* Colours are not the host's to theme here, and backgrounds are dropped, so series differ by colour AND dash and the
-   swatches become coloured blocks again. Two system colours and two dash patterns tell six series apart; bars take the colour alone, as a block has no stroke to dash. */
+   swatches become coloured blocks again. Two system colours and two dash patterns tell six series apart. A bar takes the
+   other system colour as its outline, and the outline's width and dash differ per series (the swatch's border style and
+   width do the same), so grouped bars stay apart without colour. */
 @media (forced-colors: active) {
   .sl, .sd { stroke: CanvasText; }
-  .sb { fill: CanvasText; stroke: ButtonFace; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  .sb { fill: CanvasText; stroke: Highlight; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  .sb.c-2 { stroke-width: 2px; }
+  .sb.c-3 { stroke-width: 2px; stroke-dasharray: 4 3; }
+  .sb.c-4 { stroke-width: 3px; stroke-dasharray: 4 3; }
+  .sb.c-5 { stroke-width: 2px; stroke-dasharray: 1 3; }
+  .sb.c-6 { stroke-width: 3px; stroke-dasharray: 1 3; }
   .sl.c-2, .sd.c-2, .sl.c-4, .sd.c-4, .sl.c-6, .sd.c-6 { stroke: Highlight; }
-  .sb.c-2, .sb.c-4, .sb.c-6 { fill: Highlight; }
+  .sb.c-2, .sb.c-4, .sb.c-6 { fill: Highlight; stroke: CanvasText; }
   .sl.c-3, .sl.c-4 { stroke-dasharray: 6 3; }
   .sl.c-5, .sl.c-6 { stroke-dasharray: 2 3; }
   .gl, .zl { stroke: CanvasText; }
   .sw { background: CanvasText; }
   .sw.c-2, .sw.c-4, .sw.c-6 { background: Highlight; }
+  .sw.bar { box-sizing: border-box; border: 1px solid Highlight; }
+  .sw.bar.c-2, .sw.bar.c-4, .sw.bar.c-6 { border-color: CanvasText; }
+  .sw.bar.c-2 { border-width: 2px; }
+  .sw.bar.c-3 { border: 2px dashed Highlight; }
+  .sw.bar.c-4 { border: 3px dashed CanvasText; }
+  .sw.bar.c-5 { border: 2px dotted Highlight; }
+  .sw.bar.c-6 { border: 3px dotted CanvasText; }
 }
 `
 
@@ -572,7 +613,8 @@ export class TsChart extends TsWidget {
   constructor() {
     super()
     const onActivate = (e) => {
-      const btn = e.target?.closest?.('.pt')
+      // A click on a bar's body lands on the plot, not on its button: the nearest bar takes it.
+      const btn = e.target?.closest?.('.pt') || this._nearestBar(e)
       if (!btn) return
       if (this._isEditing()) {
         e.preventDefault?.()
@@ -616,6 +658,28 @@ export class TsChart extends TsWidget {
     })
   }
 
+  // The bar a pointer click at (clientX, clientY) means, or null. A bar owns its rectangle, grown to 24px each way;
+  // among the bars whose area holds the click the one with the nearest middle wins, so thin bars on a crowded axis
+  // still resolve to the closest one.
+  _nearestBar(e) {
+    const list = this.$('[data-k="pts"]')
+    if (!list || !Number.isFinite(e.clientX) || !(e.clientX || e.clientY)) return null
+    let best = null
+    let bestDx = Infinity
+    for (const btn of list.querySelectorAll('.pt.bar')) {
+      const r = btn.getBoundingClientRect()
+      const cx = (r.left + r.right) / 2
+      const cy = (r.top + r.bottom) / 2
+      const dx = Math.abs(e.clientX - cx)
+      const inside = dx <= Math.max(r.width, 24) / 2 && Math.abs(e.clientY - cy) <= Math.max(r.height, 24) / 2
+      if (inside && dx < bestDx) {
+        best = btn
+        bestDx = dx
+      }
+    }
+    return best
+  }
+
   // One tab stop for the whole group of points: the rest are reached with the arrow keys.
   _rove(btns, to, btn) {
     const next = to === undefined ? btns.indexOf(btn) : to
@@ -640,6 +704,7 @@ export class TsChart extends TsWidget {
       const el = this.$(`[data-k="${k}"]`)
       if (el) el.toggleAttribute('hidden', on)
     }
+    if (DEV && vm.duplicates > 0) warnOnce(`bar-dup:${this._uid}`, `${describeElement(this)} has ${vm.duplicates} bars of one series at the same x, drawn on top of each other. Give each x once per series.`)
     if (DEV && vm.extra > 0) warnOnce(`series-cap:${this._uid}`, `${describeElement(this)} draws at most ${MAX_SERIES} series; ${MAX_SERIES + vm.extra} were given.`)
 
     hide('dot', !vm.live)
@@ -665,7 +730,9 @@ export class TsChart extends TsWidget {
         let html = ''
         let key = ''
         vm.points.forEach((pt, i) => {
-          const item = (tab) => `<li style="inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;"><button type="button" class="pt" tabindex="${tab}" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
+          const b = pt.bar
+          const pos = b ? `inset-inline-start: ${b.x}%; inset-block-start: ${b.y}%; inline-size: ${b.w}%; block-size: ${b.h}%;` : `inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;`
+          const item = (tab) => `<li${b ? ' class="pb"' : ''} style="${pos}"><button type="button" class="pt${b ? ' bar' : ''}" tabindex="${tab}" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
           html += item(i === active ? 0 : -1)
           key += item(-1)
         })

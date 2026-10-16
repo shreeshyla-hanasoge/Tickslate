@@ -287,3 +287,30 @@ describe('barPaths', () => {
     assert.doesNotThrow(() => barPaths([pts], { width: 400, height: 100, categories: 200000 }))
   })
 })
+
+describe('barPaths minimums and boxes', () => {
+  const box = { width: 400, height: 100, pad: 0 }
+
+  test('a bar is never narrower than the minimum, even with thousands of bands', () => {
+    const { paths, rects } = barPaths([[{ x: 0, y: 1 }, { x: 4999, y: 1 }]], { ...box, categories: 5000, yDomain: [0, 1] })
+    for (const r of rects[0]) assert.ok(r.w >= 1)
+    assert.match(paths[0], /^M/)
+  })
+
+  test('a tiny value keeps a floor of one unit, and a true zero draws nothing', () => {
+    const { paths, rects } = barPaths([[{ x: 0, y: 0.0001 }, { x: 1, y: 1e6 }, { x: 2, y: 0 }, { x: 3, y: -0.0001 }]], { ...box, categories: 4, yDomain: [-1, 1e6] })
+    assert.equal((paths[0].match(/M/g) || []).length, 3)
+    assert.ok(rects[0][0].h >= 1 && rects[0][3].h >= 1)
+    assert.equal(rects[0][2].h, 0)
+  })
+
+  test('rects follow the input order and sit where the path is', () => {
+    const { rects, zeroY } = barPaths([[{ x: 0, y: 5 }, { x: 1, y: -5 }]], { width: 100, height: 50, pad: 0, categories: 2, padding: 0, yDomain: [-5, 5] })
+    assert.deepEqual(rects[0], [{ x: 0, y: 0, w: 50, h: 25 }, { x: 50, y: zeroY, w: 50, h: 25 }])
+  })
+
+  test('a runaway band count lists a bounded number of centres and does not throw', () => {
+    const r = barPaths([[{ x: 0, y: 1 }]], { ...box, categories: 1e9, yDomain: [0, 1] })
+    assert.ok(r.centres.length <= 1024)
+  })
+})

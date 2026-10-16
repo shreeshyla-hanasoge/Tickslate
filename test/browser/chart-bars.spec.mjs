@@ -118,11 +118,11 @@ test.describe('selection', () => {
     expect(info.valsHidden).toBe(true)
     await page.evaluate(() => window.__c.el.shadowRoot.querySelector('.pt').focus())
     await page.keyboard.press('ArrowDown')
-    expect(await page.evaluate(() => window.__c.el.shadowRoot.activeElement.getAttribute('aria-label'))).toContain('Profit: February')
+    expect(await page.evaluate(() => window.__c.el.shadowRoot.activeElement.getAttribute('aria-label'))).toContain('Costs: January')
     await page.keyboard.press('Enter')
     const ev = await page.evaluate(() => window.__c.events)
-    expect(ev[0]).toMatchObject({ action: 'select', value: 'February', series: 'Profit', index: 1 })
-    expect(ev[0].y).toBe(-410)
+    expect(ev[0]).toMatchObject({ action: 'select', value: 'January', series: 'Costs', index: 0 })
+    expect(ev[0].y).toBe(300)
   })
 
   test('the buttons come back after a size change', async ({ page }) => {
@@ -164,4 +164,115 @@ test.describe('layout', () => {
       }
     }
   }
+})
+
+// ── Review fixes: close x values, hit areas, forced-colours cues, reading order ─────────────────────────────────────
+
+const pointer = async (page, x, y) => {
+  // The mobile projects tap, the others click with a real mouse.
+  if (test.info().project.use.hasTouch) await page.touchscreen.tap(x, y)
+  else await page.mouse.click(x, y)
+}
+
+// The middle of the nth bar button, in page coordinates.
+const barCentre = (page, n) =>
+  page.evaluate((i) => {
+    const r = [...window.__c.el.shadowRoot.querySelectorAll('.pt.bar')][i].getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }
+  }, n)
+
+test.describe('bars as targets', () => {
+  test('a click or tap on the middle of a tall bar selects it', async ({ page }) => {
+    await open(page, 'size=L&n=3&select&width=640')
+    // Band-major order: 0 is Profit January, 1 is Costs January.
+    const c = await barCentre(page, 0)
+    expect(c.h).toBeGreaterThan(40)
+    expect(c.w).toBeGreaterThanOrEqual(24)
+    await pointer(page, c.x, c.y)
+    const ev = await page.evaluate(() => window.__c.events)
+    expect(ev).toHaveLength(1)
+    expect(ev[0]).toMatchObject({ action: 'select', series: 'Profit', value: 'January', index: 0 })
+  })
+
+  test('a thin bar among 150 resolves to the nearest bar, by click or tap', async ({ page }) => {
+    await open(page, 'size=XL&n=150&select&width=700')
+    const total = await page.evaluate(() => window.__c.el.shadowRoot.querySelectorAll('.pt.bar').length)
+    expect(total).toBe(300)
+    // Band-major: 2 * 75 is Profit in the 76th band.
+    const c = await barCentre(page, 150)
+    // Near the base, away from the target line's own dots.
+    await pointer(page, c.x, c.y + c.h / 2 - 4)
+    const ev = await page.evaluate(() => window.__c.events)
+    expect(ev).toHaveLength(1)
+    expect(ev[0]).toMatchObject({ series: 'Profit', index: 75 })
+  })
+})
+
+test.describe('close x values', () => {
+  test('a point a minute after another does not collapse a daily chart', async ({ page }) => {
+    await open(page, 'size=L&axis=time&n=3')
+    const widths = await page.evaluate(() => {
+      const day = 86400000
+      const pts = Array.from({ length: 365 }, (_, i) => ({ x: Date.UTC(2026, 0, 1) + i * day, y: 100 + (i % 9) }))
+      pts.push({ x: pts[1].x + 60000, y: 50 })
+      window.__c.setData({ xType: 'time', series: [{ name: 'Sales', kind: 'bar', points: pts }] })
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const d = window.__c.el.shadowRoot.querySelector('.sb.c-1').getAttribute('d')
+        resolve([...d.matchAll(/M(-?[\d.]+) -?[\d.]+V-?[\d.]+H(-?[\d.]+)V/g)].map((m) => Number(m[2]) - Number(m[1])))
+      })))
+    })
+    expect(widths).toHaveLength(366)
+    expect(Math.min(...widths)).toBeGreaterThanOrEqual(1)
+  })
+
+  test('x values 0, 1e-9 and 1e9 on a number axis draw and do not throw', async ({ page }) => {
+    await open(page, 'size=M&n=3')
+    const errors = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    const info = await page.evaluate(() => {
+      window.__c.setData({ xType: 'number', series: [{ name: 'a', kind: 'bar', points: [{ x: 0, y: 1 }, { x: 1e-9, y: 2 }, { x: 1e9, y: 3 }] }] })
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const root = window.__c.el.shadowRoot
+        resolve({ d: root.querySelector('.sb.c-1').getAttribute('d'), failed: !!root.querySelector('[part~="error"]') })
+      })))
+    })
+    expect(errors).toEqual([])
+    expect(info.failed).toBe(false)
+    expect([...info.d.matchAll(/M/g)]).toHaveLength(3)
+  })
+})
+
+test.describe('reading order', () => {
+  test('grouped bars are walked band by band with the arrow keys', async ({ page, browserName }) => {
+    test.skip(!!test.info().project.use.hasTouch, 'keyboard')
+    await open(page, 'size=M&n=3&select')
+    await page.evaluate(() => window.__c.el.shadowRoot.querySelector('.pt').focus())
+    const seen = []
+    for (let i = 0; i < 4; i++) {
+      seen.push(await page.evaluate(() => window.__c.el.shadowRoot.activeElement.getAttribute('aria-label').split(',')[0]))
+      await page.keyboard.press('ArrowDown')
+    }
+    expect(seen).toEqual(['Profit: January', 'Costs: January', 'Target: January', 'Profit: February'])
+  })
+})
+
+test.describe('forced colours', () => {
+  test('six grouped bars and their swatches keep distinguishable cues', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'forced-colors emulation is Chromium-only')
+    await page.emulateMedia({ forcedColors: 'active' })
+    await open(page, 'size=M&n=3')
+    const cues = await page.evaluate(() => {
+      window.__c.setData({ xType: 'category', series: Array.from({ length: 6 }, (_, i) => ({ name: `S${i + 1}`, kind: 'bar', points: [{ x: 'a', y: i + 1 }, { x: 'b', y: 2 }] })) })
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const root = window.__c.el.shadowRoot
+        resolve({
+          bars: [1, 2, 3, 4, 5, 6].map((n) => { const s = getComputedStyle(root.querySelector(`.sb.c-${n}`)); return `${s.strokeWidth}|${s.strokeDasharray}` }),
+          swatches: [...root.querySelectorAll('.legend .sw')].map((el) => { const s = getComputedStyle(el); return `${s.borderTopWidth}|${s.borderTopStyle}` }),
+        })
+      })))
+    })
+    expect(new Set(cues.bars).size).toBe(6)
+    expect(cues.swatches).toHaveLength(6)
+    expect(new Set(cues.swatches).size).toBe(6)
+  })
 })

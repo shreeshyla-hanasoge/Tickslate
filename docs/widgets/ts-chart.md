@@ -106,6 +106,16 @@ chart.data = {
 }
 ```
 
+On a time or number axis the bars' slot is the typical (median) gap between
+bars, not the smallest, and there are at most about 200 slots across the plot,
+so one stray close-together point never shrinks the rest. Every bar is at least
+a pixel or two wide, and any nonzero value is at least a pixel tall however
+small it is next to the others; only a true zero draws nothing.
+
+Give each x once per series. Two bars of one series at the same x (a repeated
+category, or a repeated time or number) are drawn on top of each other, and
+development warns once. Merge them in your data first.
+
 Bars never rely on colour: a loss is a bar below the zero line, its value is
 written with a true minus (`−400`), and every bar's value is also in text (see
 [Accessibility](#accessibility)).
@@ -172,7 +182,10 @@ When the first series' latest value changes, it is tinted for 700 ms: `--ts-prof
 `ts-action` with `{ action: 'retry' }`. With `'select'`, each point and each bar
 is a button that fires `{ action: 'select', value, series, y, index }`, where
 `value` is the x as given (the category, for a category axis). One tab stop
-covers them all, and the arrow keys, Home and End move between them. See
+covers them all, and the arrow keys, Home and End move between them. For
+grouped bars the order is band by band, as they look: Profit January, Costs
+January, Profit February. A bar's whole rectangle is its target, at least 24px
+each way; on a crowded axis a click goes to the nearest bar. See
 [Events](../reference/events.md).
 
 ## Parts
@@ -212,6 +225,8 @@ square, so they differ from lines without colour.
 - Bars carry their values as text: with `select` on, every bar is a button named
   "Profit: Feb, −400"; without it the same sentences sit in a visually hidden
   list beside the plot. Negative values use the true minus.
-- Under forced colours bars take the system colours with a gap between them, and
-  lines use dash patterns, so six series stay apart.
+- Under forced colours lines use dash patterns, and each bar is outlined in the
+  other system colour with a width and dash of its own per series (the legend
+  swatch's border matches), so six series stay apart without colour.
+- Values of 1e15 and beyond are written as a power of ten (`1.00e+300`) in labels.
 - The live pulse and the loading shimmer stop under `prefers-reduced-motion`.

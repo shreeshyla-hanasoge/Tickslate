@@ -71,6 +71,7 @@
     el,
     events,
     set: (n) => { el.data = data(n) },
+    setData: (d) => { el.data = d },
     width: (px) => { document.getElementById('wrap').style.width = `${px}px` },
     nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   }

@@ -740,3 +740,111 @@ describe('bars and categories (RFC 0003 §15)', () => {
     })
   })
 })
+
+describe('bars stay visible and readable (review fixes)', () => {
+  const widths = (d) => [...d.matchAll(/M(-?[\d.]+) -?[\d.]+V-?[\d.]+H(-?[\d.]+)V/g)].map((m) => Number(m[2]) - Number(m[1]))
+  const bars = (xs, more = {}) => ({ xType: 'number', ...more, series: [{ name: 'a', kind: 'bar', points: xs.map((x, i) => ({ x, y: 1 + (i % 5) })) }] })
+  const days = Array.from({ length: 365 }, (_, i) => D(1) + i * 86400000)
+  const cat2 = (points) => ({ xType: 'category', series: [{ name: 'a', kind: 'bar', points }] })
+
+  test('one close pair does not shrink every bar: a daily chart with a point a minute later', () => {
+    const vm = model({ series: [{ name: 'a', kind: 'bar', points: [...days, days[1] + 60000].map((x, i) => ({ x, y: 1 + (i % 5) })) }] })
+    const w = widths(vm.series[0].bars)
+    assert.equal(w.length, 366)
+    assert.ok(Math.min(...w) >= 1, `narrowest bar ${Math.min(...w)}`)
+    assert.doesNotMatch(vm.series[0].bars, /NaN|Infinity/)
+  })
+
+  test('a second apart on a monthly series, and 1e-9 beside 1e9, never collapse or throw', () => {
+    const months = Array.from({ length: 12 }, (_, i) => Date.UTC(2026, i, 1))
+    const t0 = Date.now()
+    const m = model({ series: [{ name: 'a', kind: 'bar', points: [...months, months[3] + 1000].map((x) => ({ x, y: 2 })) }] })
+    assert.ok(Math.min(...widths(m.series[0].bars)) >= 1)
+    assert.ok(Date.now() - t0 < 500)
+    for (const xs of [[0, 1e-9, 1e9], [0, 1e-9], [-1e308, 1e308], [5, 5, 5], [0, 1, 1e9, 1e9 + 1]]) {
+      const vm = model(bars(xs))
+      assert.ok(vm.series[0].bars.startsWith('M'), String(xs))
+      assert.ok(Math.min(...widths(vm.series[0].bars)) >= 1)
+    }
+  })
+
+  test('unevenly spaced x and a single point still draw side by side', () => {
+    const w = widths(model(bars([0, 1, 2, 10, 11, 40])).series[0].bars)
+    assert.equal(w.length, 6)
+    assert.ok(Math.min(...w) >= 1)
+    assert.equal(widths(model(bars([7])).series[0].bars).length, 1)
+  })
+
+  test('a tiny value beside a huge one keeps a visible bar, and a true zero draws none', () => {
+    const vm = model(cat2([{ x: 'a', y: 0.0001 }, { x: 'b', y: 1e6 }, { x: 'c', y: 0 }, { x: 'd', y: -0.0001 }]))
+    const hs = [...vm.series[0].bars.matchAll(/M[\d.]+ ([\d.]+)V([\d.]+)H/g)].map((m) => Math.abs(Number(m[1]) - Number(m[2])))
+    assert.equal(hs.length, 3, 'the zero has no bar')
+    assert.ok(hs[0] >= 1 && hs[2] >= 1)
+  })
+
+  test('two bars of one series at one x are counted as duplicates', () => {
+    assert.equal(model(cat2([{ x: 'a', y: 1 }, { x: 'a', y: 2 }])).duplicates, 1)
+    assert.equal(model(cat2([{ x: 'a', y: 1 }, { x: 'b', y: 2 }])).duplicates, 0)
+    assert.equal(model({ xType: 'number', series: [{ name: 'l', points: [{ x: 1, y: 1 }, { x: 1, y: 2 }] }] }).duplicates, 0)
+  })
+
+  test('grouped bars are read band by band: Profit January, Costs January, Profit February', () => {
+    const vm = model({
+      xType: 'category',
+      series: [
+        { name: 'Profit', kind: 'bar', points: [{ x: 'Jan', y: 1 }, { x: 'Feb', y: 2 }] },
+        { name: 'Costs', kind: 'bar', points: [{ x: 'Jan', y: 1 }, { x: 'Feb', y: 2 }] },
+      ],
+    })
+    assert.deepEqual(vm.points.map((p) => p.label.split(',')[0]), ['Profit: Jan', 'Costs: Jan', 'Profit: Feb', 'Costs: Feb'])
+  })
+
+  test('each bar point carries its rectangle for a hit area, and other points do not', () => {
+    const vm = model({ xType: 'category', series: [{ name: 'a', kind: 'bar', points: [{ x: 'a', y: 3 }] }, { name: 'l', points: [{ x: 'a', y: 3 }] }] })
+    const b = vm.points.find((p) => p.series === 'a').bar
+    assert.ok(b.w > 0 && b.h > 0)
+    assert.equal(vm.points.find((p) => p.series === 'l').bar, undefined)
+  })
+
+  test('huge values are written compact, in the label and the point names', () => {
+    const vm = model(cat2([{ x: 'a', y: 1e300 }, { x: 'b', y: -1e300 }]))
+    assert.ok(vm.ariaLabel.length < 60, vm.ariaLabel)
+    for (const p of vm.points) assert.ok(p.label.length < 60, p.label)
+    assert.match(vm.points[1].label, /−/)
+  })
+
+  test('duplicate bars warn once in development', () => {
+    resetWarnings()
+    const calls = []
+    const real = console.warn
+    console.warn = (m) => calls.push(m)
+    const realDoc = globalThis.document
+    globalThis.document = { createElement: () => ({ style: {}, className: '', textContent: '' }) }
+    try {
+      const w = fakeWidget('M')
+      w.actionEnabled = () => false
+      const d = model(cat2([{ x: 'a', y: 1 }, { x: 'a', y: 2 }]))
+      w.update(d, 'M')
+      w.update(d, 'M')
+      assert.equal(calls.length, 1)
+      assert.match(calls[0], /same x/)
+    } finally {
+      globalThis.document = realDoc
+      console.warn = real
+      resetWarnings()
+    }
+  })
+
+  test('the forced-colours rules give each of the six bars its own outline width and dash', () => {
+    const css = TsChart.styles.slice(TsChart.styles.indexOf('@media (forced-colors: active)'))
+    const rule = (sel) => (new RegExp(`${sel.replace(/\./g, '\\.')} \\{([^}]*)\\}`).exec(css) || [])[1] || ''
+    const seen = new Set()
+    for (let n = 1; n <= 6; n++) {
+      const own = `${n === 1 ? rule('.sb') : ''};${rule(`.sb.c-${n}`)}`
+      const w = /stroke-width:\s*(\d)px/.exec(own)?.[1]
+      const dash = /stroke-dasharray:\s*([\d ]+);/.exec(`${own};`)?.[1] || 'none'
+      seen.add(`${w || 1}/${dash}`)
+    }
+    assert.equal(seen.size, 6)
+  })
+})

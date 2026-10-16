@@ -14,3 +14,4 @@
 - `bandScale`, `bandGeometry` and `barPaths` are added to `src/elements/chart.js`, pure and tested.
 - RFC 0003 §26 lists `linePaths` downsampling above `2 × width` points as part of 0.2.0, but it belongs to §23 (`perf-hygiene`) and this story does not build it. The six-series change from §26 is built here.
 - The sixth series in forced colours adds a dash pattern (`2 3`) for series 5 and 6, and bars take `ButtonFace` as a separator stroke, since the forced-colours test allows only four system colours.
+- Bars hold up on awkward data: the bar slot on a time or number axis follows the typical gap and is capped, every bar has a minimum width and height, grouped bars are read band by band, a bar is selected by its whole rectangle, and each of six bar series has its own outline cue under forced colours.
