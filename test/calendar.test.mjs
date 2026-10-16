@@ -166,27 +166,47 @@ describe('layout profile', () => {
   })
 })
 
-// Milliseconds per call of `fn(i)`, from the fastest of several batches. Load
-// on the machine only ever adds time to a batch, so the best one is the
-// closest to what the code costs, and a ceiling on it does not flake.
-function bestBatchMs(fn, calls = 200, batches = 10) {
-  for (let i = 0; i < calls; i++) fn(i) // warm up
-  let best = Infinity
-  for (let b = 0; b < batches; b++) {
-    const start = performance.now()
-    for (let i = 0; i < calls; i++) fn(i)
-    best = Math.min(best, (performance.now() - start) / calls)
+// Counts the Intl work `tick(i)` does over many calls instead of timing it: a
+// clock flakes under load. The cost of a tick is its zone formatting, so a tick
+// that builds a formatter (milliseconds each) or formats many times is the
+// regression to catch. The first calls warm the caches, as a live clock's first
+// tick does.
+function intlWork(tick, ticks = 200) {
+  const Native = Intl.DateTimeFormat
+  const nativeParts = Native.prototype.formatToParts
+  const work = { constructed: 0, formatted: 0 }
+  function Counted(...args) {
+    work.constructed++
+    return Reflect.construct(Native, args)
   }
-  return best
+  Counted.prototype = Native.prototype
+  Object.setPrototypeOf(Counted, Native)
+  try {
+    for (let i = 0; i < 5; i++) tick(i)
+    Intl.DateTimeFormat = Counted
+    Native.prototype.formatToParts = function (...args) {
+      work.formatted++
+      return nativeParts.apply(this, args)
+    }
+    for (let i = 5; i < 5 + ticks; i++) tick(i)
+  } finally {
+    Intl.DateTimeFormat = Native
+    Native.prototype.formatToParts = nativeParts
+  }
+  return { ...work, perTick: work.formatted / ticks }
 }
 
 test('state and profile are quick enough to call every second', () => {
   const both = { market: { sessions: ['nse', 'mcx'], leadMinutes: 15, lagMinutes: 5 } }
-  const each = bestBatchMs((i) => {
-    cal.state('mcx', ist('2026-10-12', '12:00') + i * MIN)
-    activeProfile(cal, both, ist('2026-10-12', '12:00') + i * MIN)
+  const noon = ist('2026-10-12', '12:00') // outside the counted ticks: zonedTime formats too
+  const work = intlWork((i) => {
+    cal.state('mcx', noon + i * MIN)
+    activeProfile(cal, both, noon + i * MIN)
   })
-  assert.ok(each < 5, `${each.toFixed(2)} ms per tick`)
+  // Measured: no constructions and 5 formatToParts calls per tick.
+  assert.equal(work.constructed, 0, 'a tick builds no Intl formatter once the caches are warm')
+  assert.ok(work.formatted > 0, 'the counter sees the zone formatting')
+  assert.ok(work.perTick <= 8, `${work.perTick} formatToParts calls per tick`)
 })
 
 // ── Overnight and 24/7 sessions (RFC 0003 §12) ───────────────────────────
@@ -446,8 +466,12 @@ describe('validation of overnight specs', () => {
 })
 
 test('state is quick enough to call every second for a session that never closes', () => {
-  const each = bestBatchMs((i) => night.state('crypto', Date.UTC(2026, 9, 12) + i * 60 * MIN))
-  assert.ok(each < 5, `${each.toFixed(2)} ms per call`)
+  const day = Date.UTC(2026, 9, 12)
+  // Measured: 1 formatToParts call per tick.
+  const work = intlWork((i) => night.state('crypto', day + i * 60 * MIN))
+  assert.equal(work.constructed, 0, 'a tick builds no Intl formatter once the caches are warm')
+  assert.ok(work.formatted > 0, 'the counter sees the zone formatting')
+  assert.ok(work.perTick <= 3, `${work.perTick} formatToParts calls per tick`)
 })
 
 describe('a calendar reads its specs once', () => {
