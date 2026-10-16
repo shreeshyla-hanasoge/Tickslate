@@ -42,6 +42,23 @@ A marker shows the next close of any timeframe. The legend names them
 ("5m close, next hour", "1h close"). A timeframe that is not a positive number
 is dropped and reported once in development.
 
+### Overnight and 24/7 sessions
+
+A session may close on the next local day (a futures exchange open 17:00 to
+16:00) or never close (crypto). Its lane draws the window across midnight, and
+each time that is not today names its day: "17:00–Tue 16:00" in the evening and
+"Sun 17:00–16:00" the next morning. Windows that touch read as one, so an FX
+week shows "Sun 17:00–Fri 17:00" all week. See
+[Session calendars](../reference/core.md#session-calendars).
+
+A session that is open with no close in sight shows "Open 24/7": at `S` in
+place of the countdown, with a full track and no times; at `Banner` as a full
+lane reading "Open 24/7" with no hours. Its candle closes still feed the
+"next close" in the header. When the close is known but the session has been
+open for over a month (a holiday is coming), there is no start to measure
+from: the track is not drawn, `S` shows only the countdown and the close, and a
+`Banner` lane reads "–Thu 00:00" with its time left.
+
 ## Minimal example
 
 ```html
@@ -68,7 +85,8 @@ clock.data = { calendar, sessions: ['nse'] }
 | Name | Type | What it does |
 |---|---|---|
 | `size` | attribute and property | `S` or `Banner`; others snap. A grid sets it |
-| `label` | attribute and property | The name in the loading view and the start of the region name. Defaults to "Session clock" |
+| `label` | attribute and property | The name in the loading view and the start of the tile's name. Defaults to "Session clock" |
+| `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `data` | property | `SessionClockData` |
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
@@ -90,8 +108,13 @@ up at once when the tab becomes visible again. The base members are listed in
 
 | Part | Element |
 |---|---|
-| `tile` | The tile's `<section>` |
-| `error` | The error view's container |
+| `tile` | The tile box, `role="group"` named by the headline sentence |
+| `header` | The header row: the live dot, the label and the right-hand text |
+| `label` | The label, a `role="heading"` whose level comes from `heading-level` (the open or closed title at `S`) |
+| `value` | At `S`, the time of day |
+| `empty` | The empty view's container |
+| `error` | The error view's container (only while the error view shows) |
+| `skeleton` | The loading view's container, around the skeleton blocks |
 
 ## States
 
@@ -104,9 +127,9 @@ up at once when the tab becomes visible again. The base members are listed in
 
 ## Accessibility
 
-- The region is named with the `label` followed by the state of every session:
+- The tile is a `role="group"` named with the `label` followed by the state of every session:
   "Session clock: NSE open, closes 15:30" (several sessions are joined with
-  semicolons). Without a `label` the name starts with "Session clock". The name updates each second, but only as the state changes.
+  semicolons). Without a `label` the name starts with "Session clock". The name updates each second, but is only rewritten when the state changes. ", live" is added while a session is open. The label is a heading.
 - Open or closed is stated in words ("Market open", "Closed"); the live dot and
   the progress bar only repeat it.
 - The "next close" marker and ticks are decorative; the countdown text carries

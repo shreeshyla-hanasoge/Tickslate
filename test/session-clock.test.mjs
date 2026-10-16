@@ -1,23 +1,24 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsSessionClock, sessionClockModel, visibleTicks } from '../src/elements/session-clock.js'
-import { createCalendar, createFormatter, presets, zonedTime } from '../src/core/index.js'
+import { createCalendar, createFormatter, createMessages, presets, zonedTime } from '../src/core/index.js'
 
 // This file is loaded with no DOM: the import above must not throw.
 
 const IST = 'Asia/Kolkata'
 const calendar = createCalendar({ sessions: [presets.nse({ segment: 'derivatives' }), presets.mcx({ years: [2026] })] })
 const fmt = createFormatter({ locale: 'en-IN', currency: 'INR' })
+const t = createMessages()
 // 12 Oct 2026 is a Monday; 16 Oct is the Friday after it.
 const at = (date, hhmm, seconds = 0) => zonedTime(date, hhmm, IST) + seconds * 1000
-const model = (data, variant, now) => sessionClockModel(data, variant, { fmt, now, label: 'Session clock' })
+const model = (data, variant, now) => sessionClockModel(data, variant, { fmt, t, now, label: 'Session clock' })
 const data = { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
 
 describe('the element class', () => {
   test('loads without a DOM and is wired to its catalog entry', () => {
     assert.equal(typeof TsSessionClock, 'function')
     assert.equal(TsSessionClock.catalogKey, 'sessionClock')
-    assert.equal(TsSessionClock.viewModel(data, 'S', { fmt, now: at('2026-10-12', '11:42'), label: '' }).variant, 'S')
+    assert.equal(TsSessionClock.viewModel(data, 'S', { fmt, t, now: at('2026-10-12', '11:42'), label: '' }).variant, 'S')
   })
 
   test('templates are static markup per variant and name every node update() uses', () => {
@@ -115,7 +116,7 @@ describe('S', () => {
 
   test('the short zone name follows the locale', () => {
     const us = createFormatter({ locale: 'en-US' })
-    const m = sessionClockModel(data, 'S', { fmt: us, now: at('2026-10-12', '11:42'), label: '' })
+    const m = sessionClockModel(data, 'S', { fmt: us, t, now: at('2026-10-12', '11:42'), label: '' })
     assert.equal(m.zone, 'GMT+5:30')
     assert.equal(m.time, '11:42')
   })
@@ -396,7 +397,7 @@ describe('update()', () => {
     assert.equal(ticks.writes, 1)
     // 12 thin ticks in the next hour + 25 thick ones (the rail is 800px)
     assert.equal((ticks.html.match(/<i /g) || []).length, 12 + 25)
-    assert.match(ticks.html, /<i class="tk b" style="left:3\.896%"><\/i>/)
+    assert.match(ticks.html, /<i class="tk b" style="inset-inline-start:3\.896%"><\/i>/)
     assert.equal(nse.querySelector('.lname').textContent, 'NSE F&O')
     assert.equal(nse.querySelector('.lhours').textContent, '09:15–15:40')
     assert.equal(nse.querySelector('.lr').textContent, '3h 57m left')
@@ -407,7 +408,7 @@ describe('update()', () => {
     assert.equal(ticks.writes, 1, 'ticks are not rebuilt')
     assert.equal(nse.querySelector('.mk').hidden, false)
     assert.equal(w.$('.clock').textContent, '11:42:21 IST')
-    assert.equal(w.$('.nx').textContent, '▮ next close in 2:39')
+    assert.equal(w.$('.nxt').textContent, 'next close in 2:39')
     // The fill is rounded to 0.01%, so it takes a few minutes to show a change.
     // 11:50 is past the 11:45 close: the thin window slid, so the ticks rebuild once.
     w.update(model(data, 'Banner', at('2026-10-12', '11:50')), 'Banner')
@@ -522,15 +523,156 @@ describe('dropped', () => {
 describe('region name and banner errors', () => {
   test('the region is named with the host label', () => {
     const now = at('2026-10-12', '11:42')
-    const m = sessionClockModel(data, 'S', { fmt, now, label: 'Markets' })
+    const m = sessionClockModel(data, 'S', { fmt, t, now, label: 'Markets' })
     assert.ok(m.ariaLabel.startsWith('Markets: '))
-    assert.ok(sessionClockModel(data, 'Banner', { fmt, now, label: 'Markets' }).ariaLabel.startsWith('Markets: '))
-    assert.equal(sessionClockModel({ sessions: ['x'] }, 'S', { fmt, now, label: 'Markets' }).ariaLabel, 'Markets: No calendar')
+    assert.ok(sessionClockModel(data, 'Banner', { fmt, t, now, label: 'Markets' }).ariaLabel.startsWith('Markets: '))
+    assert.equal(sessionClockModel({ sessions: ['x'] }, 'S', { fmt, t, now, label: 'Markets' }).ariaLabel, 'Markets: No calendar')
   })
 
   test('an unknown first session gives exactly one error lane', () => {
     const m = model({ calendar, sessions: ['nse-x'] }, 'Banner', at('2026-10-12', '11:42'))
     assert.equal(m.lanes.length, 1)
     assert.equal(m.ariaLabel, 'Session clock: Unknown session nse-x')
+  })
+})
+
+// ── Overnight and 24/7 sessions (RFC 0003 §12) ───────────────────────────
+
+describe('overnight and 24/7 sessions', () => {
+  const CHI = 'America/Chicago'
+  const NY = 'America/New_York'
+  const night = createCalendar({
+    sessions: [
+      { id: 'cme', label: 'CME', timeZone: CHI, days: [7, 1, 2, 3, 4], open: '17:00', close: '16:00' },
+      { id: 'fx', label: 'FX', timeZone: NY, days: [7, 1, 2, 3, 4], open: '17:00', close: '17:00' },
+      { id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' },
+    ],
+  })
+  const chi = (date, hhmm) => zonedTime(date, hhmm, CHI)
+  const ny = (date, hhmm) => zonedTime(date, hhmm, NY)
+  const ask = (id, variant, now, extra = {}) => model({ calendar: night, sessions: [id], ...extra }, variant, now)
+
+  test('S: an overnight window opened yesterday shows both ends, with the day of the one that is not today', () => {
+    const m = ask('cme', 'S', chi('2026-10-12', '10:00'))
+    assert.equal(m.live, true)
+    assert.equal(m.middle, '6h to close')
+    assert.equal(m.from, 'Sun 17:00')
+    assert.equal(m.to, '16:00')
+    assert.equal(m.progress, Math.round((17 / 23) * 10000) / 100)
+    assert.equal(m.ariaLabel, 'Session clock: CME open, closes 16:00')
+  })
+
+  test('S: in the evening the close is tomorrow, and the open is today', () => {
+    const m = ask('cme', 'S', chi('2026-10-12', '18:00'))
+    assert.deepEqual([m.from, m.to, m.middle], ['17:00', 'Tue 16:00', '22h to close'])
+    assert.equal(m.ariaLabel, 'Session clock: CME open, closes Tue 16:00')
+  })
+
+  test('S: in the daily break it counts to the open, and names the next window', () => {
+    const m = ask('cme', 'S', chi('2026-10-12', '16:30'))
+    assert.equal(m.live, false)
+    assert.deepEqual([m.middle, m.from, m.to], ['opens in 30m', '17:00', 'Tue 16:00'])
+  })
+
+  test('S: over the weekend the next window is named by day', () => {
+    const m = ask('cme', 'S', chi('2026-10-16', '16:30'))
+    assert.deepEqual([m.middle, m.from, m.to], ['opens Sun 17:00', 'Sun 17:00', 'Mon 16:00'])
+  })
+
+  test('S: an FX week reads as one window', () => {
+    const m = ask('fx', 'S', ny('2026-10-14', '12:00'))
+    assert.deepEqual([m.from, m.to, m.middleShort], ['Sun 17:00', 'Fri 17:00', '53h'])
+    const closed = ask('fx', 'S', ny('2026-10-17', '12:00'))
+    assert.deepEqual([closed.from, closed.to], ['Sun 17:00', 'Fri 17:00'])
+  })
+
+  test('S: a session that never closes says so, with a full track and no times', () => {
+    const m = ask('crypto', 'S', Date.UTC(2026, 9, 12, 10, 7))
+    assert.equal(m.live, true)
+    assert.equal(m.title, 'Market open')
+    assert.deepEqual([m.middle, m.middleShort], ['Open 24/7', 'Open 24/7'])
+    assert.deepEqual([m.from, m.to, m.progress], ['', '', 100])
+    assert.equal(m.ariaLabel, 'Session clock: Crypto open 24/7')
+  })
+
+  test('Banner: the lane names the overnight window across midnight', () => {
+    const lane = ask('cme', 'Banner', chi('2026-10-12', '18:00')).lanes[0]
+    assert.equal(lane.hours, '17:00–Tue 16:00')
+    assert.equal(lane.right, '22h left')
+    assert.equal(lane.progress, Math.round((1 / 23) * 10000) / 100)
+    assert.equal(ask('cme', 'Banner', chi('2026-10-12', '10:00')).lanes[0].hours, 'Sun 17:00–16:00')
+  })
+
+  test('Banner: ticks and the next-close mark sit on the overnight window', () => {
+    const m = ask('cme', 'Banner', chi('2026-10-12', '18:07'), { timeframes: [30] })
+    const lane = m.lanes[0]
+    // 23 hours of 30-minute candles, the last of which is the close itself.
+    assert.equal(lane.ticks.items.length, 23 * 2 - 1)
+    // 18:30 is 90 minutes into 1380.
+    assert.equal(lane.next, Math.round((90 / 1380) * 10000) / 100)
+  })
+
+  test('Banner: a session that never closes is a full lane with no hours, and its candles still count in the header', () => {
+    const m = ask('crypto', 'Banner', Date.UTC(2026, 9, 12, 10, 7), { timeframes: [15] })
+    const lane = m.lanes[0]
+    assert.equal(lane.open, true)
+    assert.deepEqual([lane.hours, lane.right, lane.progress, lane.next], ['', 'Open 24/7', 100, null])
+    assert.deepEqual(lane.ticks.items, [])
+    assert.equal(m.live, true)
+    assert.equal(m.nextClose, 'next close in 8:00')
+    assert.equal(m.ariaLabel, 'Session clock: Crypto open 24/7')
+  })
+
+  test('no countdown or percentage is negative or not a number, for any session, around the clock and across daylight saving', () => {
+    const ids = ['cme', 'fx', 'crypto']
+    const weeks = [Date.UTC(2026, 2, 6), Date.UTC(2026, 9, 30), Date.UTC(2026, 9, 12)]
+    for (const from of weeks) {
+      for (let now = from; now < from + 5 * 86400000; now += 15 * 60000 + 7000) {
+        for (const id of ids) {
+          const s = ask(id, 'S', now)
+          const b = ask(id, 'Banner', now, { timeframes: [5, 60] })
+          const lane = b.lanes[0]
+          const texts = [s.title, s.middle, s.middleShort, s.from, s.to, s.ariaLabel, b.clock, b.nextClose, lane.hours, lane.right, b.ariaLabel]
+          const where = `${id} at ${new Date(now).toISOString()}`
+          for (const text of texts) assert.doesNotMatch(text, /NaN|undefined|Infinity|null|(^|\s)-\d/, `${where}: ${text}`)
+          for (const pct of [s.progress, lane.progress]) assert.ok(Number.isFinite(pct) && pct >= 0 && pct <= 100, `${where}: ${pct}`)
+          if (lane.next !== null) assert.ok(lane.next >= 0 && lane.next <= 100, `${where}: next ${lane.next}`)
+        }
+      }
+    }
+  })
+})
+
+describe('an open session with a close but no known start', () => {
+  // Open round the clock for over a month before the holiday, so the calendar can name the close but not the start.
+  const holiday = createCalendar({
+    sessions: [{ id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }],
+    holidays: { crypto: ['2026-10-15'] },
+  })
+  const now = Date.UTC(2026, 9, 5, 10)
+  const ask = (variant) => model({ calendar: holiday, sessions: ['crypto'] }, variant, now)
+
+  test('the calendar says what it knows', () => {
+    const st = holiday.state('crypto', now)
+    assert.deepEqual([st.open, st.startedAt, st.progress], [true, null, null])
+    assert.equal(st.closesAt, Date.UTC(2026, 9, 15))
+  })
+
+  test('S: no rail and no from-label, but the countdown and the close stay', () => {
+    const m = ask('S')
+    assert.equal(m.live, true)
+    assert.equal(m.track, false)
+    assert.deepEqual([m.from, m.to, m.middle], ['', 'Thu 00:00', '230h to close'])
+    assert.equal(m.ariaLabel, 'Session clock: Crypto open, closes Thu 00:00')
+  })
+
+  test('Banner: the lane shows only the close and draws no fill', () => {
+    const lane = ask('Banner').lanes[0]
+    assert.deepEqual([lane.track, lane.hours, lane.right, lane.next], [false, '–Thu 00:00', '230h left', null])
+  })
+
+  test('a run with a known start keeps its rail', () => {
+    assert.equal(model(data, 'S', at('2026-10-12', '11:42')).track, true)
+    assert.equal(model(data, 'Banner', at('2026-10-12', '11:42')).lanes[0].track, true)
   })
 })

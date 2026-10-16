@@ -128,7 +128,7 @@ describe('validation', () => {
   test('rejects bad session specs', () => {
     const ok = presets.nse()
     assert.throws(() => createCalendar({ sessions: [{ ...ok, timeZone: 'Mars/Olympus' }] }), /time zone/)
-    assert.throws(() => createCalendar({ sessions: [{ ...ok, close: '09:00' }] }), /cross midnight/)
+    assert.throws(() => createCalendar({ sessions: [{ ...ok, close: '24:00' }] }), /HH:MM/)
     assert.throws(() => createCalendar({ sessions: [{ ...ok, open: '9:15' }] }), /HH:MM/)
     assert.throws(() => createCalendar({ sessions: [{ ...ok, days: [0] }] }), /weekdays/)
     assert.throws(() => createCalendar({ sessions: [ok, ok] }), /Two sessions/)
@@ -166,13 +166,336 @@ describe('layout profile', () => {
   })
 })
 
+// Milliseconds per call of `fn(i)`, from the fastest of several batches. Load
+// on the machine only ever adds time to a batch, so the best one is the
+// closest to what the code costs, and a ceiling on it does not flake.
+function bestBatchMs(fn, calls = 200, batches = 10) {
+  for (let i = 0; i < calls; i++) fn(i) // warm up
+  let best = Infinity
+  for (let b = 0; b < batches; b++) {
+    const start = performance.now()
+    for (let i = 0; i < calls; i++) fn(i)
+    best = Math.min(best, (performance.now() - start) / calls)
+  }
+  return best
+}
+
 test('state and profile are quick enough to call every second', () => {
   const both = { market: { sessions: ['nse', 'mcx'], leadMinutes: 15, lagMinutes: 5 } }
-  const start = performance.now()
-  for (let i = 0; i < 200; i++) {
+  const each = bestBatchMs((i) => {
     cal.state('mcx', ist('2026-10-12', '12:00') + i * MIN)
     activeProfile(cal, both, ist('2026-10-12', '12:00') + i * MIN)
-  }
-  const each = (performance.now() - start) / 200
+  })
   assert.ok(each < 5, `${each.toFixed(2)} ms per tick`)
+})
+
+// ── Overnight and 24/7 sessions (RFC 0003 §12) ───────────────────────────
+
+const CHI = 'America/Chicago'
+const NY = 'America/New_York'
+const chi = (date, hhmm) => zonedTime(date, hhmm, CHI)
+const ny = (date, hhmm) => zonedTime(date, hhmm, NY)
+const HOUR = 60 * MIN
+
+// A made-up futures exchange: opens Sunday to Thursday evening, closes the next afternoon.
+const cme = { id: 'cme', label: 'CME', timeZone: CHI, days: [7, 1, 2, 3, 4], open: '17:00', close: '16:00' }
+// A made-up FX week: daily 24-hour windows from Sunday 17:00 to Friday 17:00.
+const fx = { id: 'fx', label: 'FX', timeZone: NY, days: [7, 1, 2, 3, 4], open: '17:00', close: '17:00' }
+const crypto = { id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }
+const night = createCalendar({ sessions: [cme, fx, crypto] })
+
+describe('overnight windows', () => {
+  test('a close before the open is on the next local day, and a close equal to it makes a 24-hour session', () => {
+    // 12 Oct 2026 is a Monday.
+    assert.deepEqual(night.hours('cme', '2026-10-12'), { open: chi('2026-10-12', '17:00'), close: chi('2026-10-13', '16:00') })
+    assert.equal(night.hours('cme', '2026-10-12').close - night.hours('cme', '2026-10-12').open, 23 * HOUR)
+    assert.deepEqual(night.hours('crypto', '2026-10-12'), { open: Date.UTC(2026, 9, 12), close: Date.UTC(2026, 9, 13) })
+  })
+
+  test('days names the weekday a window opens on', () => {
+    assert.equal(night.isTradingDay('cme', '2026-10-18'), true, 'Sunday')
+    assert.equal(night.isTradingDay('cme', '2026-10-16'), false, "Friday: nothing opens, though Thursday's window runs into it")
+    assert.equal(night.isTradingDay('cme', '2026-10-17'), false, 'Saturday')
+  })
+
+  test('CME-style: Monday 10:00 is open until Monday 16:00', () => {
+    const st = night.state('cme', chi('2026-10-12', '10:00'))
+    assert.equal(st.open, true)
+    assert.equal(st.closesAt, chi('2026-10-12', '16:00'))
+    assert.equal(st.startedAt, chi('2026-10-11', '17:00'), 'opened on Sunday evening')
+    assert.ok(Math.abs(st.progress - 17 / 23) < 1e-9)
+    assert.deepEqual(night.nextChange('cme', chi('2026-10-12', '10:00')), { at: chi('2026-10-12', '16:00'), to: 'closed' })
+  })
+
+  test('CME-style: Monday 16:30 is closed until Monday 17:00', () => {
+    const st = night.state('cme', chi('2026-10-12', '16:30'))
+    assert.deepEqual([st.open, st.opensAt, st.closesAt], [false, chi('2026-10-12', '17:00'), null])
+    assert.deepEqual(night.nextChange('cme', chi('2026-10-12', '16:30')), { at: chi('2026-10-12', '17:00'), to: 'open' })
+  })
+
+  test('CME-style: the weekend gap ends on Sunday 17:00', () => {
+    const fri = night.state('cme', chi('2026-10-16', '16:30'))
+    assert.deepEqual([fri.open, fri.opensAt], [false, chi('2026-10-18', '17:00')])
+    assert.equal(night.state('cme', chi('2026-10-17', '12:00')).open, false)
+    // Thursday evening's window runs through Friday morning.
+    assert.equal(night.state('cme', chi('2026-10-16', '10:00')).open, true)
+  })
+
+  test('the window opens and closes to the instant', () => {
+    assert.equal(night.state('cme', chi('2026-10-12', '16:00')).open, false)
+    assert.equal(night.state('cme', chi('2026-10-12', '16:00') - 1).open, true)
+    assert.equal(night.state('cme', chi('2026-10-12', '17:00') - 1).open, false)
+    assert.equal(night.state('cme', chi('2026-10-12', '17:00')).open, true)
+  })
+
+  test('a holiday keys by the opening date', () => {
+    // Monday's evening window is removed; Sunday's, which runs into Monday, is not.
+    const cal = createCalendar({ sessions: [cme], holidays: { cme: ['2026-10-12'] } })
+    assert.equal(cal.state('cme', chi('2026-10-12', '10:00')).open, true)
+    assert.equal(cal.state('cme', chi('2026-10-13', '10:00')).open, false)
+    assert.equal(cal.state('cme', chi('2026-10-13', '10:00')).opensAt, chi('2026-10-13', '17:00'))
+    assert.equal(cal.isTradingDay('cme', '2026-10-12'), false)
+  })
+
+  test('a special session may cross midnight too', () => {
+    const cal = createCalendar({ sessions: [{ ...cme, specialSessions: { '2026-10-17': { open: '18:00', close: '02:00' } } }] })
+    assert.equal(cal.state('cme', chi('2026-10-17', '23:00')).open, true)
+    assert.equal(cal.state('cme', chi('2026-10-18', '01:00')).closesAt, chi('2026-10-18', '02:00'))
+    assert.equal(cal.state('cme', chi('2026-10-18', '03:00')).open, false)
+  })
+
+  test('candles align to the open and the last one closes with the session', () => {
+    assert.equal(night.candleClose('cme', chi('2026-10-12', '10:07'), 15), chi('2026-10-12', '10:15'))
+    assert.equal(night.candleClose('cme', chi('2026-10-12', '15:50'), 30), chi('2026-10-12', '16:00'))
+    assert.equal(night.candleClose('cme', chi('2026-10-12', '16:30'), 15), null)
+  })
+
+  test('windows lists an overnight window that began before the range', () => {
+    const ws = night.windows('cme', chi('2026-10-12', '10:00'), chi('2026-10-12', '20:00'))
+    assert.deepEqual(ws, [
+      { open: chi('2026-10-11', '17:00'), close: chi('2026-10-12', '16:00') },
+      { open: chi('2026-10-12', '17:00'), close: chi('2026-10-13', '16:00') },
+    ])
+  })
+})
+
+describe('windows that touch merge', () => {
+  test('an FX week is one window: Wednesday noon closes on Friday 17:00 New York', () => {
+    const now = ny('2026-10-14', '12:00')
+    const st = night.state('fx', now)
+    assert.equal(st.open, true)
+    assert.equal(st.closesAt, ny('2026-10-16', '17:00'))
+    assert.equal(st.startedAt, ny('2026-10-11', '17:00'))
+    assert.ok(Math.abs(st.progress - (now - st.startedAt) / (st.closesAt - st.startedAt)) < 1e-12)
+    assert.deepEqual(night.nextChange('fx', now), { at: ny('2026-10-16', '17:00'), to: 'closed' })
+    assert.deepEqual(night.windows('fx', ny('2026-10-14', '00:00'), ny('2026-10-15', '00:00')), [{ open: ny('2026-10-11', '17:00'), close: ny('2026-10-16', '17:00') }])
+  })
+
+  test('the weekend is the only gap', () => {
+    const st = night.state('fx', ny('2026-10-17', '12:00'))
+    assert.deepEqual([st.open, st.opensAt], [false, ny('2026-10-18', '17:00')])
+    assert.equal(night.state('fx', ny('2026-10-16', '17:00')).open, false)
+    assert.equal(night.state('fx', ny('2026-10-16', '17:00') - 1).open, true)
+  })
+
+  test('a join in the middle of the week is not a change', () => {
+    assert.equal(night.state('fx', ny('2026-10-13', '17:00')).open, true)
+    assert.equal(night.state('fx', ny('2026-10-13', '17:00') - 1).closesAt, ny('2026-10-16', '17:00'))
+  })
+
+  test('a holiday splits the run at the opening date it removes', () => {
+    const cal = createCalendar({ sessions: [fx], holidays: { fx: ['2026-10-14'] } })
+    // Wednesday's window (Wed 17:00 to Thu 17:00) is gone, so Tuesday's, ending Wednesday 17:00, closes the run.
+    assert.equal(cal.state('fx', ny('2026-10-14', '12:00')).closesAt, ny('2026-10-14', '17:00'))
+    assert.equal(cal.state('fx', ny('2026-10-15', '12:00')).open, false)
+    assert.equal(cal.state('fx', ny('2026-10-15', '12:00')).opensAt, ny('2026-10-15', '17:00'))
+  })
+})
+
+describe('sessions that never close', () => {
+  const probes = []
+  for (let t = Date.UTC(2026, 9, 12); t < Date.UTC(2026, 9, 19); t += 15 * MIN) probes.push(t)
+
+  test('crypto is open at every probe with nothing to count down to', () => {
+    for (const now of probes) {
+      const st = night.state('crypto', now)
+      assert.deepEqual(st, { open: true, opensAt: null, closesAt: null, startedAt: null, progress: null }, new Date(now).toISOString())
+    }
+    assert.equal(night.nextChange('crypto', probes[0]), null)
+  })
+
+  test('the profile stays market, and never changes', () => {
+    const schedule = { market: { sessions: ['crypto'], leadMinutes: 15, lagMinutes: 5 } }
+    for (const now of probes) {
+      assert.equal(activeProfile(night, schedule, now), 'market')
+      assert.equal(nextProfileChange(night, schedule, now), null)
+    }
+  })
+
+  test('an always-open session keeps the market open whatever the others do', () => {
+    const schedule = { market: { sessions: ['crypto', 'cme'] } }
+    assert.equal(activeProfile(night, schedule, chi('2026-10-17', '12:00')), 'market')
+    assert.equal(nextProfileChange(night, schedule, chi('2026-10-17', '12:00')), null)
+  })
+
+  test('candles align to the day', () => {
+    const now = Date.UTC(2026, 9, 12, 10, 7)
+    assert.equal(night.candleClose('crypto', now, 15), Date.UTC(2026, 9, 12, 10, 15))
+    assert.equal(night.candleClose('crypto', now, 240), Date.UTC(2026, 9, 12, 12, 0))
+  })
+
+  test('a holiday within the month ends the run, and the calendar can say when', () => {
+    const cal = createCalendar({ sessions: [crypto], holidays: { crypto: ['2026-10-25'] } })
+    const st = cal.state('crypto', Date.UTC(2026, 9, 14, 12))
+    assert.equal(st.open, true)
+    assert.equal(st.closesAt, Date.UTC(2026, 9, 25))
+    assert.equal(st.progress, null, 'it has been open for longer than the calendar looks back')
+    assert.deepEqual(cal.nextChange('crypto', Date.UTC(2026, 9, 14, 12)), { at: Date.UTC(2026, 9, 25), to: 'closed' })
+    assert.equal(cal.state('crypto', Date.UTC(2026, 9, 25, 12)).opensAt, Date.UTC(2026, 9, 26))
+  })
+
+  test('the profile for a run that ends within the month changes where it ends', () => {
+    const cal = createCalendar({ sessions: [crypto], holidays: { crypto: ['2026-10-25'] } })
+    assert.equal(nextProfileChange(cal, { market: { sessions: ['crypto'] } }, Date.UTC(2026, 9, 14, 12)), Date.UTC(2026, 9, 25))
+  })
+})
+
+describe('daylight saving weeks', () => {
+  const sampleOpen = (cal, id, from, to) => {
+    const out = []
+    for (let t = from; t < to; t += 15 * MIN) out.push(cal.state(id, t).open)
+    return out
+  }
+
+  test('Chicago: a window across the spring change is 22 hours, and across the fall change 24', () => {
+    // Saturday evening to Sunday afternoon: the clocks change in between, at 02:00 on Sunday.
+    const sat = createCalendar({ sessions: [{ ...cme, id: 'sat', days: [6] }] })
+    const spring = sat.hours('sat', '2026-03-07')
+    assert.equal(spring.open, Date.UTC(2026, 2, 7, 23))
+    assert.equal(spring.close, Date.UTC(2026, 2, 8, 21))
+    assert.equal(spring.close - spring.open, 22 * HOUR)
+    const fall = sat.hours('sat', '2026-10-31')
+    assert.equal(fall.open, Date.UTC(2026, 9, 31, 22))
+    assert.equal(fall.close, Date.UTC(2026, 10, 1, 22))
+    assert.equal(sat.state('sat', Date.UTC(2026, 2, 8, 20, 59)).open, true)
+    assert.equal(sat.state('sat', Date.UTC(2026, 2, 8, 21)).open, false)
+  })
+
+  test('Chicago: the weekend gap ends at 17:00 local on both sides of a change', () => {
+    assert.equal(night.state('cme', chi('2026-03-06', '16:30')).opensAt, Date.UTC(2026, 2, 8, 22), 'Sunday 17:00 CDT')
+    assert.equal(night.state('cme', chi('2026-10-30', '16:30')).opensAt, Date.UTC(2026, 10, 1, 23), 'Sunday 17:00 CST, the clocks changed that morning')
+    assert.equal(night.state('cme', chi('2026-11-06', '16:30')).opensAt, Date.UTC(2026, 10, 8, 23), 'Sunday 17:00 CST')
+  })
+
+  test('Chicago: the Monday after a change closes at 16:00 on the new clock', () => {
+    assert.equal(night.state('cme', chi('2026-03-09', '10:00')).closesAt, Date.UTC(2026, 2, 9, 21))
+    assert.equal(night.state('cme', chi('2026-11-02', '10:00')).closesAt, Date.UTC(2026, 10, 2, 22))
+  })
+
+  test('New York: the FX weeks after the spring and fall changes', () => {
+    assert.equal(night.state('fx', ny('2026-03-11', '12:00')).startedAt, Date.UTC(2026, 2, 8, 21), 'Sunday 17:00 EDT')
+    assert.equal(night.state('fx', ny('2026-03-11', '12:00')).closesAt, Date.UTC(2026, 2, 13, 21))
+    assert.equal(night.state('fx', ny('2026-11-04', '12:00')).startedAt, Date.UTC(2026, 10, 1, 22), 'Sunday 17:00 EST')
+    assert.equal(night.state('fx', ny('2026-11-04', '12:00')).closesAt, Date.UTC(2026, 10, 6, 22))
+  })
+
+  test('daily windows touch across the 23- and 25-hour days, so a round-the-clock session never closes', () => {
+    const daily = createCalendar({ sessions: [{ ...crypto, id: 'daily-ny', timeZone: NY }, { ...crypto, id: 'daily-chi', timeZone: CHI }] })
+    for (const id of ['daily-ny', 'daily-chi']) {
+      for (const [from, to] of [[Date.UTC(2026, 2, 6), Date.UTC(2026, 2, 11)], [Date.UTC(2026, 9, 30), Date.UTC(2026, 10, 4)]]) {
+        assert.ok(sampleOpen(daily, id, from, to).every(Boolean), `${id} from ${new Date(from).toISOString()}`)
+      }
+    }
+  })
+
+  test('New York: the FX week around the spring change, sampled every 15 minutes, closes only for the weekend', () => {
+    const first = ny('2026-03-08', '00:00')
+    // Closed until Sunday 17:00 EDT, then from Friday 17:00 EDT to the next Sunday 17:00 EDT.
+    const closed = (t) => t < ny('2026-03-08', '17:00') || (t >= ny('2026-03-13', '17:00') && t < ny('2026-03-15', '17:00'))
+    sampleOpen(night, 'fx', first, ny('2026-03-16', '00:00')).forEach((open, i) => {
+      const t = first + i * 15 * MIN
+      assert.equal(open, !closed(t), new Date(t).toISOString())
+    })
+  })
+})
+
+describe('validation of overnight specs', () => {
+  const make = (patch) => createCalendar({ sessions: [{ ...cme, ...patch }] })
+
+  test('accepts a close before, or equal to, the open', () => {
+    assert.doesNotThrow(() => make({ open: '22:00', close: '06:00' }))
+    assert.doesNotThrow(() => make({ open: '00:00', close: '00:00' }))
+    assert.doesNotThrow(() => make({ close: { default: '03:00', ranges: [{ from: '2026-01-01', to: '2026-01-31', close: '17:00' }] } }))
+  })
+
+  test("still rejects '24:00' and malformed times", () => {
+    assert.throws(() => make({ close: '24:00' }), TypeError)
+    assert.throws(() => make({ open: '24:00' }), TypeError)
+    assert.throws(() => make({ close: { default: '24:00', ranges: [] } }), TypeError)
+    assert.throws(() => make({ specialSessions: { '2026-10-17': { open: '18:00', close: '24:00' } } }), /special session/)
+    assert.throws(() => make({ close: '4pm' }), /HH:MM/)
+    assert.throws(() => make({ open: undefined }), /HH:MM/)
+    assert.throws(() => make({ close: undefined }), /close must be/)
+  })
+
+  test('a range may close earlier or later than the open, per date', () => {
+    const cal = make({ close: { default: '16:00', ranges: [{ from: '2026-12-24', to: '2026-12-24', close: '12:00' }] } })
+    assert.equal(cal.hours('cme', '2026-12-24').close, chi('2026-12-25', '12:00'))
+    assert.equal(cal.hours('cme', '2026-12-23').close, chi('2026-12-24', '16:00'))
+  })
+})
+
+test('state is quick enough to call every second for a session that never closes', () => {
+  const each = bestBatchMs((i) => night.state('crypto', Date.UTC(2026, 9, 12) + i * 60 * MIN))
+  assert.ok(each < 5, `${each.toFixed(2)} ms per call`)
+})
+
+describe('a calendar reads its specs once', () => {
+  test("changing the host's spec or holidays afterwards has no effect, and the caller's objects are not frozen", () => {
+    const spec = { id: 'x', label: 'X', timeZone: 'UTC', days: [1, 2, 3, 4, 5], open: '09:00', close: '17:00', specialSessions: {} }
+    const holidays = { x: ['2026-10-13'] }
+    const c = createCalendar({ sessions: [spec], holidays })
+    const monday = Date.UTC(2026, 9, 12, 10)
+    assert.equal(c.state('x', monday).open, true)
+    assert.equal(c.state('x', monday).closesAt, Date.UTC(2026, 9, 12, 17))
+    spec.close = '12:00'
+    spec.days.push(6)
+    spec.specialSessions['2026-10-17'] = { open: '10:00', close: '11:00' }
+    holidays.x.push('2026-10-12')
+    assert.equal(c.state('x', monday).closesAt, Date.UTC(2026, 9, 12, 17))
+    assert.equal(c.isTradingDay('x', '2026-10-17'), false)
+    assert.equal(c.isTradingDay('x', '2026-10-12'), true)
+    assert.equal(c.isTradingDay('x', '2026-10-13'), false)
+    assert.equal(Object.isFrozen(spec) || Object.isFrozen(spec.days) || Object.isFrozen(holidays), false)
+  })
+
+  test('the spec a calendar hands back is frozen all the way down', () => {
+    const c = createCalendar({
+      sessions: [
+        {
+          id: 'x',
+          label: 'X',
+          timeZone: 'UTC',
+          days: [1],
+          open: '09:00',
+          close: { default: '17:00', ranges: [{ from: '2026-01-01', to: '2026-01-31', close: '12:00' }] },
+          specialSessions: { '2026-10-17': { open: '10:00', close: '11:00' } },
+        },
+      ],
+    })
+    const s = c.session('x')
+    for (const v of [s, s.days, s.close, s.close.ranges, s.close.ranges[0], s.specialSessions, s.specialSessions['2026-10-17']]) assert.equal(Object.isFrozen(v), true)
+  })
+})
+
+describe('windows() cuts a run at the look-ahead on both sides', () => {
+  test('a never-closing run starts and ends a month outside the range, not at infinity', () => {
+    const c = createCalendar({ sessions: [{ id: 'x', label: 'X', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }] })
+    const from = Date.UTC(2026, 9, 12)
+    const to = Date.UTC(2026, 9, 13)
+    const [w, ...rest] = c.windows('x', from, to)
+    assert.equal(rest.length, 0)
+    assert.ok(Number.isFinite(w.open) && Number.isFinite(w.close))
+    assert.ok(w.open < from - 30 * 86400000 && w.close > to + 30 * 86400000)
+  })
 })

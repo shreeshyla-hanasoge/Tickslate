@@ -1,0 +1,64 @@
+/*
+ * Tickslate theme preset: paper.
+ *
+ * Paper: the default light tokens, restated so a grid can be light on a dark page by
+ * preset name. It is one-mode: choosing the preset chooses the mode, so it ignores
+ * data-theme. Every value equals the :where(:root) block of tokens.css
+ * (test/presets.test.mjs checks that).
+ *
+ * Opt in with <link rel="stylesheet" href="tickslate/themes/paper.css"> after
+ * tokens.css, then <ts-grid data-ts-theme="paper">. The preset never loads by
+ * itself, so a host that uses none pays nothing (RFC 0003 §13.1, Decision 35).
+ *
+ * Fonts: Geist and Newsreader are the designed faces and Tickslate does not
+ * ship them (load them yourself, see docs/theming.md); the stacks fall back to
+ * system fonts.
+ *
+ * Tokens only, and every rule is wrapped in :where() so it has zero specificity:
+ * a host overrides any value with a plain selector. The tokens a palette owns
+ * (profit, loss, accent, focus and the series) sit in a second block that
+ * applies only while the element has no data-ts-palette, so a palette set on the
+ * same element wins over this preset (RFC 0003 §13.2). Layout and motion
+ * (--ts-row, --ts-gap, --ts-motion and friends) are the host's and not set here.
+ * --ts-focus is restated beside the accent because var() resolves where it is
+ * declared, so it would otherwise keep the page's accent.
+ */
+:where([data-ts-theme='paper']) {
+  --ts-bg: #F3EFE6;
+  --ts-surface: #FFFDF8;
+  --ts-surface-2: #F1EBDE;
+  --ts-line: #E2DACB;
+  --ts-ink: #1C1A16;
+  --ts-muted: #6A655B;
+  --ts-warn: #A85A06;
+  --ts-axis: #948C7C;
+  --ts-radius: 10px;
+  --ts-radius-sm: 6px;
+  --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
+  --ts-fill: 12%;
+  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-pad: 18px;
+  --ts-num-weight: 500;
+  --ts-num-weight-small: 500;
+  --ts-label-size: 10px;
+  --ts-label-case: uppercase;
+  --ts-label-tracking: .12em;
+  --ts-label-weight: 600;
+  --ts-headline-weight: var(--ts-num-weight);
+  --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
+}
+
+/* Owned by a palette: skipped when data-ts-palette is set on the same element. */
+:where([data-ts-theme='paper']:not([data-ts-palette])) {
+  --ts-profit: #0E7A4E;
+  --ts-loss: #C0362C;
+  --ts-accent: #2C52C4;
+  --ts-series-1: #2C52C4;
+  --ts-series-2: #B45309;
+  --ts-series-3: #0F766E;
+  --ts-series-4: #8B3FB5;
+  --ts-series-5: #BE185D;
+  --ts-series-6: #6B7A1A;
+  --ts-focus: var(--ts-accent);
+}

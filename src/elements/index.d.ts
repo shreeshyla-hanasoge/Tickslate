@@ -1,4 +1,4 @@
-import type { Calendar, DayResult, Layout, LayoutItem, Numeric, SizeName, Time } from '../core/index.js'
+import type { Calendar, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
 import { TsWidget } from './widget.js'
 import type { ViewModelContext } from './widget.js'
 
@@ -9,15 +9,17 @@ export { TsWidget } from './widget.js'
 export type { ViewModelContext, WidgetState } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
-import type { TsGrid } from './grid.js'
+import type { TsGrid, LayoutAdapter } from './grid.js'
 
 export interface PersistLayoutOptions {
-  /** Each device is stored under `${key}:${device}`. */
-  key: string
+  /** Each device is stored under `${key}:${device}`. Required unless `adapter` is given. */
+  key?: string
   /** A Layout or item array serves both devices; in the object form `phone` falls back to `desktop`. */
   defaults?: Layout | LayoutItem[] | { desktop: Layout | LayoutItem[]; phone?: Layout | LayoutItem[] }
   /** Defaults to `localStorage` when it exists. Storage that throws is treated as empty. */
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null
+  /** Remote or async storage. It wins over `storage` (giving both warns once in development) and names its own storage, so it needs no `key`. */
+  adapter?: LayoutAdapter
 }
 
 /** Loads the grid's layout for its device, saves every `ts-layout-change`, and reloads when the device changes. */
@@ -25,6 +27,72 @@ export declare function persistLayout(
   grid: TsGrid,
   options: PersistLayoutOptions
 ): { reset(device?: 'desktop' | 'phone'): void; dispose(): void }
+
+/**
+ * Defines `tag` as `Ctor` (the registration rules of RFC 0002 §2.2) and records the
+ * class's validated `static spec` in the widget catalog under `options.type`:
+ * `{ tag, label, sizes, phoneRows?, description?, category? }`. The record is a snapshot
+ * taken now; changing the static spec later does not change the catalog. Give your tag and
+ * type a prefix of your own (`acme-mrr`).
+ *
+ * Calling it again is a no-op only for the same class object, tag and type. A module that is
+ * evaluated twice (hot reload, two bundles, a dev server that re-imports it) makes a new class,
+ * and that throws, so guard it: `if (!widgetCatalog()['acme-mrr']) defineWidget(...)`.
+ *
+ * Throws a `TypeError` for:
+ * - a missing or empty `type`;
+ * - a `type` that is a built-in key such as `'todayPnl'`;
+ * - a class with a `catalogKey` (set, or inherited from a built-in such as `TsMetric`), because
+ *   its elements would use the built-in's spec, not the one recorded;
+ * - a `type` recorded by another class;
+ * - a `tag` recorded under another type, or already defined by another class;
+ * - a class already recorded under another type, or the same class and type under a second tag;
+ * - a spec with no valid size.
+ *
+ * A failed call records and defines nothing, and notifies no one.
+ */
+export declare function defineWidget(tag: string, Ctor: typeof TsWidget, options: { type: string }): void
+
+/** A frozen merge of the built-in `WIDGETS` and every `defineWidget` spec: the same object until the next registration. */
+export declare function widgetCatalog(): WidgetCatalog
+
+/**
+ * `fn` runs after each registration with the new type, once the catalog holds it. Returns the function
+ * that stops it. A listener that throws is logged with `console.error` and skipped: the others still
+ * run and the registration stands.
+ */
+export declare function onCatalogChange(fn: (type: string) => void): () => void
+
+/**
+ * Stable for 0.x. A linear map from the domain [d0, d1] to the range [r0, r1]. A flat
+ * domain (d0 equal to d1) maps every value to the middle of the range.
+ */
+export declare function scale(d0: number, d1: number, r0: number, r1: number): (v: number) => number
+
+/**
+ * Stable for 0.x. A line and the area under it as SVG path strings, in a `width` by `height`
+ * box with y flipped (larger values higher). Points that are not finite are skipped. `zeroY`
+ * is where value 0 falls, clamped to the plotted area, so a widget can colour above and below it.
+ * `x` and `y` are the scales used, for placing marks on the same axes.
+ */
+export declare function linePaths(
+  points: ReadonlyArray<{ x: number; y: number }>,
+  options: {
+    width: number
+    height: number
+    /** Keeps the stroke and end marks inside the box. Default 4. */
+    pad?: number
+    xDomain?: [number, number]
+    yDomain?: [number, number]
+    /** Stretch y to include 0. Default true. */
+    includeZero?: boolean
+    /** Default 2 × width; Infinity turns downsampling off. Not applied until the performance story (RFC 0003 §23). */
+    maxPoints?: number
+  }
+): { line: string; area: string; zeroY: number; x: (v: number) => number; y: (v: number) => number }
+
+/** Stable for 0.x. Escapes `& < > " '` in `String(s)`, for text a template writes into markup. */
+export declare function escapeHtml(s: unknown): string
 
 /** Freshness, allowed on every widget's data (RFC 0001 §8.1). */
 export interface WidgetFreshness {

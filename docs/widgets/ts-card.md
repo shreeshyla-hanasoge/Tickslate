@@ -74,7 +74,8 @@ With every slot:
 
 | Name | Type | What it does |
 |---|---|---|
-| `label` | attribute and property | The heading and the region's name. Without one the tile is named by its tag, with a development warning |
+| `label` | attribute and property | The heading and the tile's name. Without one the tile is named by its tag, with a development warning |
+| `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `sizes` | attribute | Whitespace-separated size names, such as `S Wide M`. Invalid tokens are ignored; the default is all seven |
 | `size` | attribute and property | The size to render, snapped to `sizes`. A grid sets it |
 | `live` | attribute | Shows the live dot. `data.live` wins |
@@ -84,7 +85,7 @@ With every slot:
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
 | `actions` | property | Names of the actions the card offers, such as `['retry']` |
-| `locale`, `currency`, `time-zone` | attributes | Format the "synced" time. Resolved from the card, then the nearest `<ts-grid>`, then `configure()` |
+| `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Format the "synced" time. Resolved from the card, then the nearest `<ts-grid>`, then `configure()` |
 | `item` | attribute | The id a grid matches this child by |
 
 The card also has the base members every widget has (`variant`, `spec`,
@@ -107,9 +108,14 @@ For `::part()` styling from the host page.
 
 | Part | Element |
 |---|---|
-| `tile` | The tile's `<section>` |
+| `tile` | The tile box, `role="group"` named by the label, then the `value` slot's text |
+| `header` | The header row: the live dot, the label and the right-hand text, with your `actions` slot |
+| `label` | The label, a `role="heading"` whose level comes from `heading-level` |
+| `value` | The `value` slot, so `::part(value)` styles what you slot there |
 | `body` | The body box around the default slot |
+| `empty` | The empty view's container |
 | `error` | The error view's container (only while the error view shows) |
+| `skeleton` | The loading view's container, around the skeleton blocks (the body only: your header, value and footer stay) |
 
 ## Actions
 
@@ -137,8 +143,9 @@ Exactly one view shows: error, then loading, then empty, then content.
 
 ## Accessibility
 
-- The tile is a labelled region. Its accessible name is the label, followed by
-  the text of the `value` slot when there is one: "Latency, 182 ms".
+- The tile is a `role="group"` and its label is a heading. The group's name is the label,
+  followed by the text of the `value` slot when there is one: "Latency, 182 ms", and
+  ", live" while the card is live.
 - Name your chart yourself: put `role="img"` and an `aria-label` that states the
   result ("Latency over the last hour: 182 ms now") on it. See
   [Bring your own chart](../guide/bring-your-own-chart.md).
@@ -146,4 +153,4 @@ Exactly one view shows: error, then loading, then empty, then content.
   `--ts-focus`, and is a labelled group.
 - The live dot is decorative; "synced HH:MM" carries the freshness in text.
 - Skeleton shimmer and the live pulse stop under `prefers-reduced-motion`.
-- The loading view sets `aria-busy="true"` on the region.
+- The loading view sets `aria-busy="true"` on the tile.

@@ -64,7 +64,7 @@ JSON `data` attribute and development warnings all work without more code.
   colour. See [Theming](../theming.md).
 - **Data in, nothing out.** Render what the host passes in. No fetching, no
   broker APIs, no credentials.
-- **Accessible by default.** The tile is a labelled region; return `ariaLabel`
+- **Accessible by default.** The tile is a labelled group with a heading; return `ariaLabel`
   stating the result, give charts `role="img"` and a label, put a sign (and an
   `aria-hidden` arrow) on gains and losses, and stop motion under
   `prefers-reduced-motion`. See [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md).
@@ -85,10 +85,10 @@ JSON `data` attribute and development warnings all work without more code.
 | `catalogKey` | `null` | A key of the core's `WIDGETS` catalog, for the built-ins |
 | `styles` | `''` | CSS for your content, appended after the shared CSS. Tokens only |
 | `template(variant)` | | Markup inside the tile for one size, built once per size |
-| `viewModel(data, variant, ctx)` | | Pure: data to display strings and numbers. `ctx` is `{ fmt, now, label, ...viewContext() }`. `data` is never `null` here (it is `{}` for a `dataOptional` widget with none). Return `ariaLabel` to name the tile; without it the label does. Throwing shows the error view and logs once, linking `docs/widgets/<tag>.md` |
+| `viewModel(data, variant, ctx)` | | Pure: data to display strings and numbers. `ctx` is `{ fmt, t, now, label, ...viewContext() }`, where `t(key, params?, count?)` reads the element's messages. `data` is never `null` here (it is `{}` for a `dataOptional` widget with none). Return `ariaLabel` to name the tile; without it the label does. Throwing shows the error view and logs once, linking `docs/widgets/<tag>.md` |
 | `dataShape` | `null` | `{ key: kind \| { kind, optional?, of? } }` with kinds `number`, `numeric`, `time`, `string`, `boolean`, `array` and `object`. A bare kind is required; keys not listed are allowed; `numeric` and `time` accept what `toNumber` and `toTime` read. Development only |
 | `dataOptional` | `false` | `true` for a widget useful before it has data: it renders while `data` is `undefined`, with `viewModel` getting `{}`, and shows the skeleton only for `state="loading"` |
-| `emptyText` | `'No data'` | What the empty view says |
+| `emptyText` | `EN['widget.empty']` | What the empty view says; a host's `widget.<catalogKey>.empty` message wins over it |
 | `skeleton(variant)` | a header, a bar and two lines | The loading markup: `.sk` blocks shaped like the content, built with `sk(width, height)` (width in percent snapped to 5, or `'x'`; height in px). Include an element with `data-k="label"` and the base fills it |
 
 Add observed attributes by extending the list and calling the base:
@@ -117,7 +117,7 @@ defined is not lost. Add context the pure view model needs from the element
 | `label` | The `label` attribute, else the spec's label. With neither, a development warning and the tile is named by its tag |
 | `spec` | Catalog entry, else the validated `static spec`, else `{ label: '', sizes: [] }` |
 | `clock`, `now()` | What the widget takes the time to be. Settable `() => number`; tests and demos freeze it |
-| `formatter` | The `Formatter` for the `locale`, `currency` and `time-zone` attributes: the widget's own, then the nearest `<ts-grid>`'s, then `configure()`. Cached |
+| `formatter` | The `Formatter` for the `locale`, `currency`, `time-zone` and `hour-cycle` attributes: the widget's own, then the nearest `<ts-grid>`'s, then `configure()`. Cached |
 | `$(selector)` | `querySelector` in the shadow root, cached until the template is rebuilt |
 | `requestRender()` | Schedule a render (coalesced per microtask) |
 | `every(ms)` | Re-render every `ms` while connected and the page is visible; `0` stops. Catches up when the tab becomes visible |
@@ -128,8 +128,8 @@ defined is not lost. Add context the pure view model needs from the element
 Exactly one view shows, first match wins: **error** (`state="error"`, `error`
 set, or a view model that threw), then **loading** (`state="loading"`, or `data`
 undefined unless `dataOptional`), then **empty** (`data === null`), then
-**content**. The tile is a fixed box, so no view changes its size. The section
-is `<section class="tile" part="tile" aria-label>`.
+**content**. The tile is a fixed box, so no view changes its size. The tile
+is `<div class="tile" part="tile" role="group" aria-label>`.
 
 ## Shared classes
 
@@ -141,15 +141,20 @@ to `.g4` (columns), `.sep` (a hairline), `.ell` (ellipsis), `.btn`, `.dot.live`
 (the pulsing dot) and the profit and loss line classes `.lp`, `.ln`, `.ap`,
 `.an` and `.lz`.
 
-## Two more things
+## Catalog and registration
 
 - **A catalog entry is optional.** `static spec` is enough for a grid. To give
   hosts a typed key (`type: 'uptime'`), add an entry to your own catalog:
   `grid.catalog = { ...WIDGETS, uptime: { tag: 'ts-uptime', label: 'Uptime', sizes: ['S', 'Wide'] } }`.
-- **Registering twice is safe.** The same class again does nothing. A different
-  class on a tag already taken warns in development and the first one stays.
-  Give your own tags a prefix of your own (`acme-uptime`) so they cannot clash
-  with a future Tickslate widget; the example borrows `ts-` for brevity.
+- **To register and catalog a widget in one call**, use `defineWidget(tag, Class, { type })`;
+  the [custom widgets guide](custom-widgets.md) builds a full one, with tests.
+- **A taken tag.** Tickslate's own registration of its built-in tags only warns in
+  development and keeps the first class. `defineWidget` throws a `TypeError`
+  instead, because it also writes the catalog, and the same class again is
+  the only repeat that does nothing (a module evaluated twice makes a new class,
+  so guard it; the guide shows how). Give your own tags a prefix of your own
+  (`acme-uptime`) so they cannot clash with a future Tickslate widget; the example
+  borrows `ts-` for brevity.
 
 Development warnings come from the `development` export condition (Vite and
 webpack dev mode resolve `tickslate/elements` to a build that has them).

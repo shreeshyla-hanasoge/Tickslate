@@ -179,7 +179,7 @@ test.describe('theme islands', () => {
       const of = (selector) => {
         const el = document.querySelector(selector)
         const style = getComputedStyle(el)
-        const section = el.shadowRoot.querySelector('section') || el.shadowRoot.firstElementChild
+        const section = el.shadowRoot.querySelector('.tile')
         return {
           surface: style.getPropertyValue('--ts-surface').trim(),
           ink: style.getPropertyValue('--ts-ink').trim(),

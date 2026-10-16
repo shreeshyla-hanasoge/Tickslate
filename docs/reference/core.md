@@ -15,7 +15,7 @@ in `index.d.ts` beside the package.
 
 Contents: [sizes](#sizes-and-breakpoints) · [catalog](#widget-catalog) ·
 [layouts](#layouts) · [placement](#placement) · [editing](#editing) ·
-[formatting](#formatting) · [time](#time) · [calendars](#session-calendars) ·
+[formatting](#formatting) · [messages](#messages) · [time](#time) · [calendars](#session-calendars) ·
 [stats](#stats)
 
 Amounts are in major units (rupees, dollars). Anywhere a number is read, the
@@ -293,7 +293,7 @@ true minus sign (U+2212), and zero has no sign.
 
 ### `createFormatter(options?)`
 
-`(options?: { locale?, currency?, timeZone? }) => Formatter`. Options default to
+`(options?: { locale?, currency?, timeZone?, hourCycle? }) => Formatter`. Options default to
 `configure()`'s, then the runtime's locale. An invalid option falls back to its
 default and is listed in `formatter.issues` (the widgets warn in development).
 Without a currency, money formats as a plain signed number.
@@ -310,14 +310,15 @@ The `Formatter`:
 
 | Member | Result |
 |---|---|
-| `locale`, `currency`, `timeZone` | The resolved options (readonly) |
+| `locale`, `currency`, `timeZone`, `hourCycle` | The resolved options (readonly). `hourCycle` is `'h23'` (24-hour, the default), `'h12'` or `'auto'` (the locale's own) |
 | `issues` | Options that failed validation: `{ option, value, message }[]` |
 | `money(v, { sign?, compact?, decimals? })` | `'+₹2,185.65'`. `sign` is `'always'` (default) or `'negative'` |
 | `number(v, { sign?, decimals?, compact? })` | `sign` defaults to `'negative'`. `compact`: `1200000` is `'1.2M'` in en-US, `'1,2 Mio.'` in de-DE |
 | `price(v, { decimals? })` | Grouped, no currency symbol; 2 decimals by default |
 | `percent(v, { sign?, decimals? })` | Takes a **fraction**: `0.12` is `'+12.00%'` (`sign` `'always'` by default) |
-| `time(t, { seconds?, hour12? })` | 24-hour unless `hour12`: `'11:42'`, `'11:42:20'` |
-| `duration(ms, { style? })` | `'clock'`: `'2:40'`, `'1:02:05'`. `'words'`: `'3h 48m'`, `'48m'`, `'9s'` |
+| `time(t, { seconds?, hour12? })` | Follows `hourCycle`: 24-hour by default (`'11:42'`, `'11:42:20'`), `'2:15 PM'` for `'h12'`, the locale's own for `'auto'`. A per-call `hour12` wins over `hourCycle` |
+| `date(v, { style? })` | A calendar date in the locale, always on the Gregorian calendar (`fa-IR` is not the Persian one). `v` is a timestamp or a plain `'YYYY-MM-DD'`, which never shifts with the time zone. `style`: `'day'` (`'Mar 5'` in en-US), `'month'`, `'monthYear'`, `'medium'` (default, `'Mar 5, 2024'` in en-US) or `'weekday'`; an unknown style is `'medium'` |
+| `duration(ms, { style? })` | `'clock'`: `'2:40'`, `'1:02:05'`. `'words'`: `'3h 48m'`, `'48m'`, `'9s'` in English; other locales get their own units and separators (`de-DE` is not `'2h 30m'`) |
 | `unit(v, unit, { decimals?, compact? })` | `'182 ms'` for an ECMA-402 unit (or an `x-per-y` pair), `'3 seats'` for any other |
 | `fit(v, maxChars, { style?, sign?, decimals? })` | The full form if it fits `maxChars`, else without decimals, else compact (only if shorter). `style` is `'money'` (default), `'number'` or `'percent'` |
 
@@ -325,19 +326,34 @@ A value that is not readable as a number formats as a dash.
 
 ### `configure(options)`
 
-`(options: { locale?, currency?, timeZone? }) => void`. Sets defaults for
-formatters (and widgets) created without their own. Later calls merge. A widget
-resolves each option from its own attribute, then its `<ts-grid>`'s attribute,
-then these.
+`(options: { locale?, currency?, timeZone?, messages? }) => void`. Sets defaults
+for formatters (and widgets) created without their own. Later calls merge. A
+widget resolves each option from its own attribute, then its `<ts-grid>`'s
+attribute, then these. `messages` replaces the whole table every widget and grid
+reads (see [Messages](#messages)); `null` clears it.
 
 ```js
 configure({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 ```
 
+### `onConfigure(fn)`
+
+`(fn: (config) => void) => () => void`. Calls `fn` with the new defaults after
+every `configure()` call, whichever option changed, and returns a function that
+stops it. Importing the core registers nothing; mounted widgets subscribe while
+they are on the page and draw again when it fires. A listener that throws does
+not stop the others.
+
+```js
+const stop = onConfigure(({ locale }) => console.log('now', locale))
+configure({ locale: 'de-DE' })   // logs: now de-DE
+stop()
+```
+
 ### `currentConfig()`
 
-`() => { locale?, currency?, timeZone? }`. A copy of the defaults `configure()`
-has set.
+`() => { locale?, currency?, timeZone?, messages? }`. A copy of the defaults
+`configure()` has set.
 
 ### `toNumber(v)`
 
@@ -345,6 +361,47 @@ has set.
 (`"12.50"`, `" 3e2 "`) or a decimal-library object, else `NaN`. Booleans, `null`,
 hex and binary strings, `'Infinity'` and objects whose `toNumber()` throws are
 `NaN`, because they are never what a P&L field means.
+
+## Messages
+
+Every visible and every spoken string, in one table, so a host can translate
+Tickslate or reword it. A table that leaves a key out falls back to English for
+that key.
+
+```js
+configure({ messages: { 'widget.empty': 'Keine Daten' } })   // every widget, from now on
+```
+
+A `messages` property on a widget overrides this for that widget, and one on a
+`<ts-grid>` for every tile inside it. Resolution is per key: the element, then
+the nearest grid, then `configure()`, then `EN`. Assign a new object to change a
+table; changing one in place is not noticed.
+
+### `EN`
+
+`Readonly<Messages>`. Every key and its English text, frozen. Keys are flat and
+dotted (`grid.undo`, `equity.rangeAll`), and the `Messages` interface in
+`index.d.ts` types every one. A text holds `{name}` placeholders; a placeholder
+with no parameter stays as written. A key with plural forms is listed by its
+forms, for example `equity.dayCount.one` and `equity.dayCount.other`.
+
+### `createMessages(overrides?, locale?)`
+
+`(overrides?: MessageOverrides | null, locale?: string) => Translate`, where
+`Translate` is `(key, params?, count?) => string`. Builds a function that reads
+`overrides`, then `EN`, then returns the key itself. With a `count` (a number, or
+a numeric string such as `'2'`) it reads `key.<category>` (`zero`, `one`, `two`,
+`few`, `many` or `other`), then `key.other`, then `key`, and `{count}` is
+available as a parameter. The category comes from `Intl.PluralRules(locale)` for
+text out of your table, and from English rules for text that falls back to `EN`,
+so an untranslated key in a `ja-JP` app still reads "1 day". The table is not
+matched against the locale. It never formats, so pass numbers and times already
+formatted by [`createFormatter`](#createformatteroptions).
+
+```js
+const t = createMessages({ 'time.days.one': '{count} dzień', 'time.days.few': '{count} dni', 'time.days.many': '{count} dni' }, 'pl')
+t('time.days', {}, 22)   // '22 dni'
+```
 
 ## Time
 
@@ -369,7 +426,7 @@ serialised a date as one) means that date whatever the zone.
 
 `(date: string, hhmm: string, timeZone: string) => number`. The instant the
 clock in `timeZone` reads `hhmm` on `date`, handling daylight-saving changes. A
-time inside a spring-forward gap lands just after it.
+time inside a spring-forward gap, which never happened, lands just after it, shifted by the gap's length (02:30 becomes 03:30 when 02:00 jumps to 03:00). A time that happened twice when clocks went back is the earlier one.
 
 ### `localDate(t, timeZone)`
 
@@ -383,24 +440,49 @@ instant in `timeZone`.
 ```ts
 createCalendar(input: {
   sessions: readonly SessionSpec[]
-  /** Session id -> 'YYYY-MM-DD' dates; '*' applies to every session. */
+  /** Session id -> 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
 }): Calendar
 ```
 
-Throws `TypeError` on a malformed session or holiday list.
+Throws `TypeError` on a malformed session or holiday list. The sessions and
+holidays are read **once**, here: the calendar keeps a frozen copy, so changing
+your own objects afterwards does nothing (create a new calendar instead), and
+`session(id)` returns that frozen copy. Your objects are not frozen.
 
 ```ts
 interface SessionSpec {
   id: string
   label: string
   timeZone: string                 // IANA, e.g. 'Asia/Kolkata'
-  days: readonly number[]          // ISO weekdays it trades, 1 = Monday
+  days: readonly number[]          // ISO weekdays it OPENS on, 1 = Monday
   open: string                     // 'HH:MM' local
-  close: string | { default: string; ranges: Array<{ from: string; to: string; close: string }> }
-  specialSessions?: Record<string, { open: string; close: string }>   // extra sessions; they beat weekdays and holidays
+  close: string | { default: string; ranges: Array<{ from: string; to: string; close: string }> }   // 'HH:MM' local; may be at or before `open`
+  specialSessions?: Record<string, { open: string; close: string }>   // extra sessions by opening date; they beat weekdays and holidays
 }
 ```
+
+**Overnight and round-the-clock sessions.** A `close` earlier than `open` is on
+the **next local day**, so `open: '17:00', close: '16:00'` is a 23-hour
+session, and `close` equal to `open` makes a 24-hour one. A session that never
+closes is `open: '00:00', close: '00:00'` on every day. `'24:00'` is not
+accepted; midnight is `'00:00'`. `days`, `holidays` and `specialSessions` all go
+by the **opening** date: a holiday on Monday removes the window that opens on
+Monday evening, and Sunday evening's window still runs into Monday.
+
+```js
+// A futures exchange: Sunday to Thursday evening, closing at 16:00 the next day.
+{ id: 'cme', label: 'CME', timeZone: 'America/Chicago', days: [7, 1, 2, 3, 4], open: '17:00', close: '16:00' }
+// Crypto: always open.
+{ id: 'crypto', label: 'Crypto', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }
+```
+
+Windows that touch are **one** window: an FX week written as daily 24-hour
+windows from Sunday 17:00 is open until Friday 17:00, and `state` reports that
+close. A run that is still going a month ahead (the same look-ahead as "next
+open") has no close the calendar can name, so `state` returns `open: true` with
+`closesAt`, `startedAt` and `progress` all `null`, `nextChange` returns `null`,
+and `<ts-session-clock>` shows "Open 24/7".
 
 The `Calendar`:
 
@@ -409,11 +491,11 @@ The `Calendar`:
 | `sessions` | The session ids |
 | `session(id)` | The `SessionSpec`. Throws `RangeError` for an unknown id |
 | `isTradingDay(id, date)` | Whether the session trades on `'YYYY-MM-DD'` |
-| `hours(id, date)` | `{ open, close }` as instants, or `null` if it does not trade |
-| `state(id, now)` | `{ open, opensAt, closesAt, startedAt, progress }`: `opensAt` is the next open when closed (`null` if none within a month); the rest apply when open, with `progress` 0 to 1 |
-| `nextChange(id, now)` | `{ at, to: 'open' \| 'closed' }` or `null` |
-| `candleClose(id, now, timeframeMinutes)` | The next candle close, aligned to the session open; `null` while closed |
-| `windows(id, from, to)` | Every session window overlapping `[from, to)` |
+| `hours(id, date)` | The window that opens on `date`, `{ open, close }` as instants (`close` is on the next day for an overnight session), or `null` if it does not open. It is not merged with its neighbours |
+| `state(id, now)` | `{ open, opensAt, closesAt, startedAt, progress }`: `opensAt` is the next open when closed (`null` if none within a month); the rest apply when open, with `progress` 0 to 1. For a session with no close within a month, `closesAt`, `startedAt` and `progress` are `null` while `open` is `true` |
+| `nextChange(id, now)` | `{ at, to: 'open' \| 'closed' }`, or `null` when there is no change within a month (including while open with no close) |
+| `candleClose(id, now, timeframeMinutes)` | The next candle close, aligned to the session open (to the day's window when the session has no known start); `null` while closed |
+| `windows(id, from, to)` | Every session window overlapping `[from, to)`, touching windows merged. A run still going a month past `to`, or a month before `from`, is cut there |
 
 ### `presets`
 
@@ -443,7 +525,7 @@ interface ProfileSchedule { market: { sessions: string[]; leadMinutes?: number; 
 ### `nextProfileChange(calendar, schedule, now)`
 
 `=> number | null`. The next instant `activeProfile` changes, or `null` if none
-within a month. `<ts-grid>` uses both for its `schedule`.
+within a month, as when a session never closes. `<ts-grid>` uses both for its `schedule`.
 
 ## Stats
 

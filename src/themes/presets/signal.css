@@ -1,0 +1,146 @@
+/*
+ * Tickslate theme preset: signal.
+ *
+ * Signal: loud and easy to read from across the room. A black page in dark and a
+ * pale grey one (#F2F2F5) in light, with white tiles on it,
+ * 700-weight figures and labels, a strong 30% area tint, and the brightest sign
+ * colours. The reference style also tinted a whole tile green or red by its state;
+ * no token expresses that, so the preset leaves it out.
+ * The dark mode is the reference style; the light mode keeps its weights and
+ * density on the pale page, with a lighter 18% tint because the sign colours are
+ * darker there.
+ *
+ * Opt in with <link rel="stylesheet" href="tickslate/themes/signal.css"> after
+ * tokens.css, then <ts-grid data-ts-theme="signal">. The preset never loads by
+ * itself, so a host that uses none pays nothing (RFC 0003 §13.1, Decision 35).
+ *
+ * Fonts: Geist leads the stacks and Tickslate does not ship it; without it the
+ * text and the figures fall to system-ui.
+ *
+ * Tokens only, and every rule is wrapped in :where() so it has zero specificity:
+ * a host overrides any value with a plain selector. The tokens a palette owns
+ * (profit, loss, accent, focus and the series) sit in a second block that
+ * applies only while the element has no data-ts-palette, so a palette set on the
+ * same element wins over this preset (RFC 0003 §13.2). Layout and motion
+ * (--ts-row, --ts-gap, --ts-motion and friends) are the host's and not set here.
+ * --ts-focus is restated beside the accent because var() resolves where it is
+ * declared, so it would otherwise keep the page's accent.
+ */
+:where([data-ts-theme='signal']) {
+  --ts-bg: #F2F2F5;
+  --ts-surface: #FFFFFF;
+  --ts-surface-2: #E9E9EE;
+  --ts-line: #D0D0D8;
+  --ts-ink: #000000;
+  --ts-muted: #4F4F5A;
+  --ts-warn: #B45309;
+  --ts-axis: #767680;
+  --ts-radius: 12px;
+  --ts-radius-sm: 6px;
+  --ts-shadow: none;
+  --ts-fill: 18%;
+  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-num: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-pad: 16px;
+  --ts-num-weight: 700;
+  --ts-num-weight-small: 700;
+  --ts-label-size: 11px;
+  --ts-label-case: uppercase;
+  --ts-label-tracking: .06em;
+  --ts-label-weight: 700;
+  --ts-headline-weight: var(--ts-num-weight);
+  --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .1), 0 24px 40px -16px rgba(0, 0, 0, .35);
+}
+
+/* Owned by a palette: skipped when data-ts-palette is set on the same element. */
+:where([data-ts-theme='signal']:not([data-ts-palette])) {
+  --ts-profit: #15803D;
+  --ts-loss: #E11D48;
+  --ts-accent: #4F46E5;
+  --ts-series-1: #4F46E5;
+  --ts-series-2: #B45309;
+  --ts-series-3: #0E7490;
+  --ts-series-4: #9333EA;
+  --ts-series-5: #BE185D;
+  --ts-series-6: #4D7C0F;
+  --ts-focus: var(--ts-accent);
+}
+
+/*
+ * Dark mode, under the conditions tokens.css uses for Graphite: data-theme="dark" or
+ * a .dark ancestor, and data-theme="auto" inside prefers-color-scheme. A light island
+ * (data-theme="light") wins, as in tokens.css: on the element, or between it and the
+ * dark ancestor. The three selectors are: a dark ancestor with no light island above
+ * the element, a dark ancestor inside one light island, and the element itself.
+ * Deeper alternation (a light island in a dark one in a light one) is not tracked,
+ * since CSS cannot say "nothing of this kind between" without :has().
+ */
+:where(
+  :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *),
+  [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']),
+  [data-ts-theme='signal']:is([data-theme='dark'], .dark):not([data-theme='light'])
+) {
+  --ts-bg: #000000;
+  --ts-surface: #0D0D10;
+  --ts-surface-2: #1A1A20;
+  --ts-line: #26262C;
+  --ts-ink: #FFFFFF;
+  --ts-muted: #A1A1AA;
+  --ts-warn: #F59E0B;
+  --ts-axis: #71717A;
+  --ts-fill: 30%;
+  --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .5), 0 28px 48px -16px rgba(0, 0, 0, .9);
+}
+
+:where(
+  :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *):not([data-ts-palette]),
+  [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-ts-palette]),
+  [data-ts-theme='signal']:is([data-theme='dark'], .dark):not([data-theme='light']):not([data-ts-palette])
+) {
+  --ts-profit: #22C55E;
+  --ts-loss: #F43F5E;
+  --ts-accent: #818CF8;
+  --ts-series-1: #818CF8;
+  --ts-series-2: #F59E0B;
+  --ts-series-3: #22D3EE;
+  --ts-series-4: #C084FC;
+  --ts-series-5: #F472B6;
+  --ts-series-6: #A3E635;
+  --ts-focus: var(--ts-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']),
+    [data-ts-theme='signal'][data-theme='auto']:not([data-theme='light'])
+  ) {
+    --ts-bg: #000000;
+    --ts-surface: #0D0D10;
+    --ts-surface-2: #1A1A20;
+    --ts-line: #26262C;
+    --ts-ink: #FFFFFF;
+    --ts-muted: #A1A1AA;
+    --ts-warn: #F59E0B;
+    --ts-axis: #71717A;
+    --ts-fill: 30%;
+    --ts-shadow-lift: 0 2px 6px rgba(0, 0, 0, .5), 0 28px 48px -16px rgba(0, 0, 0, .9);
+  }
+
+  :where(
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-theme='light'] *):not([data-ts-palette]),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='signal']:not([data-theme='light']):not([data-ts-palette]),
+    [data-ts-theme='signal'][data-theme='auto']:not([data-theme='light']):not([data-ts-palette])
+  ) {
+    --ts-profit: #22C55E;
+    --ts-loss: #F43F5E;
+    --ts-accent: #818CF8;
+    --ts-series-1: #818CF8;
+    --ts-series-2: #F59E0B;
+    --ts-series-3: #22D3EE;
+    --ts-series-4: #C084FC;
+    --ts-series-5: #F472B6;
+    --ts-series-6: #A3E635;
+    --ts-focus: var(--ts-accent);
+  }
+}

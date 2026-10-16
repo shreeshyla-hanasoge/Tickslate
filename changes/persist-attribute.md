@@ -1,0 +1,19 @@
+### Added
+
+- `<ts-grid persist="my-dash">` saves the layout to `localStorage` per device and restores it on the next visit, with no script beyond the import; the layout the grid has when its device is first known is what a device with nothing saved shows, and `persist=""` is off with one development warning.
+- `persist` property on `<ts-grid>`, reflecting the attribute; changing or removing it re-keys or stops saving, and a grid taken off the page stops saving until it is put back.
+- `persistLayout(grid, { adapter })` takes a `LayoutAdapter` (`load(device)`, `save(device, layout)`, optional `remove(device)`), any of which may return a promise, for layouts kept on a server; `key` is not needed with an adapter, and an adapter wins over `storage`.
+- While an adapter's `load` is pending the grid shows its defaults, and a result that arrives after the device changed, after `reset()` or `dispose()`, after a later load started or after the user edited is ignored.
+- A failing adapter never throws out of the grid: a rejected, throwing or non-layout `load` counts as nothing stored, and a failing `save` or `remove` leaves the edit on screen, each with one development warning.
+- A development warning on the first edit of a grid that nothing saves (edits will be lost on reload, linking to `docs/guide/saving-layouts.md`); the `persist` attribute and `persistLayout()` silence it, and a locked grid never warns.
+- `tickslate/elements/grid` exports `persistLayout` and its types, because the grid now uses it.
+
+### Internal
+
+- `define/grid.js` exports `persistLayout`: without it Rollup moved the grid's code and its `define('ts-grid')` into a shared chunk that consumers' bundlers drop, which `verify:package` caught. `scripts/pack-lib.mjs` now writes the grid stub's `persistLayout` export from the define module's exports. `src/elements/index.d.ts` types `adapter` and an optional `key`.
+- `persistLayout`'s `defaults` also accepts a function, asked whenever defaults are needed; the attribute uses it so an implicit grid's defaults are its live layout, never a snapshot. It is not in the public types. Nothing is assigned to `grid.layout` while the grid already shows the defaults, so an implicit grid with nothing saved stays implicit and keeps tiles that arrive late. After a layout is set, the grid keeps its first defaults across reconnects and re-keys.
+- An adapter's `load` result that is not an object or array, or an object without `profiles`, counts as nothing stored with a warning; storage reads keep RFC 0002's repair of valid JSON in the wrong shape. `reset(device)` only stales a pending load for that device.
+- `persistLayout` counts its attachments on the grid (`grid._persisted`, development builds only); the grid reads it on its first `ts-layout-change`, and a grid wired by both the attribute and `persistLayout()` says so once. Production builds contain neither the check nor the strings, which a test runs with `__TS_DEV__` false in a child process.
+- Tests: `test/persist.test.mjs` builds a real `<ts-grid>` in Node on a small fake DOM, including with its own `_reconcile` and `_apply`; `test/browser/persist.spec.mjs` covers a reload keeping an edit, re-keying, children arriving after connect, and the unsaved warning.
+- Size: `tickslate/elements/grid` (bundled, min+gz) is 23,811 B against its 22.5 kB (23,040 B) budget, which is not raised: the grid entry now bundles the persistence engine, about +980 B on its own, and the adapters add about 400 B more.
+- Differences from RFC 0003 §4: an adapter result in the wrong shape is "nothing stored" rather than repaired; each unsaved grid gets its own warning; the grid shows the new device's defaults at once while a load is pending. `docs/guide/saving-layouts.md` does not describe the attribute or adapters yet, so the page the warning links to still teaches only `persistLayout`; the documentation story should cover it.

@@ -22,15 +22,18 @@
 
 import {
   DEFAULT_PROFILE,
+  EN,
   WIDGETS,
   addItem,
   activeProfile,
   columnsFor,
+  currentConfig,
   dropIndex,
   emptyLayout,
   footprint,
   moveItem,
   nextProfileChange,
+  onConfigure,
   place,
   readLayout,
   removeItem,
@@ -38,6 +41,7 @@ import {
   sizeForExtent,
   stepSize,
   typeForTag,
+  typeOf,
   withProfile,
 } from '../core/index.js'
 import {
@@ -48,16 +52,21 @@ import {
   extentOf,
   hostResizes,
   itemsFromChildren,
+  keepInPlace,
   mergeOrder,
   metrics,
   px,
   reconcile,
   specResolver,
+  visualOrder,
 } from './grid-geometry.js'
+import { ensureTokens } from './default-tokens.js'
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
 import { keyAction, tapAction } from './grid-input.js'
+import { translator } from './messages-cache.js'
+import { persistLayout } from './persist.js'
 
 const LONG_PRESS_MS = 500
 const PRESS_SLOP = 8
@@ -87,36 +96,14 @@ const NO_SPECS = new Map()
 const REMOVE_GUARD_MS = 400
 // How long the undo toast stays, unless the pointer or focus is on it.
 const TOAST_MS = 6000
-// English in one place, so a messages option can replace it later.
-const TEXT = {
-  removed: (label) => `${label} removed`,
-  undo: 'Undo',
-  editLayout: 'Edit layout',
-  done: 'Done',
-  addBack: (n) => `Add back (${n})`,
-  addBackItem: (label) => `Add back ${label}`,
-  addedBack: (label) => `${label} added back.`,
-  hiddenHeading: 'Hidden from this layout',
-  editingGroup: 'Editing layout',
-  emptyBoard: 'No widgets on this layout yet',
-  dashboard: 'Dashboard',
-  editStart: (n) => `Editing layout, ${n} ${n === 1 ? 'tile' : 'tiles'}. Tab to a tile, Space to pick it up.`,
-  editDone: 'Done editing layout.',
-  handle: (label, size, n, total) => `${label}, ${size}, position ${n} of ${total}`,
-  instructions: 'Space or Enter picks the tile up, then the arrow keys move it and Space drops it. Plus and minus resize it. Delete removes it. You can also tap the tile, then tap where it should go.',
-  removeLabel: (label) => `Remove ${label}`,
-  resizeLabel: (label, size) => `Resize ${label}, now ${size}`,
-  pickedUp: (label) => `${label}, picked up. Use the arrow keys to move it, Space to drop, Escape to cancel.`,
-  moved: (label, n, total) => `${label}, moved to position ${n} of ${total}.`,
-  dropped: (label) => `${label}, dropped.`,
-  droppedAt: (label, n, total) => `${label}, dropped at position ${n} of ${total}.`,
-  cancelled: (label) => `${label}, move cancelled.`,
-  blocked: "Can't move further.",
-  resized: (label, size) => `${label}, size ${size}.`,
-  profile: (name) => `Showing the ${name} layout.`,
-  undone: 'Undone.',
-  lockedWarning: '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.',
-}
+// A developer's warning, not interface text, so it stays out of the messages.
+const LOCKED_WARNING = '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.'
+const EMPTY_PERSIST_WARNING = '<ts-grid> persist attribute is empty, so saving is off. Give it a key, for example persist="my-dashboard".'
+const NAMED_ROOT_WARNING = '<ts-grid> reused a shadow root that assigns slots by name, so reading and Tab order follow the DOM order, not the layout. Add shadowrootslotassignment="manual" to its <template shadowrootmode>, or leave the declarative shadow root out.'
+// Wording and link are fixed by RFC 0003 §4.3.
+const UNSAVED_WARNING = '<ts-grid> edits will be lost on reload: add a persist attribute, or call persistLayout(). See docs/guide/saving-layouts.md'
+// Tells one grid's warning from another's: warnOnce keys are global, and each unsaved grid is worth one.
+let unsavedSerial = 0
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 
 // Built on first use, so importing this module where there is no DOM (Node,
@@ -128,6 +115,8 @@ const TEMPLATE = `
   :host([hidden]) { display: none; }
   :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
+  /* Focus lands here when a removed tile leaves nothing else to take it. */
+  .board:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   /* A long press must never start a text selection on a touch screen, but a
      mouse user may copy a figure out of a tile until they start editing. */
   @media (pointer: coarse) {
@@ -137,8 +126,8 @@ const TEMPLATE = `
   .placeholder {
     position: absolute; top: 0; left: 0; box-sizing: border-box; pointer-events: none;
     border-radius: var(--ts-radius, 10px);
-    background: color-mix(in srgb, var(--ts-ink, #1C1A16) 4%, transparent);
-    border: 1.5px dashed color-mix(in srgb, var(--ts-ink, #1C1A16) 22%, transparent);
+    background: color-mix(in srgb, var(--ts-ink) 4%, transparent);
+    border: 1.5px dashed color-mix(in srgb, var(--ts-ink) 22%, transparent);
     opacity: 0; transition: opacity 120ms ease;
   }
   .placeholder.on { opacity: 1; }
@@ -172,8 +161,8 @@ const TEMPLATE = `
   .remove span {
     width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
-    background: var(--ts-surface-2, #F1EBDE); color: var(--ts-ink, #1C1A16);
-    border: 1px solid var(--ts-line, #E2DACB); box-shadow: var(--ts-shadow, none);
+    background: var(--ts-surface-2); color: var(--ts-ink);
+    border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow, none);
     font: 600 16px/1 var(--ts-font-ui, system-ui, sans-serif);
   }
   .remove:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
@@ -183,7 +172,7 @@ const TEMPLATE = `
   }
   .resize::after {
     content: ''; position: absolute; right: 12px; bottom: 12px; width: 12px; height: 12px;
-    border-right: 3px solid var(--ts-muted, #6A655B); border-bottom: 3px solid var(--ts-muted, #6A655B);
+    border-right: 3px solid var(--ts-muted); border-bottom: 3px solid var(--ts-muted);
     border-bottom-right-radius: 6px;
   }
   @keyframes pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
@@ -271,7 +260,7 @@ const TEMPLATE = `
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 <button class="edit-btn" type="button" hidden></button>
-<div class="board" part="board">
+<div class="board" part="board" role="region">
   <div class="placeholder" part="placeholder"></div>
   <slot></slot>
   <div class="chromes"></div>
@@ -296,7 +285,7 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'aria-label']
   }
 
   constructor() {
@@ -305,24 +294,47 @@ export class TsGrid extends Base {
       template = document.createElement('template')
       template.innerHTML = TEMPLATE
     }
-    const root = this.attachShadow({ mode: 'open' })
+    // Decided at attach time, since a root can't change how it assigns later.
+    // Where `assign` is missing the root is made as before, with one default
+    // slot, and Tab and reading order follow the host's DOM order (RFC 0003 Decision 27).
+    const canAssign = typeof HTMLSlotElement !== 'undefined' && typeof HTMLSlotElement.prototype.assign === 'function'
+    const root = this.attachShadow(canAssign ? { mode: 'open', slotAssignment: 'manual' } : { mode: 'open' })
+    // Asked of the root, not assumed: a declarative shadow root without shadowrootslotassignment="manual" is reused as it is, and assigns by name.
+    this._manual = root.slotAssignment === 'manual'
+    if (DEV && canAssign && !this._manual) warnOnce('grid-slot-assignment', NAMED_ROOT_WARNING)
     root.appendChild(template.content.cloneNode(true))
     this._board = root.querySelector('.board')
     this._placeholder = root.querySelector('.placeholder')
     this._chromeLayer = root.querySelector('.chromes')
+    // Manual mode only. The default slot keeps what isn't a tile; each visible tile gets a slot of its own.
+    this._restSlot = root.querySelector('.board > slot:not([name])')
+    this._emptySlot = root.querySelector('slot[name="empty"]')
+    this._tileSlots = new Map() // id → its slot
+    this._slotted = new Map() // slot → the tile it was last assigned
+    this._restNodes = [] // what the default and empty slots were last assigned
+    this._emptyNodes = []
+    this._readingOrder = Object.freeze([]) // the visible ids in visual order, as of the last time they were read outside edit mode
+    this._orderKnown = false // false until the first order with a tile in it, which fires no event
+    this._reportedOrder = this._readingOrder // the order the event last told of, which readingOrder runs ahead of in edit mode
+    this._quietOrder = false // true while the host's first layout is applied, which is not a rearrangement
+    this._edited = false // true once a ts-layout-change has fired: the layout is no longer the host's alone
     this._status = root.querySelector('.sr')
     this._toast = root.querySelector('.toast')
     this._toastText = root.querySelector('.toast .msg')
     this._toastUndo = root.querySelector('.toast .undo')
-    this._toastUndo.textContent = TEXT.undo
     this._editBtn = root.querySelector('.edit-btn')
-    this._editBtn.textContent = TEXT.editLayout
     this._dock = root.querySelector('.dock')
     this._pill = root.querySelector('.pill')
-    this._pill.setAttribute('aria-label', TEXT.editingGroup)
-    this._pill.querySelector('.done').textContent = TEXT.done
     this._emptyPanel = root.querySelector('.empty')
-    this._emptyPanel.querySelector('.note').textContent = TEXT.emptyBoard
+    this._hint = root.querySelector('.hint')
+    this._messages = null
+    this._tText = null // the translate function the static texts were last written with
+    this._widgets = new Set() // the widgets inside it, at any depth of shadow roots, which it tells when its messages or locale change
+    this._offConfigure = null
+    this._persistOn = false // true from the first measure on connect to disconnect, when the persist attribute may attach
+    this._persistKey = null // the key persistLayout is attached with
+    this._persistHandle = null
+    this._persistBase = null // the layout a device with nothing saved falls back to
     // Each place Add back appears: its button, its list, and what counts as inside it.
     this._addBack = {
       pill: { add: this._pill.querySelector('.add'), menu: this._pill.querySelector('.menu'), wrap: this._pill },
@@ -335,7 +347,6 @@ export class TsGrid extends Base {
     this._history = createHistory()
     this._removing = new Set() // ids fading out, so a second click or Delete does nothing
     this._removedAt = -Infinity // when a remove last began, for the double-click guard
-    root.querySelector('.hint').textContent = TEXT.instructions
     this._inertWas = new Map() // tile → whether the host had set inert, restored exactly when editing ends
     this._deferred = false // a scheduled profile change waiting for Done
     this._said = [] // announcements waiting for the next frame
@@ -385,8 +396,23 @@ export class TsGrid extends Base {
     this._onDocKeyDown = this._onDocKeyDown.bind(this)
     this._onDocPointerDown = this._onDocPointerDown.bind(this)
     this._onMenuPointerDown = this._onMenuPointerDown.bind(this)
+    this._onResizeLost = this._onResizeLost.bind(this)
     this._frame = this._frame.bind(this)
+    this._syncText()
 
+    // The document sees a press inside a closed shadow root with a path that
+    // stops at the closed host, so the grid notes the presses that reached it
+    // (and the menu list) and the document-level handlers defer to that. In
+    // the capture phase, so a widget that stops its own pointerdown is still seen.
+    this._pressesIn = new WeakSet()
+    this._pressesInMenu = new WeakSet()
+    this._outsideTimer = 0
+    this._menuOutsideTimer = 0
+    this.addEventListener('pointerdown', (e) => {
+      this._pressesIn.add(e)
+      const owner = this._menuOwner
+      if (owner && e.composedPath().includes(this._addBack[owner].wrap)) this._pressesInMenu.add(e)
+    }, true)
     this.addEventListener('pointerdown', this._onPointerDown)
     this.addEventListener('keydown', this._onKeyDown)
     // Firefox clicks a button on Space's keyup unless that is cancelled too, and a click would pick the tile up again.
@@ -466,11 +492,17 @@ export class TsGrid extends Base {
 
   /** A Layout or an item array. Setting it ends implicit mode for good. */
   set layout(value) {
+    // The first layout a host gives, before any edit, replaces the one the children made; that is setting up, not rearranging.
+    this._quietOrder = !this._explicit && !this._edited
     this._explicit = true
     // The host's layout is the new truth; an old snapshot would undo into a stranger.
     this._history.clear()
     this._hideToast(false)
-    this._apply(value)
+    try {
+      this._apply(value)
+    } finally {
+      this._quietOrder = false
+    }
   }
 
   get catalog() {
@@ -480,6 +512,76 @@ export class TsGrid extends Base {
   set catalog(value) {
     this._setCatalog(value || WIDGETS)
     this._apply(this._layout)
+  }
+
+  /** Overrides for the grid's own strings and for every tile inside it; null clears. */
+  get messages() {
+    return this._messages
+  }
+
+  set messages(value) {
+    this._messages = value && typeof value === 'object' ? value : null
+    this._refreshText()
+    this._invalidateWidgets()
+  }
+
+  /**
+   * The grid's translate function: its messages, then configure(), then EN,
+   * with plural forms from its `locale` attribute. It is the one its tiles
+   * share when they have no messages of their own, so assign a new object to
+   * change a table.
+   */
+  get t() {
+    const config = currentConfig()
+    return translator(config.messages, this._messages, null, this.getAttribute('locale') || config.locale)
+  }
+
+  /** A widget in this grid says so, so it hears of changes even through a host component's shadow root. */
+  _link(widget) {
+    this._widgets.add(widget)
+  }
+
+  _unlink(widget) {
+    this._widgets.delete(widget)
+  }
+
+  _invalidateWidgets() {
+    // A copy: drawing again can link or unlink.
+    for (const widget of [...this._widgets]) widget.invalidate()
+  }
+
+  /** The strings the grid wrote itself, written again from the current messages, and the controls built from them. */
+  _refreshText() {
+    // Before the first measure the controls are built by connectedCallback.
+    if (this.isConnected && this._m) this._syncControls()
+    else this._syncText()
+  }
+
+  /** Write the texts that sit in the static markup, and redo the ones built from messages, when the translate function changed. */
+  _syncText() {
+    const t = this.t
+    if (t === this._tText) return
+    this._tText = t
+    this._toastUndo.textContent = t('grid.undo')
+    this._editBtn.textContent = t('grid.editLayout')
+    this._pill.setAttribute('aria-label', t('grid.editingGroup'))
+    this._pill.querySelector('.done').textContent = t('grid.done')
+    this._emptyPanel.querySelector('.note').textContent = t('grid.emptyBoard')
+    this._hint.textContent = t('grid.instructions')
+    this._nameBoard()
+    // The Add back list and each tile's chrome names were built from the old table.
+    this._menuSig = ''
+    for (const id of this._chromes.keys()) this._chrome(id)
+  }
+
+  /**
+   * The one place the dashboard region is named: the host's aria-label, else
+   * the message. It is written to the board and never to the host, so a host's
+   * own label is never overwritten and a rename or a locale change just wins.
+   */
+  _nameBoard() {
+    const name = this.getAttribute('aria-label') || this.t('grid.dashboard')
+    if (this._board.getAttribute('aria-label') !== name) this._board.setAttribute('aria-label', name)
   }
 
   _setCatalog(catalog) {
@@ -535,6 +637,16 @@ export class TsGrid extends Base {
     return this._columns
   }
 
+  /** A key that saves this grid's layout to localStorage per device; null, or no attribute, turns saving off. Reflects the `persist` attribute. */
+  get persist() {
+    return this.getAttribute('persist')
+  }
+
+  set persist(value) {
+    if (value == null) this.removeAttribute('persist')
+    else this.setAttribute('persist', String(value))
+  }
+
   /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
   get hiddenItems() {
     const shown = new Set(this._profileItems().map((item) => item.id))
@@ -546,7 +658,7 @@ export class TsGrid extends Base {
       if (!id || shown.has(id) || seen.has(id)) continue
       seen.add(id)
       const type = this._typeFor(el.localName).type
-      list.push({ id, type, label: this._labelFor(el, this._resolve({ id, type })) })
+      list.push({ id, type, label: this._labelFor(el, this._resolve({ id, type }), id, type) })
     }
     return list
   }
@@ -649,6 +761,24 @@ export class TsGrid extends Base {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   connectedCallback() {
+    // Each time it connects, the first order it settles on is its first.
+    this._orderKnown = false
+    // The chrome reads --ts-* tokens with no fallbacks, like the widgets, so a grid of custom tiles still finds them.
+    ensureTokens()
+    // A messages property set before the element was defined would shadow the accessor.
+    if (Object.prototype.hasOwnProperty.call(this, 'messages')) {
+      const value = this.messages
+      delete this.messages
+      this.messages = value
+    }
+    // Likewise a persist property set before upgrade: it becomes the attribute.
+    if (Object.prototype.hasOwnProperty.call(this, 'persist')) {
+      const value = this.persist
+      delete this.persist
+      this.persist = value
+    }
+    // configure() may change the messages or the locale while the grid is on the page; the widgets hear of it themselves.
+    this._offConfigure = onConfigure(() => this._refreshText())
     // Measuring renders, and rendering changes the grid's own height, which the
     // observer reports again within the same frame. WebKit raises that as an
     // uncaught "ResizeObserver loop" error, so the work waits for the next frame.
@@ -665,6 +795,9 @@ export class TsGrid extends Base {
     this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
     if (!this._explicit) this._reconcile()
     this._measure(true)
+    // After the first measure, so the device is known and the layout on show is the defaults.
+    this._persistOn = true
+    this._syncPersist()
     this._syncControls()
     if (this._editing) this._startEditing()
     document.addEventListener('visibilitychange', this._onVisibility)
@@ -672,6 +805,10 @@ export class TsGrid extends Base {
   }
 
   disconnectedCallback() {
+    this._persistOn = false
+    this._syncPersist()
+    if (this._offConfigure) this._offConfigure()
+    this._offConfigure = null
     this._resizeObserver.disconnect()
     cancelAnimationFrame(this._measureFrame)
     this._mutationObserver.disconnect()
@@ -699,7 +836,9 @@ export class TsGrid extends Base {
   }
 
   attributeChangedCallback(name, old, value) {
-    if (name === 'locked') {
+    if (name === 'aria-label') {
+      this._nameBoard()
+    } else if (name === 'locked') {
       if (this.locked) {
         this.editing = false
         this._cancelGesture()
@@ -713,7 +852,7 @@ export class TsGrid extends Base {
       if (on === this._editing) return
       if (on && this.locked) {
         // Revert rather than ignore, so the attribute never lies about the state.
-        if (DEV) warnOnce('grid-locked-editing', TEXT.lockedWarning)
+        if (DEV) warnOnce('grid-locked-editing', LOCKED_WARNING)
         this.removeAttribute('editing')
         return
       }
@@ -724,8 +863,40 @@ export class TsGrid extends Base {
     } else if (name === 'profile') {
       this._cancelGesture()
       this._sync(false)
-      if (this._rendered && old !== value) this._announce(TEXT.profile(this.profile))
+      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: this.profile }))
+    } else if (['locale', 'currency', 'time-zone', 'hour-cycle'].includes(name)) {
+      this._refreshText()
+      this._invalidateWidgets()
+    } else if (name === 'persist') {
+      // Upgrade reports the attribute before connectedCallback has measured; it attaches then.
+      if (this._persistOn) this._syncPersist()
     }
+  }
+
+  /** Make persistLayout match the `persist` attribute: attach, re-key or dispose (RFC 0003 §4.1). */
+  _syncPersist() {
+    const attr = this._persistOn ? this.getAttribute('persist') : null
+    if (DEV && attr === '') warnOnce('grid-persist-empty', EMPTY_PERSIST_WARNING)
+    const key = attr || null
+    if (key === this._persistKey) return
+    if (this._persistHandle) this._persistHandle.dispose()
+    this._persistHandle = null
+    this._persistKey = key
+    if (!key) return
+    // The first defaults are kept across reconnects and re-keys: by then the layout on show may be a saved or edited one.
+    if (!this._persistBase) this._persistBase = this._layout
+    this._persistHandle = persistLayout(this, { key, defaults: () => this._defaultsToPersist() })
+  }
+
+  /**
+   * What a device with nothing saved shows. While the grid is implicit that is
+   * its layout as it stands, so children that arrive late are part of it and
+   * nothing is assigned (which would end implicit mode and hide them). Once a
+   * layout has been set, the last implicit one, or the host's, is kept.
+   */
+  _defaultsToPersist() {
+    if (!this._explicit) this._persistBase = this._layout
+    return this._persistBase
   }
 
   // ── Profiles on a schedule ─────────────────────────────────────────────
@@ -765,7 +936,7 @@ export class TsGrid extends Base {
     this._cancelGesture()
     this._sync(false)
     // Not on load, when nothing has changed from the user's point of view.
-    if (!quiet) this._announce(TEXT.profile(profile))
+    if (!quiet) this._announce(this.t('grid.profile', { profile }))
     this._emit('ts-profile-change', { profile, reason })
   }
 
@@ -952,6 +1123,10 @@ export class TsGrid extends Base {
     animate = animate && this._motion()
     const { placements, rows } = place(this._order, this._columns, this._resolve)
     this._placements = new Map(placements.map((p) => [p.id, p]))
+    // Slots move before the boxes are written, with a style flush between. WebKit drops a tile's slide when its slot
+    // moves, but only if the move comes after the new box: moved first, the tile has a computed "before" style again
+    // by the time its box changes, so it slides there like the rest.
+    if (animate && this._manual && this._slotTiles(visualOrder(placements), this._editing && this._orderKnown)) void this._board.offsetWidth
     for (const p of placements) {
       const box = boxOf(p, m)
       const el = this._tiles.get(p.id)
@@ -970,9 +1145,122 @@ export class TsGrid extends Base {
       if (this._editing) this._makeInert(el)
     }
     this._orderChromes(placements)
+    this._assignSlots(placements)
     this._board.style.transition = animate ? '' : 'none'
     // An empty board keeps one row, so its message and Add back have somewhere to sit.
     this._board.style.height = `${boardHeight(rows || 1, m)}px`
+  }
+
+  /**
+   * Reading and Tab order follow the layout without a host node ever moving
+   * (RFC 0003 §11): one slot per visible tile, in visual order, each assigned
+   * its tile. Hidden tiles are assigned to none, and what isn't a tile
+   * (text, scripts, `slot="empty"` content) goes to the slots that showed it
+   * before, since named slotting doesn't apply in manual mode.
+   *
+   * While editing, tiles are inert and the chromes carry Tab, so the slots
+   * keep their order and the new one is taken when editing ends. That also
+   * leaves a lifted tile alone while it is dragged.
+   */
+  _assignSlots(placements) {
+    const order = visualOrder(placements)
+    const frozen = this._editing && this._orderKnown
+    if (this._manual) this._slotTiles(order, frozen)
+    if (!frozen) {
+      this._setReadingOrder(order, this._quietOrder)
+      return
+    }
+    // A tile that went is dropped from the list at once, and one that came follows the others, as its slot does.
+    const here = new Set(order)
+    const held = this._readingOrder.filter((id) => here.has(id))
+    const kept = new Set(held)
+    const next = held.concat(order.filter((id) => !kept.has(id)))
+    if (!sameIds(next, this._readingOrder)) this._readingOrder = Object.freeze(next)
+  }
+
+  _slotTiles(order, frozen) {
+    const board = this._board
+    const visible = new Set(order)
+    for (const [id, slot] of this._tileSlots) {
+      if (visible.has(id)) continue
+      // Removing a slot alone can leave its tile claimed by it, so the tile is let go first.
+      slot.assign()
+      slot.remove()
+      this._slotted.delete(slot)
+      this._tileSlots.delete(id)
+    }
+    const slots = order.map((id) => {
+      let slot = this._tileSlots.get(id)
+      if (!slot) {
+        slot = document.createElement('slot')
+        this._tileSlots.set(id, slot)
+        board.insertBefore(slot, this._chromeLayer)
+      }
+      const el = this._tiles.get(id)
+      if (this._slotted.get(slot) !== el) {
+        slot.assign(el)
+        this._slotted.set(slot, el)
+      }
+      return slot
+    })
+    let moved = false
+    if (!frozen) {
+      // Moving a slot reattaches its tile, and some engines (WebKit, Firefox) drop that tile's slide when it is
+      // reattached, so only the slots outside the longest run already in order move: one for "last goes first".
+      const current = [...board.children].filter((child) => this._slotted.has(child))
+      const keep = keepInPlace(current, slots)
+      const active = this._deepActive()
+      let next = this._chromeLayer
+      for (let i = slots.length - 1; i >= 0; i--) {
+        if (!keep.has(slots[i])) {
+          if (typeof board.moveBefore === 'function') board.moveBefore(slots[i], next)
+          else board.insertBefore(slots[i], next)
+          moved = true
+        }
+        next = slots[i]
+      }
+      // Without moveBefore, a tile whose slot moved may lose focus.
+      if (moved && active && active.isConnected && this._deepActive() !== active) active.focus({ preventScroll: true })
+    }
+    const rest = []
+    const empty = []
+    for (const node of this.childNodes) {
+      if (node.nodeType === 3) rest.push(node)
+      else if (node.nodeType !== 1 || isTile(node)) continue
+      else (node.getAttribute('slot') === 'empty' ? empty : rest).push(node)
+    }
+    if (!sameNodes(rest, this._restNodes)) this._restSlot.assign(...rest)
+    if (!sameNodes(empty, this._emptyNodes)) this._emptySlot.assign(...empty)
+    this._restNodes = rest
+    this._emptyNodes = empty
+    return moved
+  }
+
+  /** The element that really has focus, followed through shadow roots, when it is inside this grid. */
+  _deepActive() {
+    let active = document.activeElement
+    if (!active || active === this || !this.contains(active)) return null
+    while (active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement
+    return active
+  }
+
+  /**
+   * `quiet` takes the order without telling anyone, for the host's first layout. The first order is the first that
+   * has a tile in it: a grid that connects empty and is then given children, or a layout, has not been rearranged.
+   */
+  _setReadingOrder(order, quiet) {
+    // Against the last order that was reported, not the list, which drops a tile removed in edit mode at once and says nothing until Done.
+    const changed = !sameIds(order, this._reportedOrder)
+    const first = !this._orderKnown
+    if (!sameIds(order, this._readingOrder)) this._readingOrder = Object.freeze(order)
+    this._reportedOrder = this._readingOrder
+    if (order.length) this._orderKnown = true
+    if (changed && !first && !quiet) this._emit('ts-reading-order-change', { order: [...order] })
+  }
+
+  /** The visible tiles' ids in visual order, row by row and left to right by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
+  get readingOrder() {
+    return this._readingOrder
   }
 
   _chrome(id) {
@@ -991,11 +1279,13 @@ export class TsGrid extends Base {
     }
     const label = this._label(id)
     const item = this._item(id)
+    // The size is read as its token ("M") for now, which keeps what a screen reader says the same as before messages; size.name gives a full name when the picker needs one.
     const size = item ? item.size : ''
+    const t = this.t
     const handle = chrome.querySelector('.handle')
-    setAttr(handle, 'aria-label', TEXT.handle(label, size, this._position(id), this._order.length))
-    setAttr(chrome.querySelector('.remove'), 'aria-label', TEXT.removeLabel(label))
-    setAttr(chrome.querySelector('.resize'), 'aria-label', TEXT.resizeLabel(label, size))
+    setAttr(handle, 'aria-label', t('grid.handle', { label, size, position: this._position(id), total: this._order.length }))
+    setAttr(chrome.querySelector('.remove'), 'aria-label', t('grid.remove', { label }))
+    setAttr(chrome.querySelector('.resize'), 'aria-label', t('grid.resize', { label, size }))
     handle.tabIndex = this._editing ? 0 : -1
     if (this._editing) chrome.removeAttribute('aria-hidden')
     else chrome.setAttribute('aria-hidden', 'true')
@@ -1011,7 +1301,7 @@ export class TsGrid extends Base {
    */
   _orderChromes(placements) {
     const layer = this._chromeLayer
-    const want = [...placements].sort((a, b) => a.row - b.row || a.col - b.col).map((p) => this._chromes.get(p.id))
+    const want = visualOrder(placements).map((id) => this._chromes.get(id))
     const active = this.shadowRoot.activeElement
     const moved = []
     for (let i = 0; i < want.length; i++) {
@@ -1055,11 +1345,25 @@ export class TsGrid extends Base {
   }
 
   _label(id) {
-    return this._labelFor(this._tiles.get(id), this._spec(id), id)
+    const item = this._item(id)
+    return this._labelFor(this._tiles.get(id), this._spec(id), id, item ? typeOf(item) : id)
   }
 
-  _labelFor(el, spec, id = el && el.getAttribute('item')) {
-    return (el && (el.getAttribute('label') || el.getAttribute('aria-label'))) || (spec && spec.label) || id
+  _labelFor(el, spec, id = el && el.getAttribute('item'), type = id) {
+    return (el && (el.getAttribute('label') || el.getAttribute('aria-label'))) || this._catalogLabel(spec, type) || id
+  }
+
+  /**
+   * The catalog's label for a type: the host's own spec label as given, else
+   * t('widget.<type>.label'). A spec that carries only the English default
+   * (the built-in catalog does) gives way to the message, so a translation is seen.
+   */
+  _catalogLabel(spec, type) {
+    const given = spec && spec.label
+    const key = `widget.${type}.label`
+    if (given && given !== EN[key]) return given
+    const text = this.t(key)
+    return text !== key ? text : given || ''
   }
 
   _motion() {
@@ -1083,13 +1387,15 @@ export class TsGrid extends Base {
     document.addEventListener('keydown', this._onDocKeyDown)
     document.addEventListener('pointerdown', this._onDocPointerDown, true)
     this._syncControls()
-    this._announce(TEXT.editStart(this._order.length))
+    this._announce(this.t('grid.editStart', {}, this._order.length))
   }
 
   _stopEditing() {
     if (this._gesture) this._cancelGesture()
     // Tiles can take focus again before it is returned, or the origin tile would refuse it.
     this._restoreInert()
+    // The order the user made is the one read from here on.
+    if (this.isConnected && this._m) this._assignSlots([...this._placements.values()])
     // Before any chrome turns aria-hidden or the pill goes, or focus would be lost with them.
     this._returnFocus()
     this._closeMenu(false)
@@ -1100,15 +1406,24 @@ export class TsGrid extends Base {
     }
     document.removeEventListener('keydown', this._onDocKeyDown)
     document.removeEventListener('pointerdown', this._onDocPointerDown, true)
+    clearTimeout(this._outsideTimer)
     this._editOrigin = null
     this._syncControls()
-    if (this.isConnected) this._announce(TEXT.editDone)
+    if (this.isConnected) this._announce(this.t('grid.editDone'))
     this._applyDeferred()
   }
 
   /** A press outside the grid ends editing; one in the pill or its list is inside, because the path names the grid. */
   _onDocPointerDown(e) {
-    if (this._editing && isOutside(e.composedPath(), this)) this.editing = false
+    const path = e.composedPath()
+    if (!this._editing || !isOutside(path, this)) return
+    // The path may only look outside because it stops at a closed shadow
+    // root's host. The document hears the press before the grid does, so the
+    // grid is asked once the press has finished travelling.
+    clearTimeout(this._outsideTimer)
+    this._outsideTimer = setTimeout(() => {
+      if (this._editing && isOutside(path, this, [], this._pressesIn.has(e))) this.editing = false
+    }, 0)
   }
 
   /** Put focus back where editing began, but only if it is inside the grid and about to be lost. */
@@ -1132,12 +1447,12 @@ export class TsGrid extends Base {
     this._focus(pickFocusTarget([candidate]) || this)
   }
 
-  /** The grid itself is the last resort, so it gets a tab index and a name when the host gave none. */
+  /** The grid is the last resort, and focus goes to its board: the named region, so a screen reader says where focus landed. */
   _focus(target) {
     if (target === this) {
-      if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '-1')
-      if (!this.hasAttribute('aria-label') && !this.hasAttribute('aria-labelledby')) this.setAttribute('aria-label', TEXT.dashboard)
-      if (!this.hasAttribute('role')) this.setAttribute('role', 'group')
+      if (!this._board.hasAttribute('tabindex')) this._board.setAttribute('tabindex', '-1')
+      this._board.focus()
+      return
     }
     target.focus()
   }
@@ -1149,6 +1464,8 @@ export class TsGrid extends Base {
   // ── Edit controls: the Edit layout button, the pill, Add back, the empty board ──
 
   _syncControls() {
+    this._syncText()
+    const t = this.t
     const on = this._controlsOn()
     const editing = this._editing
     const pillOn = on && editing
@@ -1163,7 +1480,7 @@ export class TsGrid extends Base {
     for (const [owner, show] of [['pill', pillOn && hidden.length > 0], ['empty', empty && on && hidden.length > 0]]) {
       const c = this._addBack[owner]
       c.add.hidden = !show
-      if (show) c.add.querySelector('.t').textContent = TEXT.addBack(hidden.length)
+      if (show) c.add.querySelector('.t').textContent = t('grid.addBack', { count: hidden.length })
       if (!show && this._menuOwner === owner) this._closeMenu(false)
     }
     // Rebuilt only when the list changed, so an open list isn't torn down under the pointer.
@@ -1174,14 +1491,14 @@ export class TsGrid extends Base {
         menu.textContent = ''
         const heading = document.createElement('span')
         heading.className = 'menu-h'
-        heading.textContent = TEXT.hiddenHeading
+        heading.textContent = t('grid.hiddenHeading')
         menu.appendChild(heading)
         for (const h of hidden) {
           const item = document.createElement('button')
           item.type = 'button'
           item.className = 'mi'
           item.dataset.id = h.id
-          item.setAttribute('aria-label', TEXT.addBackItem(h.label))
+          item.setAttribute('aria-label', t('grid.addBackItem', { label: h.label }))
           const name = document.createElement('span')
           name.textContent = h.label
           const plus = document.createElement('span')
@@ -1213,6 +1530,7 @@ export class TsGrid extends Base {
     if (!owner) return
     const c = this._addBack[owner]
     this._menuOwner = null
+    clearTimeout(this._menuOutsideTimer)
     document.removeEventListener('pointerdown', this._onMenuPointerDown, true)
     c.menu.hidden = true
     c.add.setAttribute('aria-expanded', 'false')
@@ -1220,14 +1538,23 @@ export class TsGrid extends Base {
   }
 
   _onMenuPointerDown(e) {
-    if (this._menuOwner && isOutside(e.composedPath(), this._addBack[this._menuOwner].wrap)) this._closeMenu(false)
+    const owner = this._menuOwner
+    const wrap = owner && this._addBack[owner].wrap
+    const path = e.composedPath()
+    if (!owner || !isOutside(path, wrap)) return
+    // Deferred for the same reason as the edit-mode exit: a press on the list
+    // in a closed shadow root must not close it before the item's click.
+    clearTimeout(this._menuOutsideTimer)
+    this._menuOutsideTimer = setTimeout(() => {
+      if (this._menuOwner === owner && isOutside(path, wrap, [], this._pressesInMenu.has(e))) this._closeMenu(false)
+    }, 0)
   }
 
   _restoreFromMenu(id) {
     const hidden = this.hiddenItems.find((h) => h.id === id)
     this._closeMenu(false)
     if (!hidden || !this.restore(id)) return
-    this._announce(TEXT.addedBack(hidden.label))
+    this._announce(this.t('grid.addedBack', { label: hidden.label }))
     const el = this._tiles.get(id)
     const chrome = this._chromes.get(id)
     // Edit mode: the tile's handle. Otherwise its tile if it can take focus, else the grid.
@@ -1331,6 +1658,7 @@ export class TsGrid extends Base {
     clearTimeout(g.settle)
     cancelAnimationFrame(g.raf)
     this._unsqueeze(g)
+    if (g.captured) g.captured.removeEventListener('lostpointercapture', this._onResizeLost)
     window.removeEventListener('pointermove', this._onPointerMove)
     window.removeEventListener('pointerup', this._onPointerUp)
     window.removeEventListener('pointercancel', this._onPointerCancel)
@@ -1486,15 +1814,16 @@ export class TsGrid extends Base {
     this._settle(g)
     const moved = !sameOrder(g.from, this._order)
     if (moved) this._commit('move', g.id)
+    const t = this.t
     const label = this._label(g.id)
-    const at = [this._position(g.id), this._order.length]
+    const at = { label, position: this._position(g.id), total: this._order.length }
     if (g.pointerType !== 'keyboard') {
-      if (moved) this._announce(TEXT.moved(label, ...at))
+      if (moved) this._announce(t('grid.moved', at))
     } else if (placed && moved) {
-      this._announce(TEXT.droppedAt(label, ...at))
+      this._announce(t('grid.droppedAt', at))
     } else {
       // Each arrow press already said where the tile went.
-      this._announce(TEXT.dropped(label))
+      this._announce(t('grid.dropped', { label }))
     }
   }
 
@@ -1536,7 +1865,7 @@ export class TsGrid extends Base {
       this._order = g.from
       this._render(true, g.id)
       this._settle(g)
-      if (g.pointerType === 'keyboard') this._announce(TEXT.cancelled(this._label(g.id)))
+      if (g.pointerType === 'keyboard') this._announce(this.t('grid.cancelled', { label: this._label(g.id) }))
     } else {
       this._end()
     }
@@ -1567,6 +1896,23 @@ export class TsGrid extends Base {
     this._tiles.get(g.id).style.zIndex = '5'
     this._chromes.get(g.id).style.zIndex = '6'
     this._suppressClick = true
+    // Capture keeps the gesture's pointer events coming even when the finger
+    // or mouse leaves the window, and tells us when the browser takes it away.
+    // Without it a lost pointerup left the tile lifted and its handle hidden.
+    const handle = this._chromes.get(g.id).querySelector('.resize')
+    try {
+      handle.setPointerCapture(g.pointerId)
+      g.captured = handle
+      handle.addEventListener('lostpointercapture', this._onResizeLost)
+    } catch {
+      // The pointer may already be gone; pointerup and pointercancel still end the gesture.
+    }
+  }
+
+  /** Capture was taken away (an OS gesture, a removed handle) with no pointerup: put the tile back as it was. */
+  _onResizeLost(e) {
+    const g = this._gesture
+    if (g && g.kind === 'resize' && e.pointerId === g.pointerId) this._cancelGesture()
   }
 
   _resizeMove(g) {
@@ -1619,7 +1965,7 @@ export class TsGrid extends Base {
     const size = this._item(g.id).size
     if (size !== g.size0) {
       this._commit('resize', g.id)
-      this._announce(TEXT.resized(this._label(g.id), size))
+      this._announce(this.t('grid.resized', { label: this._label(g.id), size }))
     }
   }
 
@@ -1661,7 +2007,7 @@ export class TsGrid extends Base {
       if (hadFocus) this._focusAfterRemove(near)
       // The toast is a live region, so it speaks for itself; the grid's own
       // status region would say the same thing twice.
-      if (!this._showToast(TEXT.removed(label))) this._announce(TEXT.removed(label) + '.')
+      if (!this._showToast(this.t('grid.removed', { label }))) this._announce(this.t('grid.removedSaid', { label }))
     }
     if (!this._motion()) return finish()
     this._unwiggle(id)
@@ -1756,7 +2102,7 @@ export class TsGrid extends Base {
       const origin = e.composedPath()[0]
       if (origin && (origin.isContentEditable || /^(input|textarea|select)$/i.test(origin.localName || ''))) return
       if (!this._gesture && this.undo()) {
-        this._announce(TEXT.undone)
+        this._announce(this.t('grid.undone'))
         e.preventDefault()
       }
       return
@@ -1814,7 +2160,7 @@ export class TsGrid extends Base {
       if (g || !this._placements.has(id)) return
       this._gesture = { kind: 'pending', pointerType: 'keyboard', id, x: 0, y: 0 }
       this._lift(this._gesture)
-      if (this._gesture) this._announce(TEXT.pickedUp(this._label(id)))
+      if (this._gesture) this._announce(this.t('grid.pickedUp', { label: this._label(id) }))
     } else if (a.type === 'moveBy') {
       if (g && this._heldId() === id) this._keyMove(g, a.dCol, a.dRow)
     } else if (a.type === 'placeAt') {
@@ -1866,7 +2212,7 @@ export class TsGrid extends Base {
     this._order = resizeItem(this._order, id, size, this._resolve)
     this._render(true)
     this._commit('resize', id)
-    this._announce(TEXT.resized(this._label(id), size))
+    this._announce(this.t('grid.resized', { label: this._label(id), size }))
     this._reveal(id)
   }
 
@@ -1896,12 +2242,12 @@ export class TsGrid extends Base {
         this._order = moveItem(this._order, g.id, target)
         this._render(true)
         this._showPlaceholder(this._boxes.get(g.id), true)
-        this._announce(TEXT.moved(this._label(g.id), this._position(g.id), this._order.length))
+        this._announce(this.t('grid.moved', { label: this._label(g.id), position: this._position(g.id), total: this._order.length }))
         this._reveal(g.id)
         return
       }
     }
-    this._announce(TEXT.blocked)
+    this._announce(this.t('grid.blocked'))
   }
 
   // ── Output ─────────────────────────────────────────────────────────────
@@ -1942,6 +2288,13 @@ export class TsGrid extends Base {
   }
 
   _emit(name, detail) {
+    if (name === 'ts-layout-change') this._edited = true
+    // DEV: the first edit on a grid nothing saves says so, once (RFC 0003 §4.3).
+    // persistLayout sets `_persisted`, and a locked grid never commits.
+    if (DEV && name === 'ts-layout-change' && !this._persisted && !this._unsavedWarned && !this.locked) {
+      this._unsavedWarned = true
+      warnOnce(`grid-unsaved:${++unsavedSerial}`, UNSAVED_WARNING)
+    }
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }))
   }
 }
@@ -1976,7 +2329,7 @@ function liftStyle(el, chrome, on, animate = true) {
     chrome.style.zIndex = '6'
     el.style.scale = String(LIFT_SCALE)
     chrome.style.scale = String(LIFT_SCALE)
-    el.style.boxShadow = 'var(--ts-shadow-lift, 0 24px 48px -16px rgba(0, 0, 0, .4))'
+    el.style.boxShadow = 'var(--ts-shadow-lift)'
     el.style.borderRadius = 'var(--ts-radius, 10px)'
     chrome.classList.add('lifted')
   } else {
@@ -1989,6 +2342,14 @@ function liftStyle(el, chrome, on, animate = true) {
 
 function setAttr(el, name, value) {
   if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+}
+
+function sameIds(a, b) {
+  return a.length === b.length && a.every((id, i) => id === b[i])
+}
+
+function sameNodes(a, b) {
+  return a.length === b.length && a.every((node, i) => node === b[i])
 }
 
 function sameOrder(a, b) {

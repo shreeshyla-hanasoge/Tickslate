@@ -7,6 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
 <link rel="stylesheet" href="./src/themes/tokens.css">
+<!-- The presets are opt-in files, selected below by data-ts-theme. They come
+     after tokens.css so a preset beats an equal-specificity default. -->
+<link rel="stylesheet" href="./src/themes/presets/neutral.css">
+<link rel="stylesheet" href="./src/themes/presets/paper.css">
+<link rel="stylesheet" href="./src/themes/presets/graphite.css">
+<link rel="stylesheet" href="./src/themes/presets/calm.css">
+<link rel="stylesheet" href="./src/themes/presets/signal.css">
+<link rel="stylesheet" href="./src/themes/presets/terminal.css">
 <style>
   /* Dark mode is opt-in (data-theme="auto" follows the OS), so the Paper
      block below stays light by default; the Graphite block opts in with its
@@ -54,12 +62,12 @@
 </style>
 </head>
 <body>
-<div class="page">
+<main class="page">
   <header>
     <h1>Widget gallery</h1>
     <nav class="links" aria-label="Other pages"><a href="index.html">Playground</a><a href="examples/index.html">Examples</a></nav>
   </header>
-  <p class="intro">Every widget in 0.1.0 (the generic card, metric and chart, and the finance ones), at each size it supports, in both themes, at the real sizes the grid gives it. Each widget ends with a states row: loading, empty and error with Retry.
+  <p class="intro">Every widget in 0.1.0 (the generic card, metric and chart, and the finance ones), at each size it supports, in both themes, at the real sizes the grid gives it. The Preset control puts one of the six theme presets on both blocks. Each widget ends with a states row: loading, empty and error with Retry.
     All figures are synthetic. Today's P&amp;L and the session clock run on the same clock as the controls below.</p>
 
   <div class="controls" role="group" aria-label="Gallery controls">
@@ -68,6 +76,9 @@
       <label><input type="radio" name="time" value="frozen" checked> Frozen at 11:42:20 IST on a weekday</label>
       <label><input type="radio" name="time" value="live"> Live</label>
     </fieldset>
+    <fieldset class="control" id="presets">
+      <legend>Preset</legend>
+    </fieldset>
     <fieldset class="control">
       <legend>Today's P&amp;L</legend>
       <label><input type="checkbox" id="loss"> Loss day</label>
@@ -75,7 +86,7 @@
   </div>
 
   <div id="themes"></div>
-</div>
+</main>
 
 <script type="module">
   import { configure, createCalendar, presets, localDate, zonedTime } from './src/core/index.js'
@@ -230,9 +241,21 @@
     { tag: 'ts-session-clock', title: 'Session clock', desktop: ['S', 'Banner'], phone: ['S', 'Banner'], emptySize: 'S' },
   ]
 
+  // Without a preset the two blocks show the default tokens, Paper and Graphite.
   const THEMES = [
     { id: 'light', name: 'Paper' },
     { id: 'dark', name: 'Graphite' },
+  ]
+  // The presets of src/themes/presets/. paper and graphite are one-mode: they
+  // ignore data-theme, so both blocks show the same look under them.
+  const PRESETS = [
+    { id: '', name: 'Default tokens' },
+    { id: 'neutral', name: 'Neutral' },
+    { id: 'paper', name: 'Paper', oneMode: true },
+    { id: 'graphite', name: 'Graphite', oneMode: true },
+    { id: 'calm', name: 'Calm' },
+    { id: 'signal', name: 'Signal' },
+    { id: 'terminal', name: 'Terminal' },
   ]
 
   let lossDay = false
@@ -299,6 +322,39 @@
   }
 
   // ── Controls ──
+
+  // The preset goes on each theme block, beside its data-theme, so the light
+  // and dark blocks stay a pair for every preset that has both modes.
+  const presetBox = document.getElementById('presets')
+  for (const preset of PRESETS) {
+    const label = document.createElement('label')
+    const radio = document.createElement('input')
+    radio.type = 'radio'
+    radio.name = 'preset'
+    radio.value = preset.id
+    label.append(radio, ` ${preset.name}`)
+    presetBox.append(label)
+    radio.addEventListener('change', () => {
+      setPreset(preset.id)
+      // Keep the address in step, so the page's link opens the same preset.
+      const url = new URL(location.href)
+      if (preset.id) url.searchParams.set('preset', preset.id)
+      else url.searchParams.delete('preset')
+      history.replaceState(null, '', url)
+    })
+  }
+  function setPreset(id) {
+    const preset = PRESETS.find((p) => p.id === id) || PRESETS[0]
+    for (const block of themesEl.children) {
+      const theme = THEMES.find((t) => t.id === block.dataset.theme)
+      if (preset.id) block.dataset.tsTheme = preset.id
+      else delete block.dataset.tsTheme
+      block.querySelector('h2').textContent = !preset.id ? theme.name : preset.oneMode ? `${preset.name} (ignores data-theme)` : `${preset.name} · ${theme.id}`
+    }
+    for (const radio of presetBox.querySelectorAll('input')) radio.checked = radio.value === preset.id
+  }
+  // ?preset=calm opens the gallery already switched, for a link or a screenshot.
+  setPreset(new URLSearchParams(location.search).get('preset') || '')
 
   const frozenClock = () => FROZEN
   function apply() {

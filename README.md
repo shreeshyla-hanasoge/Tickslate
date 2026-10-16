@@ -16,8 +16,8 @@ fetches anything.
   for any content, such as your own Chart.js or ECharts chart).
 - **A finance set.** Today's P&L, an equity curve and an exchange session
   clock, with more to come.
-- **Accessible by default.** Each widget is a labelled region, charts state
-  their result in words, gains and losses carry a sign as well as a colour, and
+- **Accessible by default.** Each widget is a labelled group with a heading, charts state
+  their result in words, gains and losses carry a sign and an arrow as well as a colour, and
   motion respects `prefers-reduced-motion`. See [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
 
 ## Install
@@ -39,6 +39,26 @@ can never change your page. This works once 0.1.0 is published to npm.
 
 To use a named export from a page script, import it from the same URL:
 `import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.1.0/elements.js'`.
+
+Pay only for the widgets you use: each one has its own entry, which registers
+just that tag.
+
+```js
+import 'tickslate/elements/grid'
+import 'tickslate/elements/metric' // also: card, chart, today-pnl, equity-curve, session-clock
+```
+
+Or, with no build step at all, one script tag loads the core and every element
+and sets `window.Tickslate`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/tickslate@0.1.0/cdn/tickslate.iife.js"></script>
+```
+
+Use that bundle or the package entries, not both: each carries its own copy of
+the core, so a page that loaded both would have two registries and two
+`configure()` states. The bundle and the core-only `umd/tickslate.umd.js` both
+set `window.Tickslate`, so load one of them.
 
 ### Fonts (optional)
 
@@ -161,6 +181,7 @@ All events bubble and are composed, so you can listen on the grid or higher up.
 | `ts-layout-change` | `<ts-grid>`, after an edit | `{ layout, items, previous, profile, reason, id, index?, item? }`; `reason` is `move`, `resize`, `remove`, `add` or `undo`. Save `layout` |
 | `ts-layout-issues` | `<ts-grid>`, when a layout you set was repaired | `{ issues }` |
 | `ts-edit-change` | `<ts-grid>` | `{ editing }` |
+| `ts-reading-order-change` | `<ts-grid>`, when the order tiles are read and tabbed in changes; not for the first order | `{ order }` |
 | `ts-columns-change` | `<ts-grid>`, also once after the first measure | `{ columns, device, initial }` |
 | `ts-profile-change` | `<ts-grid>`, when a schedule or override switches profile | `{ profile, reason }` |
 | `ts-action` | any widget | `{ action, ... }`, such as `retry` or an equity curve's `range` |
@@ -233,7 +254,7 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 npm install
 npm run dev        # playground at http://localhost:5173
 npm test           # node --test, no install needed
-npm run release    # test, build ESM + UMD, assemble dist-lib/
+npm run release    # test, build ESM, development tree, UMD and CDN bundle, assemble dist-lib/
 ```
 
 Publishing is done from the assembled folder: `npm publish ./dist-lib`.

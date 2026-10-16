@@ -203,6 +203,8 @@ export interface FormatOptions {
   currency?: string
   /** For times, e.g. 'Asia/Kolkata'. */
   timeZone?: string
+  /** 24-hour by default, 12-hour, or 'auto' to follow the locale. */
+  hourCycle?: 'h23' | 'h12' | 'auto'
 }
 
 /** Values may be numbers, decimal strings or decimal-library objects (Decimal.js, big.js); anything else formats as '—'. */
@@ -210,7 +212,7 @@ export type Numeric = number | string | { toNumber(): number }
 
 /** An option that failed validation and fell back to its default. */
 export interface FormatterIssue {
-  option: 'locale' | 'currency' | 'timeZone'
+  option: 'locale' | 'currency' | 'timeZone' | 'hourCycle'
   value: unknown
   message: string
 }
@@ -219,6 +221,7 @@ export interface Formatter {
   readonly locale: string | undefined
   readonly currency: string | undefined
   readonly timeZone: string | undefined
+  readonly hourCycle: 'h23' | 'h12' | 'auto'
   /** The options that failed validation and fell back to the defaults. */
   readonly issues: readonly FormatterIssue[]
   /** '+₹2,185.65', '−₹263.00', '₹0.00'. sign defaults to 'always'. */
@@ -229,8 +232,10 @@ export interface Formatter {
   price(v: Numeric, o?: { decimals?: number }): string
   /** Takes a fraction, not a percentage: 0.12 → '+12.00%' (sign 'always' by default), '12.00%' with sign 'negative'. */
   percent(v: Numeric, o?: { sign?: 'always' | 'negative'; decimals?: number }): string
-  /** 24-hour unless hour12: '11:42', '11:42:20'. */
+  /** Uses the configured hour cycle; a per-call hour12 choice wins. */
   time(t: number, o?: { seconds?: boolean; hour12?: boolean }): string
+  /** A date. Plain YYYY-MM-DD values never shift; instants use the formatter's time zone. */
+  date(t: Time, o?: { style?: 'day' | 'month' | 'monthYear' | 'medium' | 'weekday' }): string
   /** 'clock': '2:40', '1:02:05'. 'words': '3h 48m', '48m', '9s'. */
   duration(ms: number, o?: { style?: 'clock' | 'words' }): string
   /** '182 ms' for an ECMA-402 sanctioned unit (or an 'x-per-y' pair of them), '3 seats' for any other. */
@@ -240,11 +245,196 @@ export interface Formatter {
 }
 
 export declare function createFormatter(options?: FormatOptions): Formatter
-/** Sets defaults for formatters (and widgets) created without their own. */
-export declare function configure(options: FormatOptions): void
-export declare function currentConfig(): FormatOptions
+/** Sets defaults for formatters (and widgets) created without their own. `messages` is the table every widget and grid reads; null clears it. */
+export declare function configure(options: FormatOptions & { messages?: MessageOverrides | null }): void
+export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides }
+/** Calls `fn` with the new defaults after every configure(); returns a function that stops it. Registers nothing until called. */
+export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides }) => void): () => void
 /** A finite number from a number, a decimal string or a decimal-library object; else NaN. */
 export declare function toNumber(v: unknown): number
+
+// ── Messages ───────────────────────────────────────────────────────────
+
+/** One entry per key, each a string. A key with plural forms is listed by its forms, `time.days.one`, `time.days.other` and so on. */
+export interface Messages {
+  'widget.empty': string
+  'widget.error': string
+  'widget.error.region': string
+  'action.retry': string
+  'widget.todayPnl.label': string
+  'widget.equityCurve.label': string
+  'widget.pnlCalendar.label': string
+  'widget.edgeStats.label': string
+  'widget.capitalFunding.label': string
+  'widget.openPositions.label': string
+  'widget.watchlist.label': string
+  'widget.sessionClock.label': string
+  'widget.miniChart.label': string
+  'widget.card.label': string
+  'widget.metric.label': string
+  'widget.chart.label': string
+  'widget.todayPnl.empty': string
+  'widget.equityCurve.empty': string
+  'widget.sessionClock.empty': string
+  'widget.metric.empty': string
+  'widget.chart.empty': string
+  'size.S': string
+  'size.Wide': string
+  'size.Tall': string
+  'size.M': string
+  'size.L': string
+  'size.Banner': string
+  'size.XL': string
+  'size.name': string
+  'time.synced': string
+  'time.live': string
+  'time.days.one': string
+  'time.days.other': string
+  'grid.dashboard': string
+  'grid.editLayout': string
+  'grid.editingGroup': string
+  'grid.done': string
+  'grid.undo': string
+  'grid.emptyBoard': string
+  'grid.addBack': string
+  'grid.addBackItem': string
+  'grid.hiddenHeading': string
+  'grid.instructions': string
+  'grid.handle': string
+  'grid.remove': string
+  'grid.resize': string
+  'grid.removed': string
+  'grid.removedSaid': string
+  'grid.addedBack': string
+  'grid.editStart.one': string
+  'grid.editStart.other': string
+  'grid.editDone': string
+  'grid.pickedUp': string
+  'grid.moved': string
+  'grid.dropped': string
+  'grid.droppedAt': string
+  'grid.cancelled': string
+  'grid.blocked': string
+  'grid.resized': string
+  'grid.profile': string
+  'grid.undone': string
+  'pnl.today': string
+  'pnl.realised': string
+  'pnl.unrealised': string
+  'pnl.fees': string
+  'pnl.closed': string
+  'pnl.open': string
+  'pnl.feesNote': string
+  'pnl.netOfFees': string
+  'pnl.now': string
+  'pnl.at': string
+  'pnl.low': string
+  'pnl.high': string
+  'pnl.highNow': string
+  'pnl.noIntraday': string
+  'pnl.chartEmpty': string
+  'pnl.chartLabel': string
+  'pnl.entry': string
+  'pnl.exit': string
+  'pnl.markTitle': string
+  'equity.short': string
+  'equity.wide': string
+  'equity.net': string
+  'equity.peak': string
+  'equity.maxDrawdown': string
+  'equity.tradingDays': string
+  'equity.shaded': string
+  'equity.fees': string
+  'equity.trades': string
+  'equity.netOfFees': string
+  'equity.noDays': string
+  'equity.rangeLabel': string
+  'equity.range1W': string
+  'equity.range1M': string
+  'equity.range3M': string
+  'equity.rangeYTD': string
+  'equity.rangeAll': string
+  'equity.rangeExpand': string
+  'equity.range1W.long': string
+  'equity.range1M.long': string
+  'equity.range3M.long': string
+  'equity.rangeYTD.long': string
+  'equity.rangeAll.long': string
+  'equity.peakNote': string
+  'equity.over': string
+  'equity.dayCount.one': string
+  'equity.dayCount.other': string
+  'equity.tradingDayCount.one': string
+  'equity.tradingDayCount.other': string
+  'equity.tradeCount.one': string
+  'equity.tradeCount.other': string
+  'equity.chartEmpty': string
+  'equity.chartLabel': string
+  'equity.ariaEmpty': string
+  'equity.aria': string
+  'session.title': string
+  'session.open': string
+  'session.closed': string
+  'session.openShort': string
+  'session.closedShort': string
+  'session.noCalendar': string
+  'session.none': string
+  'session.unknown': string
+  'session.noneScheduled': string
+  'session.noneShort': string
+  'session.toClose': string
+  'session.left': string
+  'session.opens': string
+  'session.opensIn': string
+  'session.opensOn': string
+  'session.opensDay': string
+  'session.dayTime': string
+  'session.ariaOpen': string
+  'session.open247': string
+  'session.ariaOpen247': string
+  'session.ariaClosed': string
+  'session.ariaNone': string
+  'session.aria': string
+  'session.tfHours': string
+  'session.tfMinutes': string
+  'session.legend': string
+  'session.legendNext': string
+  'session.nextClose': string
+  'metric.target': string
+  'metric.up': string
+  'metric.down': string
+  'metric.unchanged': string
+  'metric.trend': string
+  'chart.series': string
+  'chart.last': string
+  'chart.noData': string
+}
+
+export type MessageKey = keyof Messages
+
+/** The forms Intl.PluralRules can name. */
+export type PluralForm = 'zero' | 'one' | 'two' | 'few' | 'many' | 'other'
+
+/** A key that has plural forms, such as 'time.days' for 'time.days.one' and 'time.days.other'. It is never looked up bare unless a count is given. */
+export type PluralBase = { [K in MessageKey]: K extends `${infer Base}.${PluralForm}` ? Base : never }[MessageKey]
+
+/**
+ * A table of overrides. Any key may be left out. A plural base may be given any
+ * of its forms (`time.days.few`), including forms English has no use for.
+ */
+export type MessageOverrides = Partial<Messages> & { [K in `${PluralBase}.${PluralForm}`]?: string }
+
+/**
+ * `{param}` interpolation and plural forms; a missing key falls back to EN, then to the key itself.
+ * A `count` (a number, or a numeric string) selects `key.<category>`, then `key.other`, then `key`; the category comes from the table's locale for text a host supplied, and from English for text that falls back to EN.
+ */
+export type Translate = (key: MessageKey | PluralBase, params?: Record<string, string | number | null | undefined> | null, count?: number | string) => string
+
+/** Every key and its English text. Frozen; keys are flat and dotted. */
+export declare const EN: Readonly<Messages>
+
+/** Builds a `t` from a table of overrides (missing keys fall back to EN) and the locale that picks plural forms for them. */
+export declare function createMessages(overrides?: MessageOverrides | null, locale?: string): Translate
 
 /** An instant: ms or seconds since the epoch, a Date, an ISO 8601 string or a numeric string. */
 export type Time = number | string | Date
@@ -260,19 +450,23 @@ export interface SessionSpec {
   label: string
   /** IANA zone, e.g. 'Asia/Kolkata'. */
   timeZone: string
-  /** ISO weekdays it trades, 1 = Monday. */
+  /** ISO weekdays on which it OPENS, 1 = Monday. An overnight window belongs to the weekday it opens on. */
   days: readonly number[]
   /** 'HH:MM' local. */
   open: string
-  /** 'HH:MM' local, after `open`, or date ranges with their own close. */
+  /**
+   * 'HH:MM' local, or date ranges with their own close. A close before `open` is
+   * on the next local day (17:00 to 16:00), and a close equal to it makes a
+   * 24-hour session ('00:00' to '00:00'). '24:00' is not accepted.
+   */
   close: string | { default: string; ranges: ReadonlyArray<{ from: string; to: string; close: string }> }
-  /** Extra sessions on given dates, e.g. a weekend session. They beat weekdays and holidays. */
+  /** Extra sessions keyed by the date they open on, e.g. a weekend session. They beat weekdays and holidays, and may cross midnight too. */
   specialSessions?: Record<string, { open: string; close: string }>
 }
 
 export interface CalendarInput {
   sessions: readonly SessionSpec[]
-  /** Session id → 'YYYY-MM-DD' dates; '*' applies to every session. */
+  /** Session id → 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
 }
 
@@ -280,11 +474,11 @@ export interface SessionState {
   open: boolean
   /** Next open, when closed; null if none within a month. */
   opensAt: number | null
-  /** When open. */
+  /** When open: the end of the run of touching windows. Null while open means no close within a month. */
   closesAt: number | null
-  /** When open. */
+  /** When open: the start of that run. Null when there is no close within a month, or it began more than a month ago. */
   startedAt: number | null
-  /** 0..1 through the session, when open. */
+  /** 0..1 through the run, when open. Null when `closesAt` or `startedAt` is. */
   progress: number | null
 }
 
@@ -292,17 +486,19 @@ export interface Calendar {
   readonly sessions: readonly string[]
   session(id: string): SessionSpec
   isTradingDay(id: string, date: string): boolean
-  /** The session's hours on a date as instants, or null if it doesn't trade. */
+  /** The window that opens on a date as instants (its close is on the next day for an overnight session), or null if it doesn't open. */
   hours(id: string, date: string): { open: number; close: number } | null
+  /** Windows that touch are one: a session open Sunday evening to Friday evening is open all week. */
   state(id: string, now: number): SessionState
+  /** The next open or close, or null when there is none within a month, which includes an open session with no close. */
   nextChange(id: string, now: number): { at: number; to: 'open' | 'closed' } | null
-  /** The next candle close, aligned to the session open; null while closed. */
+  /** The next candle close, aligned to the session open (to the day's window when the session has no known start); null while closed. */
   candleClose(id: string, now: number, timeframeMinutes: number): number | null
-  /** Every session window overlapping [from, to). */
+  /** Every session window overlapping [from, to), touching windows merged. A run still going a month past `to`, or a month before `from`, is cut there. */
   windows(id: string, from: number, to: number): Array<{ open: number; close: number }>
 }
 
-/** Throws TypeError on a malformed session or holiday list. */
+/** Throws TypeError on a malformed session or holiday list. The specs and holidays are copied (frozen) here and read once: changing the host's objects later has no effect. */
 export declare function createCalendar(input: CalendarInput): Calendar
 
 /** Ready-made sessions, checked against exchange circulars on 13 Oct 2026. */

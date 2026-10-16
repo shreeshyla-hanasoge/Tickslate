@@ -1,4 +1,4 @@
-import type { Formatter, SizeName, WidgetSpec } from '../core/index.js'
+import type { Formatter, MessageOverrides, SizeName, Translate, WidgetSpec } from '../core/index.js'
 
 /** 'loading' covers a re-fetch over existing data; 'error' shows the error view. */
 export type WidgetState = 'loading' | 'error' | null
@@ -22,6 +22,8 @@ export interface ViewModelContext {
   /** Whatever the element's viewContext() adds. */
   [extra: string]: unknown
   fmt: Formatter
+  /** This element's messages: its own, then its grid's, then configure()'s, then EN. */
+  t: Translate
   /** The time in ms: `clock()` if set, else `Date.now()`. */
   now: number
   /** The effective label: the `label` attribute, else the spec's label, else the tag. */
@@ -42,7 +44,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   static dataShape: DataShape | null
   /** Render the template while data is undefined (viewModel then gets `{}`); the skeleton shows only for state="loading". Default false. */
   static dataOptional: boolean
-  /** What the empty state says. Default 'No data'. */
+  /** What the empty state says. Default: the EN value of `widget.empty`; a built-in's is the EN value of its `widget.<key>.empty`, which a host's messages override. */
   static emptyText: string
   /** Loading markup for one variant, built once: `.sk` blocks shaped like the content. Default: a header, a headline bar and two text lines. */
   static skeleton(variant: SizeName): string
@@ -60,12 +62,14 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   actions: readonly string[]
   /** True when `actions` includes `name`. */
   actionEnabled(name: string): boolean
+  /** Attribute and property. Makes the label a real link. Only http, https, mailto, tel and relative URLs are accepted. */
+  href: string | null
+  /** Attribute and property. Fires ts-action { action: 'open', id }. */
+  activatable: boolean
   /** Attribute and property, snapped to the widget's supported sizes; defaults to the first supported size. */
   size: SizeName
   /** The size actually rendered. */
   readonly variant: SizeName
-  /** The `label` attribute, else the spec's label ('' when neither; the tile is then named by its tag). */
-  label: string
   /** Catalog entry, else the validated static spec, else `{ label: '', sizes: [] }`. Subclasses may override. */
   readonly spec: Omit<WidgetSpec, 'tag'>
   /** What the widget takes the time to be. Tests and demos can freeze it. */
@@ -73,6 +77,10 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   now(): number
   /** Resolved from own attributes, then the nearest <ts-grid>, then configure(); cached. */
   readonly formatter: Formatter
+  /** Overrides for this widget's strings; null clears. Assign a new object to change them. */
+  messages: MessageOverrides | null
+  /** Resolved for this element: element → nearest <ts-grid> → configure() → EN. Cached; rebuilt when a table or the locale changes. */
+  readonly t: Translate
 
   /** The first match in the shadow root, cached until the template is rebuilt. */
   $<T extends Element = HTMLElement>(selector: string): T | null
@@ -84,7 +92,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   /** Re-apply properties set before the element was defined. */
   upgrade(...names: string[]): void
 
-  /** Extra keys for the view model's ctx (an attribute, say). fmt, now and label can't be replaced. */
+  /** Extra keys for the view model's ctx (an attribute, say). fmt, t, now and label can't be replaced. */
   viewContext(): Record<string, unknown>
 
   /** Write the view model into the DOM template() built. Called on every render. */
@@ -103,8 +111,41 @@ export declare function escapeHtml(s: unknown): string
 export declare const SHARED_CSS: string
 /** One skeleton block: width in percent (snapped to 5) or 'x' for an axis label, height in px. */
 export declare function sk(width: number | 'x', height: number): string
-/** The base's English strings; `{label}` and `{message}` are filled in. */
-export declare const STRINGS: Readonly<{ noData: string; errorDefault: string; errorRegion: string; retry: string }>
+/** What header() takes (RFC 0003 §5.1). Internal for now: the built-in widgets use it, and custom widgets are not yet promised it. */
+export interface HeaderOptions {
+  /** The live dot, hidden until the widget unhides it. */
+  dot?: boolean
+  /** `true` for the standard "synced 11:42" meta, or markup for the widget's own right-hand content. */
+  meta?: boolean | string
+  /** A `<slot name="actions">` after the meta. */
+  actions?: boolean
+  /** Markup straight after the label. */
+  extra?: string
+  /** Markup inside the label, for a label that shows two forms; the widget then writes those nodes. */
+  inner?: string
+  /** An extra class on the label. */
+  labelClass?: string
+}
+/** The header row `[dot][label][spacer][meta]`, with `part="header"`, and the label as `part="label"` and `role="heading"`. */
+export declare function header(opts?: HeaderOptions): string
+/** ▲ for a text that starts with `+`, ▼ for one that starts with `−` (U+2212), else ''. */
+export declare function arrowFor(text: unknown): '▲' | '▼' | ''
+/** The words either side of the time in `time.synced`, for a tile that hides them when narrow. */
+export declare function syncedParts(t: Translate): { pre: string; post: string }
+/** Only http:, https:, mailto:, tel: and relative URLs are accepted (RFC 0003 §7). */
+export declare function validateHref(raw: unknown, el?: { _uid?: string; localName?: string; getAttribute?(name: string): string | null }): string | null
+
+/** RFC 0003 §7: Tile activation */
+export type TsOpenAction = { action: 'open'; id: string }
+
+/** RFC 0003 §7.1: Chart point selection */
+export type TsChartSelectAction = {
+  action: 'select'
+  value: number | string
+  series: string
+  y: number
+  index: number
+}
 
 declare global {
   interface HTMLElementEventMap {

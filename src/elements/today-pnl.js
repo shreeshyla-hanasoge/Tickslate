@@ -11,12 +11,9 @@
  * heading on Wide and M, and the accessible name on every variant.
  */
 
-import { TsWidget, sk } from './widget.js'
+import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { linePaths } from './chart.js'
-import { toNumber, toTime } from '../core/index.js'
-
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({ empty: 'No trades today', shortLabel: 'Today', realised: 'Realised', unrealised: 'Unrealised', fees: 'Fees' })
+import { EN, toNumber, toTime } from '../core/index.js'
 
 // Characters the headline holds per variant before fmt.fit() switches it to
 // the compact form. Sized for the 34px / 48px figures in a tile that never
@@ -31,6 +28,22 @@ export const CHART_BOX = Object.freeze({ width: 375, height: 100 })
 const PAD = 4
 
 const DASH = '—'
+const localClocks = new Map()
+
+function localClock(timeZone) {
+  const key = timeZone || ''
+  let clock = localClocks.get(key)
+  if (!clock) {
+    clock = new Intl.DateTimeFormat('en-US-u-nu-latn', {
+      timeZone: timeZone || undefined,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+    localClocks.set(key, clock)
+  }
+  return clock
+}
 
 const tone = (v) => {
   const n = toNumber(v)
@@ -90,24 +103,28 @@ function domainOf(window, pts) {
  */
 function midTick([from, to], fmt) {
   const mid = (from + to) / 2
+  const clock = localClock(fmt.timeZone)
   const minuteOfDay = (t) => {
-    const m = /^(\d{1,2}):(\d{2})/.exec(fmt.time(t))
-    return m ? Number(m[1]) * 60 + Number(m[2]) : NaN
+    const parts = Object.fromEntries(clock.formatToParts(t).map(({ type, value }) => [type, value]))
+    return Number(parts.hour) * 60 + Number(parts.minute)
   }
   for (const step of [30, 15]) {
-    const ms = step * 60000
-    const m = minuteOfDay(mid)
-    if (!Number.isFinite(m)) break
-    // Back to the boundary at or before the middle, then whichever of it and the next is nearer.
-    const below = mid - ((m % step) * 60000 + (((mid % 60000) + 60000) % 60000))
-    const best = [below, below + ms].filter((t) => t > from && t < to).sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0]
+    const base = Math.floor(mid / 60000) * 60000
+    const candidates = []
+    // Probe epoch minutes and ask Intl for their numeric local minute. This
+    // handles localized digits, bidi marks, and zones offset by half hours.
+    for (let delta = -step; delta <= step; delta++) {
+      const at = base + delta * 60000
+      if (at > from && at < to && minuteOfDay(at) % step === 0) candidates.push(at)
+    }
+    const best = candidates.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0]
     if (best !== undefined) return best
   }
   return mid
 }
 
 /** "low −₹640 at 09:45 · high now": the day's extremes, from the readings. */
-function summaryOf(pts, fmt) {
+function summaryOf(pts, fmt, t) {
   if (!pts.length) return ''
   const last = pts[pts.length - 1]
   let lo = pts[0]
@@ -118,11 +135,14 @@ function summaryOf(pts, fmt) {
   }
   // "now" rather than a clock time when the extreme is the latest reading,
   // because that is the more useful thing to know.
-  const at = (p) => (p.y === last.y ? 'now' : `at ${fmt.time(p.x)}`)
-  return joined([`low ${fmt.money(lo.y, { decimals: 0 })} ${at(lo)}`, `high ${hi.y === last.y ? '' : `${fmt.money(hi.y, { decimals: 0 })} `}${at(hi)}`])
+  const at = (p) => (p.y === last.y ? t('pnl.now') : t('pnl.at', { time: fmt.time(p.x) }))
+  return joined([
+    t('pnl.low', { amount: fmt.money(lo.y, { decimals: 0 }), when: at(lo) }),
+    hi.y === last.y ? t('pnl.highNow', { when: at(hi) }) : t('pnl.high', { amount: fmt.money(hi.y, { decimals: 0 }), when: at(hi) }),
+  ])
 }
 
-function chartOf(data, pts, fmt) {
+function chartOf(data, pts, fmt, t) {
   const domain = domainOf(data.window, pts)
   const mid = domain ? midTick(domain, fmt) : NaN
   const ticks = domain ? [domain[0], mid, domain[1]].map((t) => fmt.time(t)) : ['', '', '']
@@ -134,7 +154,7 @@ function chartOf(data, pts, fmt) {
   // One reading is not a curve; the chart says so instead of drawing a line
   // that implies a trend.
   if (pts.length < 2) {
-    return { empty: true, message: 'No intraday data yet', ariaLabel: 'Intraday P&L: no data yet', ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [] }
+    return { empty: true, message: t('pnl.noIntraday'), ariaLabel: t('pnl.chartEmpty'), ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [] }
   }
   const { line, area, zeroY, x, y } = linePaths(pts, { ...CHART_BOX, pad: PAD, xDomain: domain })
   const first = pts[0]
@@ -145,29 +165,29 @@ function chartOf(data, pts, fmt) {
   const marks = []
   let dropped = 0
   for (const m of Array.isArray(data.marks) ? data.marks : []) {
-    const t = toTime(m && m.t)
-    if (!Number.isFinite(t)) {
+    const at = toTime(m && m.t)
+    if (!Number.isFinite(at)) {
       dropped++
       continue
     }
     // A mark sits on the curve, so one outside the readings has nowhere to go.
-    if (t < first.x || t > last.x) continue
+    if (at < first.x || at > last.x) continue
     const kind = m.kind === 'exit' ? 'exit' : 'entry'
-    const px = x(t)
+    const px = x(at)
     if (px < 0 || px > CHART_BOX.width) continue // outside the session window
-    const name = m.label ? String(m.label) : kind === 'exit' ? 'Exit' : 'Entry'
+    const name = m.label ? String(m.label) : kind === 'exit' ? t('pnl.exit') : t('pnl.entry')
     marks.push({
       kind,
       left: Math.round((px / CHART_BOX.width) * 1000) / 10,
-      top: Math.round((y(valueAt(pts, t)) / CHART_BOX.height) * 1000) / 10,
-      title: `${name} · ${fmt.time(t)}`,
+      top: Math.round((y(valueAt(pts, at)) / CHART_BOX.height) * 1000) / 10,
+      title: t('pnl.markTitle', { name, time: fmt.time(at) }),
     })
   }
 
   return {
     empty: false,
     message: '',
-    ariaLabel: `Intraday P&L: low ${fmt.money(low.y, { decimals: 0 })}, now ${fmt.money(last.y)}`,
+    ariaLabel: t('pnl.chartLabel', { low: fmt.money(low.y, { decimals: 0 }), now: fmt.money(last.y) }),
     ticks,
     midAt,
     line,
@@ -184,14 +204,14 @@ function chartOf(data, pts, fmt) {
  * missing or garbled field shows as a dash or is left out.
  */
 export function todayPnlModel(data, variant, ctx) {
-  const fmt = ctx.fmt
+  const { fmt, t } = ctx
   const d = data || {}
   const net = toNumber(d.net)
   const asOf = toTime(d.asOf)
   const time = Number.isFinite(asOf) ? fmt.time(asOf) : ''
   const closed = count(d.closedCount, fmt)
   const open = count(d.openCount, fmt)
-  const counts = joined([closed !== null && `${closed} closed`, open !== null && `${open} open`])
+  const counts = joined([closed !== null && t('pnl.closed', { count: closed }), open !== null && t('pnl.open', { count: open })])
 
   // Fees reduce P&L, so they read as a deduction whichever way the host
   // signs them.
@@ -202,7 +222,7 @@ export function todayPnlModel(data, variant, ctx) {
   const vm = {
     ariaLabel: Number.isFinite(net) ? `${ctx.label}, ${fmt.money(net)}` : ctx.label,
     live: d.live === true,
-    label: variant === 'S' ? 'Today' : ctx.label,
+    label: variant === 'S' ? t('pnl.today') : ctx.label,
     time,
     net: fmt.fit(d.net, HEADLINE_CHARS[variant] || HEADLINE_CHARS.Wide),
     netTone: tone(d.net),
@@ -211,51 +231,55 @@ export function todayPnlModel(data, variant, ctx) {
     unrealized: fmt.money(d.unrealized),
     unrealizedTone: tone(d.unrealized),
     fees: feesText,
+    // ▲ or ▼ beside a gain or a loss, read from the sign the reader sees. Fees are a deduction, not a result, so they get none.
+    netArrow: '',
+    realizedArrow: arrowFor(fmt.money(d.realized)),
+    unrealizedArrow: arrowFor(fmt.money(d.unrealized)),
     // Rows the tile couldn't read. Only the M variant draws the series, so
     // only it can say; the others have nothing to drop.
     dropped: 0,
   }
 
+  vm.netArrow = arrowFor(vm.net)
+
   if (variant === 'S') {
-    vm.footer = joined([counts, feesPlain && `fees ${feesPlain}`])
+    vm.footer = joined([counts, feesPlain && t('pnl.feesNote', { amount: feesPlain })])
   } else if (variant === 'Wide') {
-    vm.note = joined(['net of fees', time])
+    vm.note = joined([t('pnl.netOfFees'), time])
   } else if (variant === 'M') {
     const { pts, dropped } = readings(d.intraday)
     vm.counts = counts
-    vm.summary = summaryOf(pts, fmt)
-    vm.chart = chartOf(d, pts, fmt)
+    vm.summary = summaryOf(pts, fmt, t)
+    vm.chart = chartOf(d, pts, fmt, t)
     vm.dropped = dropped + (vm.chart.droppedMarks || 0)
   }
   return vm
 }
 
-const dot = '<span class="dot live" data-k="dot" hidden></span>'
-
 // Variant markup is static; update() fills it. Ids are scoped to the shadow
 // root, so the clip-path ids can be fixed.
 const TEMPLATES = {
   S: `
-<div class="hd">${dot}<span class="lb ell" data-k="label"></span><span class="f1"></span><span class="sm mut n" data-k="time"></span></div>
-<span class="big nv" data-k="net"></span>
+${header({ dot: true, meta: '<span class="sm mut n" data-k="time"></span>' })}
+${figure('big nv', 'net', 'value')}
 <span class="f1"></span>
 <span class="sm mut ell" data-k="footer"></span>`,
   Wide: `
 <div class="cols">
   <div class="col lhs">
-    <div class="hd">${dot}<span class="lb ell" data-k="label"></span></div>
-    <span class="xbig nv" data-k="net"></span>
+    ${header({ dot: true })}
+    ${figure('xbig nv', 'net', 'value')}
     <span class="sm mut" data-k="note"></span>
   </div>
   <div class="col rhs">
-    <div class="rowb"><span class="lb f1">${STRINGS.realised}</span><span class="n" data-k="realized"></span></div>
-    <div class="rowb"><span class="lb f1">${STRINGS.unrealised}</span><span class="n" data-k="unrealized"></span></div>
-    <div class="rowb"><span class="lb f1">${STRINGS.fees}</span><span class="n mut" data-k="fees"></span></div>
+    <div class="rowb"><span class="lb f1" data-k="lbRealised"></span>${figure('n', 'realized')}</div>
+    <div class="rowb"><span class="lb f1" data-k="lbUnrealised"></span>${figure('n', 'unrealized')}</div>
+    <div class="rowb"><span class="lb f1" data-k="lbFees"></span><span class="n mut" data-k="fees"></span></div>
   </div>
 </div>`,
   M: `
-<div class="hd">${dot}<span class="lb ell" data-k="label"></span><span class="f1"></span><span class="sm mut" data-k="counts"></span></div>
-<div class="rowb base"><span class="xbig nv" data-k="net"></span><span class="sm mut" data-k="summary"></span></div>
+${header({ dot: true, meta: '<span class="sm mut" data-k="counts"></span>' })}
+<div class="rowb base">${figure('xbig nv', 'net', 'value')}<span class="sm mut" data-k="summary"></span></div>
 <div class="chart" part="chart">
   <svg viewBox="0 0 ${CHART_BOX.width} ${CHART_BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">
     <defs>
@@ -270,25 +294,26 @@ const TEMPLATES = {
     <path class="ln" clip-path="url(#dn)" data-k="line-dn"></path>
   </svg>
   <div class="marks" data-k="marks"></div>
-  <div class="nodata sm" data-k="nodata" hidden></div>
+  <div class="nodata sm" part="empty" data-k="nodata" hidden></div>
 </div>
 <div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
-  <div class="col"><span class="lb">${STRINGS.realised}</span><span class="n md" data-k="realized"></span></div>
-  <div class="col"><span class="lb">${STRINGS.unrealised}</span><span class="n md" data-k="unrealized"></span></div>
-  <div class="col"><span class="lb">${STRINGS.fees}</span><span class="n md mut" data-k="fees"></span></div>
+  <div class="col cell"><span class="lb" data-k="lbRealised"></span>${figure('n md', 'realized')}</div>
+  <div class="col cell"><span class="lb" data-k="lbUnrealised"></span>${figure('n md', 'unrealized')}</div>
+  <div class="col cell"><span class="lb" data-k="lbFees"></span><span class="n md mut" data-k="fees"></span></div>
 </div>`,
 }
 
 // Loading shapes follow each variant's layout block for block, so the figures
-// land where the blocks were. S says "Today" as its content does.
+// land where the blocks were. S says "Today" as its content does, through
+// _skeletonLabel.
 const SKELETONS = {
-  S: `<div class="hd"><span class="lb ell">${STRINGS.shortLabel}</span></div>${sk(65, 30)}<span class="f1"></span>${sk(80, 11)}`,
+  S: `${header()}${sk(65, 30)}<span class="f1"></span>${sk(80, 11)}`,
   Wide: `<div class="cols">
-  <div class="col lhs"><div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(75, 44)}${sk(60, 11)}</div>
+  <div class="col lhs">${header()}${sk(75, 44)}${sk(60, 11)}</div>
   <div class="col rhs">${`<div class="rowb">${sk(40, 9)}<span class="f1"></span>${sk(35, 13)}</div>`.repeat(3)}</div>
 </div>`,
-  M: `<div class="hd"><span class="lb ell" data-k="label"></span></div>
+  M: `${header()}
 <div class="rowb base">${sk(40, 44)}${sk(30, 11)}</div>
 <span class="sk grow"></span>
 <div class="axis">${sk('x', 9)}${sk('x', 9)}${sk('x', 9)}</div>
@@ -297,7 +322,7 @@ const SKELETONS = {
 
 export class TsTodayPnl extends TsWidget {
   static catalogKey = 'todayPnl'
-  static emptyText = STRINGS.empty
+  static emptyText = EN['widget.todayPnl.empty']
   // The headline figures are required: a tile without them has nothing to say,
   // and naming them is what lets a wrong-shape object be explained (RFC 0002 §2.7).
   static dataShape = {
@@ -314,14 +339,14 @@ export class TsTodayPnl extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `
+  static styles = `${FIGURE_CSS}
 [hidden] { display: none; }
 /* Clip rather than overflow: a headline too wide for its slot must never
    run into the column beside it. fit() and the tile's scaled type make
    that rare; this makes it harmless. */
 .nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; }
 .cols { flex: 1; display: flex; gap: 24px; align-items: stretch; min-height: 0; }
-.lhs { flex: 1.1; min-width: 0; justify-content: space-between; }
+.lhs { flex: 1.15; min-width: 0; justify-content: space-between; }
 .rhs { flex: 1; min-width: 0; justify-content: center; gap: 10px; }
 /* Narrow tile (a 2-column phone): the three figures stack label over value
    and shrink to their content, so the headline gets the rest of the width.
@@ -337,16 +362,30 @@ export class TsTodayPnl extends TsWidget {
 .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .marks { position: absolute; inset: 0; pointer-events: none; }
 .mk {
-  position: absolute; box-sizing: content-box; width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  position: absolute; box-sizing: content-box; width: 8px; height: 8px; margin-block-start: -4px; margin-inline-start: -4px;
   border-radius: 50%; border: 2px solid var(--ts-surface); pointer-events: auto;
 }
+/* An entry is a circle and an exit a diamond, so the two differ by shape and not by colour alone. */
 .mk.entry { background: var(--ts-accent); }
-.mk.exit { background: var(--ts-ink); }
-.nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ts-muted); }
+.mk.exit { background: var(--ts-ink); border-radius: 0; transform: rotate(45deg) scale(.85); }
+.nodata { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ts-muted); unicode-bidi: plaintext; }
 .nodata[hidden] { display: none; }
+/* Time runs left to right in every locale, so the drawing box and its axis never mirror. */
+.chart, .axis { direction: ltr; }
+.axis > * { unicode-bidi: plaintext; }
 .axis { position: relative; display: flex; justify-content: space-between; min-height: 1.4em; }
-.axis .mid { position: absolute; top: 0; transform: translateX(-50%); }
-.trio { padding-top: 10px; }
+.axis .mid { position: absolute; inset-block-start: 0; transform: translateX(-50%); }
+.trio { padding-block-start: 10px; }
+/* The arrow takes room beside the figure, so the figure is smaller than the tile alone would allow, on the narrowest
+   tiles only: 10 characters of a monospace face (0.6em each) and the arrow (0.4em) still fit the content box of a
+   2-column phone's tile, where the figure never wraps or clips. A roomy tile keeps the 34px cap. The Wide headline sits
+   in the left column (1.15 of 2.15 of the tile less the gap): 6.2em of that, and 48px when the tile is roomy. */
+.big.nv { font-size: min(34px, 15cqi); }
+.xbig.nv { font-size: min(48px, calc(8.6cqi - 2px)); }
+@media (forced-colors: active) {
+  .mk.entry { background: Highlight; border-color: ButtonFace; }
+  .mk.exit { background: CanvasText; border-color: ButtonFace; }
+}
 `
 
   static template(variant) {
@@ -355,6 +394,10 @@ export class TsTodayPnl extends TsWidget {
 
   static skeleton(variant) {
     return SKELETONS[variant] || SKELETONS.Wide
+  }
+
+  _skeletonLabel(variant, label) {
+    return variant === 'S' ? this.t('pnl.today') : label
   }
 
   static viewModel(data, variant, ctx) {
@@ -367,24 +410,32 @@ export class TsTodayPnl extends TsWidget {
       if (el && el.textContent !== s) el.textContent = s
       return el
     }
-    // Only the sign colour changes between renders; the size class stays.
-    const toned = (k, base, s, t) => {
-      const el = text(k, s)
-      if (el) el.className = t ? `${base} ${t}` : base
+    // Only the sign colour changes between renders; the size class stays. The arrow is its own node, so the figure's text stays a figure.
+    const toned = (k, base, s, arrow, t) => {
+      const el = this.$(`[data-k="${k}"]`)
+      text(`${k}Ar`, arrow)
+      text(`${k}V`, s)
+      if (el) {
+        el.className = t ? `${base} ${t}` : base
+        el.style.setProperty('--fc', String(s.length))
+      }
     }
     this.$('[data-k="dot"]').toggleAttribute('hidden', !vm.live)
     text('label', vm.label)
 
     if (variant === 'S') {
       text('time', vm.time)
-      toned('net', 'big nv', vm.net, vm.netTone)
+      toned('net', 'big nv', vm.net, vm.netArrow, vm.netTone)
       text('footer', vm.footer)
       return
     }
 
-    toned('net', 'xbig nv', vm.net, vm.netTone)
-    toned('realized', variant === 'M' ? 'n md' : 'n', vm.realized, vm.realizedTone)
-    toned('unrealized', variant === 'M' ? 'n md' : 'n', vm.unrealized, vm.unrealizedTone)
+    toned('net', 'xbig nv', vm.net, vm.netArrow, vm.netTone)
+    text('lbRealised', this.t('pnl.realised'))
+    text('lbUnrealised', this.t('pnl.unrealised'))
+    text('lbFees', this.t('pnl.fees'))
+    toned('realized', variant === 'M' ? 'n md' : 'n', vm.realized, vm.realizedArrow, vm.realizedTone)
+    toned('unrealized', variant === 'M' ? 'n md' : 'n', vm.unrealized, vm.unrealizedArrow, vm.unrealizedTone)
     text('fees', vm.fees)
 
     if (variant === 'Wide') {
@@ -396,7 +447,7 @@ export class TsTodayPnl extends TsWidget {
     text('summary', vm.summary)
     this._updateChart(vm.chart)
     text('t0', vm.chart.ticks[0])
-    text('t1', vm.chart.ticks[1]).style.left = `${vm.chart.midAt}%`
+    text('t1', vm.chart.ticks[1]).style.insetInlineStart = `${vm.chart.midAt}%`
     text('t2', vm.chart.ticks[2])
   }
 
@@ -436,8 +487,8 @@ export class TsTodayPnl extends TsWidget {
       ...c.marks.map((m) => {
         const el = document.createElement('span')
         el.className = `mk ${m.kind}`
-        el.style.left = `${m.left}%`
-        el.style.top = `${m.top}%`
+        el.style.insetInlineStart = `${m.left}%`
+        el.style.insetBlockStart = `${m.top}%`
         el.title = m.title
         el.setAttribute('role', 'img')
         el.setAttribute('aria-label', m.title)

@@ -3,8 +3,9 @@
  *
  * A session is plain data: the days it trades, its local open and close,
  * and dated exceptions. Holidays are an input, because they change every
- * year and the host owns that data source. Sessions open and close on the
- * same local day; none of the v1 exchanges trade across midnight.
+ * year and the host owns that data source. A session may close on the next
+ * local day (futures, FX) or never close (crypto): `days` and holidays name
+ * the day a window OPENS (RFC 0003 §12).
  */
 
 import { DATE_RE, TIME_RE, addDays, isDaylightSaving, localDate, weekday, zonedTime } from './zone.js'
@@ -21,14 +22,17 @@ export function createCalendar(input) {
   for (const spec of input.sessions) {
     checkSpec(spec)
     if (specs.has(spec.id)) throw new TypeError(`Two sessions have the id "${spec.id}"`)
-    specs.set(spec.id, spec)
+    specs.set(spec.id, frozenCopy(spec))
   }
-  const holidays = input.holidays || {}
-  for (const key of Object.keys(holidays)) {
-    if (!Array.isArray(holidays[key]) || !holidays[key].every((d) => DATE_RE.test(d))) {
+  const given = input.holidays || {}
+  for (const key of Object.keys(given)) {
+    if (!Array.isArray(given[key]) || !given[key].every((d) => DATE_RE.test(d))) {
       throw new TypeError(`holidays.${key} must be a list of 'YYYY-MM-DD' dates`)
     }
   }
+  // Specs and holidays are read once, here: windows are cached from them, so a
+  // later change to the host's objects must not reach a calendar half-way.
+  const holidays = frozenCopy(given)
   const closed = new Map()
   const closedOn = (id) => {
     let set = closed.get(id)
@@ -51,9 +55,68 @@ export function createCalendar(input) {
     return { open: s.open, close: closeOn(s, date) }
   }
 
+  // A session that never closes walks 60 windows to say so, once a second per
+  // clock, and each costs four Intl calls. The calendar is plain data, so a
+  // window never changes once computed.
+  const windowCache = new Map()
+
+  /**
+   * The window that OPENS on a local date, or null. A close at or before the
+   * open is on the next local day, so '17:00' to '16:00' is 23 hours and
+   * '00:00' to '00:00' is 24. The date rides along so a window can be grown
+   * from the neighbours on either side of it.
+   */
   const windowOn = (s, date) => {
-    const h = hoursOn(s, date)
-    return h ? { open: zonedTime(date, h.open, s.timeZone), close: zonedTime(date, h.close, s.timeZone) } : null
+    const key = `${s.id}|${date}`
+    let w = windowCache.get(key)
+    if (w === undefined) {
+      const h = hoursOn(s, date)
+      const open = h && zonedTime(date, h.open, s.timeZone)
+      const close = h && zonedTime(h.close > h.open ? date : addDays(date, 1), h.close, s.timeZone)
+      // A window that is over as soon as it begins (both ends inside one spring-forward gap) never traded.
+      w = h && close > open ? { date, open, close } : null
+      if (windowCache.size >= 4096) windowCache.clear()
+      windowCache.set(key, w)
+    }
+    return w
+  }
+
+  // Both walks stop at the first date that doesn't touch. A date with no
+  // window can't be followed by a touching one: no window is longer than a
+  // day, so a run only reaches date D+1 through the window opening on D.
+  /** The latest close of the run of touching windows after the one opening on `date`; `unbounded` if it is still touching LOOKAHEAD_DAYS on. */
+  const reachEnd = (s, date, close) => {
+    for (let i = 1; i <= LOOKAHEAD_DAYS; i++) {
+      const w = windowOn(s, addDays(date, i))
+      if (!w || w.open > close) return { at: close, unbounded: false }
+      close = Math.max(close, w.close)
+    }
+    return { at: close, unbounded: true }
+  }
+
+  /** The same walk backwards: the earliest open of the run before the window opening on `date`. */
+  const reachStart = (s, date, open) => {
+    for (let i = 1; i <= LOOKAHEAD_DAYS; i++) {
+      const w = windowOn(s, addDays(date, -i))
+      if (!w || w.close < open) return { at: open, unbounded: false }
+      open = Math.min(open, w.open)
+    }
+    return { at: open, unbounded: true }
+  }
+
+  /** The window around `now` with its touching neighbours merged in, or null when closed. */
+  const locate = (s, now) => {
+    const today = localDate(now, s.timeZone)
+    // Yesterday's window is the only other candidate: none runs past a day.
+    for (const date of [today, addDays(today, -1)]) {
+      const w = windowOn(s, date)
+      if (w && w.open <= now && now < w.close) {
+        const end = reachEnd(s, w.date, w.close)
+        const start = reachStart(s, w.date, w.open)
+        return { rawOpen: w.open, open: start.at, close: end.at, openUnbounded: start.unbounded, closeUnbounded: end.unbounded }
+      }
+    }
+    return null
   }
 
   const nextOpen = (s, now) => {
@@ -76,54 +139,93 @@ export function createCalendar(input) {
       return hoursOn(spec(id), date) !== null
     },
 
-    /** The session's hours on a date as instants, or null when it doesn't trade. */
+    /** The window that opens on a date, as instants (its close is on the next day for an overnight session), or null when it doesn't trade. */
     hours(id, date) {
-      return windowOn(spec(id), date)
+      const w = windowOn(spec(id), date)
+      return w && { open: w.open, close: w.close }
     },
 
+    /**
+     * Windows that touch are one: a session open Sunday to Friday as daily
+     * windows is open all week. When that run is still going LOOKAHEAD_DAYS
+     * later the calendar can't say when it ends, so closesAt, startedAt and
+     * progress are null while open is true (crypto, which never closes).
+     */
     state(id, now) {
       const s = spec(id)
-      const w = windowOn(s, localDate(now, s.timeZone))
-      if (w && now >= w.open && now < w.close) {
-        return { open: true, opensAt: null, closesAt: w.close, startedAt: w.open, progress: (now - w.open) / (w.close - w.open) }
-      }
-      return { open: false, opensAt: nextOpen(s, now), closesAt: null, startedAt: null, progress: null }
+      const w = locate(s, now)
+      if (!w) return { open: false, opensAt: nextOpen(s, now), closesAt: null, startedAt: null, progress: null }
+      const closesAt = w.closeUnbounded ? null : w.close
+      const startedAt = w.closeUnbounded || w.openUnbounded ? null : w.open
+      const progress = startedAt === null ? null : (now - startedAt) / (closesAt - startedAt)
+      return { open: true, opensAt: null, closesAt, startedAt, progress }
     },
 
     nextChange(id, now) {
       const st = calendar.state(id, now)
-      if (st.open) return { at: st.closesAt, to: 'closed' }
+      if (st.open) return st.closesAt === null ? null : { at: st.closesAt, to: 'closed' }
       return st.opensAt === null ? null : { at: st.opensAt, to: 'open' }
     },
 
     /**
      * The next candle close while the session is open, aligned to its open
      * (NSE 5-minute candles close at 09:20, 09:25, …). The last candle of the
-     * day closes with the session, even if it is short.
+     * day closes with the session, even if it is short. A session with no
+     * known start or end has nothing to align to or cut at, so it uses the
+     * day's own window.
      */
     candleClose(id, now, timeframeMinutes) {
       if (!(timeframeMinutes > 0)) throw new RangeError('timeframeMinutes must be a positive number')
-      const st = calendar.state(id, now)
-      if (!st.open) return null
+      const w = locate(spec(id), now)
+      if (!w) return null
+      const anchor = w.closeUnbounded || w.openUnbounded ? w.rawOpen : w.open
       const tf = timeframeMinutes * MINUTE
-      const next = st.startedAt + (Math.floor((now - st.startedAt) / tf) + 1) * tf
-      return Math.min(next, st.closesAt)
+      const next = anchor + (Math.floor((now - anchor) / tf) + 1) * tf
+      return w.closeUnbounded ? next : Math.min(next, w.close)
     },
 
-    /** Every session window that overlaps [from, to), in time order. */
+    /**
+     * Every session window that overlaps [from, to), in time order, with
+     * touching windows merged. A run that is still touching LOOKAHEAD_DAYS
+     * past the range, or before it, is cut there, which is how activeProfile
+     * spots one that never closes.
+     */
     windows(id, from, to) {
       const s = spec(id)
-      const out = []
+      const raw = []
       let date = addDays(localDate(from, s.timeZone), -1)
       const last = addDays(localDate(to, s.timeZone), 1)
       for (; date <= last; date = addDays(date, 1)) {
         const w = windowOn(s, date)
-        if (w && w.close > from && w.open < to) out.push(w)
+        if (w && w.close > from && w.open < to) raw.push(w)
       }
-      return out
+      return mergeWindows(raw).map((m) => ({ open: reachStart(s, m.first, m.open).at, close: reachEnd(s, m.last, m.close).at }))
     },
   }
   return Object.freeze(calendar)
+}
+
+/**
+ * Windows sorted by open, with those that overlap or touch joined. `first`
+ * and `last` are the earliest and latest opening dates in each, so a caller
+ * can keep growing the run from either end.
+ */
+function mergeWindows(list) {
+  const out = []
+  for (const w of list.sort((a, b) => a.open - b.open)) {
+    const m = out[out.length - 1]
+    if (m && w.open <= m.close) {
+      m.close = Math.max(m.close, w.close)
+      if (w.date > m.last) m.last = w.date
+    } else out.push({ open: w.open, close: w.close, first: w.date, last: w.date })
+  }
+  return out
+}
+
+/** A deep, frozen copy of plain data: arrays and objects of strings and numbers. */
+function frozenCopy(v) {
+  if (!v || typeof v !== 'object') return v
+  return Object.freeze(Array.isArray(v) ? v.map(frozenCopy) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, frozenCopy(x)])))
 }
 
 function closeOn(s, date) {
@@ -156,11 +258,11 @@ function checkSpec(s) {
     }
   } else fail("close must be 'HH:MM' or { default, ranges }")
   for (const c of closes) {
+    // '24:00' stays out: midnight is '00:00', and a close at or before the open is on the next day.
     if (!TIME_RE.test(c)) fail(`close must be 'HH:MM', not ${JSON.stringify(c)}`)
-    if (c <= s.open) fail(`closes at ${c}, not after it opens at ${s.open}; sessions can't cross midnight`)
   }
   for (const [date, h] of Object.entries(s.specialSessions || {})) {
-    if (!DATE_RE.test(date) || !h || !TIME_RE.test(h.open) || !TIME_RE.test(h.close) || h.close <= h.open) {
+    if (!DATE_RE.test(date) || !h || !TIME_RE.test(h.open) || !TIME_RE.test(h.close)) {
       fail(`has a bad special session on ${date}`)
     }
   }
@@ -241,7 +343,8 @@ export function activeProfile(calendar, schedule, now) {
 export function nextProfileChange(calendar, schedule, now) {
   for (const s of spans(calendar, schedule, now)) {
     if (now < s.from) return s.from
-    if (now < s.to) return s.to
+    // A span that never ends (crypto) changes nothing, so there is nothing to report.
+    if (now < s.to) return Number.isFinite(s.to) ? s.to : null
   }
   return null
 }
@@ -252,8 +355,10 @@ function spans(calendar, schedule, now) {
   const lead = (m.leadMinutes || 0) * MINUTE
   const lag = (m.lagMinutes || 0) * MINUTE
   const raw = []
+  const horizon = now + LOOKAHEAD_DAYS * DAY
   for (const id of m.sessions) {
-    for (const w of calendar.windows(id, now - DAY, now + LOOKAHEAD_DAYS * DAY)) raw.push({ from: w.open - lead, to: w.close + lag })
+    // windows() cuts a run that is still going at the horizon a few days past it, so a close beyond the horizon is one the month never reaches.
+    for (const w of calendar.windows(id, now - DAY, horizon)) raw.push({ from: w.open - lead, to: w.close > horizon ? Infinity : w.close + lag })
   }
   raw.sort((a, b) => a.from - b.from)
   // Overlapping windows (NSE inside MCX's day) count as one stretch of market hours.

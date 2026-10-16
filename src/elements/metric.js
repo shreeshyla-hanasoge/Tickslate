@@ -11,21 +11,9 @@
  * change, so a tile never says "+130 (+12%)" in one size and "+12%" in another.
  */
 
-import { TsWidget, sk } from './widget.js'
+import { TsWidget, sk, syncedParts, header } from './widget.js'
 import { linePaths } from './chart.js'
-import { toNumber, toTime } from '../core/index.js'
-
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({
-  empty: 'No data yet',
-  target: 'Target',
-  synced: 'synced ',
-  up: 'up',
-  down: 'down',
-  unchanged: 'no change',
-  trend: 'trend, from',
-  to: 'to',
-})
+import { EN, toNumber, toTime } from '../core/index.js'
 
 // Characters the S headline holds before fmt.fit() switches it to the compact
 // form. Sized for the 34px figure in a tile that never resizes.
@@ -76,7 +64,7 @@ function seriesPoints(series, scale) {
  * missing or garbled field shows as a dash or is left out.
  */
 export function metricModel(data, variant, ctx) {
-  const fmt = ctx.fmt
+  const { fmt, t } = ctx
   const d = isObj(data) ? data : {}
   const format = ['money', 'percent', 'duration'].includes(d.format) ? d.format : 'number'
   const decimals = Number.isInteger(d.decimals) && d.decimals >= 0 && d.decimals <= 20 ? d.decimals : undefined
@@ -168,7 +156,7 @@ export function metricModel(data, variant, ctx) {
   const label = ctx.label
   let ariaLabel = known ? `${label}, ${spoken}` : label
   if (known && delta) {
-    const how = rise ? `${STRINGS.up} ${spokenDelta}` : fall ? `${STRINGS.down} ${spokenDelta}` : STRINGS.unchanged
+    const how = rise ? t('metric.up', { delta: spokenDelta }) : fall ? t('metric.down', { delta: spokenDelta }) : t('metric.unchanged')
     ariaLabel += `, ${how}${compare ? ` ${compare}` : ''}`
   }
 
@@ -177,6 +165,7 @@ export function metricModel(data, variant, ctx) {
     label,
     live: d.live === true,
     time: '',
+    synced: syncedParts(t),
     value: headline,
     delta,
     arrow,
@@ -204,7 +193,7 @@ export function metricModel(data, variant, ctx) {
       const floor = SPARK_BOX.height - PAD
       vm.line = line
       vm.area = `${line} L${round(x(pts[pts.length - 1].x))} ${floor} L${round(x(pts[0].x))} ${floor} Z`
-      vm.sparkLabel = `${label} ${STRINGS.trend} ${show(pts[0].y, 'negative', compact)} ${STRINGS.to} ${show(pts[pts.length - 1].y, 'negative', compact)}`
+      vm.sparkLabel = t('metric.trend', { label, from: show(pts[0].y, 'negative', compact), to: show(pts[pts.length - 1].y, 'negative', compact) })
     }
   }
 
@@ -222,29 +211,28 @@ export function metricModel(data, variant, ctx) {
 }
 
 const delta = `<span class="delta" data-k="deltabox" hidden><span class="n" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span class="nv" data-k="delta"></span></span><span class="mut ell" data-k="compare"></span></span>`
-const dot = '<span class="dot live" data-k="dot" hidden></span>'
-const head = `<div class="hd">${dot}<span class="lb ell" data-k="label"></span><span class="f1"></span><span class="sm mut n meta" data-k="meta" hidden><span class="pre">${STRINGS.synced}</span><span data-k="time"></span></span></div>`
+const head = header({ dot: true, meta: true })
 const spark = (cls) => `
-<div class="${cls}"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="${cls}" part="chart"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>`
 
 // Variant markup is static; update() fills it.
 const TEMPLATES = {
   S: `${head}
-<span class="big nv" data-k="value"></span>
+<span class="big nv" part="value" data-k="value"></span>
 <span class="f1"></span>
 ${delta}`,
   Wide: `
 <div class="cols">
-  <div class="col lhs">${head}<span class="xbig nv" data-k="value"></span>${delta}</div>
+  <div class="col lhs">${head}<span class="xbig nv" part="value" data-k="value"></span>${delta}</div>
   ${spark('rhs')}
 </div>`,
   M: `${head}
-<div class="rowb wrap"><span class="xbig nv" data-k="value"></span>${delta}</div>
+<div class="rowb wrap"><span class="xbig nv" part="value" data-k="value"></span>${delta}</div>
 ${spark('plot')}
 <div class="target" data-k="target" hidden>
-  <div class="rowb"><span class="lb f1">${STRINGS.target}</span><span class="sm n" data-k="tpct"></span></div>
+  <div class="rowb"><span class="lb f1" data-k="lbTarget"></span><span class="sm n" data-k="tpct"></span></div>
   <div class="tbar" aria-hidden="true"><svg viewBox="0 0 100 6" preserveAspectRatio="none"><rect class="fill" data-k="fill" x="0" y="0" width="0" height="6"></rect></svg></div>
 </div>
 <span class="sm mut ell" data-k="caption"></span>`,
@@ -253,12 +241,12 @@ ${spark('plot')}
 // Loading shapes follow each size's layout block for block, so the figures
 // land where the blocks were.
 const SKELETONS = {
-  S: `<div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(60, 30)}<span class="f1"></span>${sk(70, 11)}`,
+  S: `${header()}${sk(60, 30)}<span class="f1"></span>${sk(70, 11)}`,
   Wide: `<div class="cols">
-  <div class="col lhs"><div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(70, 44)}${sk(85, 11)}</div>
+  <div class="col lhs">${header()}${sk(70, 44)}${sk(85, 11)}</div>
   <div class="rhs"><span class="sk grow"></span></div>
 </div>`,
-  M: `<div class="hd"><span class="lb ell" data-k="label"></span></div>
+  M: `${header()}
 <div class="rowb wrap">${sk(35, 44)}${sk(40, 11)}</div>
 <div class="plot"><span class="sk grow"></span></div>
 <div class="target"><div class="rowb">${sk(20, 9)}<span class="f1"></span>${sk(30, 11)}</div>${sk(100, 6)}</div>
@@ -267,7 +255,7 @@ ${sk(65, 11)}`,
 
 export class TsMetric extends TsWidget {
   static catalogKey = 'metric'
-  static emptyText = STRINGS.empty
+  static emptyText = EN['widget.metric.empty']
   // value is the one required key: a tile without it has nothing to say, and
   // naming it is what lets a wrong-shape object be explained (RFC 0002 §2.7).
   static dataShape = {
@@ -291,13 +279,8 @@ export class TsMetric extends TsWidget {
 
   static styles = `
 [hidden] { display: none; }
-/* Figures keep their sign beside their digits in right-to-left pages, and a
-   value too wide for its slot clips rather than running into its neighbour. */
+/* A value too wide for its slot clips rather than running into its neighbour, and keeps its sign beside its digits in right-to-left pages. */
 .nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; unicode-bidi: isolate; }
-.n { unicode-bidi: isolate; }
-/* On a tile narrower than 200px the meta says '14:05', so the label keeps its room. */
-.meta { flex: none; white-space: nowrap; }
-@container (max-width: 200px) { .pre { display: none; } }
 .delta { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; font-size: 12px; }
 .delta .n { font-weight: var(--ts-num-weight-small, 500); flex: none; }
 .wrap { flex-wrap: wrap; gap: 2px 20px; }
@@ -316,6 +299,12 @@ svg.mut { color: var(--ts-muted); }
 .tbar { height: 6px; border-radius: 3px; background: var(--ts-surface-2); overflow: hidden; }
 .tbar svg { display: block; width: 100%; height: 100%; }
 .fill { fill: var(--ts-accent); }
+/* The bar's track is a background, which forced colours drop, so it gets an outline; the fill and the line stay visible. */
+@media (forced-colors: active) {
+  .tbar { box-sizing: border-box; border: 1px solid CanvasText; background: ButtonFace; }
+  .fill { fill: Highlight; }
+  .sl { stroke: CanvasText; }
+}
 `
 
   static template(variant) {
@@ -348,7 +337,9 @@ svg.mut { color: var(--ts-muted); }
     this.$('[data-k="dot"]').toggleAttribute('hidden', !vm.live)
     text('label', vm.label)
     this.$('[data-k="meta"]').toggleAttribute('hidden', !vm.time)
+    text('pre', vm.synced.pre)
     text('time', vm.time)
+    text('post', vm.synced.post)
     text('value', vm.value)
 
     const box = this.$('[data-k="deltabox"]')
@@ -369,6 +360,7 @@ svg.mut { color: var(--ts-muted); }
 
     if (variant !== 'M') return
     this.$('[data-k="target"]').toggleAttribute('hidden', !vm.targetPct)
+    text('lbTarget', this.t('metric.target'))
     text('tpct', vm.targetPct)
     attr(this.$('[data-k="fill"]'), 'width', String(Math.round(vm.targetWidth * 100 * 10) / 10))
     text('caption', vm.caption)

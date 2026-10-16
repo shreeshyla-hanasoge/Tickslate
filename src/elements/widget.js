@@ -32,14 +32,19 @@
  *     The HTML inside the tile for one variant ('S', 'Wide', 'M'…). Static
  *     markup only: no data in it, because it is built once per variant and
  *     the DOM it makes is kept while data changes. It must be a pure function
- *     of `variant`.
+ *     of `variant`. Start it with `header({ dot, meta, … })`: the one header
+ *     row, whose label is the tile's heading and whose parts are `header` and
+ *     `label`. Give the headline figure `part="value"` and the drawing box
+ *     `part="chart"`.
  *
  *   static viewModel(data, variant, ctx) → object
  *     Pure: data in, plain display strings and numbers out. `ctx` is
- *     `{ fmt, now, label }`: the formatter, the current time in ms (from
- *     `clock` if set) and the effective label. Return `ariaLabel` to name the
+ *     `{ fmt, t, now, label }`: the formatter, the translate function for this
+ *     element's messages, the current time in ms (from `clock` if set) and the
+ *     effective label. Return `ariaLabel` to name the
  *     tile with its headline result ("Today's P&L, +₹2,185.65"); without it
- *     the tile is named by the label. `data` is never null here, and is `{}`
+ *     the tile is named by the label. A view model with `live: true` gets
+ *     ", live" after that name from the base. `data` is never null here, and is `{}`
  *     for a `static dataOptional` widget that has none yet. If this throws,
  *     the base logs it once and shows the error view.
  *
@@ -49,22 +54,24 @@
  *     undefined, with viewModel getting `{}`; the skeleton then shows only
  *     for state="loading".
  *
- *   static emptyText = 'No data'
+ *   static emptyText = EN['widget.empty']
  *     What the empty state says (data === null), unless the host slots its own
- *     content into `slot="empty"`.
+ *     content into `slot="empty"`. A host that overrides `widget.<catalogKey>.empty`
+ *     in its messages wins over it, and a built-in's default is the EN value.
  *
  *   static skeleton(variant) → string
  *     The loading view's markup: `.sk` blocks shaped like that variant's
  *     content, so content lands without the tile moving. Build them with
- *     `sk(width, height)`. Include an element with `data-k="label"` and the
- *     base fills it with the real label. Static markup, pure in `variant`.
+ *     `sk(width, height)`. Include `header()` (its label has `data-k="label"`)
+ *     and the base fills it with the real label. The base wraps the markup in
+ *     the `skeleton` part. Static markup, pure in `variant`.
  *     The default is a header, a headline bar and two text lines.
  *
  *   viewContext() → object
  *     Extra keys for viewModel's `ctx`, for what the pure view model needs
  *     from the element itself, such as an attribute:
  *       viewContext() { return { range: this.getAttribute('range') || 'All' } }
- *     The base's own keys (fmt, now, label) are added after these and win.
+ *     The base's own keys (fmt, t, now, label) are added after these and win.
  *     Default: {}.
  *
  *   update(vm, variant)
@@ -104,13 +111,22 @@
  *                   supported size. <ts-grid> sets it.
  *   variant         Read-only: the size actually rendered (the snapped size).
  *   label           Attribute and property. Effective label: the attribute,
- *                   else the spec's label. With neither, a development
- *                   warning, and the tile is named by the tag.
+ *                   else t('widget.<catalogKey>.label') for a catalog widget,
+ *                   else the spec's label. With none, a development warning,
+ *                   and the tile is named by the tag.
+ *   heading-level   Attribute, 1 to 6: the aria-level of the tile's heading.
+ *                   The widget's own, else the nearest <ts-grid>'s, else 3.
  *   locale, currency, time-zone
  *                   Attributes. Each resolves: own attribute → nearest
  *                   ancestor <ts-grid>'s attribute → configure() defaults.
  *   formatter       The Formatter for those. Cached; rebuilt when any of its
  *                   inputs change.
+ *   messages        Property. Overrides for this widget's strings; null clears.
+ *   t               The translate function: messages on this element, then the
+ *                   nearest <ts-grid>'s, then configure(), then EN. Cached like
+ *                   the formatter. Static template text is never written
+ *                   here: put it in a `data-k` node and fill it in update()
+ *                   with this.t, so a template stays a pure function of its variant.
  *   clock           Settable `() => number`; tests and demos freeze time.
  *   now()           clock() or Date.now().
  *   $(selector)     querySelector in the shadow root, cached until the
@@ -128,8 +144,11 @@
  *
  * ── Rendering ───────────────────────────────────────────────────────────
  *
- * The tile is `<section class="tile" part="tile" aria-label>`. Exactly one
- * view is shown, first match wins (RFC 0002 §2.3):
+ * The tile is `<div class="tile" part="tile" role="group" aria-label>`, named
+ * by the view model's ariaLabel (with ", live" after it while `vm.live`), and
+ * its label is a `role="heading"` made by header() (RFC 0003 §5). The grid is
+ * the one labelled region. Exactly one view is shown, first match wins (RFC
+ * 0002 §2.3):
  *
  *   1. error    state 'error', `error` set, or a view model that threw
  *   2. loading  state 'loading', or data undefined (unless dataOptional)
@@ -145,18 +164,10 @@
  * server-side rendering); only constructing a widget does.
  */
 
-import { WIDGETS, createFormatter, currentConfig, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
+import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isSize, SIZES, SIZE_NAMES } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
-
-// Every English string the base shows, in one place so messages can be made
-// overridable later (RFC 0002 §2.4). `{label}` and `{message}` are filled in.
-export const STRINGS = Object.freeze({
-  noData: 'No data',
-  errorDefault: "Couldn't display this data",
-  errorRegion: '{label}, error: {message}',
-  retry: 'Retry',
-})
+import { translator } from './messages-cache.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -165,6 +176,7 @@ const FORMAT_ATTRS = [
   ['locale', 'locale'],
   ['currency', 'currency'],
   ['time-zone', 'timeZone'],
+  ['hour-cycle', 'hourCycle'],
 ]
 
 /**
@@ -210,6 +222,48 @@ export function describeElement(el) {
   return `<${el.localName}${item ? ` item="${item}"` : ''}>`
 }
 
+const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/
+const ALLOWED_SCHEMES = ['http', 'https', 'mailto', 'tel']
+
+/**
+ * Only http:, https:, mailto:, tel: and relative URLs are accepted (RFC 0003 §7);
+ * any other scheme (javascript:, data:) is ignored with one development warning.
+ */
+export function validateHref(raw, el) {
+  if (typeof raw !== 'string') return null
+  const stripped = raw.replace(/[\u0000-\u0020]/g, '')
+  if (!stripped) return null
+  // //host and \\host carry no scheme but are cross-origin, so they are rejected like one.
+  if (/^[\\/]{2}/.test(stripped)) {
+    if (DEV && el) warnOnce(`href-scheme:${el._uid || el.localName}`, `${describeElement(el)} href="${raw}" is a protocol-relative URL; use a full http or https URL or a path.`)
+    return null
+  }
+  const match = SCHEME.exec(stripped)
+  if (match) {
+    const scheme = match[1].toLowerCase()
+    if (!ALLOWED_SCHEMES.includes(scheme)) {
+      if (DEV && el) {
+        warnOnce(`href-scheme:${el._uid || el.localName}`, `${describeElement(el)} href="${raw}" has an unsupported scheme; only http, https, mailto, tel and relative URLs are accepted.`)
+      }
+      return null
+    }
+  }
+  return raw
+}
+
+// A character no translation contains, to find where the time goes in "synced {time}".
+const TIME_MARK = '\uE000'
+
+/**
+ * The words either side of the time in `time.synced`, so a tile can hide them
+ * when it is narrow, and a translation that puts the time first still works.
+ */
+export function syncedParts(t) {
+  // The message holds one {time}; a second would be text with no node to sit beside, so it is kept as words.
+  const [pre = '', ...rest] = t('time.synced', { time: TIME_MARK }).split(TIME_MARK)
+  return { pre, post: rest.join('') }
+}
+
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
@@ -233,6 +287,73 @@ export function sk(width, height) {
   const h = SK_HEIGHTS.reduce((a, b) => (Math.abs(b - height) < Math.abs(a - height) ? b : a))
   return `<span class="sk ${w} h${h}"></span>`
 }
+
+// The status dot is decoration: whether the tile is live is in its name (", live").
+const DOT = '<span class="dot live" data-k="dot" aria-hidden="true" hidden></span>'
+// "synced 11:42". The words either side of the time are their own nodes, so a narrow tile can hide them.
+const META = '<span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>'
+
+const HEADING = '[part="label"]'
+
+/**
+ * The header row every widget starts with: `[status dot][label][spacer][meta]`
+ * (RFC 0003 §5.1). `part="header"` is the row and `part="label"` the label,
+ * which is the tile's heading: the base writes its aria-level after each render.
+ *
+ *   dot      the live dot, hidden until the widget unhides it
+ *   meta     true for the standard "synced 11:42" meta; a string of markup for a
+ *            widget's own right-hand content (a count, range buttons)
+ *   actions  a <slot name="actions"> after the meta
+ *   extra    markup straight after the label
+ *   inner    markup inside the label, for a label that shows two forms (the
+ *            session clock's long and short title); the widget then writes
+ *            those nodes, not the label's own text
+ *   labelClass  an extra class on the label
+ *
+ * `inner` and a string `meta` go beyond the RFC's signature; without them the
+ * clock's title and every widget's own meta could not use the shared row.
+ */
+export function header(opts) {
+  const { dot = false, meta = false, actions = false, extra = '', inner = '', labelClass = '' } = opts || {}
+  const right = (meta === true ? META : meta || '') + (actions ? '<slot name="actions"></slot>' : '')
+  const label = `<span class="lb ell${labelClass ? ` ${labelClass}` : ''}" part="label" role="heading" aria-level="3" data-k="label">${inner}</span>`
+  return `<div class="hd" part="header">${dot ? DOT : ''}${label}${extra}${right ? `<span class="f1"></span>${right}` : ''}</div>`
+}
+
+// The sign sits in the run of non-digits before the first digit: after a bidi mark (U+200E, U+200F, U+061C),
+// after a currency in front ("€ +1,50" in nl), or at the very start. A sign after a digit is never the figure's.
+const LEADING_SIGN = /^[^\p{Nd}]*?([+−])/u
+
+/**
+ * The ▲ or ▼ that goes beside a signed figure (RFC 0003 §5.5), read from the
+ * text the reader sees so it can never disagree with it. The text, not the
+ * number: a value that rounds to zero shows no sign, and so gets no arrow,
+ * which only the formatted text knows. A figure that shows no sign (zero) gets
+ * none. The glyph's node is `aria-hidden`: the sign is what a listener hears.
+ */
+export function arrowFor(text) {
+  const sign = typeof text === 'string' ? LEADING_SIGN.exec(text) : null
+  return sign ? (sign[1] === '+' ? '▲' : '▼') : ''
+}
+
+// The rules of the signed figures, for the widgets that draw them. `.fg` keeps the arrow, sign and digits on one line.
+// A figure cell (.cell: a stat in a row of three, or the rail's column) is its own size container, and the figure in it
+// is sized to the cell's width and its own length (--fc, set by update()). 0.62em a character is wider than any
+// proportional face and covers a monospace one; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
+export const FIGURE_CSS = `
+.fg { white-space: nowrap; }
+.cell { container-type: inline-size; }
+.cell .md { font-size: min(17px, calc(100cqi / (var(--fc, 10) * .62 + .65))); }
+`
+
+/**
+ * A figure that can be a gain or a loss: the ▲ or ▼ and the figure's text sit in one `.fg` box that never breaks, so the
+ * arrow, the sign and the digits are one unit at any width ("▲+" over "₹8,104.00" reads as two numbers). The figure's
+ * own box (and its tone class) covers both, and update() writes the arrow and the text to their own nodes, `${k}Ar`
+ * and `${k}V`. A tile too narrow for it shrinks the type (see the figure rules of each widget), it never wraps it.
+ */
+export const figure = (cls, k, part = '') =>
+  `<span class="${cls}"${part ? ` part="${part}"` : ''} data-k="${k}"><span class="fg"><span class="ar" aria-hidden="true" data-k="${k}Ar"></span><span data-k="${k}V"></span></span></span>`
 
 // Headline figures shrink with the tile, capped at the design size.
 //
@@ -262,16 +383,26 @@ ${standaloneCss()}
   container-type: inline-size;
 }
 .hd { display: flex; align-items: center; gap: 8px; min-height: 18px; }
-.lb { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; font-weight: 600; color: var(--ts-muted); }
-.n, .big, .xbig {
-  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500);
+.lb {
+  font-size: var(--ts-label-size, 10px); text-transform: var(--ts-label-case, uppercase);
+  letter-spacing: var(--ts-label-tracking, .12em); font-weight: var(--ts-label-weight, 600); color: var(--ts-muted);
 }
+/* A figure keeps its sign and currency symbol beside its digits in a right-to-left page. */
+.n, .big, .xbig {
+  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate;
+}
+.big, .xbig { font-weight: var(--ts-headline-weight, var(--ts-num-weight, 500)); }
 .big { font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em; }
 .xbig { font-size: min(48px, 9cqi); line-height: 1; letter-spacing: -.02em; }
 .md { font-size: min(17px, 12cqi); }
 .sm { font-size: 11px; }
 .xs { font-size: 10px; }
 .n.sm, .n.xs { font-weight: var(--ts-num-weight-small, 500); }
+/* The arrow beside a signed figure (arrowFor): a small mark raised to the digits' middle, and no room taken when it is empty. */
+.ar:empty { display: none; }
+/* The gap after it is about .15em of the figure, so the arrow reads as a marker apart from the sign (margins are in the arrow's own, smaller em). */
+.big .ar, .xbig .ar { font-size: .4em; margin-inline-end: .375em; vertical-align: .55em; line-height: 0; }
+.n .ar { font-size: .7em; margin-inline-end: .22em; vertical-align: .1em; }
 .mut { color: var(--ts-muted); }
 .pos { color: var(--ts-profit); }
 .neg { color: var(--ts-loss); }
@@ -288,14 +419,31 @@ ${standaloneCss()}
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .btn {
   font: 500 11px var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
-  border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer;
+  border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer; position: relative; z-index: 2;
 }
 .btn.on { background: var(--ts-surface-2); color: var(--ts-ink); box-shadow: inset 0 -2px 0 var(--ts-accent); }
+.visually-hidden {
+  position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
 .btn:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
+/* Stretched link for href and activatable tiles (RFC 0003 §7). */
+[part~="link"] {
+  color: inherit; text-decoration: none; font: inherit; background: none; border: 0; padding: 0; margin: 0;
+  cursor: pointer; outline: none; display: inline;
+}
+[part~="link"]::after { content: ''; position: absolute; inset: 0; z-index: 1; }
+/* The ring is on the link's own overlay, which already covers the tile, so it works in engines without the parent selector (Firefox before 121). */
+[part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
+/* Plain slotted content stays under the overlay, so a click on it opens the tile. Only controls, and whatever the host puts in the actions slot, are lifted above it to take their own clicks. */
+::slotted(:is(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="link"])), ::slotted([slot="actions"]) { position: relative; z-index: 2; }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
 @media (pointer: coarse) { .btn { min-height: 44px; min-width: 44px; } }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 .dot.live { background: var(--ts-profit); animation: ts-pulse 2s infinite; }
+/* The header's meta says 'synced 11:42', and on a tile narrower than 200px just '14:05', so the label keeps its room. */
+.meta { flex: none; white-space: nowrap; }
+@container (max-width: 200px) { .pre { display: none; } }
 @keyframes ts-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ts-profit) 55%, transparent); }
   70% { box-shadow: 0 0 0 7px transparent; }
@@ -309,6 +457,8 @@ ${standaloneCss()}
 .btn.retry { color: var(--ts-ink); }
 .sk { display: block; flex: none; position: relative; overflow: hidden; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); }
 .sk.grow { flex: 1; min-height: 0; width: 100%; }
+/* The loading view's box. It lays its blocks out as the tile does, so a skeleton's markup needs no wrapper of its own. */
+.skel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .sk::after {
   content: ''; position: absolute; inset: 0; transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ts-surface-2) 35%, var(--ts-surface)), transparent);
@@ -323,6 +473,13 @@ ${SK_CSS}
 .ap { fill: color-mix(in srgb, var(--ts-profit) var(--ts-fill, 12%), transparent); }
 .an { fill: color-mix(in srgb, var(--ts-loss) var(--ts-fill, 12%), transparent); }
 .lz { stroke: var(--ts-axis); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+/* The one place widget CSS names colours: the user's own, which a host cannot theme (RFC 0003 §29, point 1).
+   Backgrounds and box-shadows are dropped in forced colours, so what they drew is redrawn in marks that stay. */
+@media (forced-colors: active) {
+  .dot.live { background: Highlight; }
+  .btn.on { background: Highlight; color: HighlightText; }
+  .lp, .ln, .lz { stroke: CanvasText; }
+}
 `
 
 const EMPTY_SPEC = Object.freeze({ label: '', sizes: Object.freeze([]) })
@@ -350,7 +507,7 @@ function skeletonFor(Ctor, variant) {
   let byVariant = skeletonCache.get(Ctor)
   if (!byVariant) skeletonCache.set(Ctor, (byVariant = new Map()))
   let html = byVariant.get(variant)
-  if (html === undefined) byVariant.set(variant, (html = Ctor.skeleton(variant)))
+  if (html === undefined) byVariant.set(variant, (html = `<div class="skel" part="skeleton">${Ctor.skeleton(variant)}</div>`))
   return html
 }
 
@@ -367,10 +524,14 @@ let uids = 0
 const NO_DATA_MS = 10000
 
 // attribute that each formatter option comes from, for naming a warning's source
-const FORMAT_ATTR = { locale: 'locale', currency: 'currency', timeZone: 'time-zone' }
+const FORMAT_ATTR = { locale: 'locale', currency: 'currency', timeZone: 'time-zone', hourCycle: 'hour-cycle' }
 
 /** The nearest ancestor <ts-grid>, looking out through shadow roots. */
 function findGrid(el) {
+  if (el.closest) {
+    const g = el.closest('ts-grid')
+    if (g) return g
+  }
   let node = el.parentElement || (el.getRootNode && el.getRootNode().host)
   while (node) {
     if (node.localName === 'ts-grid') return node
@@ -379,9 +540,31 @@ function findGrid(el) {
   return null
 }
 
+// The widgets that are connected. One subscription to configure() serves them
+// all, and exists only while there is at least one, so nothing is held after the
+// last widget leaves the page.
+const mounted = new Set()
+let stopListening = null
+
+function mount(widget) {
+  mounted.add(widget)
+  if (!stopListening) stopListening = onConfigure(() => mounted.forEach((w) => w.invalidate()))
+}
+
+function unmount(widget) {
+  mounted.delete(widget)
+  if (!mounted.size && stopListening) {
+    stopListening()
+    stopListening = null
+  }
+}
+
+const ACTION_OPEN = 'open'
+const findLink = (t) => t?.closest ? t.closest('[part~="link"]') : (t?.getAttribute?.('part') === 'link' ? t : null)
+
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone', 'state', 'data']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level', 'href', 'activatable']
   }
 
   constructor() {
@@ -396,6 +579,9 @@ export class TsWidget extends Base {
     this._refs = new Map()
     this._fmt = null
     this._fmtKey = ''
+    this._messages = null
+    this._renderT = null
+    this._grid = null // the grid this widget has told about itself, so it hears when the grid's messages or locale change
     this._every = 0
     this._timer = 0
     this._failed = false
@@ -418,12 +604,37 @@ export class TsWidget extends Base {
       }
     }
     const root = this.attachShadow({ mode: 'open' })
-    root.innerHTML = `<style>${cssFor(this.constructor)}</style><section class="tile" part="tile"></section>`
+    root.innerHTML = `<style>${cssFor(this.constructor)}</style><div class="tile" part="tile" role="group"></div>`
     this._section = root.querySelector('.tile')
-    // One delegated listener: the Retry button is rebuilt with the error view.
+
+    // One delegated listener: Retry button in error view; tile activation for links and open actions (RFC 0003 §7).
     this._section.addEventListener('click', (e) => {
-      const target = e.target && e.target.closest ? e.target.closest('[data-action]') : null
-      if (target && target.getAttribute('data-action') === 'retry' && this.actionEnabled('retry')) this.emit('retry')
+      const t = e.target
+      const retry = t?.closest?.('[data-action]')
+      if (retry && retry.getAttribute('data-action') === 'retry' && this.actionEnabled('retry')) {
+        this.emit('retry')
+        return
+      }
+      const link = findLink(t)
+      if (!link) return
+      if (this._isEditing()) {
+        e.preventDefault?.()
+        e.stopPropagation?.()
+        return
+      }
+      // Only the button exists when the tile opens; a valid href renders a real link and navigates natively.
+      if (link.localName === 'button') {
+        e.preventDefault?.()
+        this.emit(ACTION_OPEN, { id: this.getAttribute('item') || '' })
+      }
+    })
+    this._section.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && findLink(e.target)) {
+        if (this._isEditing()) {
+          e.preventDefault?.()
+          e.stopPropagation?.()
+        }
+      }
     })
   }
 
@@ -472,7 +683,7 @@ export class TsWidget extends Base {
   }
 
   actionEnabled(name) {
-    return this._actions.includes(name)
+    return Boolean(this._actions && this._actions.includes(name))
   }
 
   get size() {
@@ -492,6 +703,13 @@ export class TsWidget extends Base {
   get label() {
     const own = this.getAttribute('label')
     if (own) return own
+    // A catalog widget's label is a message, so a translated app never shows the English one.
+    const key = this.constructor.catalogKey
+    if (key && Object.prototype.hasOwnProperty.call(WIDGETS, key)) {
+      const id = `widget.${key}.label`
+      const text = this.t(id)
+      if (text !== id) return text
+    }
     return this.spec.label
   }
 
@@ -520,6 +738,23 @@ export class TsWidget extends Base {
     else this.setAttribute('label', value)
   }
 
+  get href() {
+    return this.getAttribute('href')
+  }
+
+  set href(value) {
+    if (value === null || value === undefined) this.removeAttribute('href')
+    else this.setAttribute('href', String(value))
+  }
+
+  get activatable() {
+    return this.hasAttribute('activatable')
+  }
+
+  set activatable(value) {
+    this.toggleAttribute('activatable', !!value)
+  }
+
   get clock() {
     return this._clock
   }
@@ -534,14 +769,66 @@ export class TsWidget extends Base {
   }
 
   get formatter() {
-    const options = resolveFormatOptions(this, findGrid(this))
+    return this._formatterFor(currentConfig(), findGrid(this))
+  }
+
+  _formatterFor(config, grid) {
+    const options = resolveFormatOptions(this, grid)
     // configure() can change after we connect, so its values are part of the key.
-    const key = JSON.stringify([options, currentConfig()])
+    // The messages are not: they are a large table the formatter never reads.
+    config = { ...config }
+    delete config.messages
+    const key = JSON.stringify([options, config])
     if (!this._fmt || key !== this._fmtKey) {
       this._fmt = createFormatter(options)
       this._fmtKey = key
     }
     return this._fmt
+  }
+
+  /** Overrides for this widget's strings; null clears. */
+  get messages() {
+    return this._messages
+  }
+
+  set messages(value) {
+    this._messages = value && typeof value === 'object' ? value : null
+    this.requestRender()
+  }
+
+  /**
+   * Resolved per key: this element's messages, then the nearest grid's, then
+   * configure()'s, then EN. One function is shared by every element that
+   * resolves to the same tables and locale; assign a new object to change a table.
+   */
+  get t() {
+    // Inside a render the answer is already known, and update() asks many times.
+    return this._renderT || this._translatorFor(currentConfig(), findGrid(this))
+  }
+
+  _translatorFor(config, grid) {
+    const locale = resolveFormatOptions(this, grid).locale || config.locale
+    return translator(config.messages, grid && grid.messages, this._messages, locale)
+  }
+
+  /**
+   * Forget what was worked out from the formatter's and the messages' inputs
+   * and draw once more. The grid calls it when its messages or locale change,
+   * and configure() when any default does.
+   */
+  invalidate() {
+    this._fmt = null
+    this._fmtKey = ''
+    this.requestRender()
+  }
+
+  /** Tell the nearest grid this widget is in it, or that it left; a grid not yet defined is tried again at the next render. */
+  _link(grid) {
+    const target = grid && typeof grid._link === 'function' ? grid : null
+    if (target === this._grid) return
+    if (this._grid) this._grid._unlink(this)
+    this._grid = target
+    if (target) target._link(this)
   }
 
   /** The first match for `selector` in the shadow root, remembered until the template is rebuilt. */
@@ -602,7 +889,7 @@ export class TsWidget extends Base {
 
   /** The default loading shape: a header, a headline bar and two text lines. */
   static skeleton() {
-    return `<div class="hd"><span class="lb ell" data-k="label"></span></div>${sk(60, 30)}${sk(85, 11)}${sk(70, 11)}`
+    return `${header()}${sk(60, 30)}${sk(85, 11)}${sk(70, 11)}`
   }
 
   viewContext() {
@@ -616,7 +903,9 @@ export class TsWidget extends Base {
   connectedCallback() {
     // Before the first render, so the tile never paints unstyled; cheap after the first call.
     ensureTokens()
-    this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions')
+    this.upgrade('data', 'size', 'clock', 'state', 'error', 'actions', 'messages', 'href', 'activatable')
+    mount(this)
+    this._link(findGrid(this))
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
@@ -626,6 +915,8 @@ export class TsWidget extends Base {
 
   disconnectedCallback() {
     if (DEV) clearTimeout(this._undefTimer)
+    unmount(this)
+    this._link(null)
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVisibility)
     this._disarm()
   }
@@ -733,12 +1024,93 @@ export class TsWidget extends Base {
     return this.spec.sizes
   }
 
+  /**
+   * The aria-level of the tile's heading: this widget's `heading-level`, else
+   * the nearest grid's, else 3 (RFC 0003 §5.2). A value that isn't 1 to 6 is
+   * skipped, with one development warning, so a typo costs a level, not a heading.
+   */
+  _headingLevel(grid) {
+    for (const [source, whose] of [[this, ''], [grid, "grid's "]]) {
+      const raw = source && typeof source.getAttribute === 'function' ? source.getAttribute('heading-level') : null
+      if (!raw) continue
+      if (/^\s*[1-6]\s*$/.test(raw)) return Number(raw)
+      if (DEV) warnOnce(`level:${this._uid}:${whose}`, `${describeElement(this)} ${whose}heading-level="${raw}" is not a number from 1 to 6, so it is ignored.`)
+    }
+    return 3
+  }
+
+  /**
+   * Write `value` only when it differs, so a ticking tile doesn't rewrite its
+   * name and make a screen reader read it again (RFC 0003 §5.2). null removes.
+   */
+  _setAttr(el, name, value) {
+    if (value === null) {
+      if (el.getAttribute(name) !== null) el.removeAttribute(name)
+    } else if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+  }
+
+  _isEditing() {
+    const grid = findGrid(this)
+    return Boolean(grid && (grid.editing || grid.hasAttribute('editing')))
+  }
+
+  /**
+   * The tile's heading is the header's label. It takes its level here because
+   * the template is static, and it keeps the plain label as its name when the
+   * words it shows differ from it ("Today" in a small P&L tile), so heading
+   * navigation lists labels. A tile with no label from any source is named by
+   * its tag, which the heading would only repeat, so the heading is hidden.
+   */
+  _markHeading(grid, label) {
+    // Remembered with the other refs, which are dropped whenever the markup is rebuilt.
+    let heading = this._refs.get(HEADING)
+    if (!heading) {
+      heading = this._section.querySelector(HEADING)
+      if (heading) this._refs.set(HEADING, heading)
+    }
+    if (!heading) return
+    this._setAttr(heading, 'aria-level', String(this._headingLevel(grid)))
+    const named = !!this.label
+    this._setAttr(heading, 'aria-hidden', named ? null : 'true')
+    this._setAttr(heading, 'aria-label', named && heading.textContent !== label ? label : null)
+    this._applyActivation(heading, label)
+  }
+
+  _applyActivation(heading, label) {
+    const hasHref = this.hasAttribute('href')
+    const href = hasHref ? validateHref(this.getAttribute('href'), this) : null
+    // href wins only when it is valid, so a rejected one leaves the tile free to open.
+    const act = this.activatable && href === null
+    const cur = heading.querySelector ? heading.querySelector('[part~="link"]') : null
+
+    if (href !== null) {
+      if (!cur || (cur.localName !== 'a' && cur.tagName !== 'A')) {
+        const p = 'part' + '="link"'
+        heading.innerHTML = `<a ${p} href="${escapeHtml(href)}">${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</a>`
+      } else if (cur.getAttribute('href') !== href) {
+        cur.setAttribute('href', href)
+      }
+    } else if (act) {
+      if (!cur || (cur.localName !== 'button' && cur.tagName !== 'BUTTON')) {
+        const p = 'part' + '="link"'
+        heading.innerHTML = `<button type="button" ${p}>${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</button>`
+      }
+    } else if (cur) {
+      heading.innerHTML = escapeHtml(cur.textContent || label)
+    }
+  }
+
+  /** The tile's name: the view model's, then ", live" while it is live (a stale tile will say so too). */
+  _tileName(name, live) {
+    this._setAttr(this._section, 'aria-label', live ? `${name}, ${(this._renderT || this.t)('time.live')}` : name)
+  }
+
   /** The name for the tile: the label, else the tag, never empty. */
   _name() {
     const label = this.label
     if (label) return label
     if (DEV) {
-      warnOnce(`label:${this.localName}`, `<${this.localName}> has no label, so its region is named "${this.localName}". Set a label attribute or static spec.`)
+      warnOnce(`label:${this.localName}`, `<${this.localName}> has no label, so its tile is named "${this.localName}". Set a label attribute or static spec.`)
     }
     return this.localName
   }
@@ -769,30 +1141,44 @@ export class TsWidget extends Base {
   }
 
   _render() {
+    // Asked once for this render: it is also where a grid that was not defined at connect is found.
+    const config = currentConfig()
+    const grid = findGrid(this)
+    this._link(grid)
+    this._renderT = this._translatorFor(config, grid)
+    try {
+      this._draw(config, grid)
+    } finally {
+      this._renderT = null
+    }
+  }
+
+  _draw(config, grid) {
     const Ctor = this.constructor
+    const t = this._renderT
     const label = this._name()
     const variant = this.variant
     const state = this.state
 
     if (state === 'error' || this._error || this._parseError) {
       this._failed = false
-      return this._showError(label, this._error)
+      return this._showError(label, this._error, grid)
     }
     if (state === 'loading' || (this._data === undefined && !Ctor.dataOptional)) {
       this._failed = false
-      return this._showLoading(label, variant)
+      return this._showLoading(label, variant, grid)
     }
     if (this._data === null) {
       this._failed = false
-      return this._showEmpty(label)
+      return this._showEmpty(label, grid)
     }
     try {
-      const fmt = this.formatter
+      const fmt = this._formatterFor(config, grid)
       if (DEV) {
         this._checkFormatter(fmt)
         this._checkShape(this._data)
       }
-      const vm = Ctor.viewModel(this._data === undefined ? {} : this._data, variant, { ...this.viewContext(), fmt, now: this.now(), label }) || {}
+      const vm = Ctor.viewModel(this._data === undefined ? {} : this._data, variant, { ...this.viewContext(), fmt, t, now: this.now(), label }) || {}
       if (DEV) this._checkDropped(vm)
       if (this._shown !== variant) {
         this._section.innerHTML = templateFor(Ctor, variant)
@@ -800,20 +1186,21 @@ export class TsWidget extends Base {
         this._shown = variant
       }
       this._section.removeAttribute('aria-busy')
-      this._section.setAttribute('aria-label', vm.ariaLabel || label)
+      this._tileName(vm.ariaLabel || label, vm.live === true)
       this.update(vm, variant)
+      this._markHeading(grid, label)
       this._failed = false
     } catch (err) {
       // A widget that can't draw its data shouldn't take the page with it.
       // Logged once per run of failures: a clock tick would otherwise log every second.
       if (!this._failed) console.error(`tickslate: ${describeElement(this)} could not render its data; see docs/widgets/${this.localName}.md`, err)
       this._failed = true
-      this._showError(label, null)
+      this._showError(label, null, grid)
     }
   }
 
   /** Swap in a non-content view's markup, and write the real label into it. */
-  _show(key, html, label, name, busy) {
+  _show(key, html, label, name, busy, grid, skeletonLabel = label) {
     if (this._shown !== key) {
       this._section.innerHTML = html
       this._refs.clear()
@@ -821,32 +1208,58 @@ export class TsWidget extends Base {
     }
     // A skeleton may carry its own words (Today's P&L S says "Today"), so the hook is optional.
     const slot = this._section.querySelector('[data-k="label"]')
-    if (slot) slot.textContent = label
-    this._section.setAttribute('aria-label', name)
+    if (slot) slot.textContent = skeletonLabel
+    this._tileName(name, false)
     if (busy) this._section.setAttribute('aria-busy', 'true')
     else this._section.removeAttribute('aria-busy')
+    this._markHeading(grid, label)
   }
 
-  _showLoading(label, variant) {
-    this._show(`view:loading:${variant}`, skeletonFor(this.constructor, variant), label, label, true)
+  /** What the skeleton's label node says. A widget whose small loading view uses a shorter word overrides this. */
+  _skeletonLabel(variant, label) {
+    return label
   }
 
-  _showEmpty(label) {
-    const text = escapeHtml(this.constructor.emptyText)
-    this._show('view:empty', `<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="empty"><slot name="empty">${text}</slot></div>`, label, label, false)
+  _showLoading(label, variant, grid) {
+    this._show(`view:loading:${variant}`, skeletonFor(this.constructor, variant), label, label, true, grid, this._skeletonLabel(variant, label))
   }
 
-  _showError(label, message) {
-    const text = message || STRINGS.errorDefault
-    const retry = this.actionEnabled('retry') ? `<button type="button" class="btn retry" data-action="retry">${escapeHtml(STRINGS.retry)}</button>` : ''
+  /**
+   * The empty view's words: the host's `widget.<catalogKey>.empty` message
+   * first, then the class's own `emptyText` (a widget author's choice, which
+   * for a built-in is the EN value), then `widget.empty`.
+   */
+  _emptyText() {
+    const t = this.t
+    const own = this.constructor.emptyText
+    const key = this.constructor.catalogKey
+    if (key) {
+      const id = `widget.${key}.empty`
+      const text = t(id)
+      if (text !== id && (text !== EN[id] || own === EN[id])) return text
+    }
+    return own === EN['widget.empty'] ? t('widget.empty') : own
+  }
+
+  _showEmpty(label, grid) {
+    this._show('view:empty', `${header()}<div class="empty" part="empty"><slot name="empty"><span data-k="empty"></span></slot></div>`, label, label, false, grid)
+    this._section.querySelector('[data-k="empty"]').textContent = this._emptyText()
+  }
+
+  _showError(label, message, grid) {
+    const t = this.t
+    const text = message || t('widget.error')
+    const retry = this.actionEnabled('retry') ? '<button type="button" class="btn retry" data-action="retry" data-k="retry"></button>' : ''
     this._show(
       retry ? 'view:error:retry' : 'view:error',
-      `<div class="hd"><span class="lb ell" data-k="label"></span></div><div class="err" part="error"><span class="err-msg">${WARN_GLYPH}<span data-k="message"></span></span>${retry}</div>`,
+      `${header()}<div class="err" part="error"><span class="err-msg">${WARN_GLYPH}<span data-k="message"></span></span>${retry}</div>`,
       label,
-      STRINGS.errorRegion.replace('{label}', label).replace('{message}', text),
+      t('widget.error.region', { label, message: text }),
       false,
+      grid,
     )
     this._section.querySelector('[data-k="message"]').textContent = text
+    if (retry) this._section.querySelector('[data-k="retry"]').textContent = t('action.retry')
   }
 }
 
@@ -857,4 +1270,4 @@ TsWidget.spec = null
 TsWidget.styles = ''
 TsWidget.dataOptional = false
 TsWidget.dataShape = null
-TsWidget.emptyText = STRINGS.noData
+TsWidget.emptyText = EN['widget.empty']

@@ -99,7 +99,7 @@ describe('rendering', () => {
 
   test('opens a shadow root with the shared styles and a labelled tile', () => {
     const el = make()
-    assert.match(el.shadowRoot.html, /^<style>[\s\S]*\.tile \{[\s\S]*<\/style><section class="tile" part="tile"><\/section>$/)
+    assert.match(el.shadowRoot.html, /^<style>[\s\S]*\.tile \{[\s\S]*<\/style><div class="tile" part="tile" role="group"><\/div>$/)
   })
 
   // Later element tests rely on this wiring of the shared harness.
@@ -183,7 +183,7 @@ describe('rendering', () => {
     await tick()
     el.data = null
     await tick()
-    assert.match(section(el).html, /No data/)
+    assert.equal(section(el).querySelector('[data-k="empty"]').textContent, 'No data')
     el.data = { n: 2 }
     await tick()
     // template() itself is cached per variant, but the markup is written again.
@@ -453,7 +453,7 @@ describe('the spec', () => {
     el.requestRender()
     await tick()
     assert.equal(el.shadowRoot.section.getAttribute('aria-label'), 'my-tile')
-    assert.deepEqual(warnings, ['tickslate: <my-tile> has no label, so its region is named "my-tile". Set a label attribute or static spec.'])
+    assert.deepEqual(warnings, ['tickslate: <my-tile> has no label, so its tile is named "my-tile". Set a label attribute or static spec.'])
     mock.restoreAll()
   })
 

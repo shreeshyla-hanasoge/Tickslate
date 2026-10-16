@@ -68,6 +68,84 @@ Things to know:
 - Graphite changes more than colour: radius 12px, padding 16px, no shadow,
   area fills at 16%, and heavier small figures.
 
+## Presets
+
+Six ready-made themes, each its own opt-in file, switched by one attribute. A
+host that uses none pays nothing: they are not in `tokens.css` and not in the
+injected defaults.
+
+```html
+<link rel="stylesheet" href="node_modules/tickslate/tokens.css">
+<link rel="stylesheet" href="node_modules/tickslate/themes/calm.css">
+
+<ts-grid data-ts-theme="calm">...</ts-grid>
+```
+
+With a bundler, `import 'tickslate/themes/calm.css'` after `tokens.css`.
+
+**Order.** With `tokens.css` linked, link the preset after it: the two have the
+same (zero) specificity, so the later file wins on an element that matches both.
+With only the injected defaults (no `tokens.css`), the order of the preset link
+does not matter, because the defaults are in a cascade layer and any unlayered
+preset beats them.
+
+| `data-ts-theme` | What it is | Modes | Faces |
+|---|---|---|---|
+| `neutral` | White surfaces on a zinc scale, blue accent, sentence-case labels | Light and dark | `system-ui` for text and figures; nothing to load |
+| `paper` | The default light tokens, restated so a grid can be light on a dark page | One: ignores `data-theme` | Geist and Newsreader, as the defaults |
+| `graphite` | The default dark tokens, restated so a grid can be dark on a light page | One: ignores `data-theme` | Geist and Newsreader, as the defaults |
+| `calm` | Soft contrast, 18px corners, sentence-case labels, monospaced figures | Light and dark | Geist, and Geist Mono for figures |
+| `signal` | A black page in dark and a pale grey one (`#F2F2F5`) in light, 700-weight labels and figures, strong area tints | Light and dark | Geist |
+| `terminal` | Dense and monospaced: 3px corners, 12px padding, hairlines, no area fill | Light and dark | Geist Mono |
+
+- **Modes.** `neutral`, `calm`, `signal` and `terminal` are light by default and
+  go dark under the same conditions as Graphite: `data-theme="dark"`, a `.dark`
+  ancestor, or `data-theme="auto"` while the OS prefers dark. A light island
+  wins as it does for the default tokens: `data-theme="light"` on the grid, or
+  on an element between the grid and the dark ancestor, keeps it light, and a
+  dark island inside a light page is dark. The nearest one decides, with one
+  gap: a light island inside a dark island inside a light page renders dark
+  under a preset (CSS cannot ask for "nothing of this kind in between" without
+  `:has()`), so put `data-theme="light"` on the grid itself there.
+  `paper` and `graphite` ignore `data-theme`: choosing the preset chooses the
+  mode. The dark side of `calm`, `signal` and `terminal` follows the design
+  references; their light side keeps the same type, corners, density and weight
+  on a light page.
+- **Put `data-ts-theme` on the grid or the widget** (any element), and
+  `data-theme` on that element or an ancestor. A preset sets variables on the
+  element it names, so everything inside follows it.
+- **Fonts.** Tickslate does not ship or download any. `calm`, `signal`,
+  `terminal` and the Geist and Newsreader of `paper` and `graphite` name a face
+  first and a system face after it, so they work without the web font and look
+  as designed when you load it (see Fonts below). `neutral` uses `system-ui`
+  only. Monospaced figures are wider than proportional ones, so a large figure
+  such as the equity curve headline can wrap its sign onto its own line in a
+  two-column phone tile under `calm` and `terminal`.
+- **Palettes win, on the same element.** A preset keeps the tokens a palette
+  owns (`--ts-profit`, `--ts-loss`, `--ts-accent`, `--ts-focus` and the series
+  colours) in a second block scoped
+  `:where([data-ts-theme='calm']:not([data-ts-palette]))`. A grid with a
+  `data-ts-palette` on the **same element** as its `data-ts-theme` therefore
+  takes the palette's values for those tokens and the preset's for everything
+  else. A palette on an ancestor does not win: the preset declares on the grid
+  itself, so put `data-ts-palette` beside `data-ts-theme`.
+- **Nested presets and a palette.** When an element with a preset sits inside
+  another element with a preset, and the inner one has a `data-ts-palette`, the
+  inner preset stops declaring the palette-owned tokens. Any of them the
+  palette does not itself set are inherited from the outer element, so they
+  show the outer preset's values, not the inner preset's.
+- **Your own tokens.** Presets have zero specificity like everything else, so
+  `:root { --ts-accent: ... }` does not reach a grid that names a preset
+  (a preset declares directly on the grid); put your override on the grid's own
+  selector, for example `ts-grid[data-ts-theme='calm'] { --ts-accent: #5b3fd6; }`.
+- **Never touched.** A preset sets colour, corners, padding, shadow, fill and
+  type tokens only, never `--ts-row`, `--ts-gap`, `--ts-motion` or `--ts-ease`,
+  and never names a widget or a part.
+
+Every preset is checked against the contrast floors below, in each mode it has
+(`test/presets.test.mjs`), and the widget gallery (`widgets.html`) has a preset
+switcher that shows every widget in each one.
+
 ## Tokens
 
 Each token with its Paper (light) and Graphite (dark) value. "same" means
@@ -105,8 +183,13 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-pad` | Padding inside a tile | `18px` | `16px` | Every tile |
 | `--ts-row-compact` | Row height at 2 columns (phones) | `150px` | same | `<ts-grid>` at 2 columns. Set in px |
 | `--ts-gap-compact` | Gap at 2 columns (phones) | `10px` | same | `<ts-grid>` at 2 columns. Set in px |
-| `--ts-num-weight` | Weight of headline figures | `500` | same | `.big` and `.xbig` figures |
+| `--ts-num-weight` | Weight of figures | `500` | same | Every figure; the headline figures take `--ts-headline-weight`, which follows it |
 | `--ts-num-weight-small` | Weight of small figures | `500` | `600` | Secondary figures; Graphite is heavier because light-on-dark text reads thinner |
+| `--ts-label-size` | Size of a tile's label | `10px` | same | The label in every header, and the small labels beside figures |
+| `--ts-label-case` | Case of a tile's label (`text-transform`) | `uppercase` | same | The same labels; `none` gives sentence case |
+| `--ts-label-tracking` | Letter spacing of a tile's label | `.12em` | same | The same labels |
+| `--ts-label-weight` | Weight of a tile's label | `600` | same | The same labels |
+| `--ts-headline-weight` | Weight of headline figures | `var(--ts-num-weight)` | same | `.big` and `.xbig` figures; follows `--ts-num-weight` until you set it |
 | `--ts-shadow-lift` | Shadow of a tile picked up while editing | `0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45)` | `0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7)` | The lifted tile and the grid's floating pill and toast |
 | `--ts-motion` | Duration of the grid's slide animations | `220ms` | same | Tiles sliding into place |
 | `--ts-ease` | Easing of the grid's slide animations | `cubic-bezier(.2, .8, .2, 1)` | same | Tiles sliding into place |

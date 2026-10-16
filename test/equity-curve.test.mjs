@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { createFormatter } from '../src/core/index.js'
+import { createFormatter, createMessages } from '../src/core/index.js'
 import {
   TsEquityCurve,
   HEADLINE_CHARS,
@@ -17,7 +17,8 @@ const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/
 const month = (iso) => new Intl.DateTimeFormat('en-IN', { month: 'short', timeZone: 'UTC' }).format(Date.parse(iso))
 const d = (date, pnl, trades) => (trades === undefined ? { date, pnl } : { date, pnl, trades })
 const dates = (rows) => rows.map((r) => r.date)
-const ctx = (range) => ({ fmt, label: 'Equity curve', range })
+const t = createMessages()
+const ctx = (range) => ({ fmt, t, label: 'Equity curve', range })
 
 // Equity 1000, 500, 2500, -1500, -1800: peak 2500, deepest fall 4300, net -1800.
 const OCT = [
@@ -46,7 +47,7 @@ describe('without a DOM', () => {
       assert.doesNotMatch(html, /#[0-9a-f]{3,8}\b/i)
     }
     const xl = TsEquityCurve.template('XL')
-    assert.match(xl, /role="group" aria-label="Range"/)
+    assert.match(xl, /role="group"[^>]*data-k="rangeGroup"/)
     for (const r of RANGES) assert.match(xl, new RegExp(`data-range="${r}"`))
     assert.doesNotMatch(TsEquityCurve.template('Wide'), /data-range/)
     assert.doesNotMatch(TsEquityCurve.template('M'), /data-range/)
@@ -319,9 +320,9 @@ describe('equityCurveModel', () => {
 
   test('static viewModel is the pure model, and reads the range from the context', () => {
     const data = { days: OCT }
-    assert.deepEqual(TsEquityCurve.viewModel(data, 'M', { fmt, now: 0, label: 'Equity curve', range: '1W' }), equityCurveModel(data, 'M', ctx('1W')))
+    assert.deepEqual(TsEquityCurve.viewModel(data, 'M', { fmt, t, now: 0, label: 'Equity curve', range: '1W' }), equityCurveModel(data, 'M', ctx('1W')))
     // No range anywhere: All.
-    assert.equal(TsEquityCurve.viewModel(data, 'M', { fmt, now: 0, label: 'Equity curve' }).range, 'All')
+    assert.equal(TsEquityCurve.viewModel(data, 'M', { fmt, t, now: 0, label: 'Equity curve' }).range, 'All')
   })
 
   test('viewContext hands the model the normalised range attribute', () => {

@@ -4,6 +4,7 @@
  * instants, so these convert between the two without a time zone library.
  */
 
+const DAY = 86400000
 const partsCache = new Map()
 
 function partsFormatter(timeZone) {
@@ -46,20 +47,24 @@ export function localDate(t, timeZone) {
 
 /**
  * The instant at which the clock in `timeZone` reads `hhmm` on `date`.
- * Two passes settle the offset across a daylight-saving change; a time that
- * doesn't exist (inside a spring-forward gap) lands just after the gap.
+ *
+ * The zone's offset a day before and a day after bracket any change that
+ * could touch that wall time, so each is tried: an offset fits when the clock
+ * at the instant it gives really reads that time. A wall time that fits
+ * twice happened twice (the hour after clocks go back), and the earlier
+ * instant is returned. One that fits neither is inside a spring-forward gap
+ * and never happened: it lands just after the gap, as the wall time shifted
+ * by the gap's length (02:30 becomes 03:30 when 02:00 jumps to 03:00).
  */
 export function zonedTime(date, hhmm, timeZone) {
   const [y, m, d] = date.split('-').map(Number)
   const [hh, mm] = hhmm.split(':').map(Number)
   const wall = Date.UTC(y, m - 1, d, hh, mm)
-  let t = wall - offsetAt(wall, timeZone)
-  const again = wall - offsetAt(t, timeZone)
-  if (again !== t) t = again
-  return t
+  const around = [offsetAt(wall - DAY, timeZone), offsetAt(wall + DAY, timeZone)]
+  const fits = around.filter((o) => offsetAt(wall - o, timeZone) === o)
+  // The larger offset is the earlier instant.
+  return wall - (fits.length ? Math.max(...fits) : around[0])
 }
-
-const DAY = 86400000
 
 /** `date` moved by `days` calendar days. */
 export function addDays(date, days) {

@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- The cascade between tokens.css and the theme presets (RFC 0003 §13.1). The
+     spec writes its own markup into #stage and reads computed custom properties,
+     so no widget is needed. The presets come after tokens.css, as the docs say. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Presets fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<link rel="stylesheet" href="/src/themes/presets/neutral.css">
+<link rel="stylesheet" href="/src/themes/presets/paper.css">
+<link rel="stylesheet" href="/src/themes/presets/graphite.css">
+<link rel="stylesheet" href="/src/themes/presets/calm.css">
+<link rel="stylesheet" href="/src/themes/presets/signal.css">
+<link rel="stylesheet" href="/src/themes/presets/terminal.css">
+</head>
+<body>
+<div id="stage"></div>
+</body>
+</html>

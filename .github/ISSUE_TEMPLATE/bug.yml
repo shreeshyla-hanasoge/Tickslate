@@ -1,0 +1,107 @@
+name: Bug report
+description: Something renders wrong, throws, or behaves differently from the docs.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A bug needs a way to see it, so please fill in every field.
+
+        **Security problem?** Don't post it here. Report it privately through the repository's Security tab, as described in [SECURITY.md](https://github.com/shreeshyla-hanasoge/Tickslate/blob/master/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Tickslate version
+      description: From `npm ls tickslate`, or the version in the CDN URL.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: widget
+    attributes:
+      label: Which part is affected?
+      options:
+        - ts-grid
+        - ts-card
+        - ts-metric
+        - ts-chart
+        - ts-today-pnl
+        - ts-equity-curve
+        - ts-session-clock
+        - Formatting or other core functions
+        - Theming or CSS tokens
+        - A widget of my own
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: Include the operating system. Tickslate supports Chrome 111, Safari 16.2 and Firefox 113 or later.
+      placeholder: "Safari 17.4 on iOS 17"
+    validations:
+      required: true
+  - type: dropdown
+    id: framework
+    attributes:
+      label: How do you use it?
+      options:
+        - Plain HTML
+        - Vue
+        - React
+        - Svelte
+        - Angular
+        - Server-rendered template (Laravel, Rails, Django and others)
+        - Another framework
+    validations:
+      required: true
+  - type: input
+    id: framework-version
+    attributes:
+      label: Framework and bundler versions
+      description: Leave blank for plain HTML.
+      placeholder: "Vue 3.4, Vite 5.4"
+  - type: textarea
+    id: data-shape
+    attributes:
+      label: The data you pass in
+      description: The smallest data that shows the problem, as JSON. Use made-up numbers; remove anything private.
+      render: json
+      placeholder: '{ "value": 1204, "change": 0.12 }'
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The markup or code, and what to do. A link to a small repro (CodePen, StackBlitz or a repository) is best.
+      placeholder: |
+        1. Render ...
+        2. Set ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Add a screenshot, and any console warning or error, as text.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I searched existing issues and the docs, and didn't find this.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

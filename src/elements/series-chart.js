@@ -11,19 +11,10 @@
  * unused, which is what lets new data never need new markup.
  */
 
-import { TsWidget, sk, describeElement } from './widget.js'
+import { TsWidget, sk, describeElement, syncedParts, header, escapeHtml } from './widget.js'
 import { areaPaths, scale, seriesDomain } from './chart.js'
 import { DEV, warnOnce } from './dev.js'
-import { toNumber, toTime } from '../core/index.js'
-
-// English strings in one place, ready for overridable messages.
-export const STRINGS = Object.freeze({
-  empty: 'No data yet',
-  synced: 'synced ',
-  last: 'last',
-  noData: 'no data',
-  series: 'Series',
-})
+import { EN, toNumber, toTime } from '../core/index.js'
 
 export const MAX_SERIES = 4
 
@@ -37,6 +28,20 @@ const TICK_STEPS = 3
 const DASH = '—'
 const MINUS = '−'
 const DAY_MS = 86400000
+const ACTION_SELECT = 'select'
+
+/**
+ * Where an arrow key moves the focused point (index `from` of `count`), or -1
+ * when the key is not one of ours. Left and right swap in a right-to-left page,
+ * because the points are laid out from the inline start.
+ */
+export function stepPoint(from, count, key, rtl) {
+  if (from < 0 || count < 1) return -1
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  const step = key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : key === 'ArrowRight' ? (rtl ? -1 : 1) : key === 'ArrowLeft' ? (rtl ? 1 : -1) : 0
+  return step ? Math.min(count - 1, Math.max(0, from + step)) : -1
+}
 
 const round = (v) => Math.round(v * 10) / 10
 const isObj = (v) => v !== null && typeof v === 'object'
@@ -51,7 +56,12 @@ function yColumns(y) {
   for (const item of list) {
     if (typeof item === 'string' && item) out.push({ key: item, name: item, kind: 'line' })
     else if (isObj(item) && typeof item.key === 'string' && item.key) {
-      out.push({ key: item.key, name: str(item.name) || item.key, kind: item.kind === 'area' ? 'area' : 'line' })
+      out.push({
+        key: item.key,
+        id: item.id != null ? String(item.id) : undefined,
+        name: str(item.name) || item.key,
+        kind: item.kind === 'area' ? 'area' : 'line',
+      })
     }
   }
   return out
@@ -64,7 +74,7 @@ const byX = (a, b) => a.x - b.x
  * points, and how many rows or points couldn't be read. Sorted because a line
  * drawn through points out of order doubles back on itself.
  */
-function readSeries(d, readX) {
+function readSeries(d, readX, t) {
   const out = []
   let dropped = 0
   if (Array.isArray(d.series)) {
@@ -72,32 +82,45 @@ function readSeries(d, readX) {
       const item = isObj(s) ? s : {}
       const points = []
       if (Array.isArray(item.points)) {
-        for (const p of item.points) {
+        for (let ptIdx = 0; ptIdx < item.points.length; ptIdx++) {
+          const p = item.points[ptIdx]
           const x = isObj(p) ? readX(p.x) : NaN
           const y = isObj(p) ? toNumber(p.y) : NaN
-          if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y })
+          if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y, rawX: isObj(p) ? p.x : undefined, index: ptIdx })
           else dropped++
         }
       }
-      out.push({ name: str(item.name) || `${STRINGS.series} ${i + 1}`, kind: item.kind === 'area' ? 'area' : 'line', points: points.sort(byX) })
+      out.push({
+        id: item.id != null ? String(item.id) : undefined,
+        name: str(item.name) || t('chart.series', { index: i + 1 }),
+        kind: item.kind === 'area' ? 'area' : 'line',
+        points: points.sort(byX),
+      })
     })
   } else if (Array.isArray(d.rows)) {
     const cols = yColumns(d.y)
     const xKey = str(d.x)
     const lists = cols.map(() => [])
-    for (const row of d.rows) {
-      const x = isObj(row) && xKey ? readX(row[xKey]) : NaN
+    for (let rowIdx = 0; rowIdx < d.rows.length; rowIdx++) {
+      const row = d.rows[rowIdx]
+      const rawX = isObj(row) && xKey ? row[xKey] : undefined
+      const x = isObj(row) && xKey ? readX(rawX) : NaN
       if (!Number.isFinite(x)) {
         dropped++
         continue
       }
       cols.forEach((col, i) => {
         const y = toNumber(row[col.key])
-        if (Number.isFinite(y)) lists[i].push({ x, y })
+        if (Number.isFinite(y)) lists[i].push({ x, y, rawX, index: rowIdx })
         else dropped++
       })
     }
-    cols.forEach((col, i) => out.push({ name: col.name, kind: col.kind, points: lists[i].sort(byX) }))
+    cols.forEach((col, i) => out.push({
+      id: col.id != null ? String(col.id) : undefined,
+      name: col.name,
+      kind: col.kind,
+      points: lists[i].sort(byX),
+    }))
   }
   return { all: out, dropped }
 }
@@ -166,14 +189,14 @@ function places(n) {
  * dash.
  */
 export function chartModel(data, variant, ctx) {
-  const fmt = ctx.fmt
+  const { fmt, t } = ctx
   const d = isObj(data) && !Array.isArray(data) ? data : {}
   const format = ['money', 'percent', 'duration'].includes(d.format) ? d.format : 'number'
   const decimals = Number.isInteger(d.decimals) && d.decimals >= 0 && d.decimals <= 20 ? d.decimals : undefined
   const unit = str(d.unit)
   const timeAxis = d.xType !== 'number'
 
-  const { all, dropped } = readSeries(d, timeAxis ? toTime : toNumber)
+  const { all, dropped } = readSeries(d, timeAxis ? toTime : toNumber, t)
   const series = []
   for (let i = 0; i < all.length && i < MAX_SERIES; i++) series.push(all[i])
 
@@ -281,17 +304,41 @@ export function chartModel(data, variant, ctx) {
     }
   }
 
+  const outPoints = []
+  if (hasPoints) {
+    // A point's name reads its x as the axis does: a date, or a clock time inside a day, never the raw timestamp.
+    const xName = !timeAxis ? (v) => fmt.number(v, { sign: 'negative' }) : x1 - x0 < DAY_MS ? (v) => fmt.time(v) : (v) => fmt.date(v)
+    for (const s of series) {
+      const sKey = s.id != null && s.id !== '' ? s.id : s.name
+      for (const p of s.points) {
+        const px = s.points.length === 1 && x1 === x0 ? round(BOX.width - PAD) : round(x(p.x))
+        const py = round(y(p.y))
+        outPoints.push({
+          series: sKey,
+          value: p.rawX !== undefined ? p.rawX : p.x,
+          y: p.y,
+          index: p.index,
+          xPct: round(px / 4),
+          yPct: round(py),
+          label: `${s.name}: ${xName(p.x)}, ${show(p.y)}`,
+        })
+      }
+    }
+  }
+
   // The summary a listener gets instead of the picture (docs/ACCESSIBILITY.md).
   const summary = outSeries.length
-    ? outSeries.map((s) => `${s.name}, ${s.empty ? STRINGS.noData : `${STRINGS.last} ${s.last}`}`).join('; ')
-    : `${ctx.label}, ${STRINGS.noData}`
+    ? outSeries.map((s) => (s.empty ? t('chart.noData', { name: s.name }) : t('chart.last', { name: s.name, value: s.last }))).join('; ')
+    : t('chart.noData', { name: ctx.label })
 
   const vm = {
     ariaLabel: summary,
     label: ctx.label,
     live: d.live === true,
     time: '',
+    synced: syncedParts(t),
     series: outSeries,
+    points: outPoints,
     legend: outSeries.map((s, i) => ({ name: s.name, index: i + 1 })),
     axis,
     zeroY,
@@ -311,20 +358,19 @@ export function chartModel(data, variant, ctx) {
 
 const SLOTS = [1, 2, 3, 4]
 
-const dot = '<span class="dot live" data-k="dot" hidden></span>'
-const meta = `<span class="sm mut n meta" data-k="meta" hidden><span class="pre">${STRINGS.synced}</span><span data-k="time"></span></span>`
-
 // Wide names the first series up in the header, where the other sizes have a legend.
 const head = (wide) =>
-  `<div class="hd">${dot}<span class="lb ell" data-k="label"></span>${
-    wide ? '<span class="sname sm" data-k="first" hidden><span class="sw c-1" data-k="sw1" aria-hidden="true"></span><span class="ell" data-k="n1"></span></span>' : ''
-  }<span class="f1"></span>${meta}</div>`
+  header({
+    dot: true,
+    meta: true,
+    extra: wide ? '<span class="sname sm" data-k="first" hidden><span class="sw c-1" data-k="sw1" aria-hidden="true"></span><span class="ell" data-k="n1"></span></span>' : '',
+  })
 
 const marks = (cls, prefix) => SLOTS.map((i) => `<path class="${cls} c-${i}" data-k="${prefix}${i}"></path>`).join('')
 
-const plot = (ticked) => `<div class="prow"><div class="plot"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
+const plot = (ticked) => `<div class="prow"><div class="plot" part="chart"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
   ticked ? '<path class="gl" data-k="grid"></path>' : ''
-}<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sl', 'l')}${marks('sd', 'd')}</svg></div>${
+}<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sl', 'l')}${marks('sd', 'd')}</svg><ul class="pts" data-k="pts" hidden></ul></div>${
   ticked ? `<div class="yax n" aria-hidden="true"><div class="yin">${[0, 1, 2, 3].map((i) => `<span data-k="y${i}"></span>`).join('')}</div></div>` : ''
 }</div>`
 
@@ -349,7 +395,7 @@ TEMPLATES.XL = TEMPLATES.L
 
 // Loading shapes follow each size's layout block for block.
 const skAxis = '<div class="xax"><span class="sk wx h9"></span><span></span><span class="sk wx h9"></span></div>'
-const skHead = '<div class="hd"><span class="lb ell" data-k="label"></span></div>'
+const skHead = header()
 const skRail = SLOTS.map(() => `<div class="ri">${sk(60, 10)}${sk(40, 16)}</div>`).join('')
 const SKELETONS = {
   Wide: `${skHead}<div class="chartcol"><span class="sk grow"></span>${skAxis}</div>`,
@@ -360,7 +406,7 @@ SKELETONS.XL = SKELETONS.L
 
 export class TsChart extends TsWidget {
   static catalogKey = 'chart'
-  static emptyText = STRINGS.empty
+  static emptyText = EN['widget.chart.empty']
   // Both forms are optional here because either alone is enough; naming the
   // series items' points is what lets a wrong-shape one be explained.
   static dataShape = {
@@ -378,10 +424,8 @@ export class TsChart extends TsWidget {
 
   static styles = `
 [hidden] { display: none !important; }
-.n { unicode-bidi: isolate; }
-.meta { flex: none; white-space: nowrap; }
-@container (max-width: 200px) { .pre { display: none; } }
-.chartcol { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Time runs left to right in every locale, so the plot and its axes never mirror. */
+.chartcol { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; direction: ltr; }
 .prow { flex: 1; min-height: 0; display: flex; gap: 8px; }
 .plot { position: relative; flex: 1; min-width: 0; min-height: 0; }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; direction: ltr; }
@@ -390,6 +434,7 @@ export class TsChart extends TsWidget {
 .yin span { height: 0; display: flex; align-items: center; justify-content: flex-end; line-height: 1; white-space: nowrap; }
 .xax { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-size: 11px; color: var(--ts-muted); min-height: 14px; }
 .xax > :last-child { justify-self: end; }
+.xax > * { unicode-bidi: plaintext; }
 .xax.gut { padding-inline-end: 42px; }
 .c-1 { --c: var(--ts-series-1); }
 .c-2 { --c: var(--ts-series-2); }
@@ -412,6 +457,20 @@ export class TsChart extends TsWidget {
 @container (max-width: 460px) {
   .crow { flex-direction: column; gap: 10px; }
   .rail { width: auto; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; gap: 8px 16px; border-inline-start: 0; padding-inline-start: 0; }
+}
+.pts, .pts li { list-style: none; margin: 0; padding: 0; position: absolute; }
+.pts { inset: 0; pointer-events: none; }
+.pt { display: block; width: 16px; height: 16px; transform: translate(-50%, -50%); background: transparent; border: 0; padding: 0; margin: 0; cursor: pointer; border-radius: 50%; pointer-events: auto; outline: none; }
+.pt:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
+/* Colours are not the host's to theme here, and backgrounds are dropped, so series differ by colour AND dash and the
+   swatches become coloured blocks again. Two system colours and a dash tell four series apart. */
+@media (forced-colors: active) {
+  .sl, .sd { stroke: CanvasText; }
+  .sl.c-2, .sd.c-2, .sl.c-4, .sd.c-4 { stroke: Highlight; }
+  .sl.c-3, .sl.c-4 { stroke-dasharray: 6 3; }
+  .gl, .zl { stroke: CanvasText; }
+  .sw { background: CanvasText; }
+  .sw.c-2, .sw.c-4 { background: Highlight; }
 }
 `
 
@@ -436,6 +495,62 @@ export class TsChart extends TsWidget {
     return { ...vm, chartLabel: vm.ariaLabel, ariaLabel: ctx.label }
   }
 
+  constructor() {
+    super()
+    const onActivate = (e) => {
+      const btn = e.target?.closest?.('.pt')
+      if (!btn) return
+      if (this._isEditing()) {
+        e.preventDefault?.()
+        e.stopPropagation?.()
+        return
+      }
+      if (!this.actionEnabled(ACTION_SELECT)) return
+      const idx = Number(btn.getAttribute('data-index'))
+      const sKey = btn.getAttribute('data-series')
+      const pt = this._points?.find((p) => p.series === sKey && p.index === idx)
+      if (pt) {
+        e.preventDefault?.()
+        this.emit(ACTION_SELECT, { value: pt.value, series: pt.series, y: pt.y, index: pt.index })
+      }
+    }
+    this._section.addEventListener('click', onActivate)
+    this._section.addEventListener('keydown', (e) => {
+      const btn = e.target?.closest?.('.pt')
+      if (!btn) return
+      if (this._isEditing()) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault?.()
+          e.stopPropagation?.()
+        }
+        return
+      }
+      // Enter and Space reach onActivate as a click on the native button; only the arrows are ours.
+      if (!/^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) return
+      const btns = [...this.$('[data-k="pts"]').querySelectorAll('.pt')]
+      const from = btns.indexOf(btn)
+      const to = stepPoint(from, btns.length, e.key, getComputedStyle(this).direction === 'rtl')
+      if (to < 0) return
+      e.preventDefault()
+      this._rove(btns, to)
+      btns[to].focus()
+    })
+    // Pointer focus moves the tab stop too, so Tab leaves from where the user last was.
+    this._section.addEventListener('focusin', (e) => {
+      const btn = e.target?.closest?.('.pt')
+      if (btn) this._rove([...this.$('[data-k="pts"]').querySelectorAll('.pt')], undefined, btn)
+    })
+  }
+
+  // One tab stop for the whole group of points: the rest are reached with the arrow keys.
+  _rove(btns, to, btn) {
+    const next = to === undefined ? btns.indexOf(btn) : to
+    if (next < 0 || next === this._active) return
+    btns[this._active]?.setAttribute('tabindex', '-1')
+    btns[next].setAttribute('tabindex', '0')
+    this._active = next
+  }
+
   update(vm, variant) {
     // Each write is skipped when it would change nothing, so a tick that moves
     // the last point touches the paths and figures it moved, and nothing else.
@@ -456,8 +571,36 @@ export class TsChart extends TsWidget {
     hide('dot', !vm.live)
     text('label', vm.label)
     hide('meta', !vm.time)
+    text('pre', vm.synced.pre)
     text('time', vm.time)
+    text('post', vm.synced.post)
     attr('svg', 'aria-label', vm.chartLabel === undefined ? vm.ariaLabel : vm.chartLabel)
+
+    this._points = vm.points
+    const ptsEl = this.$('[data-k="pts"]')
+    if (ptsEl) {
+      const selectable = this.actionEnabled('select') && Array.isArray(vm.points) && vm.points.length > 0
+      ptsEl.toggleAttribute('hidden', !selectable)
+      if (selectable) {
+        // Arrow keys move the tab stop in place, so the markup is only rewritten when the points change, never to follow focus.
+        const active = Math.min(this._active || 0, vm.points.length - 1)
+        let html = ''
+        let key = ''
+        vm.points.forEach((pt, i) => {
+          const item = (tab) => `<li style="inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;"><button type="button" class="pt" tabindex="${tab}" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
+          html += item(i === active ? 0 : -1)
+          key += item(-1)
+        })
+        if (this._ptsKey !== key) {
+          this._ptsKey = key
+          this._active = active
+          ptsEl.innerHTML = html
+        }
+      } else if (ptsEl.innerHTML) {
+        this._ptsKey = ''
+        ptsEl.innerHTML = ''
+      }
+    }
 
     for (const i of SLOTS) {
       const s = vm.series[i - 1]

@@ -33,5 +33,8 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
     { name: 'mobile-safari', use: { ...devices['iPhone 14'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    // Android Chrome: a touch screen on Chromium, so tap paths run on the other touch engine too.
+    { name: 'mobile-chrome', use: { ...devices['Pixel 7'] } },
   ],
 })

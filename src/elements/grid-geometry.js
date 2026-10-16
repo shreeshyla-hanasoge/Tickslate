@@ -48,6 +48,46 @@ export function extentOf(w, h, m) {
 }
 
 /**
+ * Ids in row-major order of each tile's top-left cell, which is the order the
+ * eye reads a dashboard in (RFC 0003 §11). A tall tile sorts by where it
+ * starts, and tiles sharing a cell, which place() never makes, keep their input
+ * order because Array.prototype.sort is stable from ES2019.
+ */
+export function visualOrder(placements) {
+  return [...placements].sort((a, b) => a.row - b.row || a.col - b.col).map((p) => p.id)
+}
+
+/**
+ * Which of `wanted` can stay where they are when `current` is reordered into
+ * `wanted`: the longest run that already sits in the right relative order (a
+ * longest increasing subsequence), so the fewest are moved. Moving one tile's
+ * slot reattaches that tile in some engines and drops its slide, so a last-to-
+ * first change must move one slot, not all of the others. Every item of
+ * `wanted` must be in `current`.
+ */
+export function keepInPlace(current, wanted) {
+  const at = new Map(current.map((item, i) => [item, i]))
+  const seq = wanted.map((item) => at.get(item))
+  // Patience sorting: `tails[k]` ends the best run of length k + 1, and `prev` links each entry back along its run.
+  const tails = []
+  const prev = []
+  for (let i = 0; i < seq.length; i++) {
+    let lo = 0
+    let hi = tails.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (seq[tails[mid]] < seq[i]) lo = mid + 1
+      else hi = mid
+    }
+    prev[i] = lo ? tails[lo - 1] : -1
+    tails[lo] = i
+  }
+  const keep = new Set()
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) keep.add(wanted[k])
+  return keep
+}
+
+/**
  * Write a new order for the visible items back into the full profile.
  * Items with no element on the page keep their slots; the visible ones
  * refill theirs in the new order. A host that renders only some tiles never

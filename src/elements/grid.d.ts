@@ -1,4 +1,20 @@
-import type { Calendar, Layout, LayoutItem, LayoutIssue, ProfileSchedule, Catalog } from '../core/index.js'
+import type { Calendar, Device, Layout, LayoutItem, LayoutIssue, MessageOverrides, ProfileSchedule, Catalog, Translate } from '../core/index.js'
+
+/**
+ * Remote or async storage for `persistLayout`: either method may return a
+ * promise. The grid shows its defaults while `load` is pending, and the result is ignored when the device changed,
+ * `reset()` or `dispose()` ran, a later load started, or the user edited in the
+ * meantime. `save` is called on each `ts-layout-change`, in event order, and
+ * not awaited. A throw or a rejection is caught and warns once in development;
+ * the adapter owns retries and ordering.
+ */
+export interface LayoutAdapter {
+  /** What is stored for `device`; null or undefined for nothing. It is read like a saved layout, so a Layout or an item array both work. */
+  load(device: Device): Layout | LayoutItem[] | unknown | null | undefined | Promise<Layout | LayoutItem[] | unknown | null | undefined>
+  save(device: Device, layout: Layout): void | Promise<void>
+  /** Called by `reset()`; without it `reset()` only applies the defaults. */
+  remove?(device: Device): void | Promise<void>
+}
 
 export interface TsLayoutChangeDetail {
   /** The whole layout after the edit; save this. */
@@ -15,6 +31,11 @@ export interface TsLayoutChangeDetail {
   index?: number
   /** On 'remove': the item that was removed. On 'add': the item as restored. */
   item?: LayoutItem
+}
+
+export interface TsReadingOrderChangeDetail {
+  /** The visible tiles' ids in their new visual order. */
+  order: string[]
 }
 
 /**
@@ -43,9 +64,21 @@ export interface TsLayoutChangeDetail {
  * scheduled profile change that falls due while editing applies after Done.
  *
  * Attributes: `editing`, `profile`, `locked`, `undo-toast="off"`,
- * `edit-controls="off"`.
+ * `edit-controls="off"`, `locale` (for plural forms in its messages),
+ * `persist="my-dash"` (saves the layout to `localStorage` per device, with no script).
  * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
- * Slots: the default one for tiles, and `empty`.
+ * Slots: the default one for tiles, and `empty`. The grid assigns tiles to its
+ * own slots itself, so a tile's `slot` attribute is not used, except
+ * `slot="empty"` on the content that replaces the empty board's text.
+ *
+ * Reading and Tab order follow the layout, not the host's DOM order, outside
+ * edit mode (WCAG 1.3.2 and 2.4.3), and the grid never moves a child to do it.
+ * `ts-reading-order-change` fires when the order of the visible tiles changes,
+ * though not for the first order with a tile in it, which `readingOrder`
+ * reports, nor for the host's first `layout` before any edit, nor mid-edit; at
+ * Done it fires before `ts-edit-change`. A declarative shadow root without
+ * `shadowrootslotassignment="manual"` assigns by name, so the grid falls back to
+ * one slot there, and a tile's own `slot` attribute (other than `empty`) leaves it unrendered.
  *
  * With no `layout` set it works from its children alone (implicit mode): each
  * child becomes a tile, its id is written back as `item`, and the grid's own
@@ -60,6 +93,10 @@ export declare class TsGrid extends HTMLElement {
   set layout(value: Layout | LayoutItem[])
   /** Defaults to WIDGETS. May be a function that resolves one item to its spec. */
   catalog: Catalog
+  /** Overrides for the grid's own strings and for every tile inside it; null clears. Assign a new object to change them. */
+  messages: MessageOverrides | null
+  /** The grid's own translate function: its messages, then configure()'s, then EN, with plural forms from its `locale` attribute. */
+  readonly t: Translate
   /** The profile shown; reflects the `profile` attribute. Defaults to 'market'. */
   profile: string
   /** Edit mode; reflects the `editing` attribute. */
@@ -70,6 +107,15 @@ export declare class TsGrid extends HTMLElement {
    * it while editing ends edit mode. Reflects the `locked` attribute.
    */
   locked: boolean
+  /**
+   * A key that saves the layout to `localStorage` under `${key}:${device}`, as
+   * `persistLayout(grid, { key })` does, with the layout the grid shows when
+   * its device is first known as the defaults. null, or no attribute, turns
+   * saving off; so does an empty string, with one development warning. Changing
+   * it re-attaches, and the grid detaches when removed from the page. Reflects
+   * the `persist` attribute.
+   */
+  persist: string | null
   /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
   readonly hiddenItems: ReadonlyArray<{ id: string; type: string; label: string }>
   /**
@@ -84,6 +130,17 @@ export declare class TsGrid extends HTMLElement {
    * undo step. Returns false when no hidden child has that id.
    */
   restore(id: string): boolean
+  /**
+   * The visible tiles' ids in visual order: row by row, left to right by each
+   * tile's top-left cell. Where the browser has manual slot assignment (Safari
+   * 16.4, Chrome 86, Firefox 92), the grid slots its tiles in this order, so
+   * reading and Tab order follow the layout outside edit mode while the host's
+   * DOM order stays as it is; elsewhere they follow the DOM order. While
+   * editing it holds the order from before, except that a tile removed
+   * meanwhile leaves it at once, and it takes the new order at Done. Empty
+   * before the first render.
+   */
+  readonly readingOrder: readonly string[]
   /** 2, 3 or 4, from the grid's own width. 0 before it is first measured. */
   readonly columns: number
   /** Switches between 'market' and 'closed' on time when `profile` isn't pinned. */
@@ -102,6 +159,7 @@ declare global {
     'ts-layout-change': CustomEvent<TsLayoutChangeDetail>
     'ts-layout-issues': CustomEvent<{ issues: LayoutIssue[] }>
     'ts-edit-change': CustomEvent<{ editing: boolean }>
+    'ts-reading-order-change': CustomEvent<TsReadingOrderChangeDetail>
     'ts-columns-change': CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone'; initial: boolean }>
     'ts-profile-change': CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>
   }

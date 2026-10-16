@@ -155,7 +155,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `locked` | Read-only dashboard: no long press, no edit mode, no edit controls |
 | `edit-controls="off"` | Hides the Edit layout button, the edit pill and the empty board's Add back button, for hosts with their own controls. Long press, Escape and the `editing` attribute still work |
 | `undo-toast="off"` | Suppresses the undo toast; the removal is announced instead |
-| `locale`, `currency`, `time-zone` | Formatting for every tile that has none of its own: the widget's attribute, then these, then `configure()` |
+| `locale`, `currency`, `time-zone`, `hour-cycle` | Formatting for every tile that has none of its own: the widget's attribute, then these, then `configure()` |
 | `dragging` | Set by the grid while a tile is lifted, so you can style around a drag. Do not set it |
 
 ## Properties and methods
@@ -168,6 +168,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `editing` | `boolean` | Edit mode |
 | `locked` | `boolean` | Read-only. While set, `editing = true` is ignored with one development warning; setting it while editing ends edit mode |
 | `columns` | `2 \| 3 \| 4` (readonly) | From the grid's width. `0` before the first measure |
+| `readingOrder` | `readonly string[]` (readonly) | The visible tiles' ids in visual order, which is the order they are read and tabbed in. Empty before the first render. While editing it holds the order from before, except that a tile removed meanwhile leaves it at once, and it takes the new order at Done |
 | `hiddenItems` | `{ id, type, label }[]` (readonly) | Children whose item is not in the active profile, which includes tiles the user removed |
 | `undo()` | `() => boolean` | Restores the active profile's previous layout (up to 20 steps per profile); fires `ts-layout-change` with reason `'undo'`. `false` when there is nothing to undo. Works while locked, because the lock is for the user's hands |
 | `restore(id)` | `(id) => boolean` | Adds a hidden child back at the end of the profile, at its declared size (else its first supported one); fires `ts-layout-change` with reason `'add'` and records an undo step. `false` when no hidden child has that id |
@@ -195,8 +196,8 @@ status region announces each step. `ts-edit-change` fires on every change.
 
 When editing ends, focus goes back to the element that started it (the Edit
 layout button, or the tile under the long press) if it can still take focus,
-else to the grid itself (`tabindex="-1"`, named "Dashboard" unless you set
-`aria-label`).
+else to the grid's board, the dashboard region (`tabindex="-1"`, named "Dashboard"
+unless you set `aria-label` on the grid).
 
 ### The edit pill and Add back
 
@@ -265,6 +266,7 @@ All bubble and are composed. Details and types are in
 | `ts-layout-change` | The layout changed by a user's move, resize, remove, add back or undo. Carries the whole layout to save |
 | `ts-layout-issues` | You set `layout` or `catalog` and `readLayout` repaired something |
 | `ts-edit-change` | Edit mode started or ended |
+| `ts-reading-order-change` | The order of the visible tiles changed: at Done after an edit that moved or removed tiles (before `ts-edit-change`), or when a `layout` you set, a new column count or a tile appearing or going changes it. Not for the first order with a tile in it, nor for your first `layout` before any edit, nor mid-edit |
 | `ts-columns-change` | The column count changed, and once after the first measure |
 | `ts-profile-change` | The shown profile changed by schedule or `override()` |
 
@@ -280,8 +282,8 @@ All bubble and are composed. Details and types are in
 
 | Slot | Content |
 |---|---|
-| (default) | The tiles |
-| `empty` | Replaces the empty board's text |
+| (default) | The tiles. The grid assigns each one to a slot of its own, so a tile's `slot` attribute is not used |
+| `empty` | Replaces the empty board's text. Put `slot="empty"` on your content; the grid assigns it |
 
 ## Before the elements upgrade
 
@@ -291,9 +293,27 @@ that loads its script late does not jump. See [Theming](../theming.md).
 
 ## Accessibility
 
-- The grid is a plain container; each tile is its own labelled region. The
-  grid adds no landmark of its own until it needs to take focus, when it gets
-  `role="group"` and the name "Dashboard" (unless you gave it one).
+- The grid's board is the dashboard's one `role="region"` landmark, named by
+  your `aria-label` on `<ts-grid>` and else "Dashboard" (`grid.dashboard`, so
+  it follows `messages` and `locale`). Each tile is a labelled group inside it,
+  not a landmark of its own. The grid writes nothing to its own host: no role
+  and no `aria-label`. When focus has nowhere else to go, for example after the
+  last tile is removed, it goes to the board.
+- Reading order and Tab order follow the layout, not your markup (WCAG 1.3.2
+  and 2.4.3). After tiles are rearranged, a screen reader and the Tab key meet
+  them in the order they sit on screen: row by row, left to right by each
+  tile's top-left cell. The grid does this with one slot per visible tile and
+  never moves a child, so Vue, React and the like keep patching their own
+  nodes. `readingOrder` lists the ids in that order and
+  `ts-reading-order-change` tells you when it changes. Manual slot assignment
+  needs Safari 16.4, Chrome 86 or Firefox 92; below that the grid keeps one
+  slot, and reading and Tab order follow your DOM order. The same goes for a
+  declarative shadow root on the grid without `shadowrootslotassignment="manual"`,
+  which the grid reuses as it is and warns about in development. In that
+  fallback a tile's own `slot` attribute, anything but `empty`, names a slot the
+  grid does not have, so the tile is not rendered. In edit mode the tiles are
+  inert and the edit handles carry Tab, in placement order, so the new reading
+  order is taken at Done.
 - Everything the pointer can do has a keyboard path and a single-pointer path
   (WCAG 2.5.7): the handle, `+` and `-`, Delete, tap to place and the resize
   button. Targets in the pill and toast are 44px.

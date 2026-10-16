@@ -4,13 +4,14 @@ All notable changes to Tickslate are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## 0.1.0 — Unreleased
+## Unreleased
 
-The first release. The date is filled in when it is published. Version 0.0.0
-was only ever a private scaffold, so nothing is breaking for anyone who has
-installed from npm. The Changed and Breaking entries below describe how this
-release differs from the development builds that came before it, for anyone
-who tried the repository early.
+## 0.1.0 — 2026-10-14
+
+The first release. Version 0.0.0 was only ever a private scaffold, so nothing
+is breaking for anyone who has installed from npm. The Changed and Breaking
+entries below describe how this release differs from the development builds
+that came before it, for anyone who tried the repository early.
 
 ### Added
 

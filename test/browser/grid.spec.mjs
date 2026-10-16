@@ -254,14 +254,18 @@ test.describe('pointer', () => {
     await load(page)
     await startEditing(page)
     const seen = []
+    // Keep the pointer inside the viewport: Firefox under Playwright drops a mouseup
+    // released outside it, which would leave the resize gesture open.
+    const view = page.viewportSize()
+    const inView = (v, max) => Math.min(Math.max(v, 2), max - 2)
     // Pull each tile's corner big, then small, then tap it a few times.
     for (const id of ['sales', 'traffic', 'notes']) {
       for (const [dx, dy] of [[500, 400], [-600, -500]]) {
         const c = await center(resize(page, id))
         await page.mouse.move(c.x, c.y)
         await page.mouse.down()
-        await page.mouse.move(c.x + dx / 2, c.y + dy / 2, { steps: 6 })
-        await page.mouse.move(c.x + dx, c.y + dy, { steps: 6 })
+        await page.mouse.move(inView(c.x + dx / 2, view.width), inView(c.y + dy / 2, view.height), { steps: 6 })
+        await page.mouse.move(inView(c.x + dx, view.width), inView(c.y + dy, view.height), { steps: 6 })
         await page.waitForTimeout(200)
         await page.mouse.up()
         await settle(page)
