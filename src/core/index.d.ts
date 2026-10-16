@@ -240,6 +240,8 @@ export interface Formatter {
   duration(ms: number, o?: { style?: 'clock' | 'words' }): string
   /** '182 ms' for an ECMA-402 sanctioned unit (or an 'x-per-y' pair of them), '3 seats' for any other. */
   unit(v: Numeric, unit: string, o?: { decimals?: number; compact?: boolean }): string
+  /** 'just now' under 30 s, then '2 min ago', '3 hr ago', in the formatter's locale. `t` is an instant in ms. */
+  ago(t: number, now: number, o?: { justNow?: string }): string
   /** The full form if it fits in maxChars, else without decimals, else compact (only if shorter). style defaults to 'money'. */
   fit(v: Numeric, maxChars: number, o?: { style?: 'money' | 'number' | 'percent'; sign?: 'always' | 'negative'; decimals?: number }): string
 }
@@ -288,6 +290,9 @@ export interface Messages {
   'size.name': string
   'time.synced': string
   'time.live': string
+  'time.staleWord': string
+  'time.justNow': string
+  'time.stale': string
   'time.days.one': string
   'time.days.other': string
   'grid.dashboard': string

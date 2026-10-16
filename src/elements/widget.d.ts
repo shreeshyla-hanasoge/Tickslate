@@ -17,6 +17,16 @@ export interface ShapeField {
 /** A bare kind is required; keys not listed are allowed. */
 export type DataShape = Readonly<Record<string, ShapeKind | ShapeField>>
 
+/** Freshness information computed from data.asOf, data.live and stale-after (RFC 0003 §6.2). */
+export interface Freshness {
+  /** data.asOf read with toTime; null when absent or unreadable. */
+  asOf: number | null
+  /** fmt.ago, '' without asOf. */
+  ago: string
+  /** live and past the threshold. */
+  stale: boolean
+}
+
 /** The context a view model receives. */
 export interface ViewModelContext {
   /** Whatever the element's viewContext() adds. */
@@ -28,6 +38,8 @@ export interface ViewModelContext {
   now: number
   /** The effective label: the `label` attribute, else the spec's label, else the tag. */
   label: string
+  /** Freshness information computed from data.asOf, data.live and stale-after (RFC 0003 §6.2). */
+  freshness: Freshness
 }
 
 /** Base class of every Tickslate widget (RFC 0001 §8.1). See the header of widget.js for the full contract. */
@@ -98,10 +110,20 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   /** Write the view model into the DOM template() built. Called on every render. */
   update(vm: ViewModel, variant: SizeName): void
 
+  /**
+   * Tints the element marked data-flash="<key>" for 700 ms: up (--ts-profit) when
+   * the value rose, down (--ts-loss) when it fell. With goodWhen 'down' the
+   * colours swap; 'neither' uses --ts-accent for both (RFC 0003 §6.3).
+   */
+  protected flash(key: string, value: unknown, o?: { goodWhen?: 'up' | 'down' | 'neither' }): void
+
   connectedCallback(): void
   disconnectedCallback(): void
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void
 }
+
+/** Parses milliseconds as a number (90000) or duration string ('90s', '2m', '1h'). Null if unreadable. */
+export declare function parseDuration(v: unknown): number | null
 
 export declare function resolveFormatOptions(
   ...sources: Array<{ getAttribute(name: string): string | null } | null | undefined>

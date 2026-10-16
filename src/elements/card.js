@@ -213,6 +213,7 @@ slot[name="footer"]::slotted(*) {
     text('pre', vm.synced.pre)
     text('time', vm.time)
     text('post', vm.synced.post)
+    this.flash('value', this._slottedText('value'))
 
     const body = this.$('[data-k="body"]')
     body.setAttribute('class', vm.scrollable ? 'body scroll' : 'body')

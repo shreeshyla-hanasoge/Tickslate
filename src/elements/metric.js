@@ -341,6 +341,7 @@ svg.mut { color: var(--ts-muted); }
     text('time', vm.time)
     text('post', vm.synced.post)
     text('value', vm.value)
+    this.flash('value', this.data && this.data.value !== undefined ? this.data.value : vm.value, { goodWhen: this.data && this.data.goodWhen })
 
     const box = this.$('[data-k="deltabox"]')
     box.toggleAttribute('hidden', !vm.delta)
