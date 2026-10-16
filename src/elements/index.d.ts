@@ -117,6 +117,8 @@ export type TsCommonAction = { action: 'retry' } | TsOpenAction
  * @attr {string} heading-level - The aria-level of the label heading, 1 to 6. Default 3.
  * @attr {string} href - Makes the label a link to this URL: http, https, mailto, tel or relative.
  * @attr {boolean} activatable - Makes the label a button that fires `ts-action` with action 'open'.
+ * @attr {string} stale-after - How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default 120000; falls back to the grid's.
+ * @attr {'off'} flash - 'off' stops the brief tint on a headline figure that changed; the grid's `flash` applies too.
  * @attr {string} item - The id the grid matches this tile to, and the `id` of an 'open' action.
  * @csspart tile - The tile: a role="group" box named by the widget's result.
  * @csspart header - The row holding the live dot, the label and the meta.
@@ -633,6 +635,8 @@ export type TsSessionClockAction = TsCommonAction
  * @attr {boolean} locked - A read-only dashboard: no edit mode, no edit controls.
  * @attr {'off'} edit-controls - 'off' hides the built-in edit button and pill, for hosts with their own.
  * @attr {'off'} undo-toast - 'off' suppresses the undo toast after a remove.
+ * @attr {string} stale-after - The `stale-after` its tiles use unless they set their own.
+ * @attr {'off'} flash - 'off' stops every tile's change flash.
  * @attr {string} locale - BCP 47 tag for the grid's strings and its tiles' formatting.
  * @attr {string} currency - ISO 4217 code its tiles format money with.
  * @attr {string} time-zone - IANA zone its tiles format times with.
@@ -694,6 +698,8 @@ export interface TsWidgetAttributes {
   'heading-level'?: number | string | undefined
   href?: string | undefined
   activatable?: boolean | undefined
+  'stale-after'?: number | string | undefined
+  flash?: 'off' | undefined
   item?: string | undefined
 }
 
@@ -719,6 +725,8 @@ export interface TsElementAttributes {
     'time-zone'?: string | undefined
     'hour-cycle'?: string | undefined
     persist?: string | undefined
+    'stale-after'?: number | string | undefined
+    flash?: 'off' | undefined
     'aria-label'?: string | undefined
   }
 }

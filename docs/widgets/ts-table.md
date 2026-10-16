@@ -107,6 +107,8 @@ change are not touched.
 |---|---|---|
 | `label` | attribute and property | The heading and the tile's name. Defaults to "Table" |
 | `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
+| `stale-after` | attribute | How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default `120000`. Falls back to the nearest `<ts-grid>`'s `stale-after`; an unreadable value falls back to the default with one development warning |
+| `flash` | attribute | Accepted on every tile, and has no effect here: cells change in place without a tint |
 | `size` | attribute and property | `Tall`, `M`, `L` or `XL`; others snap. A grid sets it |
 | `data` | property, or a JSON attribute | `TableData` |
 | `state` | attribute and property | `'loading'` or `'error'` |
@@ -119,6 +121,14 @@ The base members every widget has are listed in
 [Your own widget](../guide/your-own-widget.md). The static
 `TsTable.tableModel(data, variant, ctx, { width })` is the pure view model, handy
 for tests and server rendering; without a `width` it keeps every column.
+
+## Freshness and change flashes
+
+Send `asOf` with `live: true` and the header says how old the data is. While it is fresh the dot pulses and the header reads `just now`, then `2 min. ago` (in the tile's locale). Past `stale-after` the dot turns `--ts-warn` and stops pulsing, the header reads `Stale · 3 min`, and the tile's name ends with `, stale` where it would end with `, live`. With `asOf` and no `live` the data is a snapshot: the dot is hidden, the header reads `synced 11:42` and nothing ages.
+
+A live tile re-renders its age every 15 seconds, on one timer shared by every tile on the page. The timer pauses while the page is hidden and stops when no live tile is connected. An `asOf` ahead of the clock reads as `just now` until the clock passes it, and never as a negative age.
+
+A table's cells change in place, without a tint, so it has no change flash.
 
 ## Actions
 

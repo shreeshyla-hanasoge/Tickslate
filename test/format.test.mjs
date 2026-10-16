@@ -347,3 +347,43 @@ describe('createFormatter validation', () => {
     assert.deepEqual(calls, [])
   })
 })
+
+describe('ago', () => {
+  const inFmt = createFormatter({ locale: 'en-IN' })
+  const deFmt = createFormatter({ locale: 'de-DE' })
+  const now = 1760000000000
+
+  test('under 30 s returns just now or o.justNow', () => {
+    assert.equal(inFmt.ago(now - 10000, now), 'just now')
+    assert.equal(inFmt.ago(now - 29000, now), 'just now')
+    assert.equal(inFmt.ago(now, now), 'just now')
+    assert.equal(inFmt.ago(now + 5000, now), 'just now', 'a time ahead of now is fresh')
+    assert.equal(inFmt.ago(now + 7 * 86400000, now), 'just now', 'however far ahead, never a negative age')
+    assert.equal(inFmt.ago(now - 15000, now, { justNow: 'gerade eben' }), 'gerade eben')
+  })
+
+  test('from 30 s onward formats relative time in en-IN and de-DE', () => {
+    // 45 seconds -> 1 minute
+    assert.equal(inFmt.ago(now - 45000, now), '1 min ago')
+    assert.equal(deFmt.ago(now - 45000, now), 'vor 1 Min.')
+
+    // 2 minutes
+    assert.equal(inFmt.ago(now - 120000, now), '2 min ago')
+    assert.equal(deFmt.ago(now - 120000, now), 'vor 2 Min.')
+
+    // 3 hours
+    assert.equal(inFmt.ago(now - 3 * 3600000, now), '3 hr ago')
+    assert.equal(deFmt.ago(now - 3 * 3600000, now), 'vor 3 Std.')
+
+    // 2 days
+    assert.equal(inFmt.ago(now - 2 * 86400000, now), '2 days ago')
+    assert.equal(deFmt.ago(now - 2 * 86400000, now), 'vor 2 Tagen')
+  })
+
+  test('non-finite inputs return dash', () => {
+    assert.equal(inFmt.ago(NaN, now), '—')
+    assert.equal(inFmt.ago(now, NaN), '—')
+    assert.equal(inFmt.ago(null, now), '—')
+  })
+})
+

@@ -198,6 +198,11 @@ export function createFormatter(options = {}) {
     if (!f) cache.set(key, (f = new Intl.ListFormat(locale, opts)))
     return f
   }
+  const rtf = () => {
+    let f = cache.get('rtf')
+    if (!f) cache.set('rtf', (f = new Intl.RelativeTimeFormat(locale, { style: 'short', numeric: 'always' })))
+    return f
+  }
 
   // exceptZero puts a sign on everything but zero, including values that
   // round to zero, so "−₹0.00" never appears. For sign: 'negative' the plus
@@ -318,6 +323,24 @@ export function createFormatter(options = {}) {
     return `${h ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
   }
 
+  const ago = (t, now, o = {}) => {
+    if (!Number.isFinite(t) || !Number.isFinite(now)) return DASH
+    // A time ahead of `now` (a host clock a little behind the server's) reads as
+    // fresh and never as a negative age; it ages normally once `now` passes it.
+    const diff = Math.max(0, now - t)
+    if (diff < 30000) return o.justNow !== undefined ? o.justNow : 'just now'
+    const min = Math.round(diff / 60000)
+    if (min < 60) return rtf().format(-min, 'minute')
+    const hr = Math.round(diff / 3600000)
+    if (hr < 24) return rtf().format(-hr, 'hour')
+    const day = Math.round(diff / 86400000)
+    if (day < 30) return rtf().format(-day, 'day')
+    const month = Math.round(diff / (30 * 86400000))
+    if (month < 12) return rtf().format(-month, 'month')
+    const year = Math.round(diff / (365 * 86400000))
+    return rtf().format(-year, 'year')
+  }
+
   // Full form, then without decimals, then compact; a compact form that is no
   // shorter than the best so far (a short number, or a locale with a long
   // suffix) is not worth the lost precision. Money skips the no-decimals step:
@@ -338,5 +361,5 @@ export function createFormatter(options = {}) {
     return visibleLength(compact) < visibleLength(best) ? compact : best
   }
 
-  return Object.freeze({ locale, currency, timeZone, hourCycle, issues, money, number, price, percent, unit, time, date, duration, fit })
+  return Object.freeze({ locale, currency, timeZone, hourCycle, issues, money, number, price, percent, unit, time, date, duration, ago, fit })
 }

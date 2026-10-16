@@ -167,6 +167,7 @@ export function metricModel(data, variant, ctx) {
     time: '',
     synced: syncedParts(t),
     value: headline,
+    valueNum: known ? value : NaN,
     delta,
     arrow,
     tone,
@@ -341,6 +342,7 @@ svg.mut { color: var(--ts-muted); }
     text('time', vm.time)
     text('post', vm.synced.post)
     text('value', vm.value)
+    this.flash('value', vm.valueNum, { goodWhen: this.data && this.data.goodWhen })
 
     const box = this.$('[data-k="deltabox"]')
     box.toggleAttribute('hidden', !vm.delta)
