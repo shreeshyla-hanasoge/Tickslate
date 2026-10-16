@@ -1,4 +1,4 @@
-// <ts-pnl-calendar> in real engines (RFC 0003 §21.1): the grid as one named image, every cell named with its date and signed
+// <ts-pnl-calendar> in real engines (RFC 0003 §21.1): the grid as a real ARIA grid (rows and gridcells), every cell named with its date and signed
 // value, the loss cue, the roving tabindex and its keys, the phone's two half-year bands, and no overflow at phone widths, in
 // light, dark, a monospace preset and wide fonts.
 import { test, expect } from '@playwright/test'
@@ -24,20 +24,39 @@ const cellInfo = (page) =>
 const activeDate = (page) => page.evaluate(() => window.__c.el.shadowRoot.activeElement?.getAttribute('data-d') ?? null)
 
 test.describe('the grid', () => {
-  test('is one image with a summary, and the weeks per size are 6, 13 and a year', async ({ page }) => {
+  test('is a grid of rows and cells with a summary, and the weeks per size are 6, 13 and a year', async ({ page }) => {
     for (const [size, weeks] of [['Tall', 6], ['M', 13], ['Banner', 53]]) {
       await open(page, `size=${size}&locale=en-GB`)
       const info = await page.evaluate(() => {
         const root = window.__c.el.shadowRoot
         const grid = root.querySelector('[data-k="grid"]')
-        return { role: grid.getAttribute('role'), label: grid.getAttribute('aria-label'), weeks: grid.querySelectorAll('.wk:not(.rl)').length, perWeek: grid.querySelectorAll('.wk:not(.rl)')[0].querySelectorAll('.c').length, bands: grid.querySelectorAll('.band').length }
+        const summary = root.getElementById ? root.getElementById('summary') : root.querySelector('#summary')
+        return {
+          role: grid.getAttribute('role'),
+          name: grid.getAttribute('aria-label'),
+          describedby: grid.getAttribute('aria-describedby'),
+          label: summary.textContent,
+          rows: grid.querySelectorAll('[role="row"]').length,
+          cellRoles: [...new Set([...grid.querySelectorAll('.c')].map((c) => c.getAttribute('role')))],
+          weeks: grid.querySelector('[role="row"]').querySelectorAll('.c').length,
+          perWeek: grid.querySelectorAll('.band')[0].querySelectorAll('[role="row"]').length,
+          bands: grid.querySelectorAll('.band').length,
+          months: [...grid.querySelectorAll('.mrow')].every((m) => m.getAttribute('aria-hidden') === 'true'),
+          titles: grid.querySelectorAll('[title]').length,
+        }
       })
-      expect(info.role).toBe('img')
+      expect(info.role).toBe('grid')
+      expect(info.name).toBe('Daily P&L calendar')
+      expect(info.describedby).toBe('summary')
+      expect(info.cellRoles).toEqual(['gridcell'])
+      expect(info.rows).toBe(5)
+      expect(info.months).toBe(true)
+      expect(info.titles).toBe(0)
       expect(info.weeks, size).toBe(weeks)
       // en-GB: Monday to Friday, with no cell for the weekend.
       expect(info.perWeek).toBe(5)
       expect(info.bands).toBe(1)
-      expect(info.label).toMatch(/^Daily P&L calendar, .* to 5 Aug 2026: best day \w{3} \d+ \w+, \+₹?[\d,.]+, worst day \w{3} \d+ \w+, −₹?[\d,.]+, net [+−]₹?[\d,.]+$/)
+      expect(info.label).toMatch(/^Daily P&L calendar, .* to 5 Aug 2026: best day \w{3} \d+ \w+, \+₹?[\d,.]+, worst day \w{3} \d+ \w+, −₹?[\d,.]+, net [+−]₹?[\d,.]+(\. \d+ weekend entr(y|ies) not shown)?$/)
     }
   })
 
@@ -56,21 +75,34 @@ test.describe('the grid', () => {
     expect(cells.some((c) => ['Sat', 'Sun'].includes(new Date(`${c.date}T00:00:00Z`).toUTCString().slice(0, 3)))).toBe(false)
   })
 
-  test('draws a loss with a corner mark in the ink colour and a gain with none', async ({ page }) => {
+  test('draws a loss with a corner mark that has a box and pixels, and a gain with none', async ({ page }) => {
     await open(page, 'size=M')
     const marks = await page.evaluate(() => {
       const root = window.__c.el.shadowRoot
       const style = (sel) => {
-        const c = root.querySelector(sel)
-        const after = getComputedStyle(c, '::after')
-        return { content: after.content, bg: after.backgroundColor, ink: getComputedStyle(root.querySelector('.tile')).color, w: after.width }
+        const after = getComputedStyle(root.querySelector(sel), '::after')
+        return { content: after.content, display: after.display, bg: after.backgroundColor, ink: getComputedStyle(root.querySelector('.tile')).color, w: parseFloat(after.width), h: parseFloat(after.height) }
       }
       return { loss: style('.c.neg'), gain: style('.c.pos') }
     })
     expect(marks.loss.content).not.toBe('none')
+    expect(marks.loss.display).not.toBe('none')
     expect(marks.loss.bg).toBe(marks.loss.ink)
-    expect(parseFloat(marks.loss.w)).toBeGreaterThan(2)
+    // A mark that is not rendered has no width at all (NaN), and one that is has an area.
+    expect(marks.loss.w).toBeGreaterThan(2)
+    expect(marks.loss.h).toBeGreaterThan(2)
     expect(marks.gain.content === 'none' || marks.gain.content === 'normal').toBe(true)
+    // The pixels: hiding the mark changes a loss cell's picture and leaves a gain's alone.
+    const shot = (sel) => page.locator(`ts-pnl-calendar ${sel}`).first().screenshot()
+    const lossBefore = await shot('.c.neg')
+    const gainBefore = await shot('.c.pos')
+    await page.evaluate(() => {
+      const st = document.createElement('style')
+      st.textContent = '.c.neg::after { display: none !important; }'
+      window.__c.el.shadowRoot.append(st)
+    })
+    expect((await shot('.c.neg')).equals(lossBefore)).toBe(false)
+    expect((await shot('.c.pos')).equals(gainBefore)).toBe(true)
   })
 
   test('mixes a stronger day from more of its colour, and draws an upcoming day as an outline', async ({ page }) => {
@@ -107,12 +139,167 @@ test.describe('the grid', () => {
     await open(page, 'size=Tall&today=2031-01-07')
     const info = await page.evaluate(() => {
       const root = window.__c.el.shadowRoot
-      return { none: root.querySelector('[data-k="none"]').hidden, text: root.querySelector('[data-k="none"]').textContent, cells: root.querySelectorAll('.c').length, label: root.querySelector('[data-k="grid"]').getAttribute('aria-label') }
+      return { none: root.querySelector('[data-k="none"]').hidden, text: root.querySelector('[data-k="none"]').textContent, cells: root.querySelectorAll('.c').length, label: root.querySelector('#summary').textContent }
     })
     expect(info.none).toBe(false)
     expect(info.text).toBe('No trading days in this period')
     expect(info.cells).toBeGreaterThan(20)
     expect(info.label).toMatch(/: no trading days$/)
+  })
+})
+
+test.describe('the window', () => {
+  const dates = (page) => page.evaluate(() => [...window.__c.el.shadowRoot.querySelectorAll('.c')].map((c) => c.getAttribute('data-d')))
+
+  test('rolls forward when today moves to a new week: the old cells are replaced by the new window', async ({ page }) => {
+    await open(page, 'size=M&locale=en-GB')
+    let all = await dates(page)
+    expect(all[0]).toBe('2026-05-11')
+    expect(all.at(-1)).toBe('2026-08-07')
+    expect(all).not.toContain('2026-08-12')
+    await page.evaluate(() => window.__c.setToday('2026-08-12'))
+    await page.evaluate(() => window.__c.nextFrame())
+    all = await dates(page)
+    expect(all).toContain('2026-08-12')
+    expect(all[0]).toBe('2026-05-18')
+    expect(all.at(-1)).toBe('2026-08-14')
+    const names = await cellInfo(page)
+    expect(names.find((c) => c.date === '2026-08-12').name).toBe('Wed 12 Aug, no entry')
+    expect(names.find((c) => c.date === '2026-08-14').name).toBe('Fri 14 Aug, upcoming')
+    expect(names.filter((c) => c.tab === '0')).toHaveLength(1)
+  })
+
+  test('rolls across a Monday midnight in the formatter\'s zone with no new data', async ({ page }) => {
+    await open(page, 'size=Tall&locale=en-GB')
+    // 23:59 on Sunday 9 Aug in Kolkata is 18:29 UTC; two minutes later it is Monday.
+    await page.evaluate(() => { window.__c.setNow(Date.UTC(2026, 7, 9, 18, 29)) })
+    await page.evaluate(() => window.__c.nextFrame())
+    let all = await dates(page)
+    expect(all.at(-1)).toBe('2026-08-07')
+    expect(all).not.toContain('2026-08-10')
+    await page.evaluate(() => { window.__c.setNow(Date.UTC(2026, 7, 9, 18, 31)) })
+    await page.evaluate(() => window.__c.nextFrame())
+    all = await dates(page)
+    expect(all).toContain('2026-08-10')
+    expect(all.at(-1)).toBe('2026-08-14')
+    expect(all[0]).toBe('2026-07-06')
+    expect((await cellInfo(page)).find((c) => c.date === '2026-08-10').name).toBe('Mon 10 Aug, no entry')
+  })
+
+  test('redraws the dates when the locale changes the first day of the week', async ({ page }) => {
+    await open(page, 'size=Tall&locale=en-GB')
+    const gb = await dates(page)
+    await page.evaluate(() => window.__c.el.setAttribute('locale', 'ar-SA'))
+    await page.evaluate(() => window.__c.nextFrame())
+    const sa = await dates(page)
+    // ar-SA starts its week on Sunday, with Friday and Saturday off, where en-GB is Monday and Saturday-Sunday: the cells differ.
+    const first = await page.evaluate(() => new Intl.Locale('ar-SA').firstDay ?? null)
+    if (first !== null || (await page.evaluate(() => typeof Intl.Locale.prototype.getWeekInfo === 'function' || 'weekInfo' in Intl.Locale.prototype))) {
+      expect(sa).not.toEqual(gb)
+      expect(new Set(sa).size).toBe(sa.length)
+      // Every cell carries the date it is named for.
+      const named = await cellInfo(page)
+      for (const c of named) expect(c.name.length).toBeGreaterThan(5)
+      const grid = await page.evaluate(() => window.__c.el.shadowRoot.querySelectorAll('[role="row"]').length)
+      expect(grid).toBe(5)
+    }
+    await page.evaluate(() => window.__c.el.setAttribute('locale', 'en-GB'))
+    await page.evaluate(() => window.__c.nextFrame())
+    expect(await dates(page)).toEqual(gb)
+  })
+
+  test('says what a weekend entry left out, and has an empty state when only weekends were sent', async ({ page }) => {
+    await open(page, 'size=Banner&locale=en-GB')
+    const info = await page.evaluate(() => {
+      const root = window.__c.el.shadowRoot
+      return { note: root.querySelector('[data-k="none"]').textContent, hidden: root.querySelector('[data-k="none"]').hidden, summary: root.getElementById('summary').textContent }
+    })
+    expect(info.hidden).toBe(false)
+    expect(info.note).toMatch(/^\d+ weekend entr(y|ies) not shown$/)
+    expect(info.summary).toMatch(/\. \d+ weekend entr(y|ies) not shown$/)
+    await page.evaluate(() => window.__c.setDays([{ date: '2026-08-01', pnl: 900 }]))
+    await page.evaluate(() => window.__c.nextFrame())
+    const only = await page.evaluate(() => window.__c.el.shadowRoot.querySelector('[data-k="none"]').textContent)
+    expect(only).toBe('No trading days in this period')
+  })
+})
+
+test.describe('forced colours', () => {
+  test('keep the heat: strength steps, and no entry, flat and upcoming look different', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' })
+    await open(page, 'size=M')
+    const look = await page.evaluate(() => {
+      const root = window.__c.el.shadowRoot
+      const of = (el) => {
+        const s = getComputedStyle(el)
+        return { bg: s.backgroundColor, style: s.borderTopStyle, width: s.borderTopWidth }
+      }
+      const by = (cls) => [...root.querySelectorAll(`.c.${cls}`)]
+      const strength = (c) => parseFloat(c.style.getPropertyValue('--s'))
+      const pos = by('pos').sort((a, b) => strength(a) - strength(b))
+      const neg = by('neg').sort((a, b) => strength(a) - strength(b))
+      // A flat day exists only in some data: make one.
+      return { weakPos: of(pos[0]), strongPos: of(pos.at(-1)), weakNeg: of(neg[0]), strongNeg: of(neg.at(-1)), none: of(by('none')[0]), up: of(by('up')[0]), flatPossible: by('flat').length }
+    })
+    expect(look.weakPos.bg).not.toBe(look.strongPos.bg)
+    expect(look.weakNeg.bg).not.toBe(look.strongNeg.bg)
+    expect(look.none.style).toBe('dotted')
+    expect(look.up.style).toBe('dashed')
+    expect(look.weakNeg.style).toBe('double')
+    expect(look.none.style).not.toBe(look.up.style)
+    // A flat day is solid with a ButtonFace fill, not the dotted outline of a day with no entry.
+    await page.evaluate(() => window.__c.setDays([{ date: '2026-08-03', pnl: 0 }, { date: '2026-08-04', pnl: 5 }]))
+    await page.evaluate(() => window.__c.nextFrame())
+    const flat = await page.evaluate(() => {
+      const root = window.__c.el.shadowRoot
+      const s = getComputedStyle(root.querySelector('.c.flat'))
+      const n = getComputedStyle(root.querySelector('.c.none'))
+      return { flat: [s.backgroundColor, s.borderTopStyle], none: [n.backgroundColor, n.borderTopStyle] }
+    })
+    expect(flat.flat[1]).toBe('solid')
+    expect(flat.none[1]).toBe('dotted')
+    expect(flat.flat).not.toEqual(flat.none)
+  })
+})
+
+test.describe('the accessibility tree', () => {
+  test('is a grid of rows and named gridcells, with the summary as its description', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'the full tree is read over CDP, which only Chromium has')
+    await open(page, 'size=Tall&locale=en-GB')
+    const cdp = await page.context().newCDPSession(page)
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree')
+    const byId = new Map(nodes.map((n) => [n.nodeId, n]))
+    const role = (n) => (n.role ? n.role.value : '')
+    const grid = nodes.find((n) => role(n) === 'grid')
+    expect(grid, 'a grid is in the tree').toBeTruthy()
+    expect(grid.name.value).toBe('Daily P&L calendar')
+    expect(grid.description.value).toMatch(/^Daily P&L calendar, .* to 5 Aug 2026: best day/)
+    const rows = nodes.filter((n) => role(n) === 'row')
+    const cells = nodes.filter((n) => role(n) === 'gridcell')
+    expect(rows).toHaveLength(5)
+    expect(cells).toHaveLength(30)
+    // Every gridcell is a child of a row, and every row of the grid (or a group inside it), and each has a name with its date.
+    for (const c of cells) {
+      expect(role(byId.get(c.parentId))).toBe('row')
+      expect(c.name.value).toMatch(/^\w{3} \d+ \w{3}, /)
+    }
+    for (const r of rows) {
+      let p = byId.get(r.parentId)
+      while (p && !['grid', 'rowgroup'].includes(role(p))) p = byId.get(p.parentId)
+      expect(p).toBeTruthy()
+    }
+    // The month names are out of the tree.
+    expect(nodes.some((n) => !n.ignored && /^(Jul|Aug)$/.test(n.name?.value ?? ''))).toBe(false)
+    console.log(`ax tree: grid "${grid.name.value}", ${rows.length} rows, ${cells.length} gridcells, first: "${cells[0].name.value}", last: "${cells.at(-1).name.value}"`)
+  })
+
+  test('has no serious axe violation', async ({ page }) => {
+    const { default: AxeBuilder } = await import('@axe-core/playwright')
+    for (const q of ['size=Banner', 'size=Banner&width=351', 'size=Tall&width=170', 'size=M&theme=dark']) {
+      await open(page, q)
+      const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()
+      expect(violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id), q).toEqual([])
+    }
   })
 })
 
@@ -147,8 +334,19 @@ test.describe('the keyboard', () => {
     await page.keyboard.press('ArrowUp')
     await page.keyboard.press('ArrowLeft')
     expect(await activeDate(page)).toBe('2026-06-29')
-    await page.keyboard.press('PageDown')
+    await page.keyboard.press('Enter')
     expect(await activeDate(page)).toBe('2026-06-29')
+  })
+
+  test('Page Down and Page Up move a month, and Home and End stay in the row', async ({ page }) => {
+    await open(page, 'size=Banner&locale=en-GB')
+    await page.evaluate(() => window.__c.el.shadowRoot.querySelector('.c[data-d="2026-03-04"]').focus())
+    await page.keyboard.press('PageDown')
+    expect(await activeDate(page)).toBe('2026-04-01')
+    await page.keyboard.press('PageUp')
+    expect(await activeDate(page)).toBe('2026-03-04')
+    await page.keyboard.press('Home')
+    expect(await activeDate(page)).toBe('2025-08-06')
   })
 
   test('Tab enters the grid on one stop and does not walk the other cells', async ({ page }) => {
@@ -161,8 +359,9 @@ test.describe('the keyboard', () => {
   })
 
   test('a click on a cell makes it the stop, and a new reading keeps the focus on its date', async ({ page }) => {
-    await open(page, 'size=M&locale=en-GB')
-    await page.evaluate(() => window.__c.el.shadowRoot.querySelector('.c[data-d="2026-07-15"]').focus())
+    await open(page, 'size=M&width=351&locale=en-GB')
+    await page.locator('ts-pnl-calendar .c[data-d="2026-07-15"]').click()
+    expect(await activeDate(page)).toBe('2026-07-15')
     await page.evaluate(() => window.__c.tick(3))
     await page.evaluate(() => window.__c.nextFrame())
     expect(await activeDate(page)).toBe('2026-07-15')
@@ -189,7 +388,7 @@ test.describe('on a phone', () => {
     const info = await page.evaluate(() => {
       const root = window.__c.el.shadowRoot
       const bands = [...root.querySelectorAll('.band')]
-      return { bands: bands.length, weeks: bands.map((b) => b.querySelectorAll('.wk:not(.rl)').length), cells: root.querySelectorAll('.c').length, box: window.__c.el.getBoundingClientRect().height }
+      return { bands: bands.length, weeks: bands.map((b) => b.querySelector('[role="row"]').querySelectorAll('.c').length), cells: root.querySelectorAll('.c').length, box: window.__c.el.getBoundingClientRect().height }
     })
     expect(info.bands).toBe(2)
     expect(info.weeks).toEqual([27, 26])
@@ -207,12 +406,21 @@ test.describe('on a phone', () => {
     await page.evaluate(() => window.__c.width(351))
     await page.waitForFunction(() => window.__c.el.shadowRoot.querySelectorAll('.band').length === 2)
     expect(await activeDate(page)).toBe('2026-03-04')
-    // Down from the last row of the first band continues into the second.
-    const last = await page.evaluate(() => window.__c.el.shadowRoot.querySelectorAll('.band')[0].querySelector('.wk:not(.rl)').querySelectorAll('.c')[4].getAttribute('data-d'))
-    await page.evaluate((d) => window.__c.el.shadowRoot.querySelector(`.c[data-d="${d}"]`).focus(), last)
-    await page.keyboard.press('ArrowDown')
+    // Right from the last week of the first band continues into the first of the second.
+    const edge = await page.evaluate(() => window.__c.el.shadowRoot.querySelectorAll('.band')[0].querySelector('[role="row"]').querySelectorAll('.c')[26].getAttribute('data-d'))
+    await page.evaluate((d) => window.__c.el.shadowRoot.querySelector(`.c[data-d="${d}"]`).focus(), edge)
+    await page.keyboard.press('ArrowRight')
     const next = await page.evaluate(() => window.__c.el.shadowRoot.activeElement.closest('.band') === window.__c.el.shadowRoot.querySelectorAll('.band')[1])
     expect(next).toBe(true)
+    // Down stays in the band's weekdays.
+    await page.keyboard.press('End')
+    await page.keyboard.press('Control+End')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('ArrowDown')
+    expect(await page.evaluate(() => window.__c.el.shadowRoot.activeElement.closest('.band') === window.__c.el.shadowRoot.querySelectorAll('.band')[1])).toBe(true)
   })
 
   for (const [size, width] of [['Tall', 170], ['M', 351], ['Banner', 351]]) {

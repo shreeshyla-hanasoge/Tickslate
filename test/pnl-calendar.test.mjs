@@ -1,6 +1,6 @@
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { createFormatter, createMessages, EN, WIDGETS } from '../src/core/index.js'
+import { createFormatter, createMessages, dayStats, EN, WIDGETS } from '../src/core/index.js'
 import { checkShape } from '../src/elements/dev.js'
 import { FakeElement, FakeDocument } from './fake-dom.mjs'
 
@@ -50,11 +50,11 @@ describe('without a DOM', () => {
     assert.notEqual(checkShape({ days: 'x' }, shape), null)
   })
 
-  test('the template is static markup with no words, one grid image and a header', () => {
+  test('the template is static markup with no words, one grid and a header', () => {
     for (const v of ['Tall', 'M', 'Banner']) {
       const html = P.TsPnlCalendar.template(v)
       assert.equal((html.match(/part="label"/g) || []).length, 1, v)
-      assert.match(html, /data-k="grid" role="img" aria-label=""/)
+      assert.match(html, /data-k="grid" role="grid" aria-label="" aria-describedby="summary"/)
       assert.doesNotMatch(html, />[^<]*\p{L}[^<]*</u, `${v}: no English in the template`)
       assert.doesNotMatch(html, /\s(aria-label|title)="[^"]*\p{L}/u)
       assert.match(P.TsPnlCalendar.skeleton(v), /class="sk /)
@@ -237,15 +237,40 @@ describe('cells', () => {
     assert.equal(two.tradingDays, 2)
   })
 
-  test('a weekend entry is in the totals and is not drawn', () => {
+  test('a weekend entry is not drawn, and the figures and the summary leave it out and say so', () => {
     const weekend = model({ today: TODAY, days: [day('2026-10-10', 1000), day('2026-10-12', 100)] }, 'Tall')
     assert.equal(find(weekend, '2026-10-10'), undefined)
     assert.equal(find(weekend, '2026-10-11'), undefined)
-    assert.equal(weekend.net, '+1,100.00')
-    assert.equal(weekend.best, '+1,000.00')
-    assert.equal(weekend.tradingDays, 2)
+    // The best day is a day with a cell.
+    assert.equal(weekend.net, '+100.00')
+    assert.equal(weekend.best, '+100.00')
+    assert.equal(weekend.tradingDays, 1)
+    assert.equal(weekend.weekendEntries, 1)
+    assert.equal(weekend.note, '1 weekend entry not shown')
+    assert.match(weekend.chartLabel, /best day Mon 12 Oct, \+100\.00.*net \+100\.00\. 1 weekend entry not shown$/)
+    const two = model({ today: TODAY, days: [day('2026-10-10', 1000), day('2026-10-11', 5), day('2026-10-12', 100)] }, 'Tall')
+    assert.equal(two.note, '2 weekend entries not shown')
+    assert.equal(model({ today: TODAY, days: [day('2026-10-12', 100)] }, 'Tall').note, '')
     // It does not stretch the strength of the days that are drawn.
     assert.equal(find(weekend, '2026-10-12').strength, 1)
+  })
+
+  test('a series of weekend entries only is empty, with the note', () => {
+    const only = model({ today: TODAY, days: [day('2026-10-10', 1000), day('2026-10-11', -5)] }, 'M')
+    assert.equal(only.empty, true)
+    assert.equal(only.net, '0.00')
+    assert.equal(only.ariaLabel, 'Daily P&L calendar, no trading days')
+    assert.match(only.chartLabel, /no trading days\. 2 weekend entries not shown$/)
+  })
+
+  test('a day that sums to dust is flat in the cell and in dayStats, and the cell and the stats agree', () => {
+    const dust = model({ today: TODAY, days: [day('2026-10-12', 0.1), day('2026-10-12', 0.2), day('2026-10-12', -0.3), day('2026-10-13', 5)] }, 'Tall')
+    assert.equal(find(dust, '2026-10-12').kind, 'flat')
+    assert.equal(find(dust, '2026-10-12').pnl, 0)
+    assert.equal(dayStats([day('2026-10-12', 0.1), day('2026-10-12', 0.2), day('2026-10-12', -0.3)]).greenDays, 0)
+    assert.equal(dayStats([day('2026-10-12', 0.004)]).greenDays, 0, 'a day that rounds to 0.00 is neither')
+    assert.equal(dayStats([day('2026-10-12', 0.006)]).greenDays, 1)
+    assert.equal(dust.rate, '100%')
   })
 
   test('the week starts where the locale says', () => {
@@ -300,6 +325,20 @@ describe('months and years', () => {
       for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= 4, `${today}: ${at}`)
       assert.ok(at.length >= 11, `${today}: a year names about twelve months`)
     }
+  })
+
+  test('every month in a year view has its name, whatever the day it ends on, and a January names its year only where it fits', () => {
+    for (const today of ['2026-01-10', '2026-02-20', '2026-10-16', '2027-01-04']) {
+      const vm = model({ days: [], today }, 'Banner')
+      const weeks = vm.bands[0].weeks
+      const names = weeks.map((w) => w.month).filter(Boolean).map((n) => n.slice(0, 3))
+      // Every month that has a first week in the grid is named, except one that the first column cuts short.
+      const months = new Set(weeks.slice(1).map((w, i) => (w.cells[0].date.slice(0, 7) !== weeks[i].cells[0].date.slice(0, 7) ? w.cells[0].date.slice(0, 7) : null)).filter(Boolean))
+      assert.ok(names.length >= months.size, `${today}: ${names}`)
+    }
+    const names = model({ days: [], today: '2026-01-10' }, 'Banner').bands[0].weeks.map((w) => w.month).filter(Boolean)
+    assert.ok(names.includes('Feb'), names.join())
+    assert.ok(names.includes('Jan'), names.join())
   })
 
   test('across a year boundary the cells run in date order with no gap or repeat', () => {
@@ -427,20 +466,35 @@ describe('the keyboard', () => {
     assert.equal(key(vm, '2026-10-14', 'End', true), '2026-10-16')
   })
 
-  test('Down from the last row of the first band is the first row of the second, and back', () => {
+  test('Right from the last week of the first band is the first week of the second, and Left goes back; Up and Down stop at the weekdays', () => {
     const [a, b] = phone.bands
-    const last = a.weeks[3].cells[4].date
-    assert.equal(key(phone, last, 'ArrowDown'), b.weeks[3].cells[0].date)
-    assert.equal(key(phone, b.weeks[3].cells[0].date, 'ArrowUp'), last)
-    // The second band is a column shorter: the last column of the first lands on the last of the second.
-    assert.equal(key(phone, a.weeks[26].cells[4].date, 'ArrowDown'), b.weeks[25].cells[0].date)
-    // Ctrl+End is the end of the last band.
+    assert.equal(key(phone, a.weeks[26].cells[2].date, 'ArrowRight'), b.weeks[0].cells[2].date)
+    assert.equal(key(phone, b.weeks[0].cells[2].date, 'ArrowLeft'), a.weeks[26].cells[2].date)
+    assert.equal(key(phone, a.weeks[3].cells[4].date, 'ArrowDown'), a.weeks[3].cells[4].date)
+    assert.equal(key(phone, b.weeks[3].cells[0].date, 'ArrowUp'), b.weeks[3].cells[0].date)
+    // Home and End stay in the band; Control reaches the ends of the year.
+    assert.equal(key(phone, b.weeks[3].cells[1].date, 'Home'), b.weeks[0].cells[1].date)
+    assert.equal(key(phone, a.weeks[3].cells[1].date, 'End'), a.weeks[26].cells[1].date)
     assert.equal(key(phone, a.weeks[0].cells[0].date, 'End', true), b.weeks[25].cells[4].date)
+  })
+
+  test('Page Down and Page Up move to the same weekday in the next and the previous month', () => {
+    const month = model({ days: [], today: '2026-10-16' }, 'Banner')
+    assert.equal(key(month, '2026-08-13', 'PageDown'), '2026-09-03')
+    assert.equal(key(month, '2026-09-03', 'PageUp'), '2026-08-06')
+    // At the end of the grid Page Down lands on the last week; at the start Page Up on the first.
+    assert.equal(key(month, '2026-10-14', 'PageDown'), '2026-10-14')
+    const first = month.bands[0].weeks[0].cells[2].date
+    assert.equal(key(month, first, 'PageUp'), first)
+    // Across a year, and across the phone's two bands.
+    const phoneYear = model({ days: [], today: '2027-02-12' }, 'Banner', { phone: true })
+    assert.equal(key(phoneYear, '2026-12-17', 'PageDown'), '2027-01-07')
+    assert.equal(key(phoneYear, '2027-01-07', 'PageUp'), '2026-12-03')
   })
 
   test('a key it does not take, and a date that is not in the grid, give null', () => {
     assert.equal(key(vm, '2026-10-14', 'a'), null)
-    assert.equal(key(vm, '2026-10-14', 'PageDown'), null)
+    assert.equal(key(vm, '2026-10-14', 'Enter'), null)
     assert.equal(key(vm, '1999-01-01', 'ArrowDown'), null)
   })
 })

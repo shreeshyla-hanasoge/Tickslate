@@ -576,8 +576,10 @@ are **summed** into one day. A day is green when its net is above zero and red
 when below; a day that nets to exactly zero is neither. `greenRate` is
 `greenDays / (greenDays + redDays)`, `best` and `worst` are the highest and
 lowest day, and `net` is the sum of every day. Entries whose date or `pnl`
-cannot be read are skipped. Empty input gives `net: 0`, `greenDays: 0`,
-`redDays: 0` and `null` for the rest.
+cannot be read are skipped. Each day's total is settled to the cent before it is
+counted, so a day that sums to dust (0.1 + 0.2 - 0.3) or to 0.004 is neither green
+nor red. Empty input gives `net: 0`, `greenDays: 0`, `redDays: 0` and `null` for the
+rest.
 
 ```js
 dayStats([

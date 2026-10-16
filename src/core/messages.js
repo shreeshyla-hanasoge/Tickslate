@@ -316,6 +316,9 @@ export const EN = Object.freeze({
   'calendar.ariaEmpty': '{label}, no trading days',
   'calendar.chartLabel': '{label}, {from} to {to}: best day {best}, worst day {worst}, net {net}',
   'calendar.chartEmpty': '{label}, {from} to {to}: no trading days',
+  'calendar.chartNote': '{summary}. {note}',
+  'calendar.weekend.one': '{count} weekend entry not shown',
+  'calendar.weekend.other': '{count} weekend entries not shown',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

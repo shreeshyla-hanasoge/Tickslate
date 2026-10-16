@@ -16,6 +16,7 @@
 import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { EN, dayStats, toDay, toNumber } from '../core/index.js'
 import { addDays, weekday } from '../core/zone.js'
+import { settle } from '../core/stats.js'
 
 // Week columns per size (RFC 0003 §21.1). A year is 53, not 52: 53 × 7 days always covers the last 365 days
 // whichever weekday today is.
@@ -86,6 +87,9 @@ export function splitBands(columns, bands) {
 
 const monthOf = (date) => date.slice(0, 7)
 
+// The summary with the weekend note after it, when entries were left out.
+const join = (summary, note, t) => (note ? t('calendar.chartNote', { summary, note }) : summary)
+
 /**
  * data → everything the DOM needs. `ctx` is the widget context plus `phone`,
  * which the element measures: true when a Banner is too narrow for a year in
@@ -117,6 +121,7 @@ export function calendarModel(data, variant, ctx) {
       readable++
       totals.set(date, (totals.get(date) || 0) + pnl)
     }
+    for (const [date, pnl] of totals) totals.set(date, settle(pnl))
   }
   const dropped = Array.isArray(d.days) ? d.days.length - readable : 0
 
@@ -134,7 +139,8 @@ export function calendarModel(data, variant, ctx) {
     const text = fmt.money(pnl)
     // The kind follows the sign the reader sees, so a day that rounds to nothing is flat, not a loss with no minus.
     const arrow = arrowFor(text)
-    const kind = arrow === '▲' ? 'pos' : arrow === '▼' ? 'neg' : 'flat'
+    // A day that settles to nothing is flat whatever the text says, and so is one whose text shows no sign.
+    const kind = pnl === 0 ? 'flat' : arrow === '▲' ? 'pos' : arrow === '▼' ? 'neg' : 'flat'
     const strength = kind === 'flat' || maxAbs === 0 ? null : 0.22 + (0.78 * Math.abs(pnl)) / maxAbs
     return { date, kind, pnl, strength, name: t('calendar.cell', { date: name, value: text }) }
   }
@@ -145,27 +151,33 @@ export function calendarModel(data, variant, ctx) {
     cols.forEach((col, i) => {
       if (i === 0 || monthOf(col[0]) !== monthOf(cols[i - 1][0])) marks.push(i)
     })
-    // A name too close to the next one gives way to it, except that a January names its year, which takes a column more.
+    // A first column that a new month follows too closely gives way to it.
     if (marks.length > 1 && marks[1] - marks[0] < LABEL_GAP) marks.shift()
     const kept = []
-    for (const at of marks) {
-      const last = kept[kept.length - 1]
-      const need = last === undefined ? 0 : monthOf(cols[last][0]).endsWith('-01') ? LABEL_GAP + 1 : LABEL_GAP
-      if (last === undefined || at - last >= need) kept.push(at)
-    }
-    return cols.map((col, i) => ({
-      // A January column names its year, so a year boundary is readable.
-      month: kept.includes(i) ? fmt.date(col[0], { style: monthOf(col[0]).endsWith('-01') ? 'monthYear' : 'month' }) : '',
-      cells: col.map(cellOf),
-    }))
+    for (const at of marks) if (kept.length === 0 || at - kept[kept.length - 1] >= LABEL_GAP) kept.push(at)
+    return cols.map((col, i) => {
+      const at = kept.indexOf(i)
+      // A January names its year, so a year boundary reads, when the month after it is far enough off to leave room:
+      // every month keeps its name before the year does.
+      const room = at === kept.length - 1 || kept[at + 1] - i > LABEL_GAP
+      const year = at >= 0 && monthOf(col[0]).endsWith('-01') && room
+      return { month: at >= 0 ? fmt.date(col[0], { style: year ? 'monthYear' : 'month' }) : '', cells: col.map(cellOf) }
+    })
   }
   const bands = splitBands(grid.columns, bandCount).map((cols) => ({ weeks: columnsOf(cols) }))
 
-  // The figures cover the days in view: every entry from the first column to today, a weekend one included.
+  // The figures cover the days drawn, so the best and the worst day always have a cell to point at. A weekend entry
+  // (a special session) is left out of them, and said so: the RFC draws no cell for it. dayStats itself counts it.
   const inView = []
-  for (const [date, pnl] of totals) if (date >= grid.start && date <= today) inView.push({ date, pnl })
+  let weekendEntries = 0
+  for (const [date, pnl] of totals) {
+    if (date < grid.start || date > today) continue
+    if (drawn.has(date)) inView.push({ date, pnl })
+    else weekendEntries++
+  }
   const stats = dayStats(inView, { timeZone })
   const empty = inView.length === 0
+  const note = weekendEntries ? t('calendar.weekend', {}, weekendEntries) : ''
   const dayOf = (pnl) => inView.find((r) => r.pnl === pnl)
 
   const net = fmt.money(stats.net)
@@ -200,9 +212,13 @@ export function calendarModel(data, variant, ctx) {
     rate: stats.greenRate === null ? DASH : fmt.percent(stats.greenRate, { decimals: 0, sign: 'negative' }),
     tradingDays: inView.length,
     counted,
-    chartLabel: empty
-      ? t('calendar.chartEmpty', { label, from, to })
-      : t('calendar.chartLabel', { label, from, to, best: named(stats.best, best), worst: named(stats.worst, worst), net }),
+    weekendEntries,
+    note,
+    chartLabel: join(
+      empty ? t('calendar.chartEmpty', { label, from, to }) : t('calendar.chartLabel', { label, from, to, best: named(stats.best, best), worst: named(stats.worst, worst), net }),
+      note,
+      t,
+    ),
     // The roving tabindex starts on today's cell (or the last day drawn up to today).
     focusDate: grid.columns.flat().filter((date) => date <= today).pop() || grid.columns[0][0],
     ariaLabel: empty ? t('calendar.ariaEmpty', { label }) : t('calendar.aria', { label, net, days: t('calendar.dayCount', {}, inView.length) }),
@@ -211,51 +227,51 @@ export function calendarModel(data, variant, ctx) {
 
 // ── Keyboard (pure) ───────────────────────────────────────────────────────
 
+// '2026-08' moved by `n` months.
+function shiftMonth(key, n) {
+  const at = Number(key.slice(0, 4)) * 12 + Number(key.slice(5, 7)) - 1 + n
+  return `${Math.floor(at / 12)}-${String((at % 12) + 1).padStart(2, '0')}`
+}
+
 /**
  * Where a key moves the cursor: the date of the cell to focus, or null when the
- * key is not one the grid takes. The bands are `model.bands`. Arrows step by a
- * day or a week (time runs left to right in every locale, so Right is always
- * the later week), Home and End go to the first and last week of the row,
- * Control with Home or End to the first and last cell of the grid. Down from
- * the last row of a band goes to the first row of the next band, and Up the
- * other way, so two half-year bands read as one long grid. Stopping at an edge
- * returns the same date.
+ * key is not one the grid takes. The bands are `model.bands`. Left and Right
+ * move between weeks (time runs left to right in every locale, so Right is
+ * always the later week), and from the last week of a band into the first of
+ * the next, so two half-year bands read as one long year. Up and Down move
+ * between the weekdays of a week and stop at its ends. Home and End go to the
+ * first and last week of the row, Control with them to the first and last cell
+ * of the grid, and Page Up and Page Down to the same weekday's first cell in the
+ * month before and after (or the end of the grid, where there is none). Stopping
+ * at an edge returns the same date.
  */
 export function moveFocus(bands, date, key, ctrl = false) {
-  let b = -1
-  let w = -1
-  let r = -1
-  for (let i = 0; i < bands.length && b < 0; i++) {
-    for (let j = 0; j < bands[i].weeks.length && b < 0; j++) {
-      const at = bands[i].weeks[j].cells.findIndex((c) => c.date === date)
-      if (at >= 0) {
-        b = i
-        w = j
-        r = at
-      }
-    }
-  }
-  if (b < 0) return null
-  const weeks = bands[b].weeks
-  const rows = weeks[w].cells.length
-  const at = (band, week, row) => bands[band].weeks[week].cells[row].date
+  // Every week column in order, whichever band it is in.
+  const cols = bands.flatMap((band, b) => band.weeks.map((week, w) => ({ b, w, cells: week.cells })))
+  const i = cols.findIndex((col) => col.cells.some((c) => c.date === date))
+  if (i < 0) return null
+  const r = cols[i].cells.findIndex((c) => c.date === date)
+  const rows = cols[i].cells.length
+  const at = (col, row) => col.cells[Math.min(row, col.cells.length - 1)].date
+  const band = (col) => cols.filter((c) => c.b === col.b)
   switch (key) {
     case 'ArrowRight':
-      return at(b, Math.min(w + 1, weeks.length - 1), r)
+      return at(cols[Math.min(i + 1, cols.length - 1)], r)
     case 'ArrowLeft':
-      return at(b, Math.max(w - 1, 0), r)
+      return at(cols[Math.max(i - 1, 0)], r)
     case 'ArrowDown':
-      if (r + 1 < rows) return at(b, w, r + 1)
-      return b + 1 < bands.length ? at(b + 1, Math.min(w, bands[b + 1].weeks.length - 1), 0) : date
+      return r + 1 < rows ? at(cols[i], r + 1) : date
     case 'ArrowUp':
-      if (r > 0) return at(b, w, r - 1)
-      return b > 0 ? at(b - 1, Math.min(w, bands[b - 1].weeks.length - 1), bands[b - 1].weeks[0].cells.length - 1) : date
+      return r > 0 ? at(cols[i], r - 1) : date
     case 'Home':
-      return ctrl ? at(0, 0, 0) : at(b, 0, r)
-    case 'End': {
-      if (!ctrl) return at(b, weeks.length - 1, r)
-      const last = bands[bands.length - 1].weeks
-      return at(bands.length - 1, last.length - 1, last[last.length - 1].cells.length - 1)
+      return ctrl ? at(cols[0], 0) : at(band(cols[i])[0], r)
+    case 'End':
+      return ctrl ? at(cols[cols.length - 1], cols[cols.length - 1].cells.length - 1) : at(band(cols[i]).at(-1), r)
+    case 'PageDown':
+    case 'PageUp': {
+      const month = shiftMonth(monthOf(date), key === 'PageDown' ? 1 : -1)
+      const to = cols.find((col) => monthOf(col.cells[Math.min(r, col.cells.length - 1)].date) === month)
+      return at(to || (key === 'PageDown' ? cols[cols.length - 1] : cols[0]), r)
     }
     default:
       return null
@@ -301,11 +317,14 @@ export class TsPnlCalendar extends TsWidget {
 .calwrap { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 /* Time runs left to right in every locale, so the calendar never mirrors. */
 .cal { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; direction: ltr; }
-.band { flex: 1; min-height: 0; display: flex; gap: 2px; }
-.wk { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.wk.rl { flex: none; inline-size: 2.4em; }
-.mo { block-size: 12px; flex: none; font-size: 9px; line-height: 12px; color: var(--ts-muted); white-space: nowrap; inline-size: 0; overflow: visible; unicode-bidi: plaintext; }
-.rl .wl { flex: 1; min-height: 0; font-size: 9px; color: var(--ts-muted); display: flex; align-items: center; white-space: nowrap; overflow: hidden; unicode-bidi: plaintext; }
+.band { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+.mrow, .rw { display: flex; gap: 2px; min-width: 0; }
+.rw { flex: 1; min-height: 0; }
+.mrow { flex: none; block-size: 12px; }
+.mw { flex: 1; min-width: 0; }
+.mo { display: block; font-size: 9px; line-height: 12px; color: var(--ts-muted); white-space: nowrap; unicode-bidi: plaintext; }
+.sp, .wl { flex: none; inline-size: 2.4em; }
+.wl { font-size: 9px; color: var(--ts-muted); display: flex; align-items: center; white-space: nowrap; overflow: hidden; unicode-bidi: plaintext; }
 .c { flex: 1; min-height: 0; min-width: 0; border-radius: 2px; box-sizing: border-box; background: var(--ts-surface-2); position: relative; }
 .c.pos { background: color-mix(in srgb, var(--ts-profit) var(--s, 100%), transparent); }
 .c.neg { background: color-mix(in srgb, var(--ts-loss) var(--s, 100%), transparent); }
@@ -319,7 +338,7 @@ export class TsPnlCalendar extends TsWidget {
 .none { color: var(--ts-muted); font-size: 12px; text-align: center; padding-block-start: 4px; unicode-bidi: plaintext; }
 .calsk { flex: 1; min-height: 40px; position: relative; }
 .calsk .sk { position: absolute; inset: 0; width: auto; }
-@container (max-width: 260px) { .rl { display: none; } }
+@container (max-width: 260px) { .sp, .wl { display: none; } }
 /* Four figures in a row need about 80px each: on a narrow M they take two rows of two. */
 @container (max-width: 420px) { .body.m .sum { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* A phone's Banner stacks its two bands; a wide one keeps the figures beside the year. */
@@ -328,12 +347,16 @@ export class TsPnlCalendar extends TsWidget {
   .body.banner .sum { grid-template-columns: repeat(2, minmax(0, 1fr)); inline-size: 280px; flex: none; align-content: center; }
   .body.banner .calwrap { flex: 1; min-width: 0; }
 }
+/* Forced colours drop backgrounds the page set, so the heat is drawn again from system colours: a gain in Highlight,
+   a loss in CanvasText with a double border and its corner, both stepped by strength, a flat day in ButtonFace, a
+   day with no entry dotted and a day to come dashed. */
 @media (forced-colors: active) {
   .c { forced-color-adjust: none; border: 1px solid CanvasText; }
-  .c.none, .c.flat { background: transparent; }
-  .c.pos { background: Highlight; }
-  .c.neg { background: transparent; }
-  .c.neg::after { background: CanvasText; }
+  .c.none { background: transparent; border-style: dotted; }
+  .c.flat { background: ButtonFace; }
+  .c.pos { background: color-mix(in srgb, Highlight var(--s, 100%), transparent); }
+  .c.neg { background: color-mix(in srgb, CanvasText var(--s, 100%), transparent); border: 3px double CanvasText; }
+  .c.neg::after { background: Highlight; }
   .c.up { background: transparent; border-style: dashed; box-shadow: none; }
 }
 `
@@ -344,7 +367,8 @@ export class TsPnlCalendar extends TsWidget {
 <div class="body ${v.toLowerCase()}">
 <div class="sum">${SUMMARY[v]}</div>
 <div class="calwrap">
-<div class="cal" data-k="grid" role="img" aria-label=""></div>
+<div class="cal" data-k="grid" role="grid" aria-label="" aria-describedby="summary"></div>
+<span class="visually-hidden" id="summary" data-k="summary"></span>
 <div class="none" data-k="none" hidden></div>
 </div>
 </div>`
@@ -392,6 +416,8 @@ export class TsPnlCalendar extends TsWidget {
 
   connectedCallback() {
     super.connectedCallback()
+    // A dashboard left open across midnight rolls its window forward: the day is read from the clock on every render.
+    this.every(60000)
     // A Banner changing width across the fold re-renders into one band or two.
     if (!this._resize && typeof ResizeObserver !== 'undefined') {
       this._resize = new ResizeObserver(() => {
@@ -422,9 +448,12 @@ export class TsPnlCalendar extends TsWidget {
   }
 
   // The grid's nodes are made here and not by the template, because how many there are depends on the locale's week.
+  // A row of the grid is one weekday across the weeks; the month names above are decoration (aria-hidden).
   _build(grid, vm, labels) {
     const doc = grid.ownerDocument
-    const shape = `${vm.variant}|${vm.bands.length}|${vm.bands[0].weeks.length}|${vm.rows}|${labels}`
+    // The window and the weekday order are in the key: a new week, or a locale with another first day, redraws the dates.
+    const starts = vm.bands.map((b) => b.weeks[0].cells[0].date).join()
+    const shape = `${vm.variant}|${vm.bands.length}|${vm.bands[0].weeks.length}|${starts}|${vm.rowLabels.join()}|${labels}`
     // The template is rebuilt on leaving the loading, empty or error view, which leaves a new, empty grid node.
     if (this._shape === shape && this._gridNode === grid && this._cells.size) return false
     this._gridNode = grid
@@ -432,35 +461,42 @@ export class TsPnlCalendar extends TsWidget {
     const hadFocus = held && grid.contains(held) ? held.getAttribute('data-d') : null
     while (grid.firstChild) grid.removeChild(grid.firstChild)
     this._cells = new Map()
-    const make = (tag, cls) => {
+    const make = (tag, cls, role) => {
       const el = doc.createElement(tag)
       el.setAttribute('class', cls)
+      if (role) el.setAttribute('role', role)
       return el
     }
     for (const band of vm.bands) {
-      const row = make('div', 'band')
-      if (labels) {
-        const col = make('div', 'wk rl')
-        col.setAttribute('aria-hidden', 'true')
-        col.appendChild(make('span', 'mo'))
-        for (let i = 0; i < vm.rows; i++) col.appendChild(make('span', 'wl'))
-        row.appendChild(col)
+      const group = make('div', 'band', 'rowgroup')
+      const names = make('div', 'mrow')
+      names.setAttribute('aria-hidden', 'true')
+      if (labels) names.appendChild(make('span', 'sp'))
+      for (let w = 0; w < band.weeks.length; w++) {
+        const slot = make('span', 'mw')
+        slot.appendChild(make('span', 'mo'))
+        names.appendChild(slot)
       }
-      for (const week of band.weeks) {
-        const col = make('div', 'wk')
-        col.appendChild(make('span', 'mo'))
-        for (const cell of week.cells) {
-          const el = make('span', 'c')
-          el.setAttribute('role', 'img')
+      group.appendChild(names)
+      for (let r = 0; r < vm.rows; r++) {
+        const row = make('div', 'rw', 'row')
+        if (labels) {
+          const name = make('span', 'wl')
+          name.setAttribute('aria-hidden', 'true')
+          row.appendChild(name)
+        }
+        for (const week of band.weeks) {
+          const cell = week.cells[r]
+          const el = make('span', 'c', 'gridcell')
           el.setAttribute('tabindex', '-1')
           el.setAttribute('data-d', cell.date)
-          col.appendChild(el)
+          row.appendChild(el)
         }
-        row.appendChild(col)
+        group.appendChild(row)
       }
-      grid.appendChild(row)
+      grid.appendChild(group)
     }
-    // Cells by date, in grid order; the same date is never drawn twice.
+    // Cells by date; the same date is never drawn twice.
     for (const el of grid.querySelectorAll ? grid.querySelectorAll('.c') : grid.all('.c')) this._cells.set(el.getAttribute('data-d'), el)
     this._shape = shape
     this._pendingFocus = hadFocus
@@ -495,18 +531,21 @@ export class TsPnlCalendar extends TsWidget {
       fig('best', vm.bestArrow, vm.best, vm.bestClass)
       fig('worst', vm.worstArrow, vm.worst, vm.worstClass)
     }
+    // Under the grid: what is missing from it, in words.
     const none = this.$(k('none'))
-    text('none', t('calendar.noDays'))
-    none.toggleAttribute('hidden', !vm.empty)
+    text('none', vm.empty ? t('calendar.noDays') : vm.note)
+    none.toggleAttribute('hidden', !vm.empty && !vm.note)
 
     const grid = this.$(k('grid'))
-    setAttr(grid, 'aria-label', vm.chartLabel)
+    // The grid's name is short; the summary of best day, worst day and net is its description.
+    setAttr(grid, 'aria-label', vm.label)
+    text('summary', vm.chartLabel)
     const labels = variant !== 'Tall'
     const rebuilt = this._build(grid, vm, labels)
     this._model = vm
 
     // Month names and weekday names sit in the nodes the build made, in grid order.
-    const months = grid.querySelectorAll ? [...grid.querySelectorAll('.wk:not(.rl) > .mo')] : grid.all('.mo').filter((m) => !m.parent.matches('.rl'))
+    const months = grid.querySelectorAll ? [...grid.querySelectorAll('.mo')] : grid.all('.mo')
     let m = 0
     for (const band of vm.bands) {
       for (const week of band.weeks) {
@@ -530,7 +569,6 @@ export class TsPnlCalendar extends TsWidget {
           if (!el) continue
           setAttr(el, 'class', `c ${cell.kind}`)
           setAttr(el, 'aria-label', cell.name)
-          setAttr(el, 'title', cell.name)
           if (cell.strength !== null) {
             const pct = `${Math.round(cell.strength * 100)}%`
             if (el.style.getPropertyValue('--s') !== pct) el.style.setProperty('--s', pct)

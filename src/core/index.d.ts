@@ -525,6 +525,9 @@ export interface Messages {
   'calendar.ariaEmpty': string
   'calendar.chartLabel': string
   'calendar.chartEmpty': string
+  'calendar.chartNote': string
+  'calendar.weekend.one': string
+  'calendar.weekend.other': string
 }
 
 export type MessageKey = keyof Messages

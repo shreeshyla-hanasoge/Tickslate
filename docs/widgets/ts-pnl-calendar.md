@@ -25,8 +25,18 @@ its width changes. Any other size snaps to the nearest of these.
 The calendar ends with the week that holds today. A week starts on the locale's
 first day, from `Intl.Locale.prototype.getWeekInfo()` (or the older `weekInfo`
 property) where the engine has it, else Monday. The locale's weekend days have no
-cell. A weekend entry, such as a special session, counts in every total and is not
-drawn.
+cell. The window follows the clock: it is read on every render, and the tile
+renders again each minute, so a dashboard left open across a Monday (or midnight in
+its `time-zone`) rolls forward by itself, and so does one whose `locale` changes the
+first day of the week.
+
+**Weekend entries.** The RFC draws no cell for a weekend day, so a weekend entry (a
+special session) cannot be seen. The calendar's figures, its best and worst day and
+its summary are therefore worked out over the days that **are** drawn, so the best
+day always has a cell to point at, and the summary says what was left out ("3
+weekend entries not shown", also written under the grid). A series of weekend
+entries only draws the empty state. `dayStats` itself counts every entry, as the RFC
+specifies. A trader who works seven days a week is not served by this yet.
 
 ## Data shape
 
@@ -57,8 +67,7 @@ upcoming: an outline, not a fill, and an entry dated then is not a result yet. A
 day that nets to nothing, or rounds to nothing at the money format, is flat: the
 empty colour and no sign.
 
-**Figures.** The figures cover the days in view, from the first column to today,
-weekend entries included, and come from
+**Figures.** The figures cover the days drawn, from the first column to today, and come from
 [`dayStats`](../reference/core.md#daystatsdays-options). The net is the sum, green
 days is `greenDays / (greenDays + redDays)`, and best and worst are the highest
 and lowest day.
@@ -81,6 +90,8 @@ interface CalendarModel {
   net: string; netNum: number
   best: string; worst: string; rate: string
   tradingDays: number
+  weekendEntries: number                 // entries on a weekend: no cell, not in the figures
+  note: string                           // "3 weekend entries not shown", or ''
   chartLabel: string                   // the grid's summary
   focusDate: string                    // the cell that starts as the tab stop
   ariaLabel: string                    // the tile's name
@@ -96,7 +107,7 @@ interface PnlCalendarCell {
 
 A band holds its week columns oldest first. A month's name sits on the first
 column whose first day starts a new month, and a January column names its year, so
-a year boundary reads. Two names never print within four columns of each other (five after a January, which carries its year); a name too close to the one before it is left out
+a year boundary reads. Two names never print within four columns of each other, and a January names its year only when the next month is five or more columns on, so every month keeps its name before the year does
 
 ## Minimal example
 
@@ -173,27 +184,33 @@ Theme it with the tokens: `--ts-profit`, `--ts-loss`, `--ts-surface-2`, `--ts-in
 
 ## Accessibility
 
-- The grid of cells is one `role="img"` named by a summary: "Daily P&L calendar,
-  12 Oct 2025 to 12 Oct 2026: best day Tue 7 Jul, +4,200.00, worst day Mon 3 Aug,
-  -1,900.00, net +21,400.00". The tile is named with its net: "Daily P&L calendar,
-  net +21,400.00 over 180 trading days".
+- The calendar is an ARIA `grid`: `role="grid"` named "Daily P&L calendar", one
+  `role="row"` for each weekday (inside a `rowgroup` for each half-year band) and a
+  `role="gridcell"` for each day. Its description is the summary: "Daily P&L
+  calendar, 12 Oct 2025 to 12 Oct 2026: best day Tue 7 Jul, +4,200.00, worst day Mon
+  3 Aug, -1,900.00, net +21,400.00". The tile is named with its net: "Daily P&L
+  calendar, net +21,400.00 over 180 trading days". The RFC says the grid is
+  `role="img"`, but the children of an image are presentational and cannot be
+  focusable, so this is the nearest valid thing (see the changelog's internal notes).
 - Every cell is named with its date and signed value ("Mon 12 Oct, -310.50"; "Tue
-  13 Oct, no entry"; "Fri 16 Oct, upcoming"), and is read through the roving
-  tabindex below, so a keyboard reader can still go day by day.
+  13 Oct, no entry"; "Fri 16 Oct, upcoming"). The month and weekday names beside the
+  grid are decoration (`aria-hidden`): the same words are in the cell names.
 - **Keyboard.** One cell is the tab stop, today's to begin with, and it stays where
-  you left it. Arrows move by a day or a week (Right is always the later week,
-  whatever the page's direction, since time runs left to right), Home and End go to
-  the first and last week of the row, Control with Home or End to the first and last
-  cell. Down from the last row of a half-year band goes to the first row of the next.
-  A rebuild, from a width change or a new locale, keeps the focus on the same date.
+  you left it. Left and Right move between weeks (Right is always the later week,
+  whatever the page's direction, since time runs left to right, and from the last
+  week of the first half-year band into the second), Up and Down between the weekdays
+  of a week, Home and End to the first and last week of the row, Control with Home or
+  End to the first and last cell, and Page Up and Page Down to the same weekday in
+  the month before and after. A rebuild, from a width change or a new week, keeps the
+  focus on the same date where it is still drawn.
 - **Loss cells carry a non-colour cue**: a corner mark in `--ts-ink`, so a loss is
-  never only red. A gain or a loss is also in the cell's name with its sign. The
-  weekday and month names beside the grid are decoration (`aria-hidden`) and the
-  same words are in the cell names.
+  never only red. A gain or a loss is also in the cell's name with its sign.
 - The net and the best and worst day carry `+` or the true minus and an `aria-hidden`
   arrow; a figure that rounds to zero has neither.
-- Under forced colours each cell keeps a border, gains use `Highlight`, losses keep
-  the corner in `CanvasText` and upcoming days are dashed.
+- Under forced colours the heat is drawn again from system colours: a gain in
+  `Highlight` and a loss in `CanvasText`, each stepped by strength, a loss with a
+  double border and its corner, a flat day in `ButtonFace`, a day with no entry
+  dotted and a day to come dashed.
 - Nothing animates apart from the shared change flash, which stops under
   `prefers-reduced-motion`. The cells are smaller than 44px by design: they are a
   chart, not controls, and every figure is also in the header.

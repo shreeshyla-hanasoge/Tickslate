@@ -577,6 +577,10 @@ export interface CalendarModel {
   worst: string
   rate: string
   tradingDays: number
+  /** Weekend entries in the window, which have no cell and are left out of the figures. */
+  weekendEntries: number
+  /** "3 weekend entries not shown", or '' when none were left out. */
+  note: string
   /** The summary the grid is named by. */
   chartLabel: string
   /** The date of the cell that starts as the tab stop. */

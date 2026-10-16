@@ -71,6 +71,10 @@
     el,
     events,
     tick: (step) => { el.data = make(step) },
+    // A later day, a different clock, or other days, as a dashboard left open would meet them.
+    setToday: (iso) => { el.data = { ...make(0), today: iso } },
+    setNow: (ms) => { el.clock = () => ms; el.requestRender() },
+    setDays: (days) => { el.data = { days, asOf: 0 } },
     width: (px) => { wrap.style.width = `${px}px` },
     nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   }
