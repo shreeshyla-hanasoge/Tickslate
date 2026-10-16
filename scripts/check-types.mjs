@@ -39,13 +39,20 @@ await rm(resolve(modules, 'tickslate'), { recursive: true, force: true })
 await symlink(dist, resolve(modules, 'tickslate'), 'dir')
 
 const failed = []
-for (const resolution of ['bundler', 'node16', 'node10']) {
+const projects = [
+  ['moduleResolution bundler', 'tsconfig.bundler.json'],
+  ['moduleResolution node16', 'tsconfig.node16.json'],
+  ['moduleResolution node10', 'tsconfig.node10.json'],
+  ['exactOptionalPropertyTypes', 'tsconfig.exact.json'],
+  ['node16 from a CommonJS package (cjs/)', 'cjs/tsconfig.json'],
+]
+for (const [label, config] of projects) {
   try {
-    execFileSync(process.execPath, [tsc, '-p', resolve(root, `test/types/tsconfig.${resolution}.json`)], { cwd: root, stdio: 'pipe', encoding: 'utf8' })
-    console.log(`ok   moduleResolution ${resolution}`)
+    execFileSync(process.execPath, [tsc, '-p', resolve(root, 'test/types', config)], { cwd: root, stdio: 'pipe', encoding: 'utf8' })
+    console.log(`ok   ${label}`)
   } catch (e) {
-    failed.push(resolution)
-    console.error(`FAIL moduleResolution ${resolution}\n${(e.stdout || '') + (e.stderr || '') || e.message}`)
+    failed.push(label)
+    console.error(`FAIL ${label}\n${(e.stdout || '') + (e.stderr || '') || e.message}`)
   }
 }
 await rm(resolve(modules, 'tickslate'), { recursive: true, force: true })
@@ -53,4 +60,4 @@ if (failed.length) {
   console.error(`\ntype fixtures failed under: ${failed.join(', ')}`)
   process.exit(1)
 }
-console.log('\ntype fixtures pass under bundler, node16 and node10.')
+console.log(`\ntype fixtures pass in all ${projects.length} projects.`)

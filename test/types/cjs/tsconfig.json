@@ -1,0 +1,6 @@
+{
+  // A host whose package.json has no "type": "module", checked with node16 resolution.
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": { "module": "node16", "moduleResolution": "node16" },
+  "include": ["*.ts", "*.tsx"]
+}

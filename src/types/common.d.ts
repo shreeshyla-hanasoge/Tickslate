@@ -20,7 +20,7 @@ export type TsAttributes<K extends TsTag> = HTMLElementTagNameMap[K] extends TsW
  * fails), and `actions`. A JSON string is accepted too, as the `data` attribute takes one.
  */
 export type TsProperties<K extends TsTag> = HTMLElementTagNameMap[K] extends TsWidget<infer D, any>
-  ? { data?: D | string | null; actions?: readonly string[] }
+  ? { data?: D | string | null | undefined; actions?: readonly string[] | undefined }
   : {}
 
 /** Every `ts-*` event name on `HTMLElementEventMap`, such as `ts-layout-change`. */

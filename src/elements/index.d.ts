@@ -409,17 +409,17 @@ export type TsSessionClockAction = TsCommonAction
 
 /** The attributes of the TsWidget base, as the framework typings (`tickslate/jsx`, `vue`, `svelte`) offer them. Kept in step with the `@base` block above by test/manifest.test.mjs. */
 export interface TsWidgetAttributes {
-  size?: SizeName
-  label?: string
-  locale?: string
-  currency?: string
-  'time-zone'?: string
-  'hour-cycle'?: string
-  state?: 'loading' | 'error'
-  'heading-level'?: number | string
-  href?: string
-  activatable?: boolean
-  item?: string
+  size?: SizeName | undefined
+  label?: string | undefined
+  locale?: string | undefined
+  currency?: string | undefined
+  'time-zone'?: string | undefined
+  'hour-cycle'?: string | undefined
+  state?: 'loading' | 'error' | undefined
+  'heading-level'?: number | string | undefined
+  href?: string | undefined
+  activatable?: boolean | undefined
+  item?: string | undefined
 }
 
 /**
@@ -429,20 +429,20 @@ export interface TsWidgetAttributes {
  * tag's `@attr` lines disagree.
  */
 export interface TsElementAttributes {
-  'ts-card': { sizes?: string; live?: boolean; 'as-of'?: string; scrollable?: boolean }
-  'ts-equity-curve': { range?: EquityRange }
+  'ts-card': { sizes?: string | undefined; live?: boolean | undefined; 'as-of'?: string | undefined; scrollable?: boolean | undefined }
+  'ts-equity-curve': { range?: EquityRange | undefined }
   'ts-grid': {
-    editing?: boolean
-    profile?: string
-    locked?: boolean
-    'edit-controls'?: 'off'
-    'undo-toast'?: 'off'
-    locale?: string
-    currency?: string
-    'time-zone'?: string
-    'hour-cycle'?: string
-    persist?: string
-    'aria-label'?: string
+    editing?: boolean | undefined
+    profile?: string | undefined
+    locked?: boolean | undefined
+    'edit-controls'?: 'off' | undefined
+    'undo-toast'?: 'off' | undefined
+    locale?: string | undefined
+    currency?: string | undefined
+    'time-zone'?: string | undefined
+    'hour-cycle'?: string | undefined
+    persist?: string | undefined
+    'aria-label'?: string | undefined
   }
 }
 

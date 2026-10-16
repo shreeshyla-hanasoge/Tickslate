@@ -12,7 +12,7 @@
  */
 import { readFile, readdir, mkdtemp, mkdir, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, statSync, readdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { runInNewContext } from 'node:vm'
 import { resolve, dirname, relative, sep } from 'node:path'
@@ -132,6 +132,23 @@ for (const sub of expectedSubpaths) if (!actualSubpaths.includes(sub)) fail(`exp
 for (const sub of actualSubpaths) if (!expectedSubpaths.includes(sub)) fail(`exports["${sub}"] has no module in src/elements/define/`)
 if (actualSubpaths.length === expectedSubpaths.length && expectedSubpaths.every((s) => actualSubpaths.includes(s))) {
   ok(`exports has ./elements and one entry for each of the ${entries.length} define modules`)
+}
+
+// The types-only entries are the files in src/types/ (minus common.d.ts, which they share):
+// each needs an exports entry and a typesVersions one (node10 ignores exports), and nothing extra.
+{
+  const typeNames = readdirSync(resolve(root, 'src/types')).filter((n) => n.endsWith('.d.ts')).map((n) => n.slice(0, -'.d.ts'.length)).filter((n) => n !== 'common')
+  const isTypesEntry = (v) => v && typeof v === 'object' && Object.keys(v).length === 1 && /^\.\/types\//.test(v.types || '')
+  const inExports = Object.entries(exportsMap).filter(([, v]) => isTypesEntry(v)).map(([k]) => k.slice(2))
+  const inVersions = Object.entries(manifest.typesVersions?.['*'] || {}).filter(([, v]) => (v || []).some((p) => p.startsWith('types/'))).map(([k]) => k)
+  let good = true
+  for (const n of typeNames) {
+    if (!inExports.includes(n)) (good = false), fail(`exports has no types-only "./${n}", though src/types/${n}.d.ts exists`)
+    if (!inVersions.includes(n)) (good = false), fail(`typesVersions has no "${n}" path to types/${n}.d.ts, so moduleResolution node10 cannot find tickslate/${n}`)
+  }
+  for (const n of inExports) if (!typeNames.includes(n)) (good = false), fail(`exports["./${n}"] is types only but src/types/${n}.d.ts does not exist`)
+  for (const n of inVersions) if (!typeNames.includes(n)) (good = false), fail(`typesVersions["${n}"] points into types/ but src/types/${n}.d.ts does not exist`)
+  if (good) ok(`exports and typesVersions both have the ${typeNames.length} types-only entries (${typeNames.join(', ')})`)
 }
 
 // ------------------------------------------------ custom elements manifest (RFC 0003 §22.3)

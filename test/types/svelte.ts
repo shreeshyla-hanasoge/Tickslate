@@ -10,8 +10,10 @@ export const ok: Props<'ts-metric'> = {
   class: 'tile',
   'data-id': 'revenue',
   'on:ts-action': (e) => {
-    const retry: string = e.detail.action
-    void retry
+    const action: string = e.detail.action
+    // @ts-expect-error the event is typed, not `any`: an action name is a string
+    const wrong: number = e.detail.action
+    void [action, wrong]
   },
 }
 export const equity: Props<'ts-equity-curve'> = { range: '1M' }

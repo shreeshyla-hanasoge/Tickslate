@@ -6,6 +6,10 @@ import { join } from 'node:path'
 import { buildManifests, readDeclarations } from '../scripts/gen-manifest.mjs'
 import { elementEntries, describeEntry } from '../scripts/entries.mjs'
 
+// This file imports ../scripts/*.mjs, which AGENTS.md's "src/ and node:* only" rule does not name.
+// That is fine for what the rule is for: both scripts use only node:* modules, so CI still runs
+// this test in the unit job with no npm install.
+//
 // RFC 0003 §22.3: the manifest is generated from the declaration files with no analyzer, lists
 // every tag with its attributes, properties, events, parts and slots, and refuses an element
 // that nobody documented. These tests read src/ only; the built files are checked by
@@ -131,4 +135,82 @@ declare global { interface HTMLElementTagNameMap { 'ts-gauge': TsGauge } }
     assert.ok(gauge.members.some((m) => m.name === 'reset' && m.parameters[0].name === 'to'))
     rmSync(dir, { recursive: true, force: true })
   })
+})
+
+describe('malformed tags and unresolved classes', () => {
+  const tree = (dts) => {
+    const dir = mkdtempSync(join(tmpdir(), 'tickslate-manifest-'))
+    for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
+    writeFileSync(join(dir, 'gauge.d.ts'), dts)
+    return dir
+  }
+  const entry = { file: 'gauge', name: 'gauge', input: '', tags: ['ts-gauge'], exports: ['TsGauge'] }
+  const build = (dts) => {
+    const dir = tree(dts)
+    try {
+      return buildManifests({ entries: [...entries, entry], declarations: readDeclarations(dir) })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  const gauge = (tags) => `import { TsWidget } from './widget.js'
+/**
+ * <ts-gauge>
+ * @element ts-gauge
+${tags.map((t) => ` * ${t}`).join('\n')}
+ */
+export declare class TsGauge extends TsWidget<{ value: number }> {}
+declare global { interface HTMLElementTagNameMap { 'ts-gauge': TsGauge } }
+`
+
+  test('throws for a tag with no name, naming the tag and the file', () => {
+    for (const bad of ['@attr {string} - The top.', '@fires {CustomEvent} - Fired.', '@csspart - A part.', '@cssprop {color} - A colour.']) {
+      assert.throws(() => build(gauge([bad])), /gauge\.d\.ts: ".*has no name/, bad)
+    }
+    assert.doesNotThrow(() => build(gauge(['@slot - The default slot.'])), 'the default slot has no name')
+  })
+
+  test('throws for a name repeated in one block, but lets an element redefine a base attribute', () => {
+    assert.throws(() => build(gauge(['@attr max - One.', '@attr max - Two.'])), /"@attr max" appears twice/)
+    assert.doesNotThrow(() => build(gauge(['@attr {string} label - Redefined.'])))
+  })
+
+  test('names the tag when an @element block has no class', () => {
+    assert.throws(() => build(`/**\n * @element ts-gauge\n */\nexport declare const nothing: number\n`), /ts-gauge is documented, but no declared class backs it/)
+  })
+
+  test('names the tag and class when the map points at a class that is not declared', () => {
+    assert.throws(
+      () => build(`/**\n * @element ts-gauge\n */\nexport declare const nothing: number\ndeclare global { interface HTMLElementTagNameMap { 'ts-gauge': TsMissing } }\n`),
+      /ts-gauge maps to TsMissing in HTMLElementTagNameMap, but no "declare class TsMissing"/
+    )
+  })
+})
+
+describe('observed attributes are documented', () => {
+  // `item` is read with getAttribute by the grid and by open actions, and `undo-toast` by the grid's
+  // toast: both are real attributes that observedAttributes does not list. `data` is observed by the base.
+  const READ_WITHOUT_OBSERVING = new Set(['item', 'undo-toast'])
+  const src = (f) => readFileSync(new URL(`../src/elements/${f}`, import.meta.url), 'utf8')
+  const observed = (file) => {
+    // Comments first: widget.js's header shows an example of the same getter.
+    const code = src(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const m = /static get observedAttributes\(\) \{\s*return \[([^\]]*)\]/.exec(code)
+    return m ? [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]) : []
+  }
+
+  for (const entry of entries) {
+    for (const tag of entry.tags) {
+      test(`${tag}: every observed attribute has an @attr line, and every @attr is observed or exempt`, () => {
+        const files = [...src(`define/${entry.file}.js`).matchAll(/from '\.\.\/([\w-]+\.js)'/g)].map((m) => m[1])
+        const d = byTag.get(tag)
+        if (d.superclass?.name === 'TsWidget') files.push('widget.js')
+        const seen = new Set(files.flatMap(observed))
+        assert.ok(seen.size > 0, `read observedAttributes of ${files.join(', ')}`)
+        const documented = new Set(d.attributes.map((a) => a.name))
+        for (const a of seen) assert.ok(documented.has(a), `${tag} observes "${a}" but no @attr documents it`)
+        for (const a of documented) assert.ok(seen.has(a) || READ_WITHOUT_OBSERVING.has(a), `${tag} documents "${a}", which nothing observes`)
+      })
+    }
+  }
 })

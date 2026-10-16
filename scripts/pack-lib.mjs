@@ -17,6 +17,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { elementEntries, describeEntry } from './entries.mjs'
 import { writeManifests } from './gen-manifest.mjs'
+import { runtimeFrameworkImports } from './types-guard.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const out = resolve(root, 'dist-lib')
@@ -133,9 +134,9 @@ for (const [from, to] of types) {
 // not `import type` would load the framework when the host's bundler follows it.
 for (const name of typeFiles) {
   const text = (await readFile(resolve(typesDir, name), 'utf8')).replace(/(['"])\.\.\/elements\/index\.js\1/g, '$1../elements.js$1')
-  const runtime = [...text.matchAll(/^\s*(?:import|export)\s+(?!type\b)[^'"\n]*from\s+['"](react|vue|svelte)[^'"]*['"]/gm)]
+  const runtime = runtimeFrameworkImports(text)
   if (runtime.length) {
-    console.error(`src/types/${name} imports ${runtime[0][1]} without \`import type\`; the framework typings are types only.`)
+    console.error(`src/types/${name} imports ${runtime[0]} other than with \`import type\`; the framework typings are types only.`)
     process.exit(1)
   }
   const dest = resolve(out, 'types', name)

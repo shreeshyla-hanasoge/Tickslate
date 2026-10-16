@@ -281,14 +281,23 @@ function collect(blocks) {
   const parts = new Map()
   const slots = new Map()
   const props = new Map()
-  for (const { tags } of blocks) {
+  for (const { tags, source } of blocks) {
+    // A name repeated inside one block is a slip (the second would silently replace the first);
+    // a later block overriding an earlier one, such as an element redefining a base attribute, is not.
+    const seen = new Set()
     for (const t of tags) {
+      const kind = { attribute: 'attr', event: 'fires', cssproperty: 'cssprop' }[t.name] || t.name
+      if (!['attr', 'fires', 'csspart', 'slot', 'cssprop'].includes(kind)) continue
       const { type, name, description } = typed(t.text)
-      if (t.name === 'attr' || t.name === 'attribute') attrs.set(name, { name, type: { text: type || 'string' }, description })
-      else if (t.name === 'fires' || t.name === 'event') events.set(name, { name, type: { text: type || 'CustomEvent' }, description })
-      else if (t.name === 'csspart') parts.set(name, { name, description })
-      else if (t.name === 'slot') slots.set(name, { name, description })
-      else if (t.name === 'cssprop' || t.name === 'cssproperty') props.set(name, { name, type: type ? { text: type } : undefined, description })
+      // The default slot is the one tag with no name.
+      if (!name && kind !== 'slot') throw new Error(`${source}: "@${t.name} ${t.text}" has no name. Write "@${t.name} {type} name - description".`)
+      if (seen.has(`${kind} ${name}`)) throw new Error(`${source}: "@${t.name} ${name}" appears twice in one block; the second would replace the first.`)
+      seen.add(`${kind} ${name}`)
+      if (kind === 'attr') attrs.set(name, { name, type: { text: type || 'string' }, description })
+      else if (kind === 'fires') events.set(name, { name, type: { text: type || 'CustomEvent' }, description })
+      else if (kind === 'csspart') parts.set(name, { name, description })
+      else if (kind === 'slot') slots.set(name, { name, description })
+      else props.set(name, { name, type: type ? { text: type } : undefined, description })
     }
   }
   return { attrs, events, parts, slots, props }
@@ -309,7 +318,11 @@ export function buildManifests({ entries = elementEntries().map(describeEntry), 
   const required = new Set([...defined.keys()])
   for (const [tag] of defined) {
     if (!decl.elementBlocks.has(tag)) problems.push(`${tag} is registered by src/elements/define/${defined.get(tag).file}.js but no declaration has a JSDoc block with "@element ${tag}". Document its attributes, events, parts and slots in its .d.ts file (see the blocks in src/elements/index.d.ts).`)
-    else if (!decl.tagClass.has(tag) && !defined.get(tag).exports.some((n) => decl.classes.has(n))) problems.push(`${tag} is documented, but no declared class backs it: add "'${tag}': Class" to HTMLElementTagNameMap in its .d.ts file.`)
+    else {
+      const className = decl.tagClass.get(tag) || defined.get(tag).exports.find((n) => decl.classes.has(n))
+      if (!className) problems.push(`${tag} is documented, but no declared class backs it: add "'${tag}': Class" to HTMLElementTagNameMap in its .d.ts file.`)
+      else if (!decl.classes.has(className)) problems.push(`${tag} maps to ${className} in HTMLElementTagNameMap, but no "declare class ${className}" is in src/elements/*.d.ts.`)
+    }
   }
   const notBuilt = Object.values(catalog).map((w) => w.tag).filter((tag) => !required.has(tag))
   if (problems.length) throw new Error(problems.join('\n'))
