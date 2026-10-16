@@ -572,7 +572,9 @@ test.describe('with motion allowed', () => {
   test('the last tile going first slides every tile that moved', async ({ page }) => {
     await load(page)
     expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(false)
-    // One slot moves, not four, so no tile that changed place loses its slide.
+    // One slot moves, not four, and that tile's slot moves before its box is written (a style flush between), because
+    // WebKit drops the slide of a tile that is reattached after its box changed. That showed only on loaded Linux
+    // runners, where the moved tile (here the last, going first) came back with no animation, so it is checked for it.
     const result = await rearrange(page, (i) => [i[4], i[0], i[1], i[2], i[3]])
     const moved = Object.entries(result).filter(([, t]) => t.changed)
     expect(moved).toHaveLength(5)

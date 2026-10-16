@@ -1123,6 +1123,10 @@ export class TsGrid extends Base {
     animate = animate && this._motion()
     const { placements, rows } = place(this._order, this._columns, this._resolve)
     this._placements = new Map(placements.map((p) => [p.id, p]))
+    // Slots move before the boxes are written, with a style flush between. WebKit drops a tile's slide when its slot
+    // moves, but only if the move comes after the new box: moved first, the tile has a computed "before" style again
+    // by the time its box changes, so it slides there like the rest.
+    if (animate && this._manual && this._slotTiles(visualOrder(placements), this._editing && this._orderKnown)) void this._board.offsetWidth
     for (const p of placements) {
       const box = boxOf(p, m)
       const el = this._tiles.get(p.id)
@@ -1199,13 +1203,13 @@ export class TsGrid extends Base {
       }
       return slot
     })
+    let moved = false
     if (!frozen) {
       // Moving a slot reattaches its tile, and some engines (WebKit, Firefox) drop that tile's slide when it is
       // reattached, so only the slots outside the longest run already in order move: one for "last goes first".
       const current = [...board.children].filter((child) => this._slotted.has(child))
       const keep = keepInPlace(current, slots)
       const active = this._deepActive()
-      let moved = false
       let next = this._chromeLayer
       for (let i = slots.length - 1; i >= 0; i--) {
         if (!keep.has(slots[i])) {
@@ -1229,6 +1233,7 @@ export class TsGrid extends Base {
     if (!sameNodes(empty, this._emptyNodes)) this._emptySlot.assign(...empty)
     this._restNodes = rest
     this._emptyNodes = empty
+    return moved
   }
 
   /** The element that really has focus, followed through shadow roots, when it is inside this grid. */
