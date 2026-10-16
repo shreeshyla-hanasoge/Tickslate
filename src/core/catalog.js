@@ -36,6 +36,7 @@ export const WIDGETS = Object.freeze({
   card: widget('ts-card', 'Card', [...SIZE_NAMES], 'General', 'A titled card for any content.'),
   metric: widget('ts-metric', 'Metric', ['S', 'Wide', 'M'], 'General', 'One figure with a label and a change.'),
   chart: widget('ts-chart', 'Chart', ['Wide', 'M', 'L', 'XL'], 'General', 'A line, area or bar chart of any series.'),
+  table: widget('ts-table', 'Table', ['Tall', 'M', 'L', 'XL'], 'General', 'A sortable table of rows with typed columns.'),
 })
 
 /** The item's widget type: `type` when given, else its `id`. */

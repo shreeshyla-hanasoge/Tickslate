@@ -36,6 +36,7 @@ export const EN = Object.freeze({
   'widget.card.label': 'Card',
   'widget.metric.label': 'Metric',
   'widget.chart.label': 'Chart',
+  'widget.table.label': 'Table',
   // The picker's sentence for each catalog entry
   'widget.todayPnl.description': "Today's profit or loss, with an intraday line.",
   'widget.equityCurve.description': 'Account value over time, with peak and drawdown.',
@@ -49,6 +50,7 @@ export const EN = Object.freeze({
   'widget.card.description': 'A titled card for any content.',
   'widget.metric.description': 'One figure with a label and a change.',
   'widget.chart.description': 'A line, area or bar chart of any series.',
+  'widget.table.description': 'A sortable table of rows with typed columns.',
   // The picker's groups. A host's own category name is shown as it is unless it adds category.<name>.
   'category.General': 'General',
   'category.Performance': 'Performance',
@@ -59,6 +61,7 @@ export const EN = Object.freeze({
   'widget.sessionClock.empty': 'No sessions set up',
   'widget.metric.empty': 'No data yet',
   'widget.chart.empty': 'No data yet',
+  'widget.table.empty': 'No rows yet',
 
   // Sizes: a size reads "Medium, 2 by 2"
   'size.S': 'Small',
@@ -233,6 +236,18 @@ export const EN = Object.freeze({
   'chart.series': 'Series {index}',
   'chart.last': '{name}, last {value}',
   'chart.noData': '{name}, no data',
+
+  // <ts-table>
+  'table.aria': '{label}, {rows}',
+  'table.rows.one': '{count} row',
+  'table.rows.other': '{count} rows',
+  'table.sortedBy': 'sorted by {column}, {dir}',
+  'table.ascending': 'ascending',
+  'table.descending': 'descending',
+  'table.hidden.one': '{count} column hidden',
+  'table.hidden.other': '{count} columns hidden',
+  'table.join': '{head}, {tail}',
+  'table.select': 'Select {name}',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

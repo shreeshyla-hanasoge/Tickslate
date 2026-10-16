@@ -291,6 +291,81 @@ export declare class TsChart extends TsWidget<ChartData> {
   static chartModel(data: ChartData, variant: SizeName, ctx: ViewModelContext): ChartModel
 }
 
+export interface TableColumn {
+  key: string
+  label: string
+  /** Default 'text', shown as given. 'percent' takes fractions, 'duration' milliseconds, 'time' and 'date' any Time. */
+  format?: 'text' | 'number' | 'money' | 'percent' | 'duration' | 'time' | 'date'
+  decimals?: number
+  /** Default 'end' for number, money, percent and duration, else 'start'. */
+  align?: 'start' | 'end' | 'center'
+  /** '+' or '−' with the pos or neg colour and an arrow. */
+  tone?: 'sign'
+  /** Lower stays longer when columns must hide. Default: the column's position. */
+  priority?: number
+  /** Default true. */
+  sortable?: boolean
+}
+
+export interface TableData extends WidgetFreshness {
+  columns: TableColumn[]
+  /** Matched by `id`, so a live update changes cells in place. A row with no id, or a repeated one, is dropped. */
+  rows: Array<{ id: string | number; [key: string]: unknown }>
+  /** The order to show. The user's own choice (a header press) replaces it until a different one is set. */
+  sort?: { key: string; dir: 'asc' | 'desc' }
+}
+
+export interface TableModel {
+  /** 'Open orders, 12 rows, sorted by Price, descending'. */
+  ariaLabel: string
+  /** Only the columns the column budget kept, in data order. */
+  columns: Array<{
+    key: string
+    label: string
+    align: 'start' | 'end' | 'center'
+    sortable: boolean
+    /** The header's aria-sort. */
+    sort: 'ascending' | 'descending' | 'none'
+    /** Whether the column's format is a number, which gets the figure typeface. */
+    numeric: boolean
+  }>
+  /** Sorted; one entry per readable row. */
+  rows: Array<{
+    id: string | number
+    cells: Array<{
+      /** Formatted; '' for a missing value. */
+      text: string
+      /** 'mut' unless the column has tone 'sign' and the value is not zero. */
+      tone: 'pos' | 'neg' | 'mut'
+      /** '' unless tone is 'sign' and the text carries a sign. aria-hidden in the template. */
+      arrow: '▲' | '▼' | ''
+    }>
+  }>
+  /** The sort in effect, or null when there is none or its column cannot be sorted. */
+  sort: { key: string; dir: 'asc' | 'desc' } | null
+  /** Columns dropped by the column budget (0 without a width). */
+  hidden: number
+  /** Rows that could not be read: no id, a repeated id, or not an object. */
+  dropped: number
+}
+
+/**
+ * <ts-table>, sizes Tall · M · L · XL. Typed columns, a header that sorts, and cells that change in place.
+ *
+ * @element ts-table
+ * @fires {CustomEvent<TsTableAction>} ts-action - Retry, 'open', 'sort' when a sortable header is pressed, and 'select' for a row when `actions` includes 'select'.
+ * @csspart table - The table.
+ * @csspart row - A body row.
+ * @csspart cell - A body cell.
+ */
+export declare class TsTable extends TsWidget<TableData> {
+  addEventListener(type: 'ts-action', listener: (this: TsTable, ev: CustomEvent<TsTableAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsTable, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: formatted cells, a stable sort and the column budget. `o.width` is the content width in px; without it every column is kept. */
+  static tableModel(data: TableData, variant: SizeName, ctx: ViewModelContext, o?: { width?: number }): TableModel
+}
+
 export interface TodayPnlData extends WidgetFreshness {
   /** Shown exactly as given; the widget never recomputes it from the parts. */
   net: Numeric
@@ -373,6 +448,8 @@ export type TsCardAction = TsCommonAction
 export type TsMetricAction = TsCommonAction
 /** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1). */
 export type TsChartAction = TsCommonAction | TsChartSelectAction
+/** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1, Decision 36). */
+export type TsTableAction = TsCommonAction | { action: 'sort'; value: string; dir: 'asc' | 'desc' } | { action: 'select'; id: string | number }
 export type TsTodayPnlAction = TsCommonAction
 export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
 export type TsSessionClockAction = TsCommonAction
@@ -483,6 +560,7 @@ declare global {
     'ts-card': TsCard
     'ts-metric': TsMetric
     'ts-chart': TsChart
+    'ts-table': TsTable
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock
