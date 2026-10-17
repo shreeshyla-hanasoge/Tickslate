@@ -48,6 +48,7 @@ interface TsActionDetail {
 | `add-instrument` | `<ts-watchlist>` | The user presses the add button in the header, and `actions` includes `'add-instrument'`. The widget has no form of its own: show yours, then send the new `instruments` in `data` | none |
 | `exit-position` | `<ts-open-positions>` | The user presses a row's Exit button, and `actions` includes `'exit-position'`. Nothing is closed or removed by the widget: place the order, then send the new `positions` | `id`: the position's id, as given |
 | `exit-all` | `<ts-open-positions>` | The user presses Exit all, and `actions` includes `'exit-all'`. The button only shows while a position is open | none |
+| `rebalance` | `<ts-capital-funding>` | The user presses an account's Rebalance button, and `actions` includes `'rebalance'`. Nothing is moved by the widget: show your own flow, then send the new `accounts` | `id`: the account's id, as given |
 | `select` | `<ts-table>`, `<ts-chart>` | The user activates a row, or a chart point, and `actions` includes `'select'` | A table sends `id`, the row's id as given; a chart sends `value`, `series`, `y` and `index` |
 
 ```js

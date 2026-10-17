@@ -664,6 +664,138 @@ export declare class TsPnlCalendar extends TsWidget<PnlCalendarData> {
   static calendarModel(data: PnlCalendarData, variant: SizeName, ctx: ViewModelContext & { phone?: boolean }): CalendarModel
 }
 
+import type { EdgeStats, FundingAccount } from '../core/index.js'
+
+/** The stat <ts-edge-stats> shows at S, chosen by its `stat` attribute. */
+export type EdgeStatName = 'win-rate' | 'profit-factor' | 'avg-win-loss' | 'expectancy'
+
+export interface EdgeStatsData extends WidgetFreshness {
+  /** What `edgeStats(trades)` returns, or the host's own figures. A figure that is missing or null shows as a dash; a profit factor of Infinity shows as ∞. */
+  stats: EdgeStats
+  /** Shown after the trade count, as '60 trades · Last 30 days'. */
+  scope?: string
+  /** M: the histogram. A bucket with `sign: -1` is drawn hatched, on the loss side. `histogram()` can count the buckets. */
+  distribution?: Array<{ label: string; count: number; sign: 1 | -1 }>
+}
+
+/** One formatted figure of the edge stats. */
+export interface EdgeStatFigure {
+  /** What is shown, possibly compact to fit a narrow cell. */
+  text: string
+  /** The full form, which the accessible name uses. */
+  full: string
+  /** '' unless the text carries a sign. aria-hidden in the template. */
+  arrow: '▲' | '▼' | ''
+  tone: 'pos' | 'neg' | 'mut'
+  /** The number behind it, NaN when there is none. */
+  num: number
+}
+
+export interface EdgeStatsModel {
+  /** 'Edge stats, Win rate 62.5%, 60 trades'. */
+  ariaLabel: string
+  label: string
+  /** One cell at S (the chosen stat), four at Wide and M. */
+  cells: Array<{ key: EdgeStatName; label: string; main: EdgeStatFigure; sub: EdgeStatFigure | null; spoken: string }>
+  /** '60 trades · Last 30 days'. */
+  meta: string
+  /** M only. Heights are 0 to 100, from the largest count. */
+  dist: { bars: Array<{ id: number; label: string; loss: boolean; zero: boolean; h: number; title: string }>; ariaLabel: string }
+  distLabel: string
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-edge-stats>, sizes S · Wide · M. Win rate, profit factor, average win and loss and expectancy; S shows the one `stat` names, M adds the histogram.
+ *
+ * @element ts-edge-stats
+ * @attr {'win-rate' | 'profit-factor' | 'avg-win-loss' | 'expectancy'} stat - The stat S shows. Reflects `stat`; an unknown value reads as 'win-rate'.
+ * @fires {CustomEvent<TsEdgeStatsAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart value - The figure S shows.
+ * @csspart chart - The histogram's box.
+ */
+export declare class TsEdgeStats extends TsWidget<EdgeStatsData> {
+  addEventListener(type: 'ts-action', listener: (this: TsEdgeStats, ev: CustomEvent<TsEdgeStatsAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsEdgeStats, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** The stat S shows. */
+  stat: EdgeStatName
+  /** Pure: formatted figures with their signs and arrows, the histogram's bar heights and the accessible name. */
+  static edgeStatsModel(data: EdgeStatsData, variant: SizeName, ctx: ViewModelContext & { stat?: string }): EdgeStatsModel
+}
+
+export interface CapitalFundingData extends WidgetFreshness {
+  /** Matched by `id`, so a live update changes cells in place. An account with no id, or a repeated one, is dropped, and so is an allocation. */
+  accounts: FundingAccount[]
+}
+
+/** One allocation as the widget shows it. */
+export interface CapitalFundingAllocationModel {
+  id: string
+  name: string
+  detail: string
+  live: boolean
+  amount: string
+  /** 'short ₹6,359.60', or '' when it is fully funded. */
+  short: string
+  /** The funded share of its amount, 0 to 100, and whether any of it is short. null for an allocation of nothing. */
+  bar: { funded: number; short: boolean; label: string } | null
+  /** Signed, '' without a pnl. */
+  pnl: string
+  arrow: '▲' | '▼' | ''
+  tone: 'pos' | 'neg' | 'mut'
+}
+
+export interface CapitalFundingModel {
+  /** 'Capital funding, 3 accounts'; at S the first account's summary follows, and 'showing the first' with more than one. */
+  ariaLabel: string
+  rows: Array<{
+    id: string
+    name: string
+    balance: string
+    allocated: string
+    free: string
+    /** '37%', or '' with nothing allocated. */
+    share: string
+    shareNum: number | null
+    /** 'short ₹31,359.60', or ''. */
+    short: string
+    /** The short text, else 'Fully funded', else 'Nothing allocated'. */
+    status: string
+    hasShort: boolean
+    bar: { funded: number; short: boolean; label: string } | null
+    summary: string
+    /** The Rebalance button's accessible name. */
+    rebalance: string
+    allocations: CapitalFundingAllocationModel[]
+  }>
+  /** Accounts that can be read, shown or not. */
+  total: number
+  /** Accounts that could not be read: no id, a repeated id, or not an object. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-capital-funding>, sizes S · Tall · L. Each account's balance against its allocations, with shortfalls hatched and written as 'short <amount>'; S shows the first account.
+ *
+ * @element ts-capital-funding
+ * @fires {CustomEvent<TsCapitalFundingAction>} ts-action - Retry, 'open', and 'rebalance' when `actions` includes it.
+ * @csspart row - One account.
+ * @csspart allocation - One allocation of an account.
+ * @csspart bar - A funding bar.
+ * @csspart value - The share S shows.
+ */
+export declare class TsCapitalFunding extends TsWidget<CapitalFundingData> {
+  addEventListener(type: 'ts-action', listener: (this: TsCapitalFunding, ev: CustomEvent<TsCapitalFundingAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsCapitalFunding, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: formatted amounts, bar widths, shortfall text and the accessible name. */
+  static fundingModel(data: CapitalFundingData, variant: SizeName, ctx: ViewModelContext): CapitalFundingModel
+}
+
 export interface TodayPnlData extends WidgetFreshness {
   /** Shown exactly as given; the widget never recomputes it from the parts. */
   net: Numeric
@@ -754,6 +886,9 @@ export type TsWatchlistAction = TsCommonAction | { action: 'add-instrument' }
 /** 'exit-position' and 'exit-all' only fire when the host opts in with `actions` (RFC 0003 §21.3). */
 export type TsOpenPositionsAction = TsCommonAction | { action: 'exit-position'; id: string | number } | { action: 'exit-all' }
 export type TsPnlCalendarAction = TsCommonAction
+export type TsEdgeStatsAction = TsCommonAction
+/** 'rebalance' only fires when the host opts in with `actions = ['rebalance']`; `id` is the account's id (RFC 0003 §21.2). */
+export type TsCapitalFundingAction = TsCommonAction | { action: 'rebalance'; id: string }
 export type TsTodayPnlAction = TsCommonAction
 export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
 export type TsSessionClockAction = TsCommonAction
@@ -846,6 +981,7 @@ export interface TsWidgetAttributes {
 export interface TsElementAttributes {
   'ts-card': { sizes?: string | undefined; live?: boolean | undefined; 'as-of'?: string | undefined; scrollable?: boolean | undefined }
   'ts-equity-curve': { range?: EquityRange | undefined }
+  'ts-edge-stats': { stat?: EdgeStatName | undefined }
   'ts-widget-picker': { for?: string | undefined }
   'ts-grid-controls': { for?: string | undefined; picker?: string | undefined }
   'ts-grid': {
@@ -874,6 +1010,8 @@ declare global {
     'ts-progress': TsProgress
     'ts-watchlist': TsWatchlist
     'ts-open-positions': TsOpenPositions
+    'ts-edge-stats': TsEdgeStats
+    'ts-capital-funding': TsCapitalFunding
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock

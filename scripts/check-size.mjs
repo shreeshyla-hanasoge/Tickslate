@@ -138,8 +138,12 @@ const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §2
 // which rounds up to 22 kB.
 // A new entry (pnl-calendar, 2026-10-16): the calendar measures 23,301 B bundled with the core, so 25,631 B with 10 %, which
 // rounds up to 25.5 kB.
+// Two new entries (edge-stats-and-funding, 2026-10-16): the edge stats measure 22,349 B bundled with the core, so 24,584 B with 10 %,
+// which rounds up to 24.5 kB; the capital funding measures 23,555 B, so 25,911 B with 10 %, which rounds up to 25.5 kB.
 const ENTRY_BUDGETS = {
   controls: newEntry(15),
+  'edge-stats': newEntry(24.5),
+  'capital-funding': newEntry(25.5),
   grid: remeasuredSixth(30.5),
   card: remeasuredSeventh(21),
   metric: remeasuredEighth(23),

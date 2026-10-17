@@ -27,7 +27,7 @@ before(async () => {
   globalThis.HTMLElement = FakeElement
   globalThis.document = new FakeDocument()
   W = await import('../src/elements/widget.js')
-  const [pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar] = await Promise.all([
+  const [pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar, edge, funding] = await Promise.all([
     import('../src/elements/today-pnl.js'),
     import('../src/elements/equity-curve.js'),
     import('../src/elements/session-clock.js'),
@@ -39,8 +39,10 @@ before(async () => {
     import('../src/elements/watchlist.js'),
     import('../src/elements/open-positions.js'),
     import('../src/elements/pnl-calendar.js'),
+    import('../src/elements/edge-stats.js'),
+    import('../src/elements/capital-funding.js'),
   ])
-  C = { pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar }
+  C = { pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar, edge, funding }
   // Every widget the library registers, found from the define modules (each is a per-widget entry, RFC 0003 §2.1)
   // and not from a list kept here, so a new widget is scanned the day it is added.
   DEFINED = {}
@@ -68,6 +70,8 @@ const WIDGETS = () => [
   ['TsWatchlist', C.watchlist.TsWatchlist, ['S', 'Tall', 'M'], ['header', 'label'], {}],
   ['TsOpenPositions', C.positions.TsOpenPositions, ['Wide', 'M', 'L'], ['header', 'label'], {}],
   ['TsPnlCalendar', C.calendar.TsPnlCalendar, ['Tall', 'M', 'Banner'], ['header', 'label'], {}],
+  ['TsEdgeStats', C.edge.TsEdgeStats, ['S', 'Wide', 'M'], ['header', 'label'], {}],
+  ['TsCapitalFunding', C.funding.TsCapitalFunding, ['S', 'Tall', 'L'], ['header', 'label'], {}],
 ]
 
 const hasPart = (html, part) => new RegExp(`\\bpart="${part}"`).test(html)
