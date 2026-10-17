@@ -63,6 +63,7 @@ import {
   visualOrder,
 } from './grid-geometry.js'
 import { ensureTokens } from './default-tokens.js'
+import { mountShadow, setHTML } from './html.js'
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
@@ -121,9 +122,7 @@ function registered(item) {
 
 // Built on first use, so importing this module where there is no DOM (Node,
 // server-side rendering) doesn't throw.
-let template = null
-const TEMPLATE = `
-<style>
+const CSS = `
   :host { display: block; position: relative; -webkit-tap-highlight-color: transparent; }
   :host([hidden]) { display: none; }
   :host([dragging]) { cursor: grabbing; }
@@ -271,7 +270,9 @@ const TEMPLATE = `
   .empty .menu { bottom: auto; top: calc(100% + 8px); inset-inline-start: 50%; transform: translateX(-50%); }
   .hint { display: none; }
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-</style>
+`
+
+const TEMPLATE = `
 <button class="edit-btn" type="button" hidden></button>
 <div class="board" part="board" role="region">
   <div class="placeholder" part="placeholder"></div>
@@ -296,6 +297,10 @@ const TEMPLATE = `
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
+const CHROME_HTML = '<button class="handle" type="button" aria-describedby="hint" aria-pressed="false"></button>' +
+  '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button>' +
+  '<button class="resize" type="button" tabindex="-1"></button>'
+
 export class TsGrid extends Base {
   static get observedAttributes() {
     return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'aria-label']
@@ -303,10 +308,6 @@ export class TsGrid extends Base {
 
   constructor() {
     super()
-    if (!template) {
-      template = document.createElement('template')
-      template.innerHTML = TEMPLATE
-    }
     // Decided at attach time, since a root can't change how it assigns later.
     // Where `assign` is missing the root is made as before, with one default
     // slot, and Tab and reading order follow the host's DOM order (RFC 0003 Decision 27).
@@ -315,7 +316,7 @@ export class TsGrid extends Base {
     // Asked of the root, not assumed: a declarative shadow root without shadowrootslotassignment="manual" is reused as it is, and assigns by name.
     this._manual = root.slotAssignment === 'manual'
     if (DEV && canAssign && !this._manual) warnOnce('grid-slot-assignment', NAMED_ROOT_WARNING)
-    root.appendChild(template.content.cloneNode(true))
+    mountShadow(root, CSS, TEMPLATE)
     this._board = root.querySelector('.board')
     this._placeholder = root.querySelector('.placeholder')
     this._chromeLayer = root.querySelector('.chromes')
@@ -1493,9 +1494,7 @@ export class TsGrid extends Base {
       chrome.dataset.id = id
       // Three siblings, never a button inside a button: the handle takes focus and
       // keys, remove and resize are named for assistive technology but not Tab stops.
-      chrome.innerHTML = '<button class="handle" type="button" aria-describedby="hint" aria-pressed="false"></button>' +
-        '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button>' +
-        '<button class="resize" type="button" tabindex="-1"></button>'
+      setHTML(chrome, CHROME_HTML)
       this._chromeLayer.appendChild(chrome)
       this._chromes.set(id, chrome)
     }

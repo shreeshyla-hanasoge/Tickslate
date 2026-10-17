@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- Every widget and the grid, for the strict-CSP and Trusted Types specs (RFC 0003 §14).
+     This page has no inline <script>, no inline <style> and no style attribute, because the specs serve it with
+       Content-Security-Policy: default-src 'self'; style-src 'self'; script-src 'self'
+       Content-Security-Policy: require-trusted-types-for 'script'; trusted-types tickslate
+     (test/browser/csp.spec.mjs and tt.spec.mjs add the headers). A script can't run from the page itself, so the
+     specs give the tiles data through page.evaluate, which the policies don't govern: they govern the library's own code. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSP fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<script type="module" src="/src/elements/index.js"></script>
+</head>
+<body>
+<main id="stage">
+  <ts-grid id="g" aria-label="Dashboard">
+    <ts-metric item="sales" label="Sales" size="Wide"></ts-metric>
+    <ts-chart item="traffic" label="Traffic" size="M"></ts-chart>
+    <ts-table item="orders" label="Orders" size="M"></ts-table>
+    <ts-watchlist item="watch" label="Watchlist" size="M"></ts-watchlist>
+    <ts-open-positions item="open" label="Open positions" size="M"></ts-open-positions>
+    <ts-today-pnl item="pnl" label="Today" size="M"></ts-today-pnl>
+    <ts-equity-curve item="equity" label="Equity" size="M"></ts-equity-curve>
+    <ts-session-clock item="clock" label="Sessions" size="Banner"></ts-session-clock>
+    <ts-card item="notes" label="Notes" size="S"><span slot="value">42</span></ts-card>
+  </ts-grid>
+  <!-- Outside the grid: a tile with a link (its heading is built with the DOM) and the small clock. -->
+  <ts-metric id="linked" label="Linked" size="S" href="/reports/sales"></ts-metric>
+  <ts-session-clock id="small" label="Clock" size="S"></ts-session-clock>
+  <ts-grid-controls id="c" for="g"></ts-grid-controls>
+  <ts-widget-picker id="p" for="g"></ts-widget-picker>
+</main>
+</body>
+</html>

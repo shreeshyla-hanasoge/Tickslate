@@ -327,11 +327,12 @@ A value that is not readable as a number formats as a dash.
 
 ### `configure(options)`
 
-`(options: { locale?, currency?, timeZone?, messages? }) => void`. Sets defaults
+`(options: { locale?, currency?, timeZone?, messages?, styleNonce? }) => void`. Sets defaults
 for formatters (and widgets) created without their own. Later calls merge. A
 widget resolves each option from its own attribute, then its `<ts-grid>`'s
 attribute, then these. `messages` replaces the whole table every widget and grid
-reads (see [Messages](#messages)); `null` clears it.
+reads (see [Messages](#messages)); `null` clears it. `styleNonce` is the CSP nonce for the
+`<style>` fallback below Safari 16.4 (see the [security guide](../guide/security.md)).
 
 ```js
 configure({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })

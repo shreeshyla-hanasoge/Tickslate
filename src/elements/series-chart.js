@@ -11,10 +11,11 @@
  * unused, which is what lets new data never need new markup.
  */
 
-import { TsWidget, sk, describeElement, syncedParts, header, escapeHtml } from './widget.js'
+import { TsWidget, sk, describeElement, syncedParts, header } from './widget.js'
 import { areaPaths, scale, seriesDomain } from './chart.js'
 import { DEV, warnOnce } from './dev.js'
 import { EN, toNumber, toTime } from '../core/index.js'
+import { setNodes } from './html.js'
 
 export const MAX_SERIES = 4
 
@@ -584,21 +585,21 @@ export class TsChart extends TsWidget {
       if (selectable) {
         // Arrow keys move the tab stop in place, so the markup is only rewritten when the points change, never to follow focus.
         const active = Math.min(this._active || 0, vm.points.length - 1)
-        let html = ''
-        let key = ''
-        vm.points.forEach((pt, i) => {
-          const item = (tab) => `<li style="inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;"><button type="button" class="pt" tabindex="${tab}" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
-          html += item(i === active ? 0 : -1)
-          key += item(-1)
-        })
+        // Built with the DOM, positions through element.style: the points are data, so never markup (RFC 0003 §14).
+        const specs = vm.points.map((pt, i) => ({
+          tag: 'li',
+          css: { 'inset-inline-start': `${pt.xPct}%`, 'inset-block-start': `${pt.yPct}%` },
+          kids: [{ tag: 'button', attrs: { type: 'button', class: 'pt', tabindex: i === active ? '0' : '-1', 'aria-label': pt.label, 'data-series': pt.series, 'data-index': String(pt.index) } }],
+        }))
+        const key = JSON.stringify(vm.points.map((pt) => [pt.xPct, pt.yPct, pt.label, pt.series, pt.index]))
         if (this._ptsKey !== key) {
           this._ptsKey = key
           this._active = active
-          ptsEl.innerHTML = html
+          setNodes(ptsEl, specs)
         }
       } else if (ptsEl.innerHTML) {
         this._ptsKey = ''
-        ptsEl.innerHTML = ''
+        setNodes(ptsEl, [])
       }
     }
 

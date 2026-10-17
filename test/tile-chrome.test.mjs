@@ -737,7 +737,7 @@ describe('colours', () => {
 
   test('the grid reads the same tokens, with no colour fallback of its own', () => {
     const source = stripScriptComments(read('src/elements/grid.js'))
-    const style = source.match(/<style>([\s\S]*?)<\/style>/)[1]
+    const style = source.match(/const CSS = `([\s\S]*?)`\n/)[1]
     assert.deepEqual(colourValues(style), [], 'the grid\'s stylesheet')
     // What it writes into a style from script (the lifted tile's shadow, say).
     const written = [...source.matchAll(/\.style\.(\w+)\s*=\s*(['"`])(.*?)\2/g)].map((m) => `${m[1].replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}: ${m[3]};`)
