@@ -31,6 +31,7 @@ export {
 export { createFormatter, configure, onConfigure, currentConfig, toNumber } from './format.js'
 export { EN, createMessages } from './messages.js'
 export { createCalendar, presets, activeProfile, nextProfileChange, usDaylightSaving } from './calendar.js'
+export { edgeStats, histogram, funding } from './stats.js'
 export { zonedTime, localDate } from './zone.js'
 export { toTime, toDay } from './time.js'
-export { equitySeries, equityStats } from './stats.js'
+export { equitySeries, equityStats, dayStats } from './stats.js'

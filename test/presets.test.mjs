@@ -15,7 +15,7 @@ const ONE_MODE = ['paper', 'graphite']
 // Declared in the guarded block, so a palette on the same element wins (Decision 35).
 const OWNED = ['--ts-profit', '--ts-loss', '--ts-accent', '--ts-focus', ...[1, 2, 3, 4, 5, 6].map((n) => `--ts-series-${n}`)]
 // The host's, not a theme's: grid metrics and motion.
-const NOT_THEMED = ['--ts-row', '--ts-gap', '--ts-row-compact', '--ts-gap-compact', '--ts-motion', '--ts-ease']
+const NOT_THEMED = ['--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-motion', '--ts-ease']
 const GUARD = ':not([data-ts-palette])'
 
 /**
