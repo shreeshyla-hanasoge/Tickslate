@@ -392,6 +392,22 @@ export const figure = (cls, k, part = '') =>
 // .n, .big and .xbig keep tabular-nums: with the system fallback face (see
 // --ts-font-num) it is what stops live figures jittering as digits change.
 // Every colour here is a token. A host's own theme is a few variables, not a fork.
+// A figure runs in its formatter's locale direction, not the page's (--ts-fig-dir, set on the host): in a right-to-left
+// page an English "+12%" would otherwise read "12%+".
+const RTL_LANGUAGES = new Set(['ar', 'he', 'fa', 'ur', 'ps', 'ckb', 'dv', 'yi', 'syr'])
+
+/** 'rtl' or 'ltr' for a locale tag, from the platform's text info when it has one, else by language. */
+export function localeDirection(tag) {
+  try {
+    const locale = new Intl.Locale(tag || new Intl.DateTimeFormat().resolvedOptions().locale)
+    const info = (locale.getTextInfo && locale.getTextInfo()) || locale.textInfo
+    if (info && info.direction) return info.direction
+    return RTL_LANGUAGES.has(locale.language) ? 'rtl' : 'ltr'
+  } catch {
+    return 'ltr'
+  }
+}
+
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -408,9 +424,8 @@ ${standaloneCss()}
   font-size: var(--ts-label-size, 10px); text-transform: var(--ts-label-case, uppercase);
   letter-spacing: var(--ts-label-tracking, .12em); font-weight: var(--ts-label-weight, 600); color: var(--ts-muted);
 }
-/* A figure keeps its sign and currency symbol beside its digits in a right-to-left page. */
 .n, .big, .xbig {
-  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate;
+  font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate; direction: var(--ts-fig-dir, ltr);
 }
 .big, .xbig { font-weight: var(--ts-headline-weight, var(--ts-num-weight, 500)); }
 .big { font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em; }
@@ -812,6 +827,11 @@ export class TsWidget extends Base {
     if (!this._fmt || key !== this._fmtKey) {
       this._fmt = createFormatter(options)
       this._fmtKey = key
+      const dir = localeDirection(this._fmt.locale)
+      if (dir !== this._figDir) {
+        this._figDir = dir
+        if (this.style) this.style.setProperty('--ts-fig-dir', dir)
+      }
     }
     return this._fmt
   }

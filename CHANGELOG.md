@@ -115,6 +115,7 @@ Building your own widgets
 - Fixed: a `<ts-grid>` inside a closed shadow root no longer leaves edit mode when a tile, handle or the edit pill is tapped, and its Add back list is no longer closed by a press on its own items.
 - Fixed: a resize that loses its pointer now puts the tile back as it was, instead of leaving it lifted.
 - `TsCard`'s `spec` is declared as a property, matching `TsWidget`.
+- Signed figures keep their sign beside the digits in right-to-left pages in every locale: an English `+12%` no longer reads `12%+` under `dir="rtl"`, and Arabic, Hebrew and Persian figures read the same in either page direction.
 
 ### Breaking
 

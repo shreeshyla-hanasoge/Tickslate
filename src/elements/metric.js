@@ -281,7 +281,7 @@ export class TsMetric extends TsWidget {
   static styles = `
 [hidden] { display: none; }
 /* A value too wide for its slot clips rather than running into its neighbour, and keeps its sign beside its digits in right-to-left pages. */
-.nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; unicode-bidi: isolate; }
+.nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; unicode-bidi: isolate; direction: var(--ts-fig-dir, ltr); }
 .delta { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; font-size: 12px; }
 .delta .n { font-weight: var(--ts-num-weight-small, 500); flex: none; }
 .wrap { flex-wrap: wrap; gap: 2px 20px; }
