@@ -53,7 +53,7 @@ const BUDGETS = {
   'dist-lib/index.js': { maxKb: 13, mode: 'enforce', target: 're-measured after locale-formatting, RFC 0003 §25, CI measurement', date: '2026-10-16' },
   // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-14, after
   // messages: 10,551 B.
-  'dist-lib/umd/tickslate.umd.js': { maxKb: 14.5, mode: 'enforce', target: 're-measured after watchlist-and-positions, RFC 0003 §25', date: '2026-10-16' },
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 16.5, mode: 'enforce', target: 're-measured for 0.2.0 after the five integrated stories, RFC 0003 §25', date: '2026-10-17' },
   // The all-in `tickslate/elements` and the two CDN files carry no budget:
   // P1 adds about a dozen widgets to them, so RFC 0002's 50 kB figure belongs
   // to the 0.1.0 widget set. They are reported, and 0.2.0 release preparation
@@ -117,6 +117,11 @@ const BUDGETS = {
  * Re-measured 2026-10-16 after watchlist-and-positions (merged with freshness-and-flash): the core UMD 13,222 B
  * (14.5 kB), metric 21,220 B (23 kB), watchlist 23,099 B (25 kB) and open-positions 23,821 B (26 kB), each reset to
  * measured + 10 %, rounded up to the next 0.5 kB. No other row moved.
+ *
+ * Re-measured 2026-10-17 for 0.2.0 after the five integrated stories (wide-screens, ts-progress, pnl-calendar,
+ * ts-chart-bars, edge-stats-and-funding): the UMD 14,977 B (16.5 kB), controls 15,598 B (17 kB), chart 27,548 B (30 kB),
+ * equity-curve 23,701 B (25.5 kB) and today-pnl 23,618 B (25.5 kB), each reset to measured + 10 %, rounded up to the next
+ * 0.5 kB. The rows that still fit with 3 % or more of headroom were left alone.
  */
 const entry = (maxKb) => ({ maxKb, mode: 'enforce', target: 'RFC 0003 §25, per-entry, measured + 10 %', date: '2026-10-14' })
 const remeasured = (maxKb) => ({ ...entry(maxKb), target: 're-measured after messages, RFC 0003 §25, per-entry, measured + 10 %' })
@@ -125,6 +130,7 @@ const remeasuredThird = (maxKb) => ({ ...entry(maxKb), target: 're-measured afte
 const remeasuredFourth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after locale-formatting, RFC 0003 §25, maintainer approved', date: '2026-10-15' })
 const remeasuredFifth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after tile-activation, RFC 0003 §25', date: '2026-10-16' })
 const remeasuredSeventh = (maxKb) => ({ ...entry(maxKb), target: 're-measured after freshness-and-flash, RFC 0003 §25', date: '2026-10-16' })
+const remeasuredNinth = (maxKb) => ({ ...entry(maxKb), target: 're-measured for 0.2.0 after the five integrated stories, RFC 0003 §25', date: '2026-10-17' })
 const remeasuredSixth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after widget-picker-and-controls, RFC 0003 §25', date: '2026-10-16' })
 // A new entry (widget-picker-and-controls, 2026-10-16): the picker and the grid controls measure 13,594 B bundled
 // with the core, so 14,953 B with 10 %, which rounds up to 15 kB.
@@ -141,15 +147,15 @@ const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §2
 // Two new entries (edge-stats-and-funding, 2026-10-16): the edge stats measure 22,349 B bundled with the core, so 24,584 B with 10 %,
 // which rounds up to 24.5 kB; the capital funding measures 23,555 B, so 25,911 B with 10 %, which rounds up to 25.5 kB.
 const ENTRY_BUDGETS = {
-  controls: newEntry(15),
+  controls: remeasuredNinth(17),
   'edge-stats': newEntry(24.5),
   'capital-funding': newEntry(25.5),
   grid: remeasuredSixth(30.5),
   card: remeasuredSeventh(21),
   metric: remeasuredEighth(23),
-  chart: remeasuredSeventh(25),
-  'today-pnl': remeasuredSixth(22.5),
-  'equity-curve': remeasuredSixth(22.5),
+  chart: remeasuredNinth(30),
+  'today-pnl': remeasuredNinth(25.5),
+  'equity-curve': remeasuredNinth(25.5),
   'session-clock': remeasuredSeventh(23.5),
   table: remeasuredSeventh(24),
   watchlist: remeasuredEighth(25),
