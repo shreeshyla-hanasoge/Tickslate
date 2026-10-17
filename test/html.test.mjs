@@ -44,6 +44,7 @@ function install({ trustedTypes, sheets = true } = {}) {
       const n = new Node(tag)
       if (tag === 'template') {
         log.templates++
+        n.content = {}
         Object.defineProperty(n, 'innerHTML', {
           set(v) {
             n.markup = v
@@ -82,7 +83,6 @@ afterEach(() => {
   delete globalThis.document
   delete globalThis.trustedTypes
   delete globalThis.CSSStyleSheet
-  delete globalThis[Symbol.for('tickslate.trustedTypes')]
   configure({ styleNonce: '' })
 })
 
@@ -126,24 +126,47 @@ describe('the Trusted Types policy', () => {
     assert.equal(host.children[0].markup, '<b>one</b>')
   })
 
-  test('a host whose list leaves the name out gets a plain string, not a throw from the library', async () => {
-    install()
-    globalThis.trustedTypes = {
-      createPolicy() {
-        throw new TypeError('Policy "tickslate" disallowed')
-      },
+  test('a page whose trusted-types list leaves the name out gets a warning and no raw string at a sink', async () => {
+    const log = install()
+    const warns = []
+    const warn = console.warn
+    console.warn = (m) => warns.push(m)
+    try {
+      for (const list of ['other', "'none'"]) {
+        globalThis.trustedTypes = {
+          createPolicy() {
+            throw new TypeError(`Policy "tickslate" disallowed by ${list}`)
+          },
+        }
+        const { setHTML } = await load()
+        const host = new Node('div')
+        assert.doesNotThrow(() => setHTML(host, '<b>one</b>'))
+        assert.equal(host.children[0].markup, undefined, 'the string is not offered to the sink')
+      }
+    } finally {
+      console.warn = warn
     }
-    const { setHTML } = await load()
-    assert.doesNotThrow(() => setHTML(new Node('div'), '<b>one</b>'))
+    assert.equal(log.templates, 2)
+    assert.equal(warns.length >= 1, true)
+    assert.match(warns[0], /trusted-types directive does not allow the 'tickslate' policy/)
   })
 
-  test('a second copy of the library reuses the policy instead of creating a duplicate', async () => {
+  test('the policy is reachable from nowhere: no global, no registered symbol, no exported string-to-HTML helper', async () => {
+    install({ trustedTypes: true })
+    const mod = await load()
+    mod.setHTML(new Node('div'), '<b>one</b>')
+    assert.equal(globalThis[Symbol.for('tickslate.trustedTypes')], undefined)
+    for (const name of Object.keys(mod)) assert.doesNotMatch(name, /policy|trusted|createHTML/i)
+    assert.deepEqual(Object.getOwnPropertySymbols(globalThis).filter((k) => /tickslate/i.test(String(k.description))), [])
+  })
+
+  test('a second copy asks for its own policy, which a page without allow-duplicates refuses', async () => {
     const log = install({ trustedTypes: true })
     const a = await load()
     const b = await load()
     a.setHTML(new Node('div'), '<b>a</b>')
     b.setHTML(new Node('div'), '<b>b</b>')
-    assert.deepEqual(log.policies, ['tickslate'])
+    assert.deepEqual(log.policies, ['tickslate', 'tickslate'])
   })
 })
 
@@ -205,6 +228,27 @@ describe('adopted sheets', () => {
     const root = new Node('root')
     adoptCSS(root, '.a{}')
     assert.equal(root.children[0].attrs.has('nonce'), false)
+  })
+
+  test('a nonce configured later reaches the fallback <style> elements already made, and they are inserted again', async () => {
+    install({ sheets: false })
+    const { adoptCSS } = await load()
+    const root = new Node('root')
+    const log = []
+    root.appendChild = (n) => {
+      n.parentNode = root
+      n.nextSibling = null
+      n.remove = () => log.push('remove')
+      root.insertBefore = (m) => log.push('insert')
+      root.children.push(n)
+    }
+    adoptCSS(root, '.a{}')
+    const style = root.children[0]
+    style.getAttribute = (k) => style.attrs.get(k) ?? null
+    assert.equal(style.attrs.has('nonce'), false)
+    configure({ styleNonce: 'late' })
+    assert.equal(style.attrs.get('nonce'), 'late')
+    assert.deepEqual(log, ['remove', 'insert'])
   })
 
   test('a root with no adoptedStyleSheets (an older engine) takes the fallback too', async () => {

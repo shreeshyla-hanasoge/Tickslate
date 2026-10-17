@@ -1,7 +1,8 @@
 ### Added
 
 - Strict CSP and Trusted Types: widgets, the grid, the picker and the grid controls render styled and edit under `default-src 'self'; style-src 'self'; script-src 'self'` and under `require-trusted-types-for 'script'; trusted-types tickslate`, with no exception. See docs/guide/security.md.
-- `configure({ styleNonce })`: the nonce for the `<style>` fallback below Safari 16.4, where constructed stylesheets are missing.
+- `configure({ styleNonce })`: the nonce for the `<style>` fallback below Safari 16.4, where constructed stylesheets are missing. A nonce configured after the elements are defined is applied to the fallback `<style>` elements already made.
+- A development warning when the page's `trusted-types` directive does not allow the `tickslate` policy. The policy is private to the module; a second copy of Tickslate on a page needs `'allow-duplicates'`.
 
 ### Changed
 

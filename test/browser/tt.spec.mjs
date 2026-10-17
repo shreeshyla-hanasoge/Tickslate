@@ -114,11 +114,70 @@ test.describe('under require-trusted-types-for and trusted-types tickslate', () 
   test('the only policy is tickslate, and there is no default policy', async ({ page }) => {
     await serve(page, TT)
     await boot(page)
-    const seen = await page.evaluate(() => ({ policies: window.__policies, def: window.trustedTypes ? trustedTypes.defaultPolicy : null }))
-    if (seen.def !== null) throw new Error('a default policy exists')
-    expect([...new Set(seen.policies)]).toEqual(seen.policies.length ? ['tickslate'] : [])
-    expect(seen.policies.length).toBeLessThanOrEqual(1)
+    const seen = await page.evaluate(() => ({ supported: !!window.trustedTypes, policies: window.__policies, def: window.trustedTypes ? trustedTypes.defaultPolicy : null }))
+    // Without Trusted Types there is no policy to count; the other specs still run the flow there.
+    test.skip(!seen.supported, 'this engine has no Trusted Types')
+    expect(seen.policies).toEqual(['tickslate'])
+    expect(seen.def).toBeNull()
   })
+
+  test('the policy is not reachable: no global, registered symbol or property mints TrustedHTML', async ({ page }) => {
+    await serve(page, TT)
+    await boot(page)
+    const probe = await page.evaluate(() => {
+      if (!window.trustedTypes) return { supported: false }
+      const found = []
+      const isPolicy = (v) => v && (typeof v === 'object' || typeof v === 'function') && typeof v.createHTML === 'function'
+      const keys = [...Object.getOwnPropertyNames(window), ...Object.getOwnPropertySymbols(window), Symbol.for('tickslate.trustedTypes'), Symbol.for('tickslate')]
+      for (const k of keys) {
+        let v
+        try { v = window[k] } catch { continue }
+        if (k === 'trustedTypes') continue
+        if (isPolicy(v)) found.push(String(k))
+        // One level in, for a namespace object such as window.tickslate.
+        else if (v && typeof v === 'object' && !(v instanceof Node) && !(v instanceof Window)) {
+          for (const j of Object.getOwnPropertyNames(v).slice(0, 200)) {
+            try { if (isPolicy(v[j])) found.push(`${String(k)}.${j}`) } catch { /* a getter that throws */ }
+          }
+        }
+      }
+      let minted = false
+      try {
+        document.createElement('div').innerHTML = '<img src=x onerror=1>'
+        minted = true
+      } catch { /* refused, as it must be */ }
+      return { supported: true, found, minted, def: trustedTypes.defaultPolicy }
+    })
+    test.skip(!probe.supported, 'this engine has no Trusted Types')
+    expect(probe.found).toEqual([])
+    expect(probe.minted).toBe(false)
+    expect(probe.def).toBeNull()
+    await page.evaluate(() => { window.__violations = [] })
+    errors.length = 0
+  })
+
+  for (const list of ['trusted-types other', "trusted-types 'none'"]) {
+    test(`with ${list} the page is told why nothing renders, and no string reaches a sink`, async ({ page }) => {
+      await serve(page, `require-trusted-types-for 'script'; ${list}`)
+      const warnings = []
+      page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
+      await page.goto(PAGE)
+      await page.waitForFunction(() => customElements.get('ts-metric'))
+      await page.waitForTimeout(300)
+      expect(warnings.some((w) => /does not allow the 'tickslate' policy/.test(w))).toBe(true)
+      // Tickslate wrote nothing: the only violations are the browser refusing createPolicy itself, never a markup sink.
+      const v = await page.evaluate(() => window.__violations)
+      expect(v.filter((x) => /sink/.test(x))).toEqual([])
+      // The widgets are defined and keep their (empty) tile.
+      const tile = await page.evaluate(() => !!document.getElementById('linked').shadowRoot.querySelector('.tile'))
+      expect(tile).toBe(true)
+      // The elements whose content is markup (the grid, the picker, a widget's body) then throw on the nodes that never
+      // appeared; that is "Tickslate cannot render", said once by the warning above, and not asserted away here.
+      // The refusal is the point of this spec; the collectors would fail the afterEach.
+      await page.evaluate(() => { window.__violations = [] })
+      errors.length = 0
+    })
+  }
 
   test('the grid edits and every view of a tile draws', async ({ page }) => {
     await serve(page, TT)

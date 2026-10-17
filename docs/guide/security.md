@@ -39,7 +39,14 @@ configure({ styleNonce: document.querySelector('meta[name="csp-nonce"]').content
 ```
 
 with a policy such as `style-src 'self' 'nonce-<the same value>'`. Where sheets
-work, the nonce is never used. Without it, a strict policy on a browser below
+work, the nonce is never used.
+
+Order: widgets written in your HTML are upgraded as soon as `tickslate/elements`
+evaluates, which is before a later script's `configure()`. A `<style>` that was
+made without the nonce is blocked, so `configure({ styleNonce })` puts the nonce
+on every fallback `<style>` already made and inserts it again. Still, call
+`configure` as early as you can, and before the elements load if your bundler
+allows it. Without it, a strict policy on a browser below
 16.4 leaves widgets unstyled, so 16.4 is the supported floor for strict CSP.
 
 ## Trusted Types
@@ -58,12 +65,19 @@ only module constant strings pass through it:
   can't carry script.
 - There is no `eval`, `new Function` or string timer anywhere in the library.
 
-If your `trusted-types` list leaves `tickslate` out, the policy can't be
-created and the first widget fails to render, with the browser's own error
-naming the policy. Add the name rather than a default policy.
+The policy lives in module scope. It is not stored on `window`, under a
+registered symbol or behind any exported helper, because anything a script
+could call to turn a string into `TrustedHTML` would bypass your own policy.
 
-Loading Tickslate twice (the ES modules and the CDN bundle, say) is fine: the
-second copy reuses the first one's policy.
+If your `trusted-types` list leaves `tickslate` out (or is `'none'`), the policy
+can't be created. Tickslate then writes no markup, development builds warn once
+that the directive does not allow the `tickslate` policy, and the grid, picker and
+widgets can't render. Add the name rather than a default policy.
+
+Use one copy of Tickslate per page. A second copy (the ES modules and the CDN
+bundle together, say) asks for the same policy name again, and the browser
+refuses that unless the directive also lists `'allow-duplicates'`:
+`trusted-types tickslate 'allow-duplicates'`.
 
 ## Checking it on your own page
 
@@ -78,4 +92,7 @@ document.addEventListener('securitypolicyviolation', (e) => {
 
 Tickslate's own test suite does this with real browsers: `test/browser/csp.spec.mjs`
 and `test/browser/tt.spec.mjs` serve `test/browser/fixtures/csp.html` with the
-headers above and fail on any violation.
+headers above and fail on any violation. The fixture is also served with
+`default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'`, since it
+has no inline script and needs nothing else. (The first policy listed uses
+`default-src 'self'`, which is looser for images and fonts than `'none'`.)

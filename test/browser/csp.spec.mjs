@@ -93,6 +93,15 @@ const STYLED = () => {
 }
 
 test.describe('under default-src, style-src and script-src self', () => {
+  // The fixture has no inline script and no network use, so default-src 'none' with the three it needs is as strict.
+  test('and under default-src none with only script, style and connect and img allowed from self', async ({ page }) => {
+    await serve(page, "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'")
+    await boot(page)
+    const styled = await page.evaluate(STYLED)
+    for (const w of styled.widgets) expect(w.display, w.tag).toBe('flex')
+    expect(styled.grid).toBe('block')
+  })
+
   test('every widget and the grid render, styled', async ({ page }) => {
     await serve(page, STRICT)
     await boot(page)
@@ -283,4 +292,23 @@ test.describe('where constructable sheets are missing', () => {
     }
     expect(styled.grid).toBe('block')
   })
+})
+
+test('a nonce configured after the elements are defined styles the fallback <style> they already made', async ({ page }) => {
+  await page.addInitScript(() => { delete CSSStyleSheet.prototype.replaceSync })
+  await serve(page, `default-src 'self'; style-src 'self' 'nonce-late-nonce'; script-src 'self'`)
+  await page.goto(PAGE)
+  await page.waitForFunction(() => customElements.get('ts-metric') && document.querySelector('ts-metric').shadowRoot.querySelector('style'))
+  const before = await page.evaluate(() => getComputedStyle(document.getElementById('linked').shadowRoot.querySelector('.tile')).display)
+  expect(before).not.toBe('flex')
+  await page.evaluate(async () => {
+    const { configure } = await import('/src/core/index.js')
+    configure({ styleNonce: 'late-nonce' })
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  })
+  const after = await page.evaluate(() => getComputedStyle(document.getElementById('linked').shadowRoot.querySelector('.tile')).display)
+  expect(after).toBe('flex')
+  // The first, blocked attempt is expected; nothing after the nonce arrived is.
+  await page.evaluate(() => { window.__violations = [] })
+  errors.length = 0
 })

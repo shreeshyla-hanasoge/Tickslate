@@ -21,27 +21,36 @@
  * string the real path would have built, which is what those tests read.
  */
 
-import { currentConfig } from '../core/index.js'
+import { currentConfig, onConfigure } from '../core/index.js'
+import { DEV, warnOnce } from './dev.js'
 
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
 
-// Shared on globalThis, so a page that loads Tickslate twice (ESM and the CDN bundle) reuses the one policy
-// instead of tripping over createPolicy's duplicate-name error.
-const POLICY_KEY = Symbol.for('tickslate.trustedTypes')
-let policy // undefined until markup is first written; null where there is no Trusted Types
+// Module scope only, and never wrapped in an exported function: a policy any script could reach (a global, a registered
+// symbol, a helper that takes a string) would mint TrustedHTML for arbitrary markup and defeat the page's own policy.
+// Two copies of Tickslate on one page therefore need 'allow-duplicates' in the page's trusted-types directive.
+let policy // undefined until markup is first written; null where there is no Trusted Types; false where it was refused
+
+const REFUSED = "the page's trusted-types directive does not allow the 'tickslate' policy; add it (a second copy of Tickslate also needs 'allow-duplicates'), or Tickslate cannot render"
 
 function trusted(markup) {
   if (policy === undefined) {
-    try {
-      // Never exported: the only strings it sees are the constants parsed below. A host whose trusted-types
-      // list leaves the name out lands in the catch, and the write then fails under enforcement, which says so.
-      policy = globalThis[POLICY_KEY] || (globalThis[POLICY_KEY] = globalThis.trustedTypes.createPolicy('tickslate', { createHTML: (s) => s }))
-    } catch {
-      policy = null
+    const tt = globalThis.trustedTypes
+    if (!tt || typeof tt.createPolicy !== 'function') policy = null
+    else {
+      try {
+        // The only strings it ever sees are the constants parsed below.
+        policy = tt.createPolicy('tickslate', { createHTML: (m) => m })
+      } catch {
+        policy = false
+        if (DEV) warnOnce('trusted-types-policy', REFUSED)
+      }
     }
   }
+  // Closed when refused: null means the string is never offered to a sink, so the template stays empty.
+  if (policy === false) return null
   return policy ? policy.createHTML(markup) : markup
 }
 
@@ -57,7 +66,8 @@ function templateOf(markup) {
   let tpl = parsed.get(markup)
   if (!tpl) {
     tpl = document.createElement('template')
-    tpl.innerHTML = trusted(markup)
+    const safe = trusted(markup)
+    if (safe !== null) tpl.innerHTML = safe
     parsed.set(markup, tpl)
   }
   return tpl
@@ -140,14 +150,42 @@ export function adoptCSS(root, css) {
   }
 }
 
+// Fallback <style> elements, so a nonce configured after they were made reaches them (the elements in the page's
+// HTML upgrade when the entry evaluates, before the host's own script can call configure()).
+const fallbacks = new Set()
+let watching = false
+
+function renonce(nonce) {
+  for (const ref of fallbacks) {
+    const style = ref.deref()
+    if (!style || !style.parentNode) {
+      fallbacks.delete(ref)
+      continue
+    }
+    if (nonce && style.getAttribute('nonce') !== nonce) {
+      style.setAttribute('nonce', nonce)
+      // A style blocked at insertion is evaluated again only when it is inserted again.
+      const parent = style.parentNode
+      const next = style.nextSibling
+      style.remove()
+      parent.insertBefore(style, next)
+    }
+  }
+}
+
 /** A <style> element for `css`, carrying the configured nonce. Callers append it where it belongs. */
 export function styleElement(css, doc = document) {
   const style = doc.createElement('style')
   const nonce = currentConfig().styleNonce
-  if (nonce) {
-    style.setAttribute('nonce', nonce)
-  }
+  if (nonce) style.setAttribute('nonce', nonce)
   style.textContent = css
+  if (typeof WeakRef === 'function') {
+    fallbacks.add(new WeakRef(style))
+    if (!watching) {
+      watching = true
+      onConfigure((c) => renonce(c.styleNonce))
+    }
+  }
   return style
 }
 

@@ -635,6 +635,13 @@ export class TsWidget extends Base {
     const root = this.attachShadow({ mode: 'open' })
     mountShadow(root, cssFor(this.constructor), '<div class="tile" part="tile" role="group"></div>')
     this._section = root.querySelector('.tile')
+    if (!this._section) {
+      // The page's trusted-types directive refused the markup (html.js warned): the tile is still built, by hand, and stays empty.
+      this._section = root.appendChild(document.createElement('div'))
+      this._section.className = 'tile'
+      this._section.setAttribute('part', 'tile')
+      this._section.setAttribute('role', 'group')
+    }
 
     // One delegated listener: Retry button in error view; tile activation for links and open actions (RFC 0003 §7).
     this._section.addEventListener('click', (e) => {
