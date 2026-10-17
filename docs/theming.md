@@ -146,6 +146,45 @@ Every preset is checked against the contrast floors below, in each mode it has
 (`test/presets.test.mjs`), and the widget gallery (`widgets.html`) has a preset
 switcher that shows every widget in each one.
 
+## Palettes
+
+Two opt-in colour choices, each one attribute, built into `tokens.css` and the
+injected defaults (no extra file). Put the attribute on the grid, a widget, or
+any ancestor.
+
+```html
+<ts-grid data-ts-palette="cvd">...</ts-grid>
+<ts-grid data-ts-palette="red-up">...</ts-grid>
+```
+
+| `data-ts-palette` | Effect |
+|---|---|
+| `cvd` | Profit becomes blue and loss orange (`#1D4ED8` and `#C2410C` in light, `#60A5FA` and `#FB923C` in dark). The accent, `--ts-focus` and the first series move from blue to purple, and the fourth series becomes a cyan so it stays apart from it. |
+| `red-up` | Swaps the values of `--ts-profit` and `--ts-loss`, for markets where red means a rise. Nothing else changes. |
+
+- **One value per element.** There is no combined `cvd red-up`.
+- **Light and dark.** Each palette has a dark variant under the conditions
+  Graphite uses (`data-theme="dark"`, a `.dark` ancestor, or
+  `data-theme="auto"` while the OS prefers dark), and a `data-theme="light"`
+  island restores the light values.
+- **Checked.** `test/palettes.test.mjs` simulates deuteranopia and protanopia
+  with the Machado 2009 matrices and measures CIE76 ΔE: under `cvd`, profit and
+  loss are at least 40 apart in both themes. Text stays at 4.5:1 and the series
+  and focus at 3:1 on `--ts-surface`, as in Contrast floors below.
+- **With a preset.** The palette wins when both are on the same element; see
+  Presets above. Palette contrast is tested against the default tokens only.
+- Gains and losses still carry a sign and an arrow, so colour is never the only
+  cue under any palette.
+
+### High contrast preference
+
+Under `@media (prefers-contrast: more)` the default tokens raise `--ts-line`
+to at least 3:1 and `--ts-muted` to at least 7:1 against `--ts-surface`, in
+light (`#8A8374` and `#4A463E`) and dark (`#6B7280` and `#D1D5DB`). It needs no
+attribute. A preset sets its own `--ts-line` and `--ts-muted` on the element
+that names it, so under a preset the preference does not apply; set the two
+tokens on that grid yourself inside the same media query if you need it.
+
 ## Tokens
 
 Each token with its Paper (light) and Graphite (dark) value. "same" means

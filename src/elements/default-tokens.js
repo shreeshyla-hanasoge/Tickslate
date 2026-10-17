@@ -135,6 +135,80 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-num-weight-small: 500;
     --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
   }
+  :where([data-ts-palette="cvd"]) {
+    --ts-profit: #1D4ED8;
+    --ts-loss: #C2410C;
+    --ts-accent: #7E22CE;
+    --ts-series-1: #7E22CE;
+    --ts-series-4: #0E7490;
+    --ts-focus: var(--ts-accent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :where([data-theme="auto"] [data-ts-palette="cvd"], [data-theme="auto"][data-ts-palette="cvd"]) {
+      --ts-profit: #60A5FA;
+      --ts-loss: #FB923C;
+      --ts-accent: #C084FC;
+      --ts-series-1: #C084FC;
+      --ts-series-4: #22D3EE;
+      --ts-focus: var(--ts-accent);
+    }
+  }
+  :where(:is([data-theme="dark"], .dark) [data-ts-palette="cvd"], :is([data-theme="dark"], .dark)[data-ts-palette="cvd"]) {
+    --ts-profit: #60A5FA;
+    --ts-loss: #FB923C;
+    --ts-accent: #C084FC;
+    --ts-series-1: #C084FC;
+    --ts-series-4: #22D3EE;
+    --ts-focus: var(--ts-accent);
+  }
+  :where([data-theme="light"] [data-ts-palette="cvd"], [data-theme="light"][data-ts-palette="cvd"]) {
+    --ts-profit: #1D4ED8;
+    --ts-loss: #C2410C;
+    --ts-accent: #7E22CE;
+    --ts-series-1: #7E22CE;
+    --ts-series-4: #0E7490;
+    --ts-focus: var(--ts-accent);
+  }
+  :where([data-ts-palette="red-up"]) {
+    --ts-profit: #C0362C;
+    --ts-loss: #0E7A4E;
+  }
+  @media (prefers-color-scheme: dark) {
+    :where([data-theme="auto"] [data-ts-palette="red-up"], [data-theme="auto"][data-ts-palette="red-up"]) {
+      --ts-profit: #FB7185;
+      --ts-loss: #34D399;
+    }
+  }
+  :where(:is([data-theme="dark"], .dark) [data-ts-palette="red-up"], :is([data-theme="dark"], .dark)[data-ts-palette="red-up"]) {
+    --ts-profit: #FB7185;
+    --ts-loss: #34D399;
+  }
+  :where([data-theme="light"] [data-ts-palette="red-up"], [data-theme="light"][data-ts-palette="red-up"]) {
+    --ts-profit: #C0362C;
+    --ts-loss: #0E7A4E;
+  }
+  @media (prefers-contrast: more) {
+    :where(:root) {
+      --ts-line: #8A8374;
+      --ts-muted: #4A463E;
+    }
+  }
+  @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+    :where([data-theme="auto"]) {
+      --ts-line: #6B7280;
+      --ts-muted: #D1D5DB;
+    }
+  }
+  @media (prefers-contrast: more) {
+    :where([data-theme="dark"], .dark) {
+      --ts-line: #6B7280;
+      --ts-muted: #D1D5DB;
+    }
+    :where([data-theme="light"]) {
+      --ts-line: #8A8374;
+      --ts-muted: #4A463E;
+    }
+  }
   :where(ts-grid:not(:defined)) {
     display: block;
     min-height: var(--ts-row, 150px);
