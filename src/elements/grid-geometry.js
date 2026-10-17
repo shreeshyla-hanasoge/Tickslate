@@ -13,10 +13,14 @@ export function metrics(width, columns, rowHeight, gap) {
   return { columns, colWidth, rowHeight, gap, pitchX: colWidth + gap, pitchY: rowHeight + gap }
 }
 
-/** The pixel box of a placement, relative to the grid's top-left corner. */
-export function boxOf(p, m) {
+/**
+ * The pixel box of a placement, relative to the grid's physical left edge.
+ * With `rtl` column 0 sits at the right edge, so the box mirrors (RFC 0003 §9).
+ */
+export function boxOf(p, m, o) {
+  const rtl = !!(o && o.rtl)
   return {
-    x: p.col * m.pitchX,
+    x: (rtl ? m.columns - p.col - p.cols : p.col) * m.pitchX,
     y: p.row * m.pitchY,
     w: p.cols * m.colWidth + (p.cols - 1) * m.gap,
     h: p.rows * m.rowHeight + (p.rows - 1) * m.gap,
@@ -31,15 +35,20 @@ export function boardHeight(rows, m) {
  * The fractional cell under a tile whose top-left corner is at (x, y),
  * clamped so a tile `cols` wide never targets a column it would overhang.
  */
-export function cellAt(x, y, cols, m) {
+export function cellAt(x, y, cols, m, o) {
   const maxCol = Math.max(0, m.columns - cols)
+  const col = o && o.rtl ? m.columns - cols - x / m.pitchX : x / m.pitchX
   return {
-    col: Math.min(maxCol, Math.max(0, x / m.pitchX)),
+    col: Math.min(maxCol, Math.max(0, col)),
     row: Math.max(0, y / m.pitchY),
   }
 }
 
-/** The extent in cells of a box being resized to w × h pixels. */
+/**
+ * The extent in cells of a box being resized to w × h pixels. It takes `{ rtl }`
+ * only so the three helpers share a call shape: an extent doesn't depend on
+ * direction, because the grid flips the drag's horizontal delta before it calls.
+ */
 export function extentOf(w, h, m) {
   return {
     cols: Math.min(m.columns, Math.max(1, (w + m.gap) / m.pitchX)),
