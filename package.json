@@ -15,6 +15,7 @@
     "verify:package": "node scripts/verify-package.mjs",
     "size": "node scripts/check-size.mjs",
     "check:types": "node scripts/check-types.mjs",
+    "check:attribution": "node scripts/check-attribution.mjs",
     "test:types": "npm run check:types",
     "test": "node --test test/*.test.mjs examples/custom-widget/*.test.mjs",
     "test:browser": "playwright test",
