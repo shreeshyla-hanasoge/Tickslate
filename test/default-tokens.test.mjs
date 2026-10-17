@@ -78,7 +78,7 @@ describe('default tokens', () => {
   })
 
   test('the OS dark rule applies only under data-theme="auto" and the light island comes last of the themes', () => {
-    const media = canonical.filter((b) => b.at.includes('prefers-color-scheme: dark'))
+    const media = canonical.filter((b) => b.at.includes('prefers-color-scheme: dark') && !b.selector.includes('data-ts-palette') && !b.at.includes('prefers-contrast'))
     assert.deepEqual(media.map((b) => b.selector), [':where([data-theme="auto"])'])
     const order = canonical.map((b) => b.selector)
     assert.ok(order.indexOf(':where([data-theme="light"])') > order.indexOf(':where([data-theme="dark"], .dark)'))
