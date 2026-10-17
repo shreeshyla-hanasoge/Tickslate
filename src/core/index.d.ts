@@ -253,7 +253,11 @@ export interface Formatter {
 
 export declare function createFormatter(options?: FormatOptions): Formatter
 /** Sets defaults for formatters (and widgets) created without their own. `messages` is the table every widget and grid reads; null clears it. */
-export declare function configure(options: FormatOptions & { messages?: MessageOverrides | null }): void
+export declare function configure(options: FormatOptions & {
+  messages?: MessageOverrides | null
+  /** The CSP nonce for the `<style>` element widgets fall back to where constructed sheets are missing (below Safari 16.4). */
+  styleNonce?: string
+}): void
 export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides }
 /** Calls `fn` with the new defaults after every configure(); returns a function that stops it. Registers nothing until called. */
 export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides }) => void): () => void

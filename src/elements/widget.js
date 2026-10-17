@@ -167,6 +167,7 @@
 import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isSize, SIZES, SIZE_NAMES, toTime, toNumber } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
+import { escapeHtml, mountShadow, setHTML, setNodes, setText } from './html.js'
 import { translator } from './messages-cache.js'
 import { subscribe } from './ticker.js'
 
@@ -285,9 +286,7 @@ export function syncedParts(t) {
   return { pre, post: rest.join('') }
 }
 
-export function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
-}
+export { escapeHtml }
 
 // Skeleton block sizes are classes, not inline styles, so a host's strict
 // style-src CSP can't blank them. Widths snap to 5% steps, heights to the few
@@ -634,8 +633,15 @@ export class TsWidget extends Base {
       }
     }
     const root = this.attachShadow({ mode: 'open' })
-    root.innerHTML = `<style>${cssFor(this.constructor)}</style><div class="tile" part="tile" role="group"></div>`
+    mountShadow(root, cssFor(this.constructor), '<div class="tile" part="tile" role="group"></div>')
     this._section = root.querySelector('.tile')
+    if (!this._section) {
+      // The page's trusted-types directive refused the markup (html.js warned): the tile is still built, by hand, and stays empty.
+      this._section = root.appendChild(document.createElement('div'))
+      this._section.className = 'tile'
+      this._section.setAttribute('part', 'tile')
+      this._section.setAttribute('role', 'group')
+    }
 
     // One delegated listener: Retry button in error view; tile activation for links and open actions (RFC 0003 §7).
     this._section.addEventListener('click', (e) => {
@@ -1117,18 +1123,17 @@ export class TsWidget extends Base {
 
     if (href !== null) {
       if (!cur || (cur.localName !== 'a' && cur.tagName !== 'A')) {
-        const p = 'part' + '="link"'
-        heading.innerHTML = `<a ${p} href="${escapeHtml(href)}">${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</a>`
+        // Built, not parsed: the label and href are data, and only constants may be markup.
+        setNodes(heading, [{ tag: 'a', attrs: { part: 'link', href }, text: (cur && cur.textContent) || heading.textContent || label }])
       } else if (cur.getAttribute('href') !== href) {
         cur.setAttribute('href', href)
       }
     } else if (act) {
       if (!cur || (cur.localName !== 'button' && cur.tagName !== 'BUTTON')) {
-        const p = 'part' + '="link"'
-        heading.innerHTML = `<button type="button" ${p}>${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</button>`
+        setNodes(heading, [{ tag: 'button', attrs: { type: 'button', part: 'link' }, text: (cur && cur.textContent) || heading.textContent || label }])
       }
     } else if (cur) {
-      heading.innerHTML = escapeHtml(cur.textContent || label)
+      setText(heading, cur.textContent || label)
     }
   }
 
@@ -1355,7 +1360,7 @@ export class TsWidget extends Base {
       const vm = Ctor.viewModel(d, variant, { ...this.viewContext(), fmt, t, now, label, freshness }) || {}
       if (DEV) this._checkDropped(vm)
       if (this._shown !== variant) {
-        this._section.innerHTML = templateFor(Ctor, variant)
+        setHTML(this._section, templateFor(Ctor, variant))
         this._refs.clear()
         this._clearFlashes()
         this._shown = variant
@@ -1384,7 +1389,7 @@ export class TsWidget extends Base {
   _show(key, html, label, name, busy, grid, skeletonLabel = label) {
     this._watchFreshness(false)
     if (this._shown !== key) {
-      this._section.innerHTML = html
+      setHTML(this._section, html)
       this._refs.clear()
       this._clearFlashes()
       this._shown = key

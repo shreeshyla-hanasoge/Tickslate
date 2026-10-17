@@ -12,6 +12,7 @@
  * :root { --ts-surface: … }, therefore always wins over these defaults.
  */
 import { DEV, warnOnce } from './dev.js'
+import { styleElement } from './html.js'
 
 export const TOKENS_CSS = `@layer tickslate.defaults {
   :where(:root) {
@@ -188,9 +189,8 @@ function adopt(doc, view) {
       // Fall through to a <style> element, which every browser supports.
     }
   }
-  const style = doc.createElement('style')
+  const style = styleElement(TOKENS_CSS, doc)
   style.setAttribute('data-tickslate', 'defaults')
-  style.textContent = TOKENS_CSS
   // Appended to <head> so a host's own <style> or <link> after it still comes later; layers make order moot anyway.
   ;(doc.head || doc.documentElement).appendChild(style)
 }

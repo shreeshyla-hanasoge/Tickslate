@@ -34,6 +34,7 @@
 
 import { TsWidget, sk, header } from './widget.js'
 import { EN, createFormatter, localDate } from '../core/index.js'
+import { setHTML, setNodes } from './html.js'
 
 const DAY = 86400000
 const MINUTE = 60000
@@ -541,7 +542,8 @@ export class TsSessionClock extends TsWidget {
       // second only the fill and marker move.
       const ticks = visibleTicks(lane, vm.now, widths[i])
       if (row.tickKey !== ticks.key) {
-        row.ticks.innerHTML = ticks.items.map((t) => `<i class="tk${t.k ? ' b' : ''}" style="inset-inline-start:${t.l}%"></i>`).join('')
+        // DOM-built, each tick placed through element.style: a style attribute in markup is blocked by a strict style-src.
+        setNodes(row.ticks, ticks.items.map((t) => ({ tag: 'i', attrs: { class: t.k ? 'tk b' : 'tk' }, css: { 'inset-inline-start': `${t.l}%` } })))
         row.tickKey = ticks.key
       }
       row.mark.hidden = lane.next === null
@@ -555,7 +557,7 @@ export class TsSessionClock extends TsWidget {
     const key = lanes.map((l) => l.id).join('\n')
     const cur = this._lanes
     if (cur && cur.host === host && cur.key === key) return cur.rows
-    host.innerHTML = lanes.map(() => LANE_HTML).join('')
+    setHTML(host, LANE_HTML, lanes.length)
     const rows = Array.from(host.querySelectorAll('.lane')).map((el) => ({
       name: el.querySelector('.lname'),
       hours: el.querySelector('.lhours'),
