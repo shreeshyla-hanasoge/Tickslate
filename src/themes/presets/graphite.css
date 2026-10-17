@@ -63,3 +63,17 @@
   --ts-series-6: #A3E635;
   --ts-focus: var(--ts-accent);
 }
+
+/*
+ * The high contrast preference (RFC 0003 §13.3). A preset sets its own --ts-line and
+ * --ts-muted on the element it names, which would beat the ones tokens.css raises on
+ * :root, so each mode restates the raised pair here, after everything else. The values
+ * are this preset's own line and muted, moved toward its ink until line is 3:1 and
+ * muted 7:1 on the surface and the page.
+ */
+@media (prefers-contrast: more) {
+  :where([data-ts-theme='graphite']) {
+    --ts-line: #6E7581;
+    --ts-muted: #B0B6BF;
+  }
+}

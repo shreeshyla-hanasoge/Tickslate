@@ -46,14 +46,20 @@ const find = (selector, at = '') => {
 const paper = find(':where(:root)')
 const graphite = { ...paper, ...find(':where([data-theme="dark"], .dark)') }
 
-const DARK_SEL = (p) => `:where(:is([data-theme="dark"], .dark) [data-ts-palette="${p}"], :is([data-theme="dark"], .dark)[data-ts-palette="${p}"])`
-const AUTO_SEL = (p) => `:where([data-theme="auto"] [data-ts-palette="${p}"], [data-theme="auto"][data-ts-palette="${p}"])`
-const LIGHT_SEL = (p) => `:where([data-theme="light"] [data-ts-palette="${p}"], [data-theme="light"][data-ts-palette="${p}"])`
+// The same three alternatives presets use: the nearest dark or light element decides.
+const LT = '[data-theme="light"]'
+const alts = (anc, own, p) => [
+  `${anc}:not(${LT}) [data-ts-palette="${p}"]:not(${LT}):not(${LT} *)`,
+  `${LT} ${anc}:not(${LT}) [data-ts-palette="${p}"]:not(${LT})`,
+  `[data-ts-palette="${p}"]${own}:not(${LT})`,
+]
+const DARK = ':is([data-theme="dark"], .dark)'
+const DARK_SEL = (p) => `:where(${alts(DARK, DARK, p).join(', ')})`
+const AUTO_SEL = (p) => `:where(${alts('[data-theme="auto"]', '[data-theme="auto"]', p).join(', ')})`
 const palette = (p) => ({
   base: find(`:where([data-ts-palette="${p}"])`),
   dark: find(DARK_SEL(p)),
   auto: find(AUTO_SEL(p), '@media (prefers-color-scheme: dark)'),
-  island: find(LIGHT_SEL(p)),
 })
 
 // WCAG 2.x relative luminance and contrast, as in test/tokens.test.mjs.
@@ -143,7 +149,6 @@ describe('every palette block is zero specificity and sets only palette tokens',
       for (const block of Object.values(p)) for (const k of Object.keys(block)) assert.ok(OWNED.has(k), `${name} sets ${k}`)
       for (const r of rules.filter((x) => x.selector.includes(`data-ts-palette="${name}"`))) assert.ok(r.selector.startsWith(':where('), r.selector)
       assert.deepEqual(p.auto, p.dark, 'the auto block matches the dark block')
-      assert.deepEqual(p.island, p.base, 'the light island restores the light values')
     })
   }
 })

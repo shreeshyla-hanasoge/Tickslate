@@ -165,8 +165,10 @@ any ancestor.
 - **One value per element.** There is no combined `cvd red-up`.
 - **Light and dark.** Each palette has a dark variant under the conditions
   Graphite uses (`data-theme="dark"`, a `.dark` ancestor, or
-  `data-theme="auto"` while the OS prefers dark), and a `data-theme="light"`
-  island restores the light values.
+  `data-theme="auto"` while the OS prefers dark), with the same island rule as
+  the presets: the nearest `data-theme` decides, with the same one gap (a light
+  island in a dark island in a light page; put `data-theme="light"` on the
+  element itself there).
 - **Checked.** `test/palettes.test.mjs` simulates deuteranopia and protanopia
   with the Machado 2009 matrices and measures CIE76 ΔE: under `cvd`, profit and
   loss are at least 40 apart in both themes. Text stays at 4.5:1 and the series

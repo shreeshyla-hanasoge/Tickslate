@@ -79,6 +79,9 @@
     <fieldset class="control" id="presets">
       <legend>Preset</legend>
     </fieldset>
+    <fieldset class="control" id="palettes">
+      <legend>Palette</legend>
+    </fieldset>
     <fieldset class="control">
       <legend>Today's P&amp;L</legend>
       <label><input type="checkbox" id="loss"> Loss day</label>
@@ -355,6 +358,37 @@
   }
   // ?preset=calm opens the gallery already switched, for a link or a screenshot.
   setPreset(new URLSearchParams(location.search).get('preset') || '')
+
+  // The palette (RFC 0003 §13.2) goes on the same blocks, beside the preset, where it
+  // wins over the preset's profit, loss and accent. ?palette=cvd is validated against
+  // the known names, so a typo in a shared link falls back to the default colours.
+  const PALETTES = [{ id: '', name: 'Default colours' }, { id: 'cvd', name: 'Colour-vision (cvd)' }, { id: 'red-up', name: 'Red up (red-up)' }]
+  const paletteBox = document.getElementById('palettes')
+  for (const palette of PALETTES) {
+    const label = document.createElement('label')
+    const radio = document.createElement('input')
+    radio.type = 'radio'
+    radio.name = 'palette'
+    radio.value = palette.id
+    label.append(radio, ` ${palette.name}`)
+    paletteBox.append(label)
+    radio.addEventListener('change', () => {
+      setPalette(palette.id)
+      const url = new URL(location.href)
+      if (palette.id) url.searchParams.set('palette', palette.id)
+      else url.searchParams.delete('palette')
+      history.replaceState(null, '', url)
+    })
+  }
+  function setPalette(id) {
+    const palette = PALETTES.find((p) => p.id === id) || PALETTES[0]
+    for (const block of themesEl.children) {
+      if (palette.id) block.dataset.tsPalette = palette.id
+      else delete block.dataset.tsPalette
+    }
+    for (const radio of paletteBox.querySelectorAll('input')) radio.checked = radio.value === palette.id
+  }
+  setPalette(new URLSearchParams(location.search).get('palette') || '')
 
   const frozenClock = () => FROZEN
   function apply() {
