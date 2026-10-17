@@ -124,7 +124,7 @@ const catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Ta
 | `chart` | `ts-chart` | Wide, M, L, XL | shipped |
 | `table` | `ts-table` | Tall, M, L, XL | shipped |
 | `progress` | `ts-progress` | S, Wide | shipped |
-| `pnlCalendar` | `ts-pnl-calendar` | Tall, M, Banner (phone: Banner is 2 rows) | catalog entry only; the element is not yet shipped |
+| `pnlCalendar` | `ts-pnl-calendar` | Tall, M, Banner (phone: Banner is 2 rows) | shipped |
 | `edgeStats` | `ts-edge-stats` | S, Wide, M | catalog entry only |
 | `capitalFunding` | `ts-capital-funding` | S, Tall, L | catalog entry only |
 | `openPositions` | `ts-open-positions` | Wide, M, L | shipped |
@@ -560,4 +560,32 @@ equityStats([
   { date: '2026-10-01', pnl: 420.5, trades: 6 },
   { date: '2026-10-02', pnl: -180 },
 ]) // { net: 240.5, peak: 420.5, maxDrawdown: 180, tradingDays: 2, trades: 6 }
+```
+
+### `dayStats(days, options?)`
+
+```ts
+dayStats(days: readonly DayResult[], options?: { timeZone?: string }): {
+  net: number; greenDays: number; redDays: number
+  greenRate: number | null; best: number | null; worst: number | null
+}
+```
+
+The figures `<ts-pnl-calendar>` shows, from the same series as the equity
+curve. Each date is read with `toDay(date, timeZone)` and rows that share a date
+are **summed** into one day. A day is green when its net is above zero and red
+when below; a day that nets to exactly zero is neither. `greenRate` is
+`greenDays / (greenDays + redDays)`, `best` and `worst` are the highest and
+lowest day, and `net` is the sum of every day. Entries whose date or `pnl`
+cannot be read are skipped. Each day's total is settled to the cent before it is
+counted, so a day that sums to dust (0.1 + 0.2 - 0.3) or to 0.004 is neither green
+nor red. Empty input gives `net: 0`, `greenDays: 0`, `redDays: 0` and `null` for the
+rest.
+
+```js
+dayStats([
+  { date: '2026-10-01', pnl: 300 },
+  { date: '2026-10-01', pnl: -100 }, // the same day: 200
+  { date: '2026-10-02', pnl: -50 },
+]) // { net: 150, greenDays: 1, redDays: 1, greenRate: 0.5, best: 200, worst: -50 }
 ```

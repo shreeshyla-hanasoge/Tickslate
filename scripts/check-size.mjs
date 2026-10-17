@@ -136,6 +136,8 @@ const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §2
 // 10 %, which rounds up to 23 kB; the open positions measure 21,873 B, so 24,060 B with 10 %, which rounds up to 23.5 kB.
 // A new entry (ts-progress, 2026-10-16): the progress gauge measures 19,954 B bundled with the core, so 21,949 B with 10 %,
 // which rounds up to 22 kB.
+// A new entry (pnl-calendar, 2026-10-16): the calendar measures 23,301 B bundled with the core, so 25,631 B with 10 %, which
+// rounds up to 25.5 kB.
 const ENTRY_BUDGETS = {
   controls: newEntry(15),
   grid: remeasuredSixth(30.5),
@@ -149,6 +151,7 @@ const ENTRY_BUDGETS = {
   watchlist: remeasuredEighth(25),
   'open-positions': remeasuredEighth(26),
   progress: newEntry(22),
+  'pnl-calendar': newEntry(25.5),
 }
 
 /**

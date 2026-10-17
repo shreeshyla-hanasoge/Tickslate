@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { equitySeries, equityStats } from '../src/core/index.js'
+import { equitySeries, equityStats, dayStats } from '../src/core/index.js'
 
 const d = (date, pnl, trades) => (trades === undefined ? { date, pnl } : { date, pnl, trades })
 
@@ -119,5 +119,50 @@ describe('null options', () => {
     const days = [d('2026-01-01', 100), d('2026-01-02', -40)]
     assert.deepEqual(equitySeries(days, null), equitySeries(days))
     assert.deepEqual(equityStats(days, null), equityStats(days))
+  })
+})
+
+describe('dayStats', () => {
+  test('sums rows with the same date before it counts days', () => {
+    const stats = dayStats([d('2026-10-01', 300), d('2026-10-01', -100), d('2026-10-02', -50), d('2026-10-05', -200), d('2026-10-05', 200)])
+    assert.deepEqual(stats, { net: 150, greenDays: 1, redDays: 1, greenRate: 0.5, best: 200, worst: -50 })
+  })
+
+  test('a day is green above zero and red below, and a flat day is neither', () => {
+    const stats = dayStats([d('2026-10-01', 10), d('2026-10-02', 20), d('2026-10-03', -5), d('2026-10-04', 0)])
+    assert.equal(stats.greenDays, 2)
+    assert.equal(stats.redDays, 1)
+    assert.equal(stats.greenRate, 2 / 3)
+    assert.equal(stats.best, 20)
+    assert.equal(stats.worst, -5)
+  })
+
+  test('empty and unreadable input give zeros and nulls', () => {
+    const none = { net: 0, greenDays: 0, redDays: 0, greenRate: null, best: null, worst: null }
+    assert.deepEqual(dayStats([]), none)
+    assert.deepEqual(dayStats(undefined), none)
+    assert.deepEqual(dayStats(null), none)
+    assert.deepEqual(dayStats([d('nope', 5), d('2026-10-01', 'abc'), null]), none)
+  })
+
+  test('only flat days have a best and a worst but no rate', () => {
+    assert.deepEqual(dayStats([d('2026-10-01', 0)]), { net: 0, greenDays: 0, redDays: 0, greenRate: null, best: 0, worst: 0 })
+  })
+
+  test('reads dates with toDay in the time zone, and a UTC-midnight string is its own date', () => {
+    // 20:00Z is already the 13th in Kolkata, so the two rows are one day there and two in UTC.
+    const rows = [d('2026-10-12T20:00:00Z', 100), d('2026-10-13', 50)]
+    assert.equal(dayStats(rows, { timeZone: 'Asia/Kolkata' }).greenDays, 1)
+    assert.equal(dayStats(rows).greenDays, 2)
+    assert.deepEqual(dayStats([d('2026-10-13T00:00:00Z', -5), d('2026-10-13', 2)], { timeZone: 'America/New_York' }), {
+      net: -3, greenDays: 0, redDays: 1, greenRate: 0, best: -3, worst: -3,
+    })
+  })
+
+  test('takes a numeric string, and does not change its input', () => {
+    const input = [d('2026-10-01', '2.5'), d('2026-10-01', 1)]
+    const copy = JSON.parse(JSON.stringify(input))
+    assert.equal(dayStats(input).net, 3.5)
+    assert.deepEqual(input, copy)
   })
 })
