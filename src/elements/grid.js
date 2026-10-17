@@ -208,7 +208,7 @@ const TEMPLATE = `
     gap: 10px; pointer-events: none;
   }
   .toast {
-    position: relative; display: inline-flex; align-items: center; gap: 0; padding: 4px 4px 4px 20px;
+    position: relative; display: inline-flex; align-items: center; gap: 0; padding-block: 4px; padding-inline: 20px 4px;
     border-radius: 999px; box-sizing: border-box; max-width: calc(100% - 32px); white-space: nowrap;
     background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
     font: 500 13px var(--ts-font-ui); pointer-events: auto;
@@ -218,7 +218,7 @@ const TEMPLATE = `
   .toast .msg { overflow: hidden; text-overflow: ellipsis; }
   .toast .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .toast .undo {
-    min-width: 44px; min-height: 44px; margin: 0 0 0 16px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
+    min-width: 44px; min-height: 44px; margin: 0; margin-inline-start: 16px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
     background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
   }
   .toast .undo:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
@@ -270,7 +270,8 @@ const TEMPLATE = `
   }
   .empty .note { margin: 0; }
   .empty .anchor { position: relative; }
-  .empty .menu { bottom: auto; top: calc(100% + 8px); inset-inline-start: 50%; transform: translateX(-50%); }
+  /* Centring is symmetric, so a physical left is right in both directions; an inline start of 50% would hang the menu off-centre in RTL. */
+  .empty .menu { bottom: auto; top: calc(100% + 8px); left: 50%; right: auto; translate: -50% 0; }
   .hint { display: none; }
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
@@ -1004,7 +1005,8 @@ export class TsGrid extends Base {
     this._resizeObserver.observe(this)
     // A dir attribute flipped on the grid or an ancestor changes no size, so the observer above never hears of it.
     this._dirObserver = new MutationObserver(() => this._measure(false))
-    for (let node = this; node; node = node.parentNode || node.host) this._dirObserver.observe(node, { attributes: true, attributeFilter: ['dir'] })
+    // Through a slot to the shadow tree the grid is slotted into: that wrapper's dir is what the grid inherits.
+    for (let node = this; node; node = node.assignedSlot || node.parentNode || node.host) this._dirObserver.observe(node, { attributes: true, attributeFilter: ['dir'] })
     this._mutationObserver = new MutationObserver((records) => {
       if (!records.some((r) => this._concerns(r))) return
       this._cancelGesture()
