@@ -368,6 +368,66 @@ export declare class TsTable extends TsWidget<TableData> {
   static tableModel(data: TableData, variant: SizeName, ctx: ViewModelContext, o?: { width?: number }): TableModel
 }
 
+export interface ProgressData extends WidgetFreshness {
+  /** What has been reached or used so far. */
+  value: Numeric
+  /** The goal or the limit. Missing, non-numeric or 0 or less shows a dash and no bar. */
+  target: Numeric
+  /** 'goal' turns green at 100%; 'limit' turns to warning at `warnAt` and to danger at 100%. Default 'goal'. */
+  mode?: 'goal' | 'limit'
+  /** A fraction in (0, 1], limit mode only. Default 0.75. */
+  warnAt?: number
+  /** Default 'number'. 'percent' takes fractions; 'duration' takes milliseconds. */
+  format?: 'number' | 'money' | 'percent' | 'duration'
+  decimals?: number
+  /** Formatted with fmt.unit: '182 ms'. */
+  unit?: string
+  /** Wide: one line under the bar. */
+  caption?: string
+}
+
+export interface ProgressModel {
+  /** 'Daily loss limit, 6,400 of 10,000, 64%, near limit' */
+  ariaLabel: string
+  /** '6,400 of 10,000 · 64%' */
+  text: string
+  /** '64%', or '—' */
+  pct: string
+  /** 0..1, 0 without a valid target. */
+  fill: number
+  state: 'ok' | 'near' | 'over' | 'done' | 'none'
+  caption: string
+  label: string
+  live: boolean
+  time: string
+  /** The "synced" prefix and suffix of the header. */
+  synced: { pre: string; post: string }
+  /** The value as a number, NaN without one. */
+  valueNum: number
+  /** 0 to 100, the meter's aria-valuenow. */
+  pctNum: number
+  /** The state in words: 'near limit', 'over limit', 'goal reached', or ''. */
+  stateText: string
+  /** The meter's aria-valuetext: the result and the state in words. */
+  valueText: string
+}
+
+/**
+ * <ts-progress>, sizes S · Wide. A goal and limit gauge.
+ *
+ * @element ts-progress
+ * @fires {CustomEvent<TsProgressAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart value - The percentage.
+ * @csspart bar - The track of the gauge.
+ */
+export declare class TsProgress extends TsWidget<ProgressData> {
+  addEventListener(type: 'ts-action', listener: (this: TsProgress, ev: CustomEvent<TsProgressAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsProgress, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: percentage, state, text and the accessible name. */
+  static progressModel(data: ProgressData, variant: SizeName, ctx: ViewModelContext): ProgressModel
+}
+
 /** One instrument of a watchlist. Prices, times and the change are read as Numeric and Time. */
 export interface WatchlistInstrument {
   /** Matched by `id`, so a live update changes cells in place. An instrument with no id, or a repeated one, is dropped. */
@@ -618,6 +678,7 @@ export declare class TsSessionClock extends TsWidget<SessionClockData> {
 
 export type TsCardAction = TsCommonAction
 export type TsMetricAction = TsCommonAction
+export type TsProgressAction = TsCommonAction
 /** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1). */
 export type TsChartAction = TsCommonAction | TsChartSelectAction
 /** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1, Decision 36). */
@@ -743,6 +804,7 @@ declare global {
     'ts-metric': TsMetric
     'ts-chart': TsChart
     'ts-table': TsTable
+    'ts-progress': TsProgress
     'ts-watchlist': TsWatchlist
     'ts-open-positions': TsOpenPositions
     'ts-today-pnl': TsTodayPnl

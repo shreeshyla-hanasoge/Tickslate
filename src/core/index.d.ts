@@ -78,6 +78,7 @@ export declare const WIDGETS: Readonly<{
   metric: WidgetSpec
   chart: WidgetSpec
   table: WidgetSpec
+  progress: WidgetSpec
 }>
 
 /** The profile a layout uses when none is named. */
@@ -286,6 +287,7 @@ export interface Messages {
   'widget.metric.label': string
   'widget.chart.label': string
   'widget.table.label': string
+  'widget.progress.label': string
   'widget.todayPnl.description': string
   'widget.equityCurve.description': string
   'widget.pnlCalendar.description': string
@@ -299,6 +301,7 @@ export interface Messages {
   'widget.metric.description': string
   'widget.chart.description': string
   'widget.table.description': string
+  'widget.progress.description': string
   'category.General': string
   'category.Performance': string
   'category.Accounts': string
@@ -309,6 +312,7 @@ export interface Messages {
   'widget.metric.empty': string
   'widget.chart.empty': string
   'widget.table.empty': string
+  'widget.progress.empty': string
   'widget.watchlist.empty': string
   'widget.openPositions.empty': string
   'size.S': string
@@ -474,6 +478,14 @@ export interface Messages {
   'table.join': string
   'table.select': string
   'table.region': string
+  'progress.text': string
+  'progress.result': string
+  'progress.withState': string
+  'progress.aria': string
+  'progress.noTarget': string
+  'progress.near': string
+  'progress.over': string
+  'progress.done': string
   'watchlist.aria': string
   'watchlist.instruments.one': string
   'watchlist.instruments.other': string

@@ -37,6 +37,7 @@ export const WIDGETS = Object.freeze({
   metric: widget('ts-metric', 'Metric', ['S', 'Wide', 'M'], 'General', 'One figure with a label and a change.'),
   chart: widget('ts-chart', 'Chart', ['Wide', 'M', 'L', 'XL'], 'General', 'A line, area or bar chart of any series.'),
   table: widget('ts-table', 'Table', ['Tall', 'M', 'L', 'XL'], 'General', 'A sortable table of rows with typed columns.'),
+  progress: widget('ts-progress', 'Progress', ['S', 'Wide'], 'General', 'Progress toward a goal, or use of a limit, with warning and danger states.'),
 })
 
 /** The item's widget type: `type` when given, else its `id`. */
