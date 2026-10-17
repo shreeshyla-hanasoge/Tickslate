@@ -114,6 +114,7 @@ Building your own widgets
 - `zonedTime` puts a wall time inside a spring-forward gap just after the gap, in every zone (02:30 on the day New York springs forward is 03:30 EDT); west of Greenwich it landed an hour early. A calendar reads its specs and holidays once, at `createCalendar`, and keeps a frozen copy.
 - Fixed: a `<ts-grid>` inside a closed shadow root no longer leaves edit mode when a tile, handle or the edit pill is tapped, and its Add back list is no longer closed by a press on its own items.
 - Fixed: a resize that loses its pointer now puts the tile back as it was, instead of leaving it lifted.
+- The empty board's Add back button opens its list on a mouse click in every browser.
 - `TsCard`'s `spec` is declared as a property, matching `TsWidget`.
 - Signed figures keep their sign beside the digits in right-to-left pages in every locale: an English `+12%` no longer reads `12%+` under `dir="rtl"`, and Arabic, Hebrew and Persian figures read the same in either page direction.
 
