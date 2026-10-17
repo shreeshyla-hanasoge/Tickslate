@@ -14,9 +14,14 @@ export declare const SIZE_NAMES: readonly SizeName[]
 export declare const BREAKPOINTS: Readonly<{ desktop: 1200; tablet: 700 }>
 
 export declare function isSize(name: unknown): name is SizeName
-export declare function columnsFor(width: number): Columns
+/** Grid-width thresholds in px. A missing key keeps its default; an invalid set falls back to BREAKPOINTS. */
+export interface Thresholds {
+  tablet?: number
+  desktop?: number
+}
+export declare function columnsFor(width: number, thresholds?: Thresholds): Columns
 /** 'phone' below 700 px. A tablet uses the desktop layout, clamped to 3 columns. */
-export declare function deviceFor(width: number): Device
+export declare function deviceFor(width: number, thresholds?: Thresholds): Device
 /** `size` if supported, else the nearest supported size. An unknown name snaps to the smallest. */
 export declare function snapSize(size: string, supported: readonly SizeName[]): SizeName
 
