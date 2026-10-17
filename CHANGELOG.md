@@ -6,10 +6,11 @@ All notable changes to Tickslate are recorded here. The format follows
 
 ## Unreleased
 
-## 0.2.0 — 2026-10-16
+## 0.2.0 — 2026-10-17
 
 The first feature release. It adds a table, a watchlist and open positions, a
-widget picker, translation of every string, six theme presets, framework
+progress gauge, a P&L calendar, edge stats and capital funding, bar charts, a
+widget picker, wide-screen layouts, translation of every string, six theme presets, framework
 typings and per-widget entries, and it makes the tile and package changes
 listed under Breaking. Read that list before upgrading.
 
@@ -20,10 +21,30 @@ New widgets and controls
 - `<ts-table>` (sizes Tall, M, L, XL): typed columns (`text`, `number`, `money`, `percent`, `duration`, `time`, `date`), a header that sorts, `tone: 'sign'` columns that show `+` or `−` with an arrow, columns that drop by `priority` when they do not fit, and live updates that change cells in place so focus and scroll position survive a tick. `ts-action` carries `{ action: 'sort', value, dir }` and, once `actions` lists `'select'`, `{ action: 'select', id }`.
 - `<ts-watchlist>` (sizes S, Tall, M): the instruments you follow, each with its last price, a signed change and a day-range bar, plus a sparkline at M. `change` and `changePct` are worked out from `prevClose` unless given.
 - `<ts-open-positions>` (sizes Wide, M, L): open positions with a signed profit or loss and the MTM total. M and L draw a bar from stop to target with the entry and last price marked, and L adds the price path and margin. A position with `pending: true` disables its Exit button while your order is in flight.
+- `<ts-progress>` (sizes S, Wide): a gauge for a value against a goal or a limit. In `limit` mode the bar turns to `--ts-warn` from `warnAt` (default 0.75) and to `--ts-loss` with stripes at 100%; in `goal` mode it turns to `--ts-profit` at 100%. It reads "6,400 of 10,000 · 64%", names the state in words ("near limit", "over limit", "goal reached") and shows a dash and no bar without a valid `target`.
+- `<ts-pnl-calendar>` (sizes Tall, M, Banner): a heat map of daily profit and loss, one cell per trading day, stronger the bigger the day. Tall shows 6 weeks, M 13 and Banner a year, which folds into two half-year bands on a phone. It reads the same `days` series as the equity curve, and `today` marks later days as upcoming. Each cell is named with its date and signed value, a loss carries a corner mark so it never depends on colour, and the cells are one tab stop moved with the arrow keys, Home, End and Page Up and Down. The week starts on the locale's first day, and a weekend entry is left out of the figures with a "weekend entries not shown" note.
+- `<ts-edge-stats>` (sizes S, Wide, M): win rate, profit factor, average win and loss, and expectancy. S shows the one stat its `stat` attribute names (`win-rate`, `profit-factor`, `avg-win-loss` or `expectancy`), Wide shows four, and M adds a histogram of the results.
+- `<ts-capital-funding>` (sizes S, Tall, L): each account's balance against its allocations, with a shortfall hatched and written as `short <amount>`; S shows the first account. A Rebalance button is off until `actions` includes `'rebalance'`, and then fires `ts-action` with `action: 'rebalance'` and the account's `id`.
 - `ts-action` from the two lists, each off until `actions` lists it: `add-instrument`, `exit-position` and `exit-all`. The widgets ask; you confirm and send new data.
 - `<ts-widget-picker>`: a sheet to add widgets from, with search, categories, a size button per size and Add back for hidden tiles. `<ts-grid-controls>`: an Auto, Market hours and After close switcher for scheduled grids, and the link that makes the edit pill's Add open the picker. Both come from `tickslate/elements/controls`.
 - `grid.add()`, `grid.addTypes` and the cancelable `ts-add-request` event, for you to answer by rendering a tile; `grid.move()`, `grid.resize()` and `grid.remove(id)`, which edit like a drag, with undo, `ts-layout-change` and a spoken announcement; `grid.profileOverride` and `grid.openPicker`.
 - `description` and `category` on a widget's spec, filled in for every built-in widget.
+
+Charts
+
+- `<ts-chart>` draws `kind: 'bar'` series: filled bars from the zero line, up for gains and down for losses, grouped side by side and mixable with lines and areas, on time, number and category axes. Bars carry their values as text with a true minus, and are named buttons when `select` is on.
+- `xType: 'category'` reads x as text and puts points and bars on a band scale, with one label per band that truncates with an ellipsis. `chartModel` returns `categories`, and each series carries `bars`.
+
+Wide screens
+
+- `<ts-grid>` has a `breakpoints` property (`{ tablet: 700, desktop: 1200 }` by default) that moves where its columns change, and `columnsFor(width, thresholds?)` and `deviceFor(width, thresholds?)` take the same optional `{ tablet, desktop }` thresholds (a `Thresholds` type).
+- `--ts-grid-max-width` (default `none`) caps the board's width and centres it, so a large monitor keeps ordinary tiles.
+
+Statistics helpers
+
+- `dayStats(days, { timeZone })`: net, green and red days, the green rate and the best and worst day of a daily series. Rows with the same date are summed first.
+- `edgeStats(trades)`, `histogram(values, edges)` and `funding(account)`: the figures the edge stats and capital funding widgets show, for a host that wants the same numbers elsewhere. `edgeStats` gives a profit factor of `null` for trades that are all break-even and `Infinity` for a win with no loss. `funding()` draws the balance across the allocations in array order, and a `funded` amount you give replaces that rule.
+- The `ProgressData`, `PnlCalendarData`, `EdgeStatsData`, `CapitalFundingData` and related model and action types, and the `progress.*`, `calendar.*`, `edge.*` and `funding.*` messages for translating the new widgets.
 
 Saving layouts
 
@@ -66,7 +87,7 @@ Themes
 
 Packaging and typings
 
-- Per-widget entries: `tickslate/elements/grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`, `session-clock`, `table`, `watchlist`, `open-positions` and `controls`. Each registers only its own tag, so importing one no longer pulls in every widget. `tickslate/elements` still registers everything.
+- Per-widget entries: `tickslate/elements/grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`, `session-clock`, `table`, `progress`, `watchlist`, `open-positions`, `pnl-calendar`, `edge-stats`, `capital-funding` and `controls`. Each registers only its own tag, so importing one no longer pulls in every widget. `tickslate/elements` still registers everything.
 - A one-script bundle for pages with no build step: `cdn/tickslate.iife.js` sets `window.Tickslate` and registers every element, and `cdn/tickslate.js` is the same code as a minified ES module.
 - `tickslate/jsx`, `tickslate/vue` and `tickslate/svelte`: types-only entries that add every `ts-*` tag, with its attributes and a typed `data`, to React, Vue and Svelte templates. `TsCommonAction` and one `ts-action` union per element, `TsOpenAction` and `TsChartSelectAction`.
 - `tickslate/custom-elements.json` (a Custom Elements Manifest) and `tickslate/vscode.html-custom-data.json`.
@@ -79,6 +100,8 @@ Building your own widgets
 
 ### Changed
 
+- `<ts-chart>` draws up to six series, using `--ts-series-1` to `--ts-series-6`, where it drew four; more than six warns once in development. It also rewrites its point buttons after a size change, where a new size could drop them until the data changed.
+- A `<ts-grid>` fills its parent's width (`inline-size: 100%`), so it stays full width inside a flex or grid parent.
 - `<ts-grid>`'s board is the dashboard's one labelled region, named by the grid's `aria-label` or else "Dashboard". The grid no longer writes a `role` or `aria-label` to its own element.
 - Each tile's label is a heading. The tile's accessible name is rewritten only when it changes, so a ticking value no longer prompts a screen reader to read the tile again.
 - Today's P&L and the equity curve show a ▲ or ▼ beside a gain or a loss, as the metric already did. A signed figure never wraps apart from its arrow, in any theme.
@@ -101,14 +124,15 @@ Building your own widgets
 - **The `unpkg` and `jsdelivr` fields point at the IIFE bundle**, `cdn/tickslate.iife.js`, which registers every element and sets `window.Tickslate`; they pointed at the core-only UMD. The UMD is unchanged and still ships at `umd/tickslate.umd.js`. Do this instead: if you want the core without elements from a CDN, name `umd/tickslate.umd.js` in the URL. Do not load the IIFE together with the UMD or the package entries, as they carry separate copies of the core.
 - **`SessionState.closesAt`, `startedAt` and `progress` can be `null` while `open` is `true`**, and `Calendar.nextChange` can return `null` for an open session. Do this instead: read `null` as "no close in sight", and in TypeScript handle the wider types.
 - **A calendar spec with a `close` at or before its `open` is now valid.** It used to throw `TypeError`; it now means a session that ends on the next day (or runs 24 hours when equal). A host that relied on the throw to catch a typo in `close` should check its specs.
-- **The bundles grew** with the new features and messages. The core is about 13.0 kB min+gz, up from 8.5 kB, and the core UMD is 13,222 B, up from 8,639 B. Each per-widget entry is also larger (for example `tickslate/elements/metric` is 21,220 B). Do this instead: import per-widget entries rather than `tickslate/elements` if size matters.
+- **The bundles grew** with the new features and messages. The core is about 14.8 kB min+gz, up from 8.5 kB, and the core UMD is 14,977 B, up from 8,639 B. Each per-widget entry is also larger (for example `tickslate/elements/metric` is 22,030 B). Do this instead: import per-widget entries rather than `tickslate/elements` if size matters.
 
 ### Internal
 
+- The size budgets of the UMD, `controls`, `chart`, `equity-curve` and `today-pnl` were re-measured for 0.2.0 after the new widgets and messages grew the shared core, and each new widget has an entry budget.
 - New contributor files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (contact still a placeholder), `SECURITY.md`, issue forms and a pull request template.
 - The real-browser suite runs on five Playwright projects (Chromium, WebKit, Firefox, mobile Safari and mobile Chrome), and CI builds and deploys the demo site to GitHub Pages once the maintainer enables it.
 - `npm run check:types` compiles type fixtures against `dist-lib/` under bundler, node16, node10, `exactOptionalPropertyTypes` and a CommonJS host.
-- `scripts/check-size.mjs` budgets every entry; the "grid plus one widget at 15 kB" rows are warnings, not enforced, because the grid alone is about 21 kB (RFC 0003 §25).
+- `scripts/check-size.mjs` budgets every entry; the "grid plus one widget at 15 kB" rows are warnings, not enforced, because the grid alone is about 30 kB (RFC 0003 §25).
 
 ## 0.1.0 — 2026-10-14
 
