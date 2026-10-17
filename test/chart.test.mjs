@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { scale, linePath, linePaths, bandPath, seriesDomain, areaPaths } from '../src/elements/chart.js'
+import { scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths } from '../src/elements/chart.js'
 
 describe('scale', () => {
   test('maps linearly, including to a reversed range', () => {
@@ -178,5 +178,139 @@ describe('areaPaths', () => {
     const r = areaPaths([], box)
     assert.equal(r.line, '')
     assert.equal(r.area, '')
+  })
+})
+
+describe('bandScale', () => {
+  test('equal bands from r0 to r1, with the padding split to either side of the bars', () => {
+    const b = bandScale(['a', 'b', 'c', 'd'], 0, 100, { padding: 0.2 })
+    assert.equal(b.band, 25)
+    assert.equal(b.centre(0), 12.5)
+    assert.equal(b.centre(3), 87.5)
+    assert.equal(b.start(1), 27.5)
+    assert.equal(b.index('c'), 2)
+    assert.equal(b.index('zzz'), -1)
+  })
+
+  test('a single category takes the whole range, and no padding starts at the band edge', () => {
+    const b = bandScale(['only'], 10, 110, { padding: 0 })
+    assert.equal(b.band, 100)
+    assert.equal(b.centre(0), 60)
+    assert.equal(b.start(0), 10)
+  })
+
+  test('the first of a repeated label wins, and the padding is clamped to 0..1', () => {
+    assert.equal(bandScale(['a', 'b', 'a'], 0, 30).index('a'), 0)
+    assert.equal(bandScale(['a'], 0, 10, { padding: 5 }).start(0), 5)
+    assert.equal(bandScale(['a'], 0, 10, { padding: -1 }).start(0), 0)
+    assert.equal(bandScale(['a'], 0, 10, { padding: NaN }).start(0), 1)
+  })
+
+  test('no categories: no bands, nothing throws', () => {
+    for (const b of [bandScale([], 0, 100), bandScale(undefined, 0, 100)]) {
+      assert.equal(b.band, 0)
+      assert.equal(b.centre(0), 0)
+      assert.equal(b.index('a'), -1)
+    }
+  })
+
+  test('bandGeometry takes a fractional count and reports the bar room in a band', () => {
+    const g = bandGeometry(2.5, 0, 100, 0.2)
+    assert.equal(g.band, 40)
+    assert.equal(g.inner, 32)
+  })
+})
+
+describe('barPaths', () => {
+  const box = { width: 100, height: 50, pad: 0, categories: 2, padding: 0 }
+
+  test('bars stand on the zero line: up for positive, down for negative', () => {
+    const { paths, zeroY } = barPaths([[{ x: 0, y: 10 }, { x: 1, y: -10 }]], { ...box, yDomain: [-10, 10] })
+    assert.equal(zeroY, 25)
+    assert.equal(paths[0], 'M0 25V0H50V25Z M50 25V50H100V25Z')
+  })
+
+  test('the y domain always includes zero', () => {
+    const { paths, zeroY } = barPaths([[{ x: 0, y: 5 }, { x: 1, y: 10 }]], { ...box, yDomain: [5, 10] })
+    assert.equal(zeroY, 50)
+    assert.equal(paths[0], 'M0 50V25H50V50Z M50 50V0H100V50Z')
+    assert.equal(barPaths([[{ x: 0, y: -2 }]], { ...box, categories: 1 }).zeroY, 0, 'all-negative data hangs from the top')
+  })
+
+  test('several groups sit side by side inside a band, not stacked', () => {
+    const { paths } = barPaths([[{ x: 0, y: 10 }], [{ x: 0, y: 10 }]], { ...box, categories: 1, yDomain: [0, 10] })
+    assert.equal(paths[0], 'M0 50V0H50V50Z')
+    assert.equal(paths[1], 'M50 50V0H100V50Z')
+  })
+
+  test('mixed kinds: a group with no points leaves its slot empty and the others keep theirs', () => {
+    const { paths, centres } = barPaths([[], [{ x: 1, y: 4 }]], { ...box, yDomain: [0, 4] })
+    assert.equal(paths[0], '')
+    assert.equal(paths[1], 'M75 50V0H100V50Z')
+    assert.deepEqual(centres, [25, 75])
+  })
+
+  test('a fractional x sits between bands, for bars on a time or number axis', () => {
+    const { paths } = barPaths([[{ x: 0.5, y: 10 }]], { ...box, categories: 2, yDomain: [0, 10] })
+    assert.equal(paths[0], 'M25 50V0H75V50Z')
+  })
+
+  test('a single category fills the plot minus its padding', () => {
+    const { paths, centres } = barPaths([[{ x: 0, y: 1 }]], { width: 100, height: 20, pad: 0, categories: 1, padding: 0.2, yDomain: [0, 1] })
+    assert.equal(paths[0], 'M10 20V0H90V20Z')
+    assert.deepEqual(centres, [50])
+  })
+
+  test('a zero value draws nothing, and unreadable points are skipped', () => {
+    const { paths } = barPaths([[{ x: 0, y: 0 }, { x: 1, y: NaN }, null, { x: 1, y: 3 }]], { ...box, yDomain: [0, 3] })
+    assert.equal(paths[0], 'M50 50V0H100V50Z')
+  })
+
+  test('empty data gives empty paths and does not throw', () => {
+    for (const groups of [[], [[]], undefined, null, [undefined]]) {
+      const r = barPaths(groups, { width: 100, height: 50 })
+      assert.ok(Array.isArray(r.paths))
+      assert.ok(r.paths.every((d) => d === ''))
+      assert.deepEqual(r.centres, [])
+      assert.ok(Number.isFinite(r.zeroY))
+    }
+  })
+
+  test('without a yDomain it is taken from the data, with zero in it', () => {
+    const { paths, zeroY } = barPaths([[{ x: 0, y: 4 }, { x: 1, y: -4 }]], { ...box })
+    assert.equal(zeroY, 25)
+    assert.equal(paths[0], 'M0 25V0H50V25Z M50 25V50H100V25Z')
+  })
+
+  test('a long series is fine', () => {
+    const pts = Array.from({ length: 200000 }, (_, i) => ({ x: i, y: i % 7 }))
+    assert.doesNotThrow(() => barPaths([pts], { width: 400, height: 100, categories: 200000 }))
+  })
+})
+
+describe('barPaths minimums and boxes', () => {
+  const box = { width: 400, height: 100, pad: 0 }
+
+  test('a bar is never narrower than the minimum, even with thousands of bands', () => {
+    const { paths, rects } = barPaths([[{ x: 0, y: 1 }, { x: 4999, y: 1 }]], { ...box, categories: 5000, yDomain: [0, 1] })
+    for (const r of rects[0]) assert.ok(r.w >= 1)
+    assert.match(paths[0], /^M/)
+  })
+
+  test('a tiny value keeps a floor of one unit, and a true zero draws nothing', () => {
+    const { paths, rects } = barPaths([[{ x: 0, y: 0.0001 }, { x: 1, y: 1e6 }, { x: 2, y: 0 }, { x: 3, y: -0.0001 }]], { ...box, categories: 4, yDomain: [-1, 1e6] })
+    assert.equal((paths[0].match(/M/g) || []).length, 3)
+    assert.ok(rects[0][0].h >= 1 && rects[0][3].h >= 1)
+    assert.equal(rects[0][2].h, 0)
+  })
+
+  test('rects follow the input order and sit where the path is', () => {
+    const { rects, zeroY } = barPaths([[{ x: 0, y: 5 }, { x: 1, y: -5 }]], { width: 100, height: 50, pad: 0, categories: 2, padding: 0, yDomain: [-5, 5] })
+    assert.deepEqual(rects[0], [{ x: 0, y: 0, w: 50, h: 25 }, { x: 50, y: zeroY, w: 50, h: 25 }])
+  })
+
+  test('a runaway band count lists a bounded number of centres and does not throw', () => {
+    const r = barPaths([[{ x: 0, y: 1 }]], { ...box, categories: 1e9, yDomain: [0, 1] })
+    assert.ok(r.centres.length <= 1024)
   })
 })

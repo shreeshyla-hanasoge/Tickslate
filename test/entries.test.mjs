@@ -48,7 +48,7 @@ describe('define modules', () => {
   })
 
   test('there is a define module for each built-in widget', () => {
-    for (const file of ['grid', 'card', 'metric', 'series-chart', 'today-pnl', 'equity-curve', 'session-clock', 'table', 'watchlist', 'open-positions']) {
+    for (const file of ['grid', 'card', 'metric', 'series-chart', 'today-pnl', 'equity-curve', 'session-clock', 'table', 'progress', 'watchlist', 'open-positions', 'pnl-calendar', 'edge-stats', 'capital-funding']) {
       assert.ok(files.includes(file), `src/elements/define/${file}.js is missing`)
     }
   })

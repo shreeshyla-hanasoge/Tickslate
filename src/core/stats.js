@@ -27,6 +27,135 @@ function clean(days, timeZone) {
   return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 }
 
+// ── Edge and funding (RFC 0003 §21.2) ─────────────────────────────────────
+// Kept apart from the day figures above, so the calendar story's additions merge without touching these.
+
+// A rounded sum: 18640.4 − 25000 is -6359.6 in exact arithmetic and -6359.599999999999 in floats, and that last digit would
+// show in a deepEqual and could tip a formatted amount that should read ".60".
+const tidy = (v) => Math.round(v * 1e8) / 1e8
+
+/**
+ * Win rate, profit factor, average win and loss, expectancy and average hold from a list of trades. A trade whose `pnl`
+ * can't be read is skipped, not counted as zero: it would drag every average toward zero for a row the host got wrong.
+ * A trade that made exactly nothing counts in `trades` and in expectancy's denominator, but is neither a win nor a loss.
+ *
+ * With no trades every figure is null. Profit factor is Infinity when there is a win and no loss (a ratio against nothing
+ * is not a number, and null would read as "no data" on a record that is all wins); with only break-even trades it is null.
+ */
+export function edgeStats(trades) {
+  const list = Array.isArray(trades) ? trades : []
+  let n = 0
+  let wins = 0
+  let losses = 0
+  let gain = 0
+  let loss = 0
+  let hold = 0
+  let held = 0
+  for (const trade of list) {
+    if (!trade || typeof trade !== 'object') continue
+    const pnl = toNumber(trade.pnl)
+    if (!Number.isFinite(pnl)) continue
+    n++
+    if (pnl > 0) {
+      wins++
+      gain += pnl
+    } else if (pnl < 0) {
+      losses++
+      loss += pnl
+    }
+    const ms = toNumber(trade.holdMs)
+    if (Number.isFinite(ms) && ms >= 0) {
+      hold += ms
+      held++
+    }
+  }
+  if (n === 0) {
+    return { trades: 0, wins: 0, losses: 0, winRate: null, profitFactor: null, avgWin: null, avgLoss: null, expectancy: null, avgHoldMs: null }
+  }
+  return {
+    trades: n,
+    wins,
+    losses,
+    winRate: wins / n,
+    profitFactor: losses === 0 ? (wins > 0 ? Infinity : null) : gain / -loss,
+    avgWin: wins ? tidy(gain / wins) : null,
+    avgLoss: losses ? tidy(loss / losses) : null,
+    expectancy: tidy((gain + loss) / n),
+    avgHoldMs: held ? hold / held : null,
+  }
+}
+
+/**
+ * Counts of `values` between consecutive `edges`: `[from, to)` for each bucket and the last one `[from, to]`, so the
+ * largest edge is counted. Edges are sorted and de-duplicated first (a host's list is hardly ever checked), a value
+ * outside every bucket is not counted, and fewer than two edges make no buckets.
+ */
+export function histogram(values, edges) {
+  const cuts = [...new Set((Array.isArray(edges) ? edges : []).map(toNumber).filter(Number.isFinite))].sort((a, b) => a - b)
+  if (cuts.length < 2) return []
+  const out = []
+  for (let i = 0; i < cuts.length - 1; i++) out.push({ from: cuts[i], to: cuts[i + 1], count: 0 })
+  const last = out.length - 1
+  for (const value of Array.isArray(values) ? values : []) {
+    const v = toNumber(value)
+    if (!Number.isFinite(v) || v < cuts[0] || v > cuts[cuts.length - 1]) continue
+    // The first bucket whose upper edge is above v; v equal to the top edge falls into the closed last bucket.
+    let i = 0
+    while (i < last && v >= out[i].to) i++
+    out[i].count++
+  }
+  return out
+}
+
+// An amount that is drawn can't be negative or unreadable: a bad row would otherwise grow the balance.
+const amountOf = (v) => {
+  const n = toNumber(v)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/**
+ * How an account's balance covers its allocations (RFC 0001 decision 5): in array order, each draws what is left of the
+ * balance and is short by the rest. A `funded` the host gives replaces that figure, held to 0..amount, and consumes that
+ * much of the balance for the allocations after it (RFC 0003 §29 point 9); when it is more than what is left the balance
+ * is spent, never negative. `free` is what remains. A balance that can't be read, or is negative, funds nothing.
+ */
+export function funding(account) {
+  const a = account && typeof account === 'object' ? account : {}
+  const balance = toNumber(a.balance)
+  const list = Array.isArray(a.allocations) ? a.allocations : []
+  let left = Number.isFinite(balance) && balance > 0 ? balance : 0
+  let allocated = 0
+  let fundedTotal = 0
+  let shortfall = 0
+  const allocations = []
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const amount = amountOf(item.amount)
+    const given = toNumber(item.funded)
+    const funded = Number.isFinite(given) ? Math.min(amount, Math.max(0, given)) : Math.min(amount, left)
+    left = Math.max(0, left - funded)
+    const pnl = toNumber(item.pnl)
+    allocated += amount
+    fundedTotal += funded
+    shortfall += amount - funded
+    const row = { id: String(item.id), name: typeof item.name === 'string' ? item.name : String(item.id) }
+    if (typeof item.detail === 'string') row.detail = item.detail
+    allocations.push({ ...row, amount: tidy(amount), funded: tidy(funded), short: tidy(amount - funded), live: item.live === true, pnl: Number.isFinite(pnl) ? pnl : null })
+  }
+  // Millions of float additions drift by more than tidy() rounds away; below a billionth of what is in play it is zero.
+  const eps = Math.max(allocated, Number.isFinite(balance) ? balance : 0) * 1e-9
+  return {
+    id: String(a.id),
+    name: typeof a.name === 'string' ? a.name : String(a.id),
+    balance: Number.isFinite(balance) ? balance : 0,
+    allocated: tidy(allocated),
+    free: left < eps ? 0 : tidy(left),
+    shortfall: shortfall < eps ? 0 : tidy(shortfall),
+    fundedShare: allocated > 0 ? fundedTotal / allocated : null,
+    allocations,
+  }
+}
+
 /**
  * Running equity, its running peak and the drop from that peak, one row per
  * valid day. Equity starts from 0 and the peak counts that starting 0, so a
@@ -60,4 +189,42 @@ export function equityStats(days, options) {
     if (typeof n === 'number' && Number.isFinite(n)) trades += n
   }
   return { net: equity, peak, maxDrawdown, tradingDays: rows.length, trades }
+}
+
+/**
+ * A day's total as the books show it: to the cent. A day that sums to 5.55e-17 (0.1 + 0.2 - 0.3) is flat, not green,
+ * and the calendar's cells and dayStats both ask here, so they never disagree about a day's colour. Not part of the
+ * public API.
+ */
+export function settle(pnl) {
+  return Math.round(pnl * 100) / 100 || 0
+}
+
+/**
+ * The day-by-day figures of a daily P&L series (RFC 0003 §21.1). Rows that
+ * share a date are summed first, because a day is one result however many
+ * rows a backend split it into, and each total is settled to the cent; a day is then green when its net is above zero
+ * and red when below, and a day that nets to exactly zero is neither. The rate
+ * is over the days that were one or the other, so a flat day does not dilute it.
+ * With no days there is nothing to rank, so best, worst and the rate are null.
+ */
+export function dayStats(days, options) {
+  const { timeZone = 'UTC' } = options || {}
+  const byDate = new Map()
+  for (const row of clean(days, timeZone)) byDate.set(row.date, (byDate.get(row.date) || 0) + row.pnl)
+  let net = 0
+  let greenDays = 0
+  let redDays = 0
+  let best = null
+  let worst = null
+  for (const total of byDate.values()) {
+    const pnl = settle(total)
+    net += pnl
+    if (pnl > 0) greenDays++
+    else if (pnl < 0) redDays++
+    if (best === null || pnl > best) best = pnl
+    if (worst === null || pnl < worst) worst = pnl
+  }
+  const counted = greenDays + redDays
+  return { net, greenDays, redDays, greenRate: counted ? greenDays / counted : null, best, worst }
 }
