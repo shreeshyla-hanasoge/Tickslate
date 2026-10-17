@@ -46,6 +46,7 @@ import {
   typeOf,
   withProfile,
 } from '../core/index.js'
+import { BREAKPOINTS, validThresholds } from '../core/sizes.js'
 import {
   boardHeight,
   boxOf,
@@ -124,7 +125,7 @@ function registered(item) {
 let template = null
 const TEMPLATE = `
 <style>
-  :host { display: block; position: relative; -webkit-tap-highlight-color: transparent; }
+  :host { display: block; position: relative; inline-size: 100%; max-inline-size: var(--ts-grid-max-width, none); margin-inline: auto; -webkit-tap-highlight-color: transparent; }
   :host([hidden]) { display: none; }
   :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
@@ -524,6 +525,18 @@ export class TsGrid extends Base {
     } finally {
       this._quietOrder = false
     }
+  }
+
+  /** Column thresholds in px of the grid's own width; defaults to { tablet: 700, desktop: 1200 }. Setting it re-measures. */
+  get breakpoints() {
+    return this._breakpoints || BREAKPOINTS
+  }
+
+  set breakpoints(value) {
+    if (DEV && !validThresholds(value)) warnOnce('grid-breakpoints', `<ts-grid>.breakpoints needs finite numbers above 0 with tablet below desktop, e.g. { tablet: 700, desktop: 1600 }, and got ${JSON.stringify(value)}, so the defaults are used.`)
+    // A copy, so mutating the host's object later can't change columns without a re-measure, and the getter says what is in effect.
+    this._breakpoints = value != null && validThresholds(value) ? { ...value } : undefined
+    this._measure(true)
   }
 
   get catalog() {
@@ -1175,7 +1188,7 @@ export class TsGrid extends Base {
     // The board's own height changes fire the observer too; only width matters.
     if (!force && width === this._width) return
     this._width = width
-    const columns = columnsFor(width)
+    const columns = columnsFor(width, this._breakpoints)
     const changed = columns !== this._columns
     if (changed && this._gesture) this._cancelGesture()
     const style = getComputedStyle(this)
