@@ -146,3 +146,37 @@
     --ts-focus: var(--ts-accent);
   }
 }
+
+/*
+ * The high contrast preference (RFC 0003 §13.3). A preset sets its own --ts-line and
+ * --ts-muted on the element it names, which would beat the ones tokens.css raises on
+ * :root, so each mode restates the raised pair here, after everything else. The values
+ * are this preset's own line and muted, moved toward its ink until line is 3:1 and
+ * muted 7:1 on the surface and the page.
+ */
+@media (prefers-contrast: more) {
+  :where([data-ts-theme='calm']) {
+    --ts-line: #808897;
+    --ts-muted: #465065;
+  }
+
+  :where(
+    :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']):not([data-theme='light'] *),
+    [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']),
+    [data-ts-theme='calm']:is([data-theme='dark'], .dark):not([data-theme='light'])
+  ) {
+    --ts-line: #616977;
+    --ts-muted: #9DA7BA;
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :where(
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']):not([data-theme='light'] *),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']),
+    [data-ts-theme='calm'][data-theme='auto']:not([data-theme='light'])
+  ) {
+    --ts-line: #616977;
+    --ts-muted: #9DA7BA;
+  }
+}
