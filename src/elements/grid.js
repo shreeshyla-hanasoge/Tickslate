@@ -1842,6 +1842,8 @@ export class TsGrid extends Base {
         if (node.classList.contains('remove')) return { kind: 'remove', id: node.parentElement.dataset.id }
         if (node.classList.contains('resize')) return { kind: 'resize', id: node.parentElement.dataset.id }
         if (node.classList.contains('handle')) return { kind: 'chrome', id: node.parentElement.dataset.id }
+        // The empty panel sits inside the board, but its Add back button and list are controls: a press on them is not a tap on the bare board, which would end editing on pointerup and drop or move the click that opens the list.
+        if (node.classList.contains('anchor')) return { kind: 'none' }
         if (node === this._board) return { kind: 'board' }
       } else if (node.parentElement === this && node.hasAttribute('item')) {
         const id = node.getAttribute('item')
