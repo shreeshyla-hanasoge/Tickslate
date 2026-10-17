@@ -1,7 +1,9 @@
 name: Attribution
 
 on:
+  # edited makes a body edit start a fresh run: a plain re-run reuses the old event payload.
   pull_request:
+    types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
