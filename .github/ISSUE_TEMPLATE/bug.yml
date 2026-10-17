@@ -29,6 +29,14 @@ body:
         - ts-today-pnl
         - ts-equity-curve
         - ts-session-clock
+        - ts-table
+        - ts-progress
+        - ts-watchlist
+        - ts-open-positions
+        - ts-pnl-calendar
+        - ts-edge-stats
+        - ts-capital-funding
+        - ts-widget-picker or ts-grid-controls
         - Formatting or other core functions
         - Theming or CSS tokens
         - A widget of my own

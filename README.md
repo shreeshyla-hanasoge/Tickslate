@@ -12,10 +12,12 @@ fetches anything.
   drops to 3 columns on tablets and 2 on phones. Long-press to edit, drag to
   move, drag the corner to resize, and Undo or Add back after a removal.
 - **Generic widgets.** `<ts-metric>` (a KPI tile with change, sparkline and
-  target), `<ts-chart>` (line and area trends) and `<ts-card>` (a themed tile
+  target), `<ts-chart>` (line, area and bar trends), `<ts-progress>` (a value
+  against a goal or limit) and `<ts-card>` (a themed tile
   for any content, such as your own Chart.js or ECharts chart).
 - **A finance set.** Today's P&L, an equity curve, an exchange session clock,
-  a watchlist and open positions, plus a sortable `<ts-table>`.
+  a watchlist and open positions, a P&L calendar, edge stats and capital
+  funding, plus a sortable `<ts-table>`.
 - **Accessible by default.** Each widget is a labelled group with a heading, charts state
   their result in words, gains and losses carry a sign and an arrow as well as a colour, and
   motion respects `prefers-reduced-motion`. See [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md).
@@ -49,7 +51,8 @@ import 'tickslate/elements/metric'
 ```
 
 The entries are `grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`,
-`session-clock`, `table`, `watchlist`, `open-positions` and `controls`
+`session-clock`, `table`, `progress`, `watchlist`, `open-positions`,
+`pnl-calendar`, `edge-stats`, `capital-funding` and `controls`
 (`<ts-widget-picker>` and `<ts-grid-controls>`). The development builds, with
 their warnings, load through the `development` export condition.
 
@@ -272,14 +275,18 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 | Tag | Sizes | For |
 |---|---|---|
 | `<ts-metric>` | S, Wide, M | A KPI with change, sparkline and target |
-| `<ts-chart>` | Wide, M, L, XL | Line and area trends (rows or series) |
+| `<ts-chart>` | Wide, M, L, XL | Line, area and bar trends (rows or series) |
 | `<ts-card>` | all seven | Any content, such as your own chart |
 | `<ts-today-pnl>` | S, Wide, M | Today's net, realized and unrealized P&L |
 | `<ts-equity-curve>` | Wide, M, XL | Cumulative P&L with ranges and drawdown |
 | `<ts-session-clock>` | S, Banner | Exchange session status |
 | `<ts-table>` | Tall, M, L, XL | Typed, sortable columns |
+| `<ts-progress>` | S, Wide | A value against a goal or a limit |
 | `<ts-watchlist>` | S, Tall, M | Instruments with price, change and day range |
 | `<ts-open-positions>` | Wide, M, L | Open positions, profit or loss and stop-to-target bar |
+| `<ts-pnl-calendar>` | Tall, M, Banner | Heat map of daily profit and loss |
+| `<ts-edge-stats>` | S, Wide, M | Win rate, profit factor, average win and loss, expectancy |
+| `<ts-capital-funding>` | S, Tall, L | Account balances against their allocations |
 
 ## Development
 

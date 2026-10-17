@@ -180,6 +180,7 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-font-num` | Figures face | `'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif` | same | Headline and small figures; tabular, lining numerals are forced on it |
 | `--ts-row` | Grid row height | `150px` | same | `<ts-grid>` at 3 and 4 columns, and standalone tile heights. Set in px |
 | `--ts-gap` | Grid gap | `16px` | same | `<ts-grid>` at 3 and 4 columns, and standalone tile heights. Set in px |
+| `--ts-grid-max-width` | Widest the board grows; it is centred when capped | `none` | same | `<ts-grid>`. Set a length such as `1600px`; columns follow the board's own width, so a capped board on a large monitor keeps ordinary tiles |
 | `--ts-pad` | Padding inside a tile | `18px` | `16px` | Every tile |
 | `--ts-row-compact` | Row height at 2 columns (phones) | `150px` | same | `<ts-grid>` at 2 columns. Set in px |
 | `--ts-gap-compact` | Gap at 2 columns (phones) | `10px` | same | `<ts-grid>` at 2 columns. Set in px |

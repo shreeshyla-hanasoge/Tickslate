@@ -29,15 +29,33 @@ export function isSize(name) {
   return typeof name === 'string' && hasOwn(SIZES, name)
 }
 
-export function columnsFor(width) {
-  // Written as "not ≥" so NaN and missing widths fall to the phone grid,
-  // the layout that fits anywhere.
-  if (!(width >= BREAKPOINTS.tablet)) return 2
-  return width >= BREAKPOINTS.desktop ? 4 : 3
+const positive = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0
+
+// Per-key fallback, so { desktop: 1600 } keeps the default tablet.
+const merged = (t) => ({
+  tablet: t && t.tablet !== undefined ? t.tablet : BREAKPOINTS.tablet,
+  desktop: t && t.desktop !== undefined ? t.desktop : BREAKPOINTS.desktop,
+})
+
+/** True when the thresholds can be used as given; the grid asks so it can warn once about ones that can't. */
+export function validThresholds(thresholds) {
+  if (thresholds == null) return true
+  if (typeof thresholds !== 'object') return false
+  const { tablet, desktop } = merged(thresholds)
+  return positive(tablet) && positive(desktop) && tablet < desktop
 }
 
-export function deviceFor(width) {
-  return columnsFor(width) === 2 ? 'phone' : 'desktop'
+export function columnsFor(width, thresholds) {
+  // An invalid set falls back whole, never half: a tablet at or above desktop has no sensible reading.
+  const t = validThresholds(thresholds) ? merged(thresholds) : BREAKPOINTS
+  // Written as "not ≥" so NaN and missing widths fall to the phone grid,
+  // the layout that fits anywhere.
+  if (!(width >= t.tablet)) return 2
+  return width >= t.desktop ? 4 : 3
+}
+
+export function deviceFor(width, thresholds) {
+  return columnsFor(width, thresholds) === 2 ? 'phone' : 'desktop'
 }
 
 export function checkColumns(columns) {

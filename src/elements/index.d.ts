@@ -230,20 +230,20 @@ export declare class TsMetric extends TsWidget<MetricData> {
   static metricModel(data: MetricData, variant: SizeName, ctx: ViewModelContext): MetricModel
 }
 
-export type ChartKind = 'line' | 'area'
+export type ChartKind = 'line' | 'area' | 'bar'
 
 export interface ChartSeries {
   id?: string
   name: string
   /** Default 'line'. */
   kind?: ChartKind
-  /** Read in any order; x with `toTime` (or `toNumber` when `xType` is 'number'), y with `toNumber`. */
+  /** Read in any order; x with `toTime` (or `toNumber` when `xType` is 'number', or as text when it is 'category'), y with `toNumber`. */
   points: Array<{ x: Time; y: Numeric }>
 }
 
 export interface ChartOptions extends WidgetFreshness {
-  /** How x is read. Default 'time'. */
-  xType?: 'time' | 'number'
+  /** How x is read. 'category' places points and bars on a band scale, in order of first appearance. Default 'time'. */
+  xType?: 'time' | 'number' | 'category'
   /** How each series' last value is shown. Default 'number'; 'percent' takes fractions, 'duration' milliseconds. */
   format?: 'number' | 'money' | 'percent' | 'duration'
   decimals?: number
@@ -253,7 +253,7 @@ export interface ChartOptions extends WidgetFreshness {
   goodWhen?: 'up' | 'down' | 'neither'
 }
 
-/** Either named series, or rows with the keys to read. At most four series are drawn. */
+/** Either named series, or rows with the keys to read. At most six series are drawn. */
 export type ChartData = ChartOptions &
   (
     | { series: ChartSeries[] }
@@ -268,10 +268,12 @@ export type ChartData = ChartOptions &
 export interface ChartModel {
   /** What the svg's `aria-label` says: 'Revenue, last 12,400; Cost, last 8,100'. */
   ariaLabel: string
-  series: Array<{ name: string; kind: ChartKind; line: string; area: string; last: string }>
-  /** `index` 1 to 4 picks `--ts-series-<n>`. */
+  series: Array<{ name: string; kind: ChartKind; line: string; area: string; bars: string; last: string }>
+  /** `index` 1 to 6 picks `--ts-series-<n>`. */
   legend: Array<{ name: string; index: number }>
   axis: { start: string; middle: string; end: string }
+  /** Every category in order of first appearance; `[]` unless `xType` is 'category'. */
+  categories: string[]
   /** Where the zero line falls in the 400 by 100 drawing box, drawn in `--ts-axis`. */
   zeroY: number
   /** Rows or points that couldn't be read. */
@@ -279,7 +281,7 @@ export interface ChartModel {
 }
 
 /**
- * <ts-chart>, sizes Wide · M · L · XL. Lines and areas, up to four series, legend from M up.
+ * <ts-chart>, sizes Wide · M · L · XL. Lines, areas and bars, up to six series, legend from M up.
  *
  * @element ts-chart
  * @fires {CustomEvent<TsChartAction>} ts-action - Retry, 'open', and 'select' for a point when `actions` includes 'select'.
@@ -366,6 +368,66 @@ export declare class TsTable extends TsWidget<TableData> {
   addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
   /** Pure: formatted cells, a stable sort and the column budget. `o.width` is the content width in px; without it every column is kept. */
   static tableModel(data: TableData, variant: SizeName, ctx: ViewModelContext, o?: { width?: number }): TableModel
+}
+
+export interface ProgressData extends WidgetFreshness {
+  /** What has been reached or used so far. */
+  value: Numeric
+  /** The goal or the limit. Missing, non-numeric or 0 or less shows a dash and no bar. */
+  target: Numeric
+  /** 'goal' turns green at 100%; 'limit' turns to warning at `warnAt` and to danger at 100%. Default 'goal'. */
+  mode?: 'goal' | 'limit'
+  /** A fraction in (0, 1], limit mode only. Default 0.75. */
+  warnAt?: number
+  /** Default 'number'. 'percent' takes fractions; 'duration' takes milliseconds. */
+  format?: 'number' | 'money' | 'percent' | 'duration'
+  decimals?: number
+  /** Formatted with fmt.unit: '182 ms'. */
+  unit?: string
+  /** Wide: one line under the bar. */
+  caption?: string
+}
+
+export interface ProgressModel {
+  /** 'Daily loss limit, 6,400 of 10,000, 64%, near limit' */
+  ariaLabel: string
+  /** '6,400 of 10,000 · 64%' */
+  text: string
+  /** '64%', or '—' */
+  pct: string
+  /** 0..1, 0 without a valid target. */
+  fill: number
+  state: 'ok' | 'near' | 'over' | 'done' | 'none'
+  caption: string
+  label: string
+  live: boolean
+  time: string
+  /** The "synced" prefix and suffix of the header. */
+  synced: { pre: string; post: string }
+  /** The value as a number, NaN without one. */
+  valueNum: number
+  /** 0 to 100, the meter's aria-valuenow. */
+  pctNum: number
+  /** The state in words: 'near limit', 'over limit', 'goal reached', or ''. */
+  stateText: string
+  /** The meter's aria-valuetext: the result and the state in words. */
+  valueText: string
+}
+
+/**
+ * <ts-progress>, sizes S · Wide. A goal and limit gauge.
+ *
+ * @element ts-progress
+ * @fires {CustomEvent<TsProgressAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart value - The percentage.
+ * @csspart bar - The track of the gauge.
+ */
+export declare class TsProgress extends TsWidget<ProgressData> {
+  addEventListener(type: 'ts-action', listener: (this: TsProgress, ev: CustomEvent<TsProgressAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsProgress, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: percentage, state, text and the accessible name. */
+  static progressModel(data: ProgressData, variant: SizeName, ctx: ViewModelContext): ProgressModel
 }
 
 /** One instrument of a watchlist. Prices, times and the change are read as Numeric and Time. */
@@ -538,6 +600,202 @@ export declare class TsOpenPositions extends TsWidget<OpenPositionsData> {
   static positionsModel(data: OpenPositionsData, variant: SizeName, ctx: ViewModelContext): OpenPositionsModel
 }
 
+export interface PnlCalendarData extends WidgetFreshness {
+  /** The same series as the equity curve; rows with the same date are summed. */
+  days: DayResult[]
+  /** Later days are drawn as upcoming. Default: the clock's day. */
+  today?: Time
+}
+
+export interface PnlCalendarCell {
+  /** 'YYYY-MM-DD'. */
+  date: string
+  /** pos and neg are a gain and a loss, flat a day that nets to nothing, none a day with no entry, up a day yet to come. */
+  kind: 'pos' | 'neg' | 'flat' | 'none' | 'up'
+  /** The day's net; null for a day with no entry or one yet to come. */
+  pnl: number | null
+  /** 0.22 + 0.78 x |pnl| / max|pnl| over the cells drawn; null for a flat, empty or upcoming day. */
+  strength: number | null
+  /** The accessible name: the date and the signed value. */
+  name: string
+}
+
+export interface CalendarModel {
+  variant: SizeName
+  /** True when a Banner is folded into two half-year bands. */
+  phone: boolean
+  /** One band, or two on a phone's Banner. Each holds week columns, oldest first. */
+  bands: Array<{ weeks: Array<{ month: string; cells: PnlCalendarCell[] }> }>
+  /** The weekday names down the side, one per row of cells. */
+  rowLabels: string[]
+  rows: number
+  dropped: number
+  live: boolean
+  empty: boolean
+  label: string
+  net: string
+  netNum: number
+  best: string
+  worst: string
+  rate: string
+  tradingDays: number
+  /** Weekend entries in the window, which have no cell and are left out of the figures. */
+  weekendEntries: number
+  /** "3 weekend entries not shown", or '' when none were left out. */
+  note: string
+  /** The summary the grid is named by. */
+  chartLabel: string
+  /** The date of the cell that starts as the tab stop. */
+  focusDate: string
+  ariaLabel: string
+}
+
+/**
+ * <ts-pnl-calendar>, sizes Tall · M · Banner. A heat map of daily profit and loss: Tall shows 6 weeks, M 13 and Banner a year, which folds into two half-year bands on a phone.
+ *
+ * @element ts-pnl-calendar
+ * @fires {CustomEvent<TsPnlCalendarAction>} ts-action - Retry and 'open'.
+ */
+export declare class TsPnlCalendar extends TsWidget<PnlCalendarData> {
+  addEventListener(type: 'ts-action', listener: (this: TsPnlCalendar, ev: CustomEvent<TsPnlCalendarAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsPnlCalendar, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: the week columns, each cell's name, kind and strength, the totals and the summary. `ctx.phone` folds a Banner into two bands. */
+  static calendarModel(data: PnlCalendarData, variant: SizeName, ctx: ViewModelContext & { phone?: boolean }): CalendarModel
+}
+
+import type { EdgeStats, FundingAccount } from '../core/index.js'
+
+/** The stat <ts-edge-stats> shows at S, chosen by its `stat` attribute. */
+export type EdgeStatName = 'win-rate' | 'profit-factor' | 'avg-win-loss' | 'expectancy'
+
+export interface EdgeStatsData extends WidgetFreshness {
+  /** What `edgeStats(trades)` returns, or the host's own figures. A figure that is missing or null shows as a dash; a profit factor of Infinity shows as ∞. */
+  stats: EdgeStats
+  /** Shown after the trade count, as '60 trades · Last 30 days'. */
+  scope?: string
+  /** M: the histogram. A bucket with `sign: -1` is drawn hatched, on the loss side. `histogram()` can count the buckets. */
+  distribution?: Array<{ label: string; count: number; sign: 1 | -1 }>
+}
+
+/** One formatted figure of the edge stats. */
+export interface EdgeStatFigure {
+  /** What is shown, possibly compact to fit a narrow cell. */
+  text: string
+  /** The full form, which the accessible name uses. */
+  full: string
+  /** '' unless the text carries a sign. aria-hidden in the template. */
+  arrow: '▲' | '▼' | ''
+  tone: 'pos' | 'neg' | 'mut'
+  /** The number behind it, NaN when there is none. */
+  num: number
+}
+
+export interface EdgeStatsModel {
+  /** 'Edge stats, Win rate 62.5%, 60 trades'. */
+  ariaLabel: string
+  label: string
+  /** One cell at S (the chosen stat), four at Wide and M. */
+  cells: Array<{ key: EdgeStatName; label: string; main: EdgeStatFigure; sub: EdgeStatFigure | null; spoken: string }>
+  /** '60 trades · Last 30 days'. */
+  meta: string
+  /** M only. Heights are 0 to 100, from the largest count. */
+  dist: { bars: Array<{ id: number; label: string; loss: boolean; zero: boolean; h: number; title: string }>; ariaLabel: string }
+  distLabel: string
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-edge-stats>, sizes S · Wide · M. Win rate, profit factor, average win and loss and expectancy; S shows the one `stat` names, M adds the histogram.
+ *
+ * @element ts-edge-stats
+ * @attr {'win-rate' | 'profit-factor' | 'avg-win-loss' | 'expectancy'} stat - The stat S shows. Reflects `stat`; an unknown value reads as 'win-rate'.
+ * @fires {CustomEvent<TsEdgeStatsAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart value - The figure S shows.
+ * @csspart chart - The histogram's box.
+ */
+export declare class TsEdgeStats extends TsWidget<EdgeStatsData> {
+  addEventListener(type: 'ts-action', listener: (this: TsEdgeStats, ev: CustomEvent<TsEdgeStatsAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsEdgeStats, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** The stat S shows. */
+  stat: EdgeStatName
+  /** Pure: formatted figures with their signs and arrows, the histogram's bar heights and the accessible name. */
+  static edgeStatsModel(data: EdgeStatsData, variant: SizeName, ctx: ViewModelContext & { stat?: string }): EdgeStatsModel
+}
+
+export interface CapitalFundingData extends WidgetFreshness {
+  /** Matched by `id`, so a live update changes cells in place. An account with no id, or a repeated one, is dropped, and so is an allocation. */
+  accounts: FundingAccount[]
+}
+
+/** One allocation as the widget shows it. */
+export interface CapitalFundingAllocationModel {
+  id: string
+  name: string
+  detail: string
+  live: boolean
+  amount: string
+  /** 'short ₹6,359.60', or '' when it is fully funded. */
+  short: string
+  /** The funded share of its amount, 0 to 100, and whether any of it is short. null for an allocation of nothing. */
+  bar: { funded: number; short: boolean; label: string } | null
+  /** Signed, '' without a pnl. */
+  pnl: string
+  arrow: '▲' | '▼' | ''
+  tone: 'pos' | 'neg' | 'mut'
+}
+
+export interface CapitalFundingModel {
+  /** 'Capital funding, 3 accounts'; at S the first account's summary follows, and 'showing the first' with more than one. */
+  ariaLabel: string
+  rows: Array<{
+    id: string
+    name: string
+    balance: string
+    allocated: string
+    free: string
+    /** '37%', or '' with nothing allocated. */
+    share: string
+    shareNum: number | null
+    /** 'short ₹31,359.60', or ''. */
+    short: string
+    /** The short text, else 'Fully funded', else 'Nothing allocated'. */
+    status: string
+    hasShort: boolean
+    bar: { funded: number; short: boolean; label: string } | null
+    summary: string
+    /** The Rebalance button's accessible name. */
+    rebalance: string
+    allocations: CapitalFundingAllocationModel[]
+  }>
+  /** Accounts that can be read, shown or not. */
+  total: number
+  /** Accounts that could not be read: no id, a repeated id, or not an object. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-capital-funding>, sizes S · Tall · L. Each account's balance against its allocations, with shortfalls hatched and written as 'short <amount>'; S shows the first account.
+ *
+ * @element ts-capital-funding
+ * @fires {CustomEvent<TsCapitalFundingAction>} ts-action - Retry, 'open', and 'rebalance' when `actions` includes it.
+ * @csspart row - One account.
+ * @csspart allocation - One allocation of an account.
+ * @csspart bar - A funding bar.
+ * @csspart value - The share S shows.
+ */
+export declare class TsCapitalFunding extends TsWidget<CapitalFundingData> {
+  addEventListener(type: 'ts-action', listener: (this: TsCapitalFunding, ev: CustomEvent<TsCapitalFundingAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsCapitalFunding, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: formatted amounts, bar widths, shortfall text and the accessible name. */
+  static fundingModel(data: CapitalFundingData, variant: SizeName, ctx: ViewModelContext): CapitalFundingModel
+}
+
 export interface TodayPnlData extends WidgetFreshness {
   /** Shown exactly as given; the widget never recomputes it from the parts. */
   net: Numeric
@@ -618,6 +876,7 @@ export declare class TsSessionClock extends TsWidget<SessionClockData> {
 
 export type TsCardAction = TsCommonAction
 export type TsMetricAction = TsCommonAction
+export type TsProgressAction = TsCommonAction
 /** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1). */
 export type TsChartAction = TsCommonAction | TsChartSelectAction
 /** 'select' only fires when the host opts in with `actions = ['select']` (RFC 0003 §7.1, Decision 36). */
@@ -626,6 +885,10 @@ export type TsTableAction = TsCommonAction | { action: 'sort'; value: string; di
 export type TsWatchlistAction = TsCommonAction | { action: 'add-instrument' }
 /** 'exit-position' and 'exit-all' only fire when the host opts in with `actions` (RFC 0003 §21.3). */
 export type TsOpenPositionsAction = TsCommonAction | { action: 'exit-position'; id: string | number } | { action: 'exit-all' }
+export type TsPnlCalendarAction = TsCommonAction
+export type TsEdgeStatsAction = TsCommonAction
+/** 'rebalance' only fires when the host opts in with `actions = ['rebalance']`; `id` is the account's id (RFC 0003 §21.2). */
+export type TsCapitalFundingAction = TsCommonAction | { action: 'rebalance'; id: string }
 export type TsTodayPnlAction = TsCommonAction
 export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
 export type TsSessionClockAction = TsCommonAction
@@ -718,6 +981,7 @@ export interface TsWidgetAttributes {
 export interface TsElementAttributes {
   'ts-card': { sizes?: string | undefined; live?: boolean | undefined; 'as-of'?: string | undefined; scrollable?: boolean | undefined }
   'ts-equity-curve': { range?: EquityRange | undefined }
+  'ts-edge-stats': { stat?: EdgeStatName | undefined }
   'ts-widget-picker': { for?: string | undefined }
   'ts-grid-controls': { for?: string | undefined; picker?: string | undefined }
   'ts-grid': {
@@ -743,8 +1007,11 @@ declare global {
     'ts-metric': TsMetric
     'ts-chart': TsChart
     'ts-table': TsTable
+    'ts-progress': TsProgress
     'ts-watchlist': TsWatchlist
     'ts-open-positions': TsOpenPositions
+    'ts-edge-stats': TsEdgeStats
+    'ts-capital-funding': TsCapitalFunding
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock

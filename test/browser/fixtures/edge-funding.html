@@ -1,0 +1,127 @@
+<!doctype html>
+<!-- One <ts-edge-stats> or <ts-capital-funding> for the edge-funding spec. ?kind=edge|funding, ?size=S|Wide|M|Tall|L,
+     ?width=px (the tile's width), ?theme=light|dark, ?preset=terminal (or calm, signal...), ?fit caps the width at the
+     viewport's, ?actions offers 'rebalance', ?wide uses wide fonts, ?stat=win-rate|profit-factor|avg-win-loss|expectancy for S,
+     ?big gives the edge stats lakh-sized figures, ?empty gives it no trades, ?inf gives it only wins. The spec drives it through window.__e: tick(k)
+     sends the same accounts with the live figures of step k, and events collects every ts-action.
+     The numbers are made up and nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edge and funding fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <div id="wrap"></div>
+</main>
+<script type="module">
+  import '/src/elements/index.js'
+  import { configure, edgeStats, histogram } from '/src/core/index.js'
+
+  configure({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+
+  // ?wide stands in for a runner whose fallback fonts are wider than ours: a wide family, and tracking on top.
+  if (params.has('wide')) {
+    const st = document.createElement('style')
+    st.textContent = ":root { --ts-font-ui: Verdana, 'DejaVu Sans', sans-serif; --ts-font-num: Verdana, 'DejaVu Sans', sans-serif; } body { letter-spacing: .05em; }"
+    document.head.append(st)
+  }
+
+  // A seeded generator, so the same trades appear on every load.
+  let a = 7
+  const rand = () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+  const scale = params.has('big') ? 100 : 1
+  const results = Array.from({ length: 60 }, () => Math.round((rand() - 0.42) * 6000 * scale) / 1)
+  const EDGES = [-3000, -2000, -1000, 0, 1000, 2000, 3000, 4000].map((e) => e * scale)
+  const short = (v) => (Math.abs(v) >= 1000 ? `${v / 1000}k` : String(v)).replace('-', '−')
+  const distribution = (values) =>
+    histogram(values, EDGES).map((b) => ({ label: `${short(b.from)}`, count: b.count, sign: b.to <= 0 ? -1 : 1 }))
+
+  const edgeData = () => {
+    if (params.has('empty')) return { stats: edgeStats([]), scope: 'Last 30 days', distribution: [] }
+    if (params.has('inf')) return { stats: edgeStats(results.filter((v) => v > 0).map((pnl) => ({ pnl }))), scope: 'Last 30 days', distribution: distribution(results.filter((v) => v > 0)) }
+    return { stats: edgeStats(results.map((pnl) => ({ pnl }))), scope: 'Last 30 days', distribution: distribution(results) }
+  }
+
+  // Three accounts: one short on both of its allocations, one fully funded with a live strategy, one with the host's own funded amount.
+  const accounts = (step) => [
+    {
+      id: 'a',
+      name: 'Broker A',
+      balance: 18640.4 + step * 125.5,
+      allocations: [
+        { id: 'a1', name: 'Opening range breakout', detail: 'NIFTY 50 · 5m', amount: 25000, live: true, pnl: 1240.5 - step * 310 },
+        { id: 'a2', name: 'Mean reversion', detail: 'BANKNIFTY · 15m', amount: 25000, pnl: -310 },
+      ],
+    },
+    {
+      id: 'b',
+      name: 'Broker B',
+      balance: '452800.5',
+      allocations: [
+        { id: 'b1', name: 'Trend follow', detail: 'NIFTY 50 · 1h', amount: 200000, live: true, pnl: 84210.25 },
+        { id: 'b2', name: 'Gap fade', amount: '150000.00', pnl: 0 },
+      ],
+    },
+    {
+      id: 'c',
+      name: 'Broker C',
+      balance: 125000,
+      allocations: [
+        { id: 'c1', name: 'Pairs', detail: 'RELIANCE / HDFC · 15m', amount: 80000, funded: 40000 },
+        { id: 'c2', name: 'Calendar spread', amount: 60000 },
+        { id: 'c3', name: 'Expiry day strangle', detail: 'NIFTY 50 · 5m', amount: 30000, pnl: -5120 },
+      ],
+    },
+  ]
+
+  const kind = params.get('kind') === 'funding' ? 'funding' : 'edge'
+  const el = document.createElement(kind === 'funding' ? 'ts-capital-funding' : 'ts-edge-stats')
+  const size = params.get('size') || (kind === 'funding' ? 'Tall' : 'Wide')
+  el.setAttribute('size', size)
+  if (params.get('stat')) el.setAttribute('stat', params.get('stat'))
+  // The grid gives a tile one row (150px) or two (316px, with the gap), so the fixture does too.
+  el.style.height = ['S', 'Wide'].includes(size) ? '150px' : '316px'
+  document.getElementById('wrap').append(el)
+  document.getElementById('wrap').style.width = `${params.get('width') || 640}px`
+  if (params.has('fit')) document.getElementById('wrap').style.maxWidth = '100%'
+  if (params.has('actions')) el.actions = ['rebalance']
+  const events = []
+  el.addEventListener('ts-action', (e) => events.push(e.detail))
+  el.data = kind === 'funding' ? { accounts: accounts(0) } : edgeData()
+
+  window.__e = {
+    el,
+    events,
+    kind,
+    tick: (step) => { el.data = kind === 'funding' ? { accounts: accounts(step) } : edgeData() },
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>
