@@ -4,7 +4,7 @@
 |---|---|
 | Status | **Proposed** (25 Oct 2026). Nothing here is built until the maintainer approves it in chat. |
 | Written | 25 Oct 2026 |
-| Amends | [RFC 0003](0003-p1-surfaces.md) §2.1, §3, §4.1, §5.2, §5.4, §5.5, §7.1, §12, §15, §16, §18.2, §22.2, §25, §26 and §29 (point 1); [RFC 0002](0002-integration-and-ux.md) §4.4, §5, §6 and §9; [RFC 0001](0001-api.md) §4 (`readLayout`), §7, §8.5.9 and §13 |
+| Amends | [RFC 0003](0003-p1-surfaces.md) §1.1, §2.1, §3, §4.1, §5.2, §5.4, §5.5, §7.1, §12, §15, §16, §18.1, §18.2, §22.2, §25, §29 (point 1) and Decision 38; [RFC 0002](0002-integration-and-ux.md) §4.4, §5, §6, §7 and §9; [RFC 0001](0001-api.md) §4 (`readLayout`), §7, §8.4 and §8.5.9; and `docs/ACCESSIBILITY.md` item 18 (§3.3) |
 | Covers | Every public name the nine P2 stories add: chart scrubbing, exact values and data tables; compact density and the rem type scale; resize feedback, a first-run hint and calm profile switches; `<ts-breakdown>`, `<ts-status>` and `<ts-feed>`; session breaks, market presets and holiday coverage; `<ts-mini-chart>` through optional Emberwick; `createDashboard()`; layout caps, the XSS spec, lint and the supply chain; the API snapshot, visual baselines, the versioning policy and coverage. It also settles the four amendments RFC 0003's build left parked, and four rough edges the first trading dashboard found (table column widths, `persist` defaults, narrow headers, a host-level clock) |
 | Sources | RFC 0001, RFC 0002, RFC 0003, [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md), [docs/WORKFLOW.md](../WORKFLOW.md), the nine P2 stories of the build plan, and the source of the merged P1 work. It takes no new measurements. |
 | Approval | Pending. Reply per decision row in §15, or "go with the recommendations". |
@@ -12,7 +12,8 @@
 RFC 0001, RFC 0002 and RFC 0003 stay the contract for everything this RFC doesn't
 mention, and none of them is edited: where this RFC changes one, the section
 says "amends RFC 000x §y" and the change lives here. Where this RFC and an
-earlier one differ, this RFC wins, and RFC 0003's §27 ("Next") points here.
+earlier one differ, this RFC wins. RFC 0003 §27 ("Next") names these stories by
+subject; this RFC specifies them. RFC 0003 itself is not edited to say so.
 
 Every P2 story in the build plan implements a part of this RFC, so the names
 below are the ones those stories use. Each section says which story implements
@@ -69,30 +70,61 @@ touches, so two stories never edit one file at the same time.
 | §11 What the first trading dashboard found | `trading-polish` (a new story, added to the board on approval) |
 | §12 Budgets | Each story that adds code, as RFC 0003 §25 says |
 
-**Files more than one P2 story touches**
+**Which stories must merge before which**
 
-The stories can run in parallel except where a file is shared. For each shared
-file, the first story in the *order* column goes first and the next rebases on
-it. Everything else is exclusive to one story.
+Stories can run in parallel except where a file or a feature is shared. A story
+does not start until everything in its *must merge first* column has merged; the
+P1 stories named there are still in review or not built, and own the same files.
+
+| Section (story) | Must merge first | Why |
+|---|---|---|
+| §1 (`chart-scrub-and-exact-values`) | `perf-hygiene`, `csp-trusted-types` | §1.2 reads the downsampled points of RFC 0003 §23 (`linePaths`' `maxPoints`, unbuilt today); both edit `chart.js` or `widget.js`. If `perf-hygiene` has not landed the story waits: it does not downsample on its own |
+| §2 (`density-and-text-scaling`) | `widget-a11y-visuals`, `csp-trusted-types`, `rtl`, `perf-hygiene`, `phone-top-strip` | Token files and `docs/theming.md`; the constructed-sheet CSS in `widget.js` and `grid.js`; the grid geometry and `grid.js` |
+| §3 (`edit-feedback`) | `rtl`, `phone-top-strip`, `csp-trusted-types`, `density-and-text-scaling` | The badge mirrors (RFC 0003 §9) and sits beside the strip's chrome button (§19); no inline `style`; shared `grid.js` |
+| §4 (`more-generic-widgets`) | `csp-trusted-types`, `chart-scrub-and-exact-values` | Templates go through `html.js`; shared `chart.js` |
+| §5 (`market-presets-and-breaks`) | `csp-trusted-types`, `perf-hygiene` | Both edit `session-clock.js` (lane cache, DOM-built ticks) |
+| §6 (`mini-chart`) | `csp-trusted-types`, `widget-a11y-visuals` | `html.js`; the `data-ts-palette` tokens §6.4 maps |
+| §7 (`create-dashboard`) | `more-generic-widgets`, `mini-chart`, `layout-list-editor` (if built) | Shared `index.js`, `index.d.ts` and `pack-lib.mjs` |
+| §8 (`security-hardening`) | `csp-trusted-types`, `consumer-examples`, `quality-extras` | The lint plan is derived after `html.js` has replaced the raw `innerHTML` writes; shared `package.json` and `ci.yml` |
+| §9 (`quality-extras`) | `consumer-examples`, `csp-trusted-types` | `package.json`, `ci.yml`, `playwright.config.mjs` and the CSP fixtures |
+| §10 (`parked-amendments`) | `density-and-text-scaling`, `more-generic-widgets`, `create-dashboard`, `widget-a11y-visuals` | Token files, `theming.md`, `widget.js`, `index.d.ts` |
+| §11 (`trading-polish`) | `trading-dashboard-example`, `edit-feedback`, `security-hardening`, `parked-amendments` | `examples/trading.html`; shared `grid.js`, `core.md`, `saving-layouts.md`, `index.d.ts`, `widget.js` |
+
+**Files more than one story touches**
+
+For each shared file, the stories are built in the order given, and the next one
+rebases on the one before. Everything not in the table belongs to one story.
 
 | File | Stories, in build order | What each adds |
 |---|---|---|
-| `src/core/messages.js` and the `Messages` interface in `src/core/index.d.ts` | Any story that adds keys: they merge in the order of the sections below, each appending **one contiguous block** under its own `// ── <family> ──` comment and editing nothing else | The keys under each section's *Messages* |
-| `src/core/index.d.ts` (other than `Messages`) | `market-presets-and-breaks`, `more-generic-widgets` (catalog types only), `security-hardening`, `trading-polish` | Calendar types, the catalog entries' types, `LayoutIssue` codes, `configure`'s `clock` |
-| `src/elements/chart.js` | `chart-scrub-and-exact-values`, then `more-generic-widgets` | `nearestPoint` and `plotFraction`, then `arcPaths` (appended at the end of the file) |
-| `src/elements/today-pnl.js`, `src/elements/equity-curve.js` | `chart-scrub-and-exact-values`, then `density-and-text-scaling` | Scrub markup and tables, then height thresholds and rem sizes |
-| `src/elements/widget.js` | `density-and-text-scaling`, then `trading-polish` | The `.tile` container and the rem type scale, then the narrow-header rules |
-| `src/elements/grid.js`, `src/elements/grid.d.ts` | `density-and-text-scaling`, then `edit-feedback`, then `trading-polish` | The `density` attribute, then the badge, the hint and the profile toast, then the persist capture and the configured clock |
-| `src/themes/tokens.css`, `src/elements/default-tokens.js` | `density-and-text-scaling`, then the parked `--ts-num-width` (§10.3, built by `density-and-text-scaling` too) | Density and type tokens |
-| `src/elements/index.js`, `src/elements/index.d.ts` | `more-generic-widgets`, then `create-dashboard` (`index.js` too), then `trading-polish` (`index.d.ts` only) | Three new classes, then `createDashboard`, then `TableColumn.width` |
-| `package.json` | `quality-extras`, then `security-hardening` | `coverage` and `api` scripts, then `lint` and its devDependencies |
-| `.github/workflows/ci.yml` | `quality-extras`, then `security-hardening` | Visual, API and coverage jobs, then SHA-pinned `uses:` lines and a lint job |
+| `src/core/messages.js` and the `Messages` interface in `src/core/index.d.ts` | Any order: each story appends **one contiguous block** under its own `// ── <family> ──` comment and edits nothing else | The keys under each section's *Messages* |
+| `src/core/index.d.ts` (other than `Messages`) | `market-presets-and-breaks`, `more-generic-widgets` (catalog types), `security-hardening`, `trading-polish`, `parked-amendments` | Calendar types, catalog types, `LayoutIssue` codes, `configure`'s `clock`, `Translate`'s key type |
+| `src/elements/index.d.ts` | `layout-list-editor` (if built), `more-generic-widgets`, `mini-chart`, `create-dashboard`, `trading-polish`, `parked-amendments` | `TsLayoutList`; the three classes; `TsMiniChart`, `MiniChartData`, `MiniChartBar`, `TsMiniChartAction` and their `@element` and `@csspart` tags; `createDashboard`, `DashboardOptions`, `Dashboard`; `TableColumn.width`; `defineWidget`'s options |
+| `src/elements/index.js` | `more-generic-widgets`, then `create-dashboard` | Three new classes, then `createDashboard` (`mini-chart` is never added) |
+| `scripts/pack-lib.mjs` | `mini-chart`, then `create-dashboard` | The `mini-chart` entry handling, then `DashboardOptions` and `Dashboard` in `TYPE_EXTRAS` under `grid`, since no entry stem names them and the orphan check would exit 1 |
+| `src/elements/chart.js` | `perf-hygiene`, `chart-scrub-and-exact-values`, then `more-generic-widgets` | Downsampling; `nearestPoint` and `plotFraction`; `arcPaths` (appended at the end) |
+| `src/elements/today-pnl.js`, `src/elements/equity-curve.js` | `chart-scrub-and-exact-values`, then `density-and-text-scaling` | Scrub markup and tables, then height tiers and rem sizes |
+| `src/elements/widget.js`, `src/elements/widget.d.ts` | `csp-trusted-types`, `perf-hygiene`, `chart-scrub-and-exact-values` (the `scrub` attribute and property, its four parts), `density-and-text-scaling`, `parked-amendments` (`--ts-num-width` in the figure formulas), `trading-polish` | As named |
+| `src/elements/grid.js`, `src/elements/grid.d.ts` | `rtl`, `phone-top-strip`, `perf-hygiene`, `csp-trusted-types`, `density-and-text-scaling`, `edit-feedback`, `trading-polish` | As named |
+| `src/elements/session-clock.js` | `csp-trusted-types`, `perf-hygiene`, then `market-presets-and-breaks` | The break lane and the coverage warning |
+| `src/themes/tokens.css`, `src/elements/default-tokens.js` | `widget-a11y-visuals`, `density-and-text-scaling`, then `parked-amendments` | Palettes; density and type tokens; `--ts-num-width` |
+| `docs/theming.md` | `widget-a11y-visuals`, `density-and-text-scaling`, then `parked-amendments` | The token-table rows (the docs-coverage test requires one per token, with Paper and Graphite values) |
+| `src/themes/presets/paper.css`, `graphite.css`, `terminal.css` | `density-and-text-scaling` | The label size (§2.3, Decision 72) |
+| `docs/reference/events.md` | `edit-feedback` (`ts-hint-dismiss`), then `mini-chart` (the `timeframe` action) | One row each; docs-coverage fails without them |
+| `docs/reference/core.md`, `docs/guide/saving-layouts.md` | `security-hardening`, then `trading-polish` | The caps, then the `clock` option and the persist capture order |
+| `test/tile-chrome.test.mjs` | `density-and-text-scaling`, then `parked-amendments` (the `.62` literal check and the `HighlightText` allowance) | As named |
+| `test/browser/fixtures/data.js` and `widgets.html` (the per-tag data map) | `more-generic-widgets` (breakdown, status, feed), then `mini-chart` | Made-up data per tag, so the gallery and the visual baselines draw them |
+| `package.json` | `consumer-examples`, `quality-extras`, then `security-hardening` | Consumer scripts; `coverage`, `api`, visual scripts; `lint` and its devDependencies |
+| `.github/workflows/ci.yml` | `consumer-examples`, `quality-extras`, then `security-hardening` | The examples job; visual, API and coverage jobs; SHA-pinned `uses:` lines and a lint job |
 | `.github/workflows/attribution.yml`, `.github/workflows/pages.yml` | `security-hardening` | SHA-pinned `uses:` lines only |
 | `src/core/calendar.js` | `market-presets-and-breaks`, then `trading-polish` (one line: the default of `now`) | Breaks, presets and coverage, then the configured clock |
-| `scripts/check-size.mjs` | Every story that adds an entry or moves a budget | One budget row each, by RFC 0003 §25's rule |
+| `scripts/check-size.mjs` | Every story that adds an entry or moves a budget, then `parked-amendments` | One budget row each, by RFC 0003 §25's rule; then the pair rows (§10.4) |
 
-`security-hardening` and `quality-extras` both depend on `browser-tests`, so
-nothing else stops them running together; the table above is why they must not.
+Two lists in this RFC differ from the story files on the board and the board
+should follow this RFC: `trading-polish` also needs `src/core/calendar.js`, and
+`parked-amendments` builds §10.2, §10.3 (the token) and §10.4 (the budget) in the
+RFC's numbering, where its brief numbers the token and the budget the other
+way round.
 
 ## 1. Chart scrubbing, exact values and data tables (amends RFC 0003 §7.1 and §15)
 
@@ -165,7 +197,9 @@ function readoutAt(scrub: ScrubData, index: number, ctx: ViewModelContext): {
   would pay for text nobody reads. `readoutAt` runs for the point under the
   pointer and for the hidden table's rows.
 - **Drawn points only.** After downsampling (RFC 0003 §23) the model keeps at
-  most `2 × width` points, and the scrub reads those. The low, high and last
+  most `2 × width` points, and the scrub reads those. **This depends on
+  `perf-hygiene`:** `linePaths` has no `maxPoints` in the code today, so the
+  scrub story waits for that story to merge and does not downsample on its own. The low, high and last
   values are exact there, so the readout never contradicts the headline.
 - **Today's P&L, M:** `label` is `fmt.time(x)`, one item `Net` with a signed
   money value (`pnl.net`). **Equity curve, M and XL:** `label` is `fmt.date(x)`,
@@ -317,13 +351,23 @@ nothing is `aria-live`.
 
 Owned by the story, as in its JSON: `src/elements/chart.js`, `src/elements/today-pnl.js`,
 `src/elements/equity-curve.js`, `src/elements/series-chart.js`, `src/elements/metric.js`
-and `test/chart.test.mjs`. **One addition, owned by this story alone:**
-`src/elements/scrub.js` (Internal), holding the pointer, touch and keyboard binding
-all three charts share, so it is written once. The story also adds its
-messages block to `src/core/messages.js` and `src/core/index.d.ts`, and its
-doc lines to `docs/widgets/ts-today-pnl.md`, `ts-equity-curve.md` and `ts-chart.md`.
-It builds **before** `density-and-text-scaling` (shared widget files) and
-**before** `more-generic-widgets` (shared `chart.js`); see the table above.
+and `test/chart.test.mjs`. **Added to its boundary by this RFC** (the board's file
+list should follow):
+
+- `src/elements/scrub.js` (new, Internal), holding the pointer, touch and keyboard
+  binding all three charts share, so it is written once.
+- `src/elements/widget.js` and `src/elements/widget.d.ts`: the `scrub` attribute
+  (in `observedAttributes`, next to `flash`) and property, and the four new parts
+  (`scrub`, `scrub-rule`, `scrub-dot`, `scrub-readout`) in the `@csspart` JSDoc.
+- `src/elements/index.d.ts`: the same `@csspart` tags for the three charts, which
+  the manifest generator and the manifest test read (RFC 0003 §22.3).
+- `docs/widgets/ts-today-pnl.md`, `ts-equity-curve.md` and `ts-chart.md`.
+- `test/browser/fixtures/` data is not touched: the existing charts already have data.
+
+It also adds its messages block to `src/core/messages.js` and `src/core/index.d.ts`.
+It builds **after** `perf-hygiene` and `csp-trusted-types`, **before**
+`density-and-text-scaling` (shared widget files) and **before** `more-generic-widgets`
+(shared `chart.js`); the order of every shared file is in the table at the top.
 
 ### 1.10 Size
 
@@ -381,9 +425,10 @@ class TsGrid {
 
 - **Applied by the grid, with zero specificity above the host.** The grid's own
   CSS declares the three tokens under `:host([density="compact"])`. A rule in
-  the host's stylesheet, such as `ts-grid { --ts-row: 140px }`, therefore still
-  wins (outer styles beat `:host` rules), and a host that sets its own
-  `--ts-pad` keeps it.
+  the host's stylesheet **on the `ts-grid` element**, such as `ts-grid { --ts-row: 140px }`,
+  therefore still wins (outer styles beat `:host` rules). A value set on `:root`
+  or a wrapper is only inherited, so `density="compact"` overrides it: a host that
+  wants its own `--ts-pad` under compact density sets it on the grid.
 - **For elements outside a grid** (a widget in the host's own CSS grid) the same
   three values are declared in `tokens.css` and `default-tokens.js` under
   `:where([data-ts-density="compact"])`, and the sync test keeps the two equal.
@@ -391,9 +436,11 @@ class TsGrid {
   and `data-ts-palette` for "set on any element", while `density` on the grid
   is a behaviour of the grid, like `locale` (Decision 43).
 - **Phones keep their own rows.** At 2 columns the grid reads `--ts-row-compact`
-  and `--ts-gap-compact` (RFC 0001 §4.1), which are already tight, so
-  `density="compact"` changes only `--ts-pad` there. A phone layout does not
-  shrink twice.
+  (150 px by default) and `--ts-gap-compact` (10 px) (RFC 0001 §4.1), so
+  `density="compact"` changes only `--ts-pad` there: a phone's rows are fixed so
+  live numbers never resize a tile, and the compact density is about padding
+  on a phone. (The `compact` flag inside the grid's `_measure` means "2 columns",
+  not this density; the two are unrelated.)
 - **The geometry follows.** `_measure` reads the tokens as it does today, so
   placement, drag targets and the saved layout are unchanged: a layout is cells,
   not pixels.
@@ -409,65 +456,112 @@ the tile's **width**. Compact rows make tiles short, so they now also answer its
   tile always has a definite height: a grid sets it inline, and
   `standaloneCss()` gives a standalone widget `rows × --ts-row` plus the gaps. A
   host that overrides a widget's `height` to `auto` loses that guarantee and the
-  docs say so.
-- **Thresholds are in `rem`, not px.** Custom properties can't be used inside a
-  container condition, and a threshold in px would stop meaning "this tile is
-  too short for its text" the moment the reader raises the root font size. The
-  proposed tiers (Decision 45):
+  docs say so. The container is still unnamed-compatible: the existing unnamed
+  `@container (max-width: …)` rules in widget CSS (for example `.pre` in
+  `widget.js`) keep matching the same container, now on its width and height.
+- **Queries measure the content box, so the tiers are derived from it.** A size
+  container's height is the tile's height **minus its padding and border**
+  (`padding: var(--ts-pad)` and a 1 px border sit on the same element). The
+  content-box heights of a one-row tile, at a 16 px root:
+
+  | Case | Row | Padding | Border | Content box | In rem |
+  |---|---|---|---|---|---|
+  | Comfortable, light | 150 px | 18 px × 2 | 2 px | 112 px | 7.0 rem |
+  | Comfortable, dark | 150 px | 16 px × 2 | 2 px | 116 px | 7.25 rem |
+  | Phone (2 columns), either | 150 px | as above | 2 px | 112 or 116 px | 7.0 or 7.25 rem |
+  | Phone, compact density | 150 px | 12 px × 2 | 2 px | 124 px | 7.75 rem |
+  | Compact density | 120 px | 12 px × 2 | 2 px | 94 px | 5.875 rem |
+
+  Two-row and taller tiles have a content box of at least 278 px (17 rem) and are
+  never below a tier.
+- **The tiers** (Decision 45), chosen so that **a default dashboard loses nothing**:
 
   | Tier | Condition | What hides |
   |---|---|---|
-  | snug | `@container ts-tile (max-height: 8.5rem)` | The secondary line under the headline (`.sub`, notes), the second row of a header's meta |
-  | tight | `@container ts-tile (max-height: 6.5rem)` | Also the tertiary rows of a list widget (everything after the first two rows) and chart axis labels |
+  | snug | `@container ts-tile (max-height: 6.5rem)` | The secondary line under the headline (`.sub`, notes), the second row of a header's meta |
+  | tight | `@container ts-tile (max-height: 5rem)` | Also the tertiary rows of a list widget (everything after the first two rows) and chart axis labels |
 
-  At a 16 px root, a `150px` comfortable row (9.375 rem) is neither snug nor tight, and a
-  `120px` compact row (7.5 rem) is snug but not tight. At a 20 px root the same
-  120 px row is 6 rem, so it is tight: the text grew and the tile didn't, and
-  the widget gives up its secondary rows before anything clips.
+  At a 16 px root: every comfortable and phone tile (7.0 rem and above) is
+  neither snug nor tight; a compact tile (5.875 rem) is snug but not tight. At a
+  20 px root the compact tile's 94 px is 4.7 rem, so it is tight, and a comfortable
+  tile's 112 px is 5.6 rem, so it is snug but not tight: the text grew and the tile
+  didn't, and the widget gives up its secondary rows before anything clips.
+- **The rule that matters:** **at comfortable density, a 16 px root and the default
+  tokens, every widget at every size keeps every line it shows today.** The story
+  proves it with screenshots before and after (and the visual baselines of §9 once
+  they exist), and a tier whose threshold would have hidden a line on a default
+  tile is a bug in the threshold, not a reason to hide the line. Section 13 lists
+  a row for any default tile that does change.
 - **What never hides.** The label, the headline figure, its sign and arrow, the
   state of the data (stale, error) and every control stay at every height. Only
   secondary rows go, and a hidden row's content is still available to assistive
   technology through the tile's `ariaLabel`, since the name states the headline
   and its main context.
 - **Each widget declares its own tiers** in its `static styles`, naming only the
-  classes it owns. The story covers `today-pnl.js` and `equity-curve.js`
-  (its file list) and the shared `widget.js` rules (header, `.sub`, `.sm`, `.xs`).
-  The other built-in widgets already use width queries and are listed in the
-  story's report as follow-ups for height tiers; they must not clip at compact
-  density (see 2.4), and any that does is fixed or reported.
+  classes it owns. The story covers `today-pnl.js` and `equity-curve.js` (its file
+  list) and the shared `widget.js` rules (header, `.sub`, `.sm`, `.xs`). The other
+  built-in widgets already use width queries; they must not clip at compact
+  density (2.4), and the ones that do are fixed in the follow-up of 2.3 or reported.
 
 ### 2.3 The type scale moves to rem
 
 Font sizes become tokens on a rem scale, so a reader's larger default text size
-reaches every tile.
+reaches the tiles.
 
-| Token | Default (both themes) | Was | Used by |
-|---|---|---|---|
-| `--ts-text-xs` | `.6875rem` (11 px at a 16 px root) | `10px` | `.xs` and the tick labels |
-| `--ts-text-sm` | `.75rem` (12 px) | `11px` | `.sm`, buttons |
-| `--ts-text-md` | `.8125rem` (13 px) | `13px` | The tile's base `font` |
-| `--ts-text-lg` | `1.0625rem` (17 px) | `17px` | `.md` and its cap |
-| `--ts-text-big` | `2.125rem` (34 px) | `34px` | `.big`'s cap |
-| `--ts-text-xbig` | `3rem` (48 px) | `48px` | `.xbig`'s cap |
-| `--ts-label-size` (existing, RFC 0003 §5.4) | `.6875rem` (11 px) | `10px` | `.lb`, the label |
+**The inventory.** The source has 49 `px` text declarations across 14 element files
+and six preset files. The sizes in use are 9, 10, 11, 12, 13, 14, 15, 16, 17, 26,
+34 and 48 px, plus width-capped figures (`min(34px, 19cqi)`, `min(26px, 15cqi)`,
+`calc(8.6cqi - 2px)`, and `min(17px, calc(100cqi / (var(--fc, 10) * .62 + .65)))`).
 
-- **Labels are at least 11 px at a 16 px root**, as the story's acceptance asks;
-  that is why the label, `.xs` and `.sm` each rise by one pixel: the order of
-  the scale (label ≤ small ≤ base) is kept. This is a visible change for every
-  host and is listed in §13 (Decision 44).
-- **The container-width figure formulas** (`min(34px, 19cqi)` and its
-  siblings) keep their shape and take the token for the cap:
-  `min(var(--ts-text-big, 2.125rem), 19cqi)`. The figure still shrinks with the
-  tile's width first, so a long value doesn't overflow at a large root size.
-- **Row heights stay in px.** The grid's cells are the unit of layout, and a
-  layout must not move because a reader changed a font. Hosts that want tiles
-  to grow with text set `--ts-row` in rem themselves, and docs/theming.md shows
-  how.
-- **No other px text remains** in widget CSS. A test scans `static styles` and the
-  shared CSS for `font-size: <n>px` and fails on any not in a short allow-list
-  of icon glyph sizes, with the reason beside each.
+**The scale** covers every size in use, one token each (each is a rem value with a px
+floor, Decision 75):
+
+| Token | Value at a 16 px root | Sizes it replaces |
+|---|---|---|
+| `--ts-text-2xs` | `max(9px, .5625rem)` | 9 px: day numbers, histogram labels |
+| `--ts-text-xs` | `max(10px, .625rem)` | 10 px: secondary rows, `.xs` |
+| `--ts-text-sm` | `max(11px, .6875rem)` | 11 px: `.sm`, small buttons |
+| `--ts-text-md` | `max(12px, .75rem)` | 12 px |
+| `--ts-text-base` | `max(13px, .8125rem)` | 13 px: the tile's base `font` |
+| `--ts-text-lg` | `max(14px, .875rem)` | 14 px |
+| `--ts-text-xl` | `max(16px, 1rem)` | 15 px (snapped, see below) and 16 px |
+| `--ts-text-2xl` | `max(17px, 1.0625rem)` | 17 px: `.md` and its cap |
+| `--ts-text-3xl` | `max(26px, 1.625rem)` | 26 px: the progress figure |
+| `--ts-text-big` | `max(34px, 2.125rem)` | 34 px: `.big`'s cap |
+| `--ts-text-xbig` | `max(48px, 3rem)` | 48 px: `.xbig`'s cap |
+| `--ts-label-size` (existing) | `max(11px, .6875rem)` | The tile label: **10 px before** |
+
+- **Only the label moves.** Every other token equals the px size it replaces, so the
+  one visible change at a 16 px root is the label, from 10 px to 11 px (Decision 44).
+  The single 15 px declaration (`capital-funding.js`) snaps to 16 px; the story that
+  converts that file checks the screenshot.
+- **Labels are at least 11 px** at any root size, because of the px floor.
+- **The figure formulas keep their shape** and take the token for the cap:
+  `min(var(--ts-text-big), 19cqi)`, `min(var(--ts-text-3xl), 15cqi)`. The figure
+  still shrinks with the tile's width first. `--ts-num-width` (§10.3) later
+  replaces the `.62` in the `.cell .md` formula only.
+- **Row heights stay in px.** The grid's cells are the unit of layout, and a layout
+  must not move because a reader changed a font. Hosts that want tiles to grow
+  with text set `--ts-row` in rem themselves, and docs/theming.md shows how.
+- **Presets.** `terminal.css`, `graphite.css` and `paper.css` set
+  `--ts-label-size: 10px`; they change to the token's value, so the 11 px floor
+  holds for them (Decision 72). `neutral` (11 px), `signal` (11 px) and `calm`
+  (12 px) already meet it.
+
+**What the density story converts, and what it leaves.**
+
+| Files | The story |
+|---|---|
+| `widget.js` (shared CSS: 13 px base, `.big`, `.xbig`, `.md`, `.sm`, `.xs`, buttons, the label, the cell formula), `grid.js` (9 declarations: 10, 13, 14 and 16 px), `today-pnl.js` (the `min(34px, 15cqi)` and `calc(8.6cqi - 2px)` caps), `equity-curve.js` (12, 26 and 34 px), the three presets above | **Converts** |
+| `capital-funding.js`, `watchlist.js`, `open-positions.js`, `pnl-calendar.js`, `edge-stats.js`, `progress.js`, `card.js`, `metric.js`, `series-chart.js`, `table.js`, `picker.js`, `grid-controls.js` | **Leaves in px** for now: merged stories own them. They are converted by one follow-up, `type-scale-rollout`, which the board gains on approval (Decision 73). Until it lands those widgets' small text does not follow the root font size, and the docs say so |
+
+- **The scan test covers the converted files only.** It fails on a `font-size: <n>px`
+  or `font: … <n>px` in them, outside a short allow-list (icon glyph sizes, each with
+  its reason beside it). It also fails on a font-size fallback of `10px` in
+  `var(--ts-label-size, 10px)` there. The follow-up widens the test to every file.
 - Each token exists in `tokens.css` and `default-tokens.js` (the sync test keeps
-  them equal) and in the docs' token table.
+  them equal) and in the docs' token table (`docs/theming.md`), which the
+  docs-coverage test requires a row for with Paper and Graphite values.
 
 ### 2.4 The text-spacing check
 
@@ -502,13 +596,15 @@ The reduced-height tiers must not hide a control the user needs to act on.
 
 Owned by the story, as in its JSON: `src/elements/grid.js`, `src/elements/widget.js`,
 `src/elements/today-pnl.js`, `src/elements/equity-curve.js`, `src/themes/tokens.css`,
-`src/elements/default-tokens.js` and `widgets.html`. It builds **after**
-`chart-scrub-and-exact-values` (shared chart widgets) and **before**
-`edit-feedback` (shared `grid.js`). It also builds the `--ts-num-width` token of
-§10.3 if that is accepted, in the same two token files. Tests: it extends
-`test/tokens.test.mjs`, `test/default-tokens.test.mjs` and
-`test/tile-chrome.test.mjs` only for the new tokens and the `px` scan, and adds
-`test/density.test.mjs`.
+`src/elements/default-tokens.js` and `widgets.html`. **Added to its boundary by this
+RFC:** `docs/theming.md` (the token rows; it follows `widget-a11y-visuals`),
+`src/themes/presets/paper.css`, `graphite.css` and `terminal.css`, `docs/widgets/ts-grid.md`
+(the attribute), and tests: `test/density.test.mjs` (new), `test/tokens.test.mjs`,
+`test/default-tokens.test.mjs`, `test/presets.test.mjs` and `test/tile-chrome.test.mjs`
+(extended only for the new tokens and the scan). It builds **after** `widget-a11y-visuals`,
+`csp-trusted-types`, `rtl`, `perf-hygiene`, `phone-top-strip` and
+`chart-scrub-and-exact-values`, and **before** `edit-feedback` and `parked-amendments`.
+`--ts-num-width` (§10.3) is **not** built here: `parked-amendments` builds it.
 
 ### 2.8 Size
 
@@ -523,8 +619,14 @@ move and does not raise a budget.
   once and falls back, and removing the attribute restores the comfortable values.
 - The sync tests pass: the density block and the type tokens are equal in the
   two token files.
-- A scan test: no `font-size: <n>px` in widget CSS outside the allow-list, and
-  `--ts-label-size` resolves to at least 11 px at a 16 px root.
+- A scan test over the **converted files only** (2.3): no `font-size: <n>px` outside
+  the allow-list, no `10px` label fallback, and `--ts-label-size` resolves to at least
+  11 px at 16 px, 20 px and 10 px (a 62.5% root) roots, and in the `terminal`, `graphite`
+  and `paper` presets.
+- The inventory of 2.3 is checked: every px size in the converted files maps to a token.
+- Before and after screenshots of a default dashboard (comfortable, 16 px root, light and
+  dark, every size) are identical but for the label; no secondary line disappears (the
+  rule of 2.2).
 - Screenshots at 390 and 1280 px, light and dark, every size of every widget,
   comfortable and compact, with the text-spacing switch on and off, and a note
   of what was seen. No headline, label or figure is clipped with the switch on.
@@ -550,6 +652,9 @@ changed by itself.
   the tile's chrome shows a badge that reads **"Medium · 2×2"**: the size's name
   (`size.M`, "Medium") and its footprint in columns and rows (`grid.badge`). It
   updates as the snapped size changes under the pointer.
+- **The footprint shown is the nominal one.** On a phone an L tile is placed at the
+  size it renders, but the badge names the size the layout will save ("Large · 3×2"),
+  not the 2-column clamp, so it matches what the picker and the list editor call it.
 - **It fades one second after release** (the last pointer-up, or the last key
   press), and the badge is removed from layout when the fade ends. With
   `prefers-reduced-motion: reduce` it does not fade: it disappears one second
@@ -609,7 +714,7 @@ interface TsHintDismissDetail { reason: 'dismiss' | 'edit' }    // event 'ts-hin
 - **Motion.** The card appears with a short fade and a one-time nudge of its
   arrow, both off under `prefers-reduced-motion`.
 
-### 3.3 The calm profile switch
+### 3.3 The calm profile switch (amends `docs/ACCESSIBILITY.md` item 18)
 
 When the schedule changes the active profile on its own (`ts-profile-change`
 with `reason: 'schedule'`), the grid no longer swaps the tiles in one frame.
@@ -622,36 +727,46 @@ with `reason: 'schedule'`), the grid no longer swaps the tiles in one frame.
   `transition` and no inline `style` string are involved (strict CSP safe), and
   an animation in flight is `cancel()`led when another switch or an edit begins,
   so nothing is left half-faded.
-- **Only for a scheduled switch.** A user's own `override()`, the `profile`
-  attribute, the first render and every edit apply immediately, as today. A
-  switch deferred because the user was editing or dragging (the grid already
-  waits, RFC 0002 §5) animates when it finally applies.
+- **Which reasons.** The crossfade runs for `'schedule'` and for `'override-ended'`
+  (a kept profile lapsing at the next scheduled change: the scheduler, not the user,
+  moved the board). A user's own `override()`, the `profile` attribute, the first
+  render and every edit apply immediately, as today. A switch deferred because the
+  user was editing or dragging (the grid already waits, RFC 0002 §5) animates when
+  it finally applies.
 - **No animation under `prefers-reduced-motion: reduce`** (or without
   `board.animate`): the new layout appears at once.
-- **The toast.** The same element as the undo toast (`part="toast"`) shows
-  **"Switched to After close"** (`grid.profileSwitched`) with an action button
-  **"Keep Market hours"** (`grid.keepProfile`), for the same 6 s and with the
-  same pause on pointer or focus (`TOAST_MS`). The profile names are
-  `controls.market` and `controls.closed` for the built-in profiles and the profile's
-  own name for any other.
-- **Keep previous** calls `grid.override(previous)`. That is the existing
-  override: the previous profile stays until the schedule next changes, then
-  the schedule takes over again, so "keep" never turns into a permanent lock
-  (Decision 47). It fires `ts-profile-change` with `reason: 'override'`, the
-  toast announces `grid.keptProfile` ("Keeping Market hours until the next
-  change.") and the controls' pressed state follows (RFC 0003 §18.5).
-- **One toast at a time.** A newer toast replaces an older one. A removal's
-  Undo is only offered in edit mode, and a scheduled switch waits for edit mode
-  to end, so the two never collide in practice; if they ever do, the newer wins
-  and Ctrl or Cmd+Z still undoes the removal while editing.
+- **The toast, and generalising it.** The undo toast (`part="toast"`) is hard-wired
+  to **Undo** today (`_toastUndo`, `_undoFromToast`). The story generalises it to
+  "a message, a button label and a handler" and keeps the removal toast's behaviour
+  unchanged. The profile toast shows **"Switched to After close"**
+  (`grid.profileSwitched`) with a button **"Keep Market hours"** (`grid.keepProfile`),
+  for the same 6 s (`TOAST_MS`) and with the same pause on pointer or focus. It shows
+  for `reason: 'schedule'` only: `'override-ended'` crossfades but offers nothing to
+  keep, since the user already chose. The profile names are `controls.market` and
+  `controls.closed` for the built-in profiles and the profile's own name for others.
+- **Keep previous** calls `grid.override(previous)`. That is the existing override:
+  the previous profile stays until the schedule next changes, then the schedule takes
+  over again, so "keep" never turns into a permanent lock (Decision 47). It fires
+  `ts-profile-change` with `reason: 'override'`, the status region says
+  `grid.keptProfile` ("Keeping Market hours until the next change.") and the
+  controls' pressed state follows (RFC 0003 §18.5).
+- **One toast at a time.** A newer toast replaces an older one. A removal's Undo is
+  only offered in edit mode, and a scheduled switch waits for edit mode to end, so the
+  two never collide in practice; if they ever do, the newer wins and Ctrl or Cmd+Z
+  still undoes the removal while editing.
 - **The host's switch.** `undo-toast="off"` suppresses this toast as well. The
-  grid then announces `grid.profile` through its status region, as it does today,
-  and the crossfade still runs.
-- **The announcement.** The toast is a `role="status"` region (ACCESSIBILITY
-  item 18 allows changes the user didn't cause but that change the page under
-  them), so the switch is spoken once. The grid's existing `grid.profile`
-  announcement is **not** also made when the toast shows, so it is never said
-  twice.
+  crossfade still runs and the announcement below is still made.
+- **The announcement amends `docs/ACCESSIBILITY.md` item 18.** Item 18 says "Only
+  changes the user caused are announced: grid editing … and the undo toast". A
+  scheduled switch is not user-caused. This RFC amends the item (Decision 74) to read
+  "…and a scheduled change of profile, announced once through the grid's polite
+  status region". The spoken text is the grid's existing `grid.profile` ("Showing the
+  After close layout."), made as it is today for a non-quiet schedule change. **The
+  toast itself is not a live region for this use:** while it shows a profile switch
+  its container is `role="group"` with `aria-label` `grid.profileSwitched`, not
+  `role="status"`, so the switch is spoken once, by the status region, and never
+  twice. The **Keep** button stays reachable by Tab and has a 44 px target. The story
+  edits `docs/ACCESSIBILITY.md` item 18 in the same PR.
 
 ### 3.4 Messages
 
@@ -666,8 +781,10 @@ for them.
 ### 3.5 Accessibility
 
 The badge is decorative and hidden from assistive technology; the hint is a
-note with a 44 px button and no live region; the toast keeps its existing
-`role="status"`, pause-on-focus and 44 px **Keep** target (ACCESSIBILITY item 8);
+note with a 44 px button and no live region; the removal toast keeps its
+`role="status"`, and the profile toast is a labelled group whose announcement is the
+grid's status region (§3.3, item 18 as amended), with pause-on-focus and a 44 px
+**Keep** target (item 8);
 the crossfade and the nudge respect reduced motion (item 17); the hint and
 badge use logical insets and mirror in right-to-left grids (item 12). Nothing
 new is announced during a drag.
@@ -677,10 +794,12 @@ new is announced during a drag.
 Owned by the story, as in its JSON: `src/elements/grid.js` and `src/elements/grid.d.ts`
 (the `hint` property, `TsHintDismissDetail`, the `'ts-hint-dismiss'` entry in
 the event map, and the `badge`, `hint` and `hint-dismiss` parts in the JSDoc
-the manifest reads, RFC 0003 §22.3). It builds **after** `density-and-text-scaling`
+the manifest reads, RFC 0003 §22.3). It builds **after** `rtl`, `phone-top-strip`, `csp-trusted-types` and `density-and-text-scaling`
 (shared `grid.js`) and adds its message block as the table at the top of this RFC says.
 It also updates `docs/widgets/ts-grid.md` for the attribute, the event and the parts,
-and `docs/ACCESSIBILITY.md` is left to the manual-pass story.
+`docs/reference/events.md` for the `ts-hint-dismiss` row (the docs-coverage test
+fails without it), and `docs/ACCESSIBILITY.md` item 18 (§3.3). It adds
+`test/grid-edit-feedback.test.mjs` (new) for the badge, the hint and the toast.
 
 ### 3.7 Size
 
@@ -703,7 +822,9 @@ card is created the first time `hint` is set, not with the grid's template.
   reduced motion calls it zero times; the toast shows `grid.profileSwitched`
   and **Keep** calls `override(previous)` and fires `ts-profile-change`
   with `reason: 'override'`; `undo-toast="off"` shows no toast and still
-  announces; only one of toast and `grid.profile` is spoken.
+  announces once through the status region (`grid.profile`) and the profile toast is a
+  `role="group"`, never `role="status"`; an `override-ended` switch crossfades and shows
+  no toast.
 - By hand: resize with a mouse and with the keyboard, light and dark, 390 and
   1280 px, and in a `dir="rtl"` grid; try the hint; cross the close with the
   playground's pretend clock and keep the previous profile.
@@ -764,7 +885,7 @@ declare class TsBreakdown extends TsWidget<BreakdownData> {
 }
 
 interface BreakdownModel {
-  ariaLabel: string              // 'Allocation, 5 parts, largest Equities 41.2%'
+  ariaLabel: string              // 'Allocation: 5 parts, largest Equities 41.2%'  (breakdown.chartLabel)
   kind: 'share' | 'stacked' | 'donut'    // by size (below)
   total: string                  // fmt of the sum of the kept values; '' with nothing to show
   slices: Array<{
@@ -773,7 +894,7 @@ interface BreakdownModel {
     value: string                // formatted; '' for the folded "Other" when it has no single value to show
     pct: string                  // '41.2%'
     fraction: number             // 0..1, the true share, for drawing
-    index: number                // 1–5 picks --ts-series-<n>; 0 is the folded "Other" (--ts-axis)
+    index: number                // 1–6 picks --ts-series-<n> (6 only when there is no "Other"); 0 is the folded "Other" (--ts-axis)
     other: boolean
     note: string
   }>
@@ -809,6 +930,9 @@ interface BreakdownModel {
   `<ul>` whose items read `Equities, 41.2%`, so identity and size never depend
   on colour (ACCESSIBILITY item 15). The drawing is one `role="img"` whose
   `aria-label` is `ariaLabel`; its slices are not exposed separately.
+- **Forced colours.** Backgrounds are dropped there, so the bar and the donut keep
+  their meaning through the text legend, the gap lines in `CanvasText` and a `Highlight`
+  outline on the largest slice; the status dots keep their shapes in `CanvasText`.
 - **Colour is not the only cue.** Adjacent slices are separated by a
   `--ts-surface` gap line, and the legend swatch is a shape the same size as
   the slice's mark. Signs don't apply: a share is not a gain or a loss.
@@ -849,11 +973,11 @@ every engine. `arcPaths` loops, never spreads, and rounds like `linePaths`.
 | `breakdown.item` | "{label}, {pct}" | `label`, `pct` |
 | `breakdown.share` | "{label} {pct}" (S) | `label`, `pct` |
 | `breakdown.excluded.one`, `.other` | "{count} negative value left out", "{count} negative values left out" | `count` |
-| `breakdown.chartLabel` | "{label}: {count} parts, largest {name} {pct}" | `label`, `count`, `name`, `pct` |
+| `breakdown.chartLabel.one`, `.other` | "{label}: {count} part, largest {name} {pct}", "{label}: {count} parts, largest {name} {pct}" | `label`, `count`, `name`, `pct` |
 | `breakdown.chartEmpty` | "{label}: nothing to break down" | `label` |
 | `widget.breakdown.label`, `.description`, `.empty` | "Breakdown", the description above, "Nothing to break down" | |
 
-### 4.2 `<ts-status>`
+### 4.2 `<ts-status>` (Decision 50)
 
 Health at a glance, one row per service.
 
@@ -878,7 +1002,7 @@ declare class TsStatus extends TsWidget<StatusData> {
 }
 
 interface StatusModel {
-  ariaLabel: string             // 'Services, 3 of 4 OK, 1 degraded'
+  ariaLabel: string             // 'Services, 3 of 4 OK, Degraded'  (status.ariaWorst)
   overall: StatusState          // the worst state present: down, then degraded, then unknown, then ok
   summary: string               // '3 of 4 OK'
   counts: { ok: number; degraded: number; down: number; unknown: number }
@@ -919,7 +1043,7 @@ interface StatusModel {
 | Key | English | Parameters |
 |---|---|---|
 | `status.ok`, `status.degraded`, `status.down`, `status.unknown` | "OK", "Degraded", "Down", "Unknown" | |
-| `status.summary` | "{ok} of {total} OK" | `ok`, `total` |
+| `status.summary.one`, `.other` | "{ok} of {total} OK" for a total of 1, and the same text for other totals, so a language can inflect "service"; `count` is `total` | `ok`, `total` |
 | `status.since` | "since {when}" | `when` |
 | `status.rowAria` | "{name}, {state}" | `name`, `state` |
 | `status.aria` | "{label}, {summary}" with the overall state appended when it isn't OK: `status.ariaWorst` "{label}, {summary}, {state}" | `label`, `summary`, `state` |
@@ -951,7 +1075,7 @@ declare class TsFeed extends TsWidget<FeedData> {
 }
 
 interface FeedModel {
-  ariaLabel: string             // 'Activity, 12 events, latest: Order filled'
+  ariaLabel: string             // 'Activity, 12 events, latest: Order filled'  (feed.aria)
   items: Array<{ id: string | number; text: string; time: string; tag: string; tone: 'pos' | 'neg' | 'warn' | 'mut'; detail: string }>
   hidden: number                // items beyond `max`, not shown
   more: string                  // t('feed.more', { count: hidden }, hidden), or ''
@@ -972,8 +1096,10 @@ interface FeedModel {
 - **The host's order is kept.** The widget does not sort by time: the host sends
   newest first. `max` shows the first `max` items (default 50, Decision 49) and
   `more` says how many were left out ("12 older events not shown").
-- **Time.** `time` is `fmt.time` for today in the formatter's zone and `fmt.date`
-  with the time on other days; M and L show it, Tall shows it small.
+- **Time.** `time` is `fmt.time(t)` when `localDate(t, zone)` equals `localDate(now, zone)`
+  (`now` is `ctx.now`, `zone` the formatter's `timeZone`), and otherwise `fmt.date(t,
+  { style: 'day' })` followed by `fmt.time(t)`, joined by a space; M and L show it,
+  Tall shows it small.
 - **Tone is a hint, not the message.** The tag's text is always shown when
   there is a tag; `tone` only colours it, and a tag-less item has no tone.
 - **No `aria-live`.** A feed that ticks never speaks (ACCESSIBILITY item 18):
@@ -987,7 +1113,7 @@ interface FeedModel {
 |---|---|---|
 | `feed.more.one`, `.other` | "{count} older event not shown", "{count} older events not shown" | `count` |
 | `feed.itemAria` | "{time}, {tag}: {text}" and, without a tag, `feed.itemAriaPlain` "{time}, {text}" | `time`, `tag`, `text` |
-| `feed.aria` | "{label}, {count} events, latest: {text}" | `label`, `count`, `text` |
+| `feed.aria.one`, `.other` | "{label}, {count} event, latest: {text}", "{label}, {count} events, latest: {text}" | `label`, `count`, `text` |
 | `feed.ariaEmpty` | "{label}, no events" | `label` |
 | `widget.feed.label`, `.description`, `.empty` | "Feed", the description above, "Nothing yet" | |
 
@@ -1000,8 +1126,13 @@ Owned by the story, as in its JSON: `src/elements/breakdown.js`, `status.js`,
 `test/breakdown.test.mjs`, `status.test.mjs`, `feed.test.mjs`. It also adds its
 message blocks (shared files, top of this RFC), the three docs pages
 `docs/widgets/ts-breakdown.md`, `ts-status.md` and `ts-feed.md` (the brief asks for them),
-and one budget row each in `scripts/check-size.mjs`. `create-dashboard` edits
-`src/elements/index.js` after it.
+and one budget row each in `scripts/check-size.mjs`. **Added to its boundary by
+this RFC:** `test/browser/fixtures/data.js` and the fixture `widgets.html` (made-up data
+per new tag, so the gallery and the visual baselines draw them), and the `@element`,
+`@attr` and `@csspart` JSDoc for the three classes in `src/elements/index.d.ts`,
+which the manifest test refuses to build without. It builds after `csp-trusted-types`
+and `chart-scrub-and-exact-values`; `create-dashboard` edits `src/elements/index.js`
+after it.
 
 ### 4.5 Size
 
@@ -1077,8 +1208,8 @@ interface SessionState {
 - **Validation.** `checkSpec` throws `TypeError`, as for any malformed spec, for:
   a break that isn't `{ from, to }` of `'HH:MM'`; `from` not before `to`
   within the window; a break outside the window (before its open or after its
-  close, with an overnight window's next-day times understood: for a window that
-  opens `17:00` and closes `16:00`, a break at `01:00` to `01:30` is the next
+  close, with an overnight window's next-day times understood: for a made-up window that
+  opens `18:10` and closes `15:50`, a break at `02:20` to `02:40` is the next
   morning's); overlapping or unsorted breaks; and more than four breaks.
   A close range (`close.ranges`) with an earlier close than a break clips it
   for that date: the break past the close is ignored, never an error.
@@ -1091,7 +1222,7 @@ interface SessionState {
   `zonedTime`; a break inside the spring-forward gap is clamped to the window and
   one that ends up empty is dropped. New fixtures cover the DST weeks of
   `Asia/Tokyo` (no DST), `Europe/London` and `America/New_York`.
-- **Profiles.** `activeProfile` treats a break as **open** by default, so a layout
+- **Profiles.** A break counts as open for the layout profile by default, so a layout
   doesn't switch at lunch (Decision 52):
 
   ```ts
@@ -1102,11 +1233,32 @@ interface SessionState {
   }
   ```
 
+  **The mechanism.** `activeProfile` and `nextProfileChange` both build their spans
+  in the internal `spans()` of `calendar.js`, from `calendar.windows(id, from, to)`.
+  Since `windows()` now returns the segments either side of a break, which never
+  touch, `spans()` would otherwise see two spans and switch at lunch. So:
+
+  ```ts
+  interface Calendar {
+    /** …as RFC 0003 §12, with one optional argument: */
+    windows(id: string, from: number, to: number, o?: { throughBreaks?: boolean }): Array<{ open: number; close: number }>
+  }
+  ```
+
+  With `throughBreaks: true`, `windows()` returns each day's window **unsplit** (the
+  envelope from the first open to the last close, merged with touching neighbours as
+  before) and ignores `breaks`. `spans()` passes
+  `{ throughBreaks: schedule.market.duringBreaks !== 'closed' }`, so with the default
+  a lunch break is inside one span and the profile does not change, and with
+  `'closed'` the segments stay apart and the profile switches at the break. Nothing
+  else calls it with the option: `state()`, `nextChange()` and the session clock see the
+  break. The function that changes is `spans()` (and `windows()` gains the option).
+
 ### 5.2 The session clock during a break
 
 - **The lane reads "Break".** In place of the open or closed title, the lane
   shows `t('session.break')` and, under it, `t('session.resumes', { time })`
-  ("resumes 13:00"), with the time in the session's zone. The fill and ticks
+  ("resumes 10:20", with made-up times), with the time in the session's zone. The fill and ticks
   are drawn in two segments with the break as a visible gap. At S the whole
   clock reads **Break**.
 - **Counting down.** While a run ends in a break, the countdown reads
@@ -1147,14 +1299,16 @@ declare const presets: {
   exchange's own site, not a data vendor, a broker or an encyclopaedia),
   reads the hours that apply on the day of the build, and writes them into the
   preset. If a page cannot be reached or is ambiguous, the story reports it and
-  does not guess. The existing `nse` and `mcx` presets already follow this
-  rule (the comment above `presets` in `calendar.js` lists the circulars and
-  the date).
+  does not guess. The existing `nse` and `mcx` presets follow the same rule in spirit
+  (the comment above `presets` in `calendar.js` lists circulars and a date), but
+  their comment has no URL, so they are **not unchanged**: the story re-opens the
+  official NSE and MCX pages, confirms or corrects their hours, and gives them the
+  same `Source:` and `Checked:` lines as the new presets, in the same PR.
 - **Every preset cites its source.** The comment block above each preset has
   two lines, `Source: <url of the exchange page>` and `Checked: <YYYY-MM-DD>`, and
   `docs/guide/sessions.md` repeats them in a table (preset, id, source, date
   checked). A node test reads `calendar.js` and the guide with `node:fs` and
-  fails if a key of `presets` has no `Source:` URL beginning `https://` or no
+  fails if **any** key of `presets` (the new presets and `nse` and `mcx`) has no `Source:` URL beginning `https://` or no
   `Checked:` date in either place, or a `Checked:` date in the future.
   It cannot check the hours themselves; that is why the story's report quotes,
   for each preset, the wording of the page it read.
@@ -1182,13 +1336,13 @@ interface CalendarInput {
    * The instant coverage is judged against. Default: Date.now(), read once when the
    * calendar is created. Pass it in tests and in servers that render at a fixed time.
    */
-  now?: Time
+  now?: number
 }
 
 interface CalendarIssue {
   session: string
   code: 'holiday-coverage'
-  message: string          // 'The holiday list for "nyse" ends on 2026-12-31, 66 days from now.'
+  message: string          // 'The holiday list for "nyse" ends on 2026-12-31, 67 days from now.'
 }
 
 interface Calendar {
@@ -1257,7 +1411,11 @@ records the alternative), and the maintainer decides.
   `progress` each; an overnight window with a break after midnight; a holiday
   removing the window; a special session with and without breaks; the DST weeks.
 - `checkSpec` throws `TypeError` for each invalid break shape listed above.
-- Each preset: id, zone, days and probes, plus the citation test of 5.3.
+- Each preset: id, zone, days and probes, plus the citation test of 5.3, which also
+  passes for `nse` and `mcx` after their comment gains `Source:` and `Checked:` lines.
+- `activeProfile` and `nextProfileChange` with a lunch break: no change at the break
+  by default, a change at its start and end with `duringBreaks: 'closed'`, and
+  `windows(…, { throughBreaks: true })` returning the unsplit window.
 - `holidaysThrough` with one list, two lists, none and an unknown id;
   `issues` with a list ending in 10, 29, 30 and 400 days, with `now` given and
   with the real clock stubbed; no issue without a list.
@@ -1291,7 +1449,8 @@ installs it, and pays nothing.
 - **Emberwick is a peer, never a dependency.** `package.lib.json` already has
   `"peerDependencies": { "emberwick": ">=0.14.0" }` with `peerDependenciesMeta`
   marking it optional; the story keeps both. `>=0.14.0` is the first release
-  with the countdown and the volume-profile entry the widget uses.
+  that has both the countdown (0.14.0) and the volume-profile entry (`emberwick/profiles`,
+  0.13.0) the widget uses.
 - **It is external to every build.** `vite.lib.config.js`, `vite.dev.config.js`,
   `scripts/check-size.mjs`' bundler and `verify-package` list `emberwick` as
   external already (and `emberwick/profiles` is added), so no output contains
@@ -1302,7 +1461,7 @@ installs it, and pays nothing.
   widget's **error view** with `miniChart.noPeer` ("The chart library isn't
   installed") and one development warning, never a thrown import error that
   stops the rest of the page. `emberwick/profiles` is imported the same way, only
-  when `volumeProfile` is on (Decision 55 records the missing-peer behaviour).
+  when `volumeProfile` carries data (Decision 55 records the missing-peer behaviour).
 
 ### 6.2 Data
 
@@ -1328,7 +1487,13 @@ interface MiniChartData extends WidgetFreshness {
     note?: string                      // XL: '2 strategies · 1 in position'
   }>
   countdown?: boolean                  // candle-close countdown on the last price
-  volumeProfile?: boolean              // L
+  /**
+   * L: a volume profile the HOST computed, in Emberwick's own contract (`ProfileData`, version 1,
+   * from 'emberwick/profiles'). Emberwick never computes one from bars, and neither does Tickslate.
+   * Absent or null draws none. A profile that Emberwick rejects (a bad `step`, a session with
+   * `start` after `end`) is reported through the error view with miniChart.badProfile, not thrown.
+   */
+  volumeProfile?: ProfileData | null     // type imported from 'emberwick/profiles' (types only)
 }
 
 /** <ts-mini-chart>, sizes M · L · XL. catalogKey 'miniChart'. Entry tickslate/elements/mini-chart. */
@@ -1401,14 +1566,17 @@ CSS variables, so the widget reads them at runtime and maps them:
 | `watermark` | `--ts-line` at 40% opacity |
 | `font` | `--ts-font-num` |
 | `profileFill`, `profileValueArea`, `profilePoc` | `--ts-accent` at 25%, 45% and 100% opacity |
+| `profileVaLine` | `--ts-muted` (Emberwick's own fallback is `text`, which is the same colour) |
 | `priceAxisWidth`, `timeAxisHeight` | Numbers, not tokens |
 
 - **A pure function builds it** from an injected reader, so a node test needs no
   DOM: `emberwickTheme(read: (token: string) => string): Partial<EmberwickTheme>`
   (Internal). The element supplies a reader that resolves each token to
-  an `rgb()` or `rgba()` string by painting it onto a 1×1 canvas and reading the pixel
-  back, which turns hex, `hsl()`, `color-mix()` and named colours into one form
-  and lets the translucent entries be built without parsing CSS.
+  an opaque `rgb()` string by painting it onto a 1×1 canvas and reading the pixel
+  back, which turns hex, `hsl()`, `color-mix()` and named colours into one form. The
+  translucent entries are then built by applying the alpha to that opaque colour
+  (`rgba(r, g, b, a)`), never read back from a translucent pixel, which loses
+  precision when the browser un-premultiplies it.
 - **Re-read on theme change.** The widget observes (with one `MutationObserver`
   on `document.documentElement` and one on its closest `<ts-grid>`) the attributes
   `data-theme`, `class`, `data-ts-theme` and `data-ts-palette`, and a
@@ -1436,6 +1604,9 @@ CSS variables, so the widget reads them at runtime and maps them:
   assistive technology; the summary and the host's own table are the text route.
   A table of the last bars would repeat §1.6 for a canvas chart and is left as a
   follow-up the story may propose.
+- **Forced colours.** The canvas is Emberwick's and keeps its own colours; the wrapper's
+  border and the header use the system colours of RFC 0003 §5.5, and the summary is the
+  text route.
 - The timeframe buttons, the header and the states follow ACCESSIBILITY items 1,
   8, 10 and 11 like any widget.
 
@@ -1443,20 +1614,35 @@ CSS variables, so the widget reads them at runtime and maps them:
 
 | Family | Keys | Parameters |
 |---|---|---|
-| `miniChart.*` | `miniChart.summary`, `miniChart.summaryEmpty` ("{instrument}: no bars yet"), `miniChart.marks.one`/`.other` ("{count} mark"/"{count} marks") and the `entry`/`exit` counts `miniChart.entries.one`/`.other`, `miniChart.exits.one`/`.other`, `miniChart.noPeer` ("The chart library isn't installed"), `miniChart.timeframes` ("Timeframe"), `miniChart.up` ("up {pct}"), `miniChart.down` ("down {pct}") | `instrument`, `timeframe`, `close`, `change`, `count`, `pct` |
-| `widget.miniChart.label`, `.description`, `.empty` | "Mini chart", the catalog description, "No bars yet" | |
+| `miniChart.*` | `miniChart.summary`, `miniChart.summaryEmpty` ("{instrument}: no bars yet"), `miniChart.marks.one`/`.other` ("{count} mark"/"{count} marks") and the `entry`/`exit` counts `miniChart.entries.one`/`.other`, `miniChart.exits.one`/`.other`, `miniChart.noPeer` ("The chart library isn't installed"), `miniChart.badProfile` ("The volume profile couldn't be drawn"), `miniChart.timeframes` ("Timeframe"), `miniChart.up` ("up {pct}"), `miniChart.down` ("down {pct}") | `instrument`, `timeframe`, `close`, `change`, `count`, `pct` |
+| `widget.miniChart.empty` | "No bars yet" (`.label` and `.description` already exist) | |
 
 ### 6.7 Files and order
 
 Owned by the story, as in its JSON: `src/elements/mini-chart.js`,
 `src/elements/define/mini-chart.js`, `vite.lib.config.js`, `scripts/pack-lib.mjs`,
 `package.lib.json`, `test/mini-chart.test.mjs` and `docs/widgets/ts-mini-chart.md`.
-Files **outside** the list that it needs, for which no other P2 story is an
-owner: `scripts/verify-package.mjs` (the new checks below),
-`scripts/check-size.mjs` (the new entry's budget row, by RFC 0003 §25's rule) and
-`test/entries.test.mjs` (the all-in test already compares `index.js` with the
-define list and gains the one-name exemption). It records them in its report under
-"Files outside the boundary". It adds its message block (shared files).
+**Added to its boundary by this RFC**, with no other P2 story owning them at the
+time it builds:
+
+- `src/elements/index.d.ts`: `TsMiniChart`, `MiniChartData`, `MiniChartBar`,
+  `TsMiniChartAction` and the `@element`, `@attr` and `@csspart` JSDoc. `pack-lib` and
+  `gen-manifest` read per-widget types and tags from that one file, and the manifest
+  test refuses an undocumented tag. The names start with `MiniChart` or `TsMiniChart`,
+  so `pack-lib`'s orphan check places them on the `mini-chart` stub without a
+  `TYPE_EXTRAS` entry.
+- `docs/reference/events.md`: a row for the `timeframe` action (the docs-coverage
+  test fails without it).
+- `test/browser/fixtures/data.js` and the fixture `widgets.html`: made-up bars for the
+  gallery and the visual baselines.
+- `scripts/verify-package.mjs` (the new checks below), `scripts/check-size.mjs` (the
+  new entry's budget row, by RFC 0003 §25's rule) and `test/entries.test.mjs` (the
+  all-in test gains the one-name exemption).
+
+It records the files outside its JSON list in its report under "Files outside the
+boundary", and adds its message block (shared files). It builds after
+`csp-trusted-types` and `widget-a11y-visuals`, and before `create-dashboard`
+(shared `pack-lib.mjs` and `index.d.ts`).
 
 ### 6.8 Size
 
@@ -1483,6 +1669,8 @@ files do not grow.
   imports `emberwick` only as an external (never inlined); `package.lib.json` has
   the optional peer at `>=0.14.0`; and bundling `tickslate/elements` with esbuild
   without Emberwick installed succeeds.
+- A `volumeProfile` of `ProfileData` is passed to `createVolumeProfile` once and
+  updated on change, none is drawn without it, and a bad profile shows `miniChart.badProfile`.
 - `npm run release` passes, and `elements.js` contains no Emberwick import.
 
 ## 7. `createDashboard()` (amends RFC 0001 §8.4 and RFC 0003 §18.2)
@@ -1538,12 +1726,14 @@ all-in entry builds its own few lines on the grid's API.
 - **The grid.** `createDashboard` calls `document.createElement('ts-grid')`,
   sets `locale`, `currency`, `time-zone` (from `timeZone`), `persist` and
   `aria-label` as attributes when given, sets `grid.layout = layout` and
-  `grid.addTypes`, and appends it to `target`. `target` as a string is resolved
-  with `document.querySelector`; no match, or no DOM, throws `TypeError` with a
-  message that names the selector. It does not clear what `target` already holds.
+  `grid.addTypes`, and appends it to `target`. Without a DOM it throws
+  `TypeError('createDashboard needs a DOM')` first; then a `target` string is resolved
+  with `document.querySelector`, and no match throws `TypeError` naming the selector. It does not clear what `target` already holds.
 - **Children.** For every item in **every** profile and in the top strip's
   ids (Decision 58), once per id, it creates the element whose tag comes from the
-  item's catalog entry (`specFor(item, catalog).tag`), sets `item=<id>`, sets the
+  item's catalog entry (the exported `typeOf(item)` looked up in `catalog` as an own property, or the
+  catalog function called with the item; `specFor` is internal to the core and is not
+  used), sets `item=<id>`, sets the
   initial `data` when `data` has that id, and appends it to the grid. An item
   whose type is not in the catalog is skipped with one development warning
   (`readLayout` would drop it anyway), and a tag that is not yet defined as a
@@ -1579,8 +1769,8 @@ all-in entry builds its own few lines on the grid's API.
   underscore and no private module. A test asserts it.
 - **No fetching.** It does not load the JSON; the host does and passes the
   object (RFC 0001: data in, nothing out).
-- **Server rendering.** The module imports without a DOM; calling
-  `createDashboard` without one throws `TypeError('createDashboard needs a DOM')`.
+- **Server rendering.** The module imports without a DOM; the no-DOM error above is
+  the first check.
 
 ### 7.2 Messages
 
@@ -1597,8 +1787,13 @@ docs and the example point out that `label` should say what the dashboard is.
 
 Owned by the story, as in its JSON: `src/elements/dashboard.js`,
 `src/elements/index.js`, `src/elements/index.d.ts`, `test/dashboard.test.mjs`,
-`examples/vanilla-json.html` and `examples/data/sample.json`. It builds
-**after** `more-generic-widgets` (shared `index.js` and `index.d.ts`), and
+`examples/vanilla-json.html` and `examples/data/sample.json`. **Added to its
+boundary by this RFC:** `scripts/pack-lib.mjs` (one line: `DashboardOptions` and
+`Dashboard` in `TYPE_EXTRAS` under `grid`; they fit no entry stem, so `pack-lib`'s
+orphan check would exit 1 without it) and the types and JSDoc for
+`createDashboard` in `src/elements/index.d.ts`. It builds
+**after** `more-generic-widgets` and `mini-chart` (shared `index.js`, `index.d.ts`,
+`pack-lib.mjs`) and `layout-list-editor` if that has landed, and
 adds `docs/guide/create-dashboard.md` (a new page, the docs-coverage test
 needs every export written up). `docs-coverage.test.mjs`' export scan is
 extended only if no other story owns that file; otherwise the guide mentions
@@ -1710,7 +1905,8 @@ function readLayout(
   dialog opened) and that **no `img` element exists in the document or in any
   shadow root**, walked recursively, so a payload that became markup fails even if
   its handler did not fire. The payload text is on the page as text.
-- It runs in the CSP fixtures of RFC 0003 §14 as well, so a blocked handler and a
+- It runs in the CSP fixtures of RFC 0003 §14 (`test/browser/fixtures/csp.html`, added
+  by `csp-trusted-types`, which must merge first) as well, so a blocked handler and a
   harmless one cannot be confused.
 - It finds, it does not fix: a payload that runs is reported as a failing test with
   the widget and field, and the fix is a follow-up story in the owning file.
@@ -1727,7 +1923,9 @@ function readLayout(
 - **`no-eval`, `no-implied-eval` and `no-new-func`** as errors for all of `src/`,
   mirroring the strict-CSP promise of RFC 0003 §14.
 - **The existing constant-template sites.** The widgets assign module-constant
-  template strings with `innerHTML` (RFC 0003 §14). The rule accepts string
+  template strings with `innerHTML` today, and `csp-trusted-types` (which merges
+  first) replaces the raw writes with its `html.js` helper where it can. The lint
+  plan is therefore derived **after** that story, from what is left (RFC 0003 §14). The rule accepts string
   literals; a template built from several constants may still be flagged. Those
   sites are allowed by a **per-file override in `eslint.config.js`** that names the
   file, the rule and the reason, **not** by editing the widget files, which other
@@ -1807,10 +2005,10 @@ Owned by the story, as in its JSON: `src/core/layout.js`, `src/core/index.d.ts`,
 acceptance's "SHA-pinned actions"): the `uses:` lines of
 `.github/workflows/ci.yml`, `attribution.yml` and `pages.yml`, and a `lint`
 job in `ci.yml`. It builds **after** `quality-extras` (shared `package.json` and
-`ci.yml`). The `LayoutIssue` code union and the two new `readLayout` options go in
+`ci.yml`) and `consumer-examples`, `csp-trusted-types` (see the table at the top). The `LayoutIssue` code union and the two new `readLayout` options go in
 `src/core/index.d.ts`. The story also updates the `readLayout` entry in
-`docs/reference/core.md` and the issue codes in `docs/reference/events.md` if it
-lists them, and `docs/guide/saving-layouts.md` gains a sentence on the caps;
+`docs/reference/core.md` (before `trading-polish`, which also edits it) and the issue
+codes in `docs/reference/events.md` if it lists them, and `docs/guide/saving-layouts.md` gains a sentence on the caps;
 these three are not owned by another P2 story.
 
 ### 8.9 Size
@@ -1824,7 +2022,9 @@ and reports it; it does not raise the core budget.
 - The XSS spec of 8.3 passes in all five projects, or lists the failing widget and
   field.
 - `npm run lint` passes on a clean tree, and a one-line change that assigns a
-  non-constant string to `innerHTML` in `src/elements` fails it.
+  non-constant string to `innerHTML` in a file with no override (the demonstration uses
+  `src/elements/table.js`, not `widget.js`, `series-chart.js` or `session-clock.js`, where
+  overrides may exist) fails it.
 - Every `uses:` in every workflow is a 40-character SHA with a tag comment
   (a small node check reads `.github/workflows/*.yml`); the YAML of every workflow
   and of `dependabot.yml` parses; `release.yml` has `workflow_dispatch` as its only
@@ -1869,7 +2069,7 @@ needs Playwright.
   owned by this story and is added to the boundary here.
 - **In CI.** `ci.yml` gains a `visual` job that runs in the same container image
   (`container:`), runs `npm run test:visual`, and on failure uploads the
-  `expected`, `actual` and `diff` images as an artifact. It is a required check.
+  `expected`, `actual` and `diff` images as an artifact. Making it a required check is a repository setting only the maintainer can change.
 - **What it proves.** A one-pixel change to a CSS rule (a `padding` or a `gap`)
   fails the job, and the story demonstrates it once by making such a change
   locally, running the job's command, seeing it fail and reverting it.
@@ -1958,7 +2158,9 @@ keeps working for at least one minor release and warns once in development.
   reports the measured figure and does not lower the number, write filler tests or
   fence code out of the report; the maintainer decides.
 - A `coverage` job in `ci.yml` runs it (no install needed) and fails the build when
-  a threshold fails. Branch and function coverage are printed, not enforced.
+  a threshold fails. Branch and function coverage are printed, not enforced. The flags used need
+  Node 20.17 or newer, and the existing test job runs `setup-node: '20'`, so the
+  `coverage` job sets its own Node version (22) and the story states it.
 
 ### 9.5 Messages and accessibility
 
@@ -1970,10 +2172,11 @@ Owned by the story, as in its JSON: `test/browser/visual.spec.mjs`,
 `test/api-surface.test.mjs`, `test/api-surface.snapshot.json`, `docs/VERSIONING.md`,
 `package.json` and `.github/workflows/ci.yml`; plus the baselines folder
 (9.1) and a one-line mention in `docs/WORKFLOW.md`'s checks list if no other story
-owns that file then. It builds **before** `security-hardening` (shared
-`package.json` and `ci.yml`). Because the snapshot lists the surface, every other P2
+owns that file then. It builds **after** `consumer-examples` and `csp-trusted-types` (shared `package.json`,
+`ci.yml` and `playwright.config.mjs`) and **before** `security-hardening`. Because the snapshot lists the surface, every other P2
 story that adds a public name regenerates it in its own PR once this one has
-merged; until then they cannot, so this story merges early.
+merged; until then they cannot, so this story merges early. Each widget story that adds
+fixture data also regenerates the baselines for its new tiles in the same PR.
 
 ### 9.7 Size
 
@@ -1998,9 +2201,9 @@ RFC 0003's build left four questions parked. Each is a Decision row so the
 maintainer can accept or reject it on its own. RFC 0003 stays as written; where a
 row is accepted, this section replaces the cited text.
 
-*Implemented by: 10.1 needs no code (it settles wording the code already follows). 10.3 is built by `density-and-text-scaling`. 10.2 and 10.4 are built by one small new story, `parked-amendments`, which the board gains when this RFC is approved; it owns `src/elements/registry.js`, `src/elements/messages-cache.js`, `src/elements/index.d.ts` (the `defineWidget` signature), `src/core/index.d.ts` (the `Translate` key type), `scripts/check-size.mjs` (the pair rows), `test/registry.test.mjs`, `test/messages.test.mjs` and `docs/guide/custom-widgets.md`, and builds after `more-generic-widgets` and `create-dashboard` for the shared `src/elements/index.d.ts`.*
+*Implemented by: 10.1 needs no code beyond a one-line test allowance. 10.2, 10.3 (the token) and 10.4 (the budget) are built by one small new story, `parked-amendments`, which the board gains when this RFC is approved (the board's brief numbers the token and the budget the other way round; the RFC's numbering is the one used here). It owns `src/elements/registry.js`, `src/elements/widget.js` (the `t` resolution and the token in the formulas), `src/core/messages.js`, `src/core/index.d.ts` (the `Translate` key type), `src/elements/index.d.ts` (the `defineWidget` signature), `src/themes/tokens.css`, `src/elements/default-tokens.js`, `scripts/check-size.mjs` (the pair rows), `test/tile-chrome.test.mjs` (the `HighlightText` allowance and the `.62` literal check), `test/registry.test.mjs`, `docs/theming.md` and `docs/guide/custom-widgets.md`, plus `src/elements/messages-cache.js` and `test/messages.test.mjs` if resolution lives there. It builds after `density-and-text-scaling`, `more-generic-widgets`, `create-dashboard` and `widget-a11y-visuals`, and before `trading-polish`.*
 
-### 10.1 `HighlightText` in forced colours (amends RFC 0003 §5.5 and §29, point 1)
+### 10.1 `HighlightText` in forced colours (amends RFC 0003 §5.5 and §29, point 1; Decision 65)
 
 RFC 0003 allows widget CSS the colour keywords `Highlight`, `CanvasText` and
 `ButtonFace`, inside `@media (forced-colors: active)` only. The built widgets
@@ -2018,7 +2221,7 @@ text must be the colour the user agent pairs with it, because `CanvasText` on
 - **No code changes.** The scan in `test/tile-chrome.test.mjs` already accepts the
   four; the row records it so the RFC and the code agree.
 
-### 10.2 `defineWidget(tag, Ctor, { type, messages })` (amends RFC 0003 §1.1 and §3)
+### 10.2 `defineWidget(tag, Ctor, { type, messages })` (amends RFC 0003 §1.1 and §3; Decision 66)
 
 A widget author ships English defaults for the author's own strings with the
 class instead of asking every host to configure them.
@@ -2059,7 +2262,7 @@ type Translate = (key: MessageKey | PluralBase | (string & {}), params?: Record<
 - `docs/guide/custom-widgets.md` and the MRR example use `messages` for the
   widget's strings.
 
-### 10.3 A `--ts-num-width` token (amends RFC 0003 §5.4)
+### 10.3 A `--ts-num-width` token (amends RFC 0003 §5.4; Decision 67)
 
 The parked list names only the token. This is the meaning the code needs:
 **the average advance of a figure character, in `em`**, so figure sizes fit the
@@ -2067,8 +2270,13 @@ host's font rather than a guess.
 
 | Token | Default (both themes) | Used by |
 |---|---|---|
-| `--ts-num-width` | `.62` | The figure-fitting formulas: `.cell .md`'s `100cqi / (var(--fc, 10) * .62 + .65)` in `widget.js`, and the `19cqi` and `9cqi` caps of `.big` and `.xbig`, which were measured for one face (comments in `widget.js`) |
+| `--ts-num-width` | `.62` | The one figure-fitting formula that uses the literal: `.cell .md`'s `100cqi / (var(--fc, 10) * .62 + .65)` in `widget.js` |
 
+- **What it does not touch.** The `19cqi` and `9cqi` caps of `.big` and `.xbig` were
+  measured for one face and are not derived from `.62`, and `pnl-calendar.js`
+  deliberately uses `.72` for its own cells. They stay as they are; the token is for
+  the formula that already reads `.62`. Hosts with a very different face adjust the
+  caps through the `--ts-text-*` tokens of §2.3.
 - **A unitless number**, the em width of a typical figure character including its
   sign. The default is the value the formula uses today, so **nothing moves**: the
   baselines of §9.1 must be unchanged by this token.
@@ -2077,13 +2285,13 @@ host's font rather than a guess.
   because the factor is a literal in widget CSS. With the token the host states it
   once and the figures shrink to fit.
 - It exists in `tokens.css`, `default-tokens.js` (the sync test keeps them equal)
-  and the docs' token table. A test fails on a remaining literal `.62` in widget
-  CSS.
+  and the docs' token table. A test in `test/tile-chrome.test.mjs` fails on a remaining literal `.62` in the
+  shared CSS of `widget.js`.
 - If the maintainer meant something else by the name (for instance a
   `font-stretch` axis for the number face), rejecting this row and saying what is
   meant is the cheap way to settle it.
 
-### 10.4 "Each widget adds at most 15 kB to the grid" (amends RFC 0003 §25 and RFC 0002 §9)
+### 10.4 "Each widget adds at most 15 kB to the grid" (amends RFC 0003 §25 and Decision 38, and RFC 0002 §9; Decision 68)
 
 RFC 0003 §25 sets "grid plus one widget at most 15 kB, enforced". It cannot hold:
 the grid's own entry is already over 15 kB, so every pair is. `check-size.mjs` carries
@@ -2110,7 +2318,7 @@ The maintainer's own trading dashboard, the first consumer, built on 0.2.0 and
 found four rough edges. None adds a widget. Two are small options and two are
 behaviour a host should be able to rely on, so they are written down here.
 
-*Implemented by: trading-polish. A new story, which the board gains when this RFC is approved. It depends on density-and-text-scaling and edit-feedback (shared `grid.js` and `widget.js`) and on create-dashboard (shared `src/elements/index.d.ts`).*
+*Implemented by: trading-polish, which the board now holds (PR #44's follow-ups). It depends on trading-dashboard-example and, for shared files, on edit-feedback, security-hardening and parked-amendments (table at the top).*
 
 ### 11.1 `<ts-table>` columns that size to their content
 
@@ -2123,7 +2331,8 @@ interface TableColumn {
   /**
    * 'content': as wide as its widest text (the header or any cell), up to half the table.
    * 'fill': shares what is left with the other 'fill' and unset columns.
-   * A number: that many CSS pixels, at least 40.
+   * A number: that many CSS pixels, at least 40. The column budget still counts it as one
+   * slot of 56 px (RFC 0003 §16), whatever its width.
    * Unset (the default): today's behaviour, an equal share with the other unset columns.
    */
   width?: 'content' | 'fill' | number
@@ -2227,8 +2436,8 @@ and widget; a host needs one place.
 ```ts
 // tickslate
 function configure(options: FormatOptions & {
-  messages?: Partial<Messages>
-  styleNonce?: string
+  messages?: MessageOverrides | null      // as today
+  styleNonce?: string                    // RFC 0003 §14, added by csp-trusted-types (merges first)
   /** The time every grid and widget reads when none is set on the element: ms since the epoch. null clears it. */
   clock?: (() => number) | null
 }): void
@@ -2262,17 +2471,21 @@ apply and are re-tested for the table and the narrow header.
 
 ### 11.6 Files and order
 
-Owned by the story: `src/elements/table.js`, `src/elements/grid.js`,
-`src/elements/persist.js`, `src/elements/widget.js`, `docs/widgets/ts-table.md` and
-`docs/guide/saving-layouts.md`. **Also needed, with no other P2 story owning them:**
-`src/core/format.js` (the `clock` option and `currentConfig`), `src/core/calendar.js`
-only for the one-line default of `now` (it follows `market-presets-and-breaks`), and
-the declarations in `src/core/index.d.ts` and `src/elements/index.d.ts` (shared
-files: the story rebases on the stories ahead of it). It builds **after**
-`density-and-text-scaling` and `edit-feedback` (shared `widget.js` and `grid.js`)
-and `create-dashboard` (shared `index.d.ts`). It also updates
-`docs/reference/core.md` for `configure`'s `clock`, and tests in `test/table.test.mjs`,
-`test/persist.test.mjs`, `test/format.test.mjs` and `test/tile-chrome.test.mjs`.
+Owned by the story, as in its JSON: `src/elements/table.js`, `src/elements/persist.js`,
+`src/elements/grid.js`, `src/elements/widget.js`, `src/core/format.js`, `src/core/index.d.ts`,
+`src/elements/index.d.ts`, `docs/widgets/ts-table.md`, `docs/guide/saving-layouts.md`,
+`docs/reference/core.md`, `test/table.test.mjs`, `test/persist.test.mjs`,
+`test/browser/narrow.spec.mjs`, `examples/trading.html`, `index.html` and
+`changes/trading-polish.md`. **Added to its boundary by this RFC** (the board's list
+should follow): `src/core/calendar.js` for the one-line default of `now` (it follows
+`market-presets-and-breaks`), and `test/format.test.mjs` for the `clock` option.
+(`test/tile-chrome.test.mjs` is `parked-amendments`', not this story's.)
+
+It builds **after** `trading-dashboard-example`, `edit-feedback`, `security-hardening`
+and `parked-amendments` (shared `grid.js`, `widget.js`, `core.md`, `saving-layouts.md`
+and `index.d.ts`; the order of each is in the table at the top). `docs/reference/core.md`
+and `docs/guide/saving-layouts.md` are edited by `security-hardening` first (the caps),
+then by this story.
 
 ### 11.7 Size
 
@@ -2310,7 +2523,7 @@ RFC takes no measurements and names no budget figure.
 | Section | What moves |
 |---|---|
 | §1 scrub | `chart`, `today-pnl`, `equity-curve` (the shared `scrub.js` and the tables); `grid + widget` deltas |
-| §2 density | `grid` (the attribute and one `:host` block) and each widget's CSS tiers; the core is untouched |
+| §2 density | `grid` (the attribute and one `:host` block), `widget.js` and the converted widget CSS (rem tokens, tiers); the core is untouched |
 | §3 edit feedback | `grid` (the badge, the lazy hint, the crossfade and the toast text) |
 | §4 widgets | Three **new** entries, `breakdown`, `status`, `feed`, each budgeted from its measurement; the all-in and CDN files grow and are reported |
 | §5 presets and breaks | The **core** (`dist-lib/index.js`, the UMD): breaks, seven presets and the coverage check; `session-clock` |
@@ -2334,21 +2547,24 @@ tokens, elements, messages, entries and options.
 
 | Change | Was | Now | Section |
 |---|---|---|---|
-| Text sizes | Label `10px`, small `11px`, fixed px sizes | `--ts-label-size` `.6875rem` (11 px at a 16 px root), small `.75rem`, and the rest as rem tokens; text follows the reader's root font size | §2.3 |
+| Text sizes | Label `10px`; other text fixed px | Only the label moves, to `max(11px, .6875rem)`; the converted files (`widget.js`, `grid.js`, `today-pnl.js`, `equity-curve.js`) take rem tokens with a px floor; the other widgets follow in `type-scale-rollout`; the `terminal`, `graphite` and `paper` presets follow the label | §2.3 |
+| A root font size of 62.5% (`html { font-size: 62.5% }`) | Fixed px text | Unchanged: every size token has a px floor, so the label stays 11 px and the others stay at their 0.2.0 sizes; only a larger root enlarges them. A host that wants smaller text sets the `--ts-text-*` tokens itself | §2.3 |
 | Charts and tab order | A chart has no tab stop of its own | Each chart that draws a plot has **one** tab stop, a slider that reads the chart point by point; `scrub="off"` removes it | §1.4 |
-| The accessibility tree of three charts | An image with a summary | The same image, a slider, and a visually hidden table of the last 12 points | §1.4, §1.6 |
+| The accessibility tree of three charts | An image with a summary; `<ts-chart>` also had a hidden list of last values | The same image, a slider, and a visually hidden table of the last 12 points (which replaces that list) | §1.4, §1.6 |
 | Headline compacting | Compact text with no full value | Compact text with `title` holding the full value | §1.5 |
-| Tile container | `container-type: inline-size` | `container: ts-tile / size`; a host that sets a widget's `height: auto` must give it a definite height | §2.2 |
+| Tile container | `container-type: inline-size` | `container: ts-tile / size`; existing unnamed `@container` width rules (the `.pre` rule, for one) keep working; a host that sets a widget's `height: auto` must give it a definite height. No default tile loses a line (the tiers are derived from the content box) | §2.2 |
 | Layout reading | Any number of items and profiles | At most 100 items per profile and 20 profiles, and ids of at most 128 characters; the excess is dropped with an issue | §8.1 |
 | Calendar state | `{ open, opensAt, closesAt, startedAt, progress }` | Adds `onBreak` and `ends` | §5.1 |
 | Calendar object | No `issues` | `issues` and `holidaysThrough()` | §5.4 |
 | Session clock | Silent | Warns once in development when a holiday list is about to run out | §5.4 |
 | Profile schedule | A break would count as closed | A break counts as open unless `duringBreaks: 'closed'` | §5.1 |
-| Scheduled profile switch | Tiles swap in one frame, announced | The board crossfades (not under reduced motion) and a toast offers **Keep** | §3.3 |
+| Scheduled profile switch | Tiles swap in one frame, announced by the status region | The board crossfades (not under reduced motion), a toast offers **Keep**, the status region still announces once; `docs/ACCESSIBILITY.md` item 18 is amended | §3.3 |
+| Resize badge | Nothing while resizing | A badge in the tile's chrome names the size and footprint, then fades; visible to every editing host | §3.1 |
 | `<ts-table>` columns | Equal shares | Unchanged unless a column sets `width` | §11.1 |
 | `persist` defaults | Captured at the first measure only | Re-captured when the host sets `grid.layout` before the first edit | §11.2 |
 | Narrow tile headers | A long label may be cut at the tile edge | Ends in an ellipsis; full text in `title` and the name | §11.3 |
 | Default clock | Per element only | `configure({ clock })` also | §11.4 |
+| `widget.clock` and `grid.clock` getters | `widget.clock` returns `null` when unset | Both return the effective function (own, configured or `Date.now`) | §11.4 |
 | `Translate` keys | Typed `MessageKey \| PluralBase` | Also any string, for custom widgets | §10.2 |
 | `tickslate/elements` | Registers every element | Unchanged; `<ts-mini-chart>` stays out of it, as RFC 0001 §2 said, and RFC 0003 §2.1 now says | §6.1 |
 | `grid + one widget` budget | 15 kB total, a warning | Each widget adds at most 15 kB to the grid, enforced | §10.4 |
@@ -2379,8 +2595,8 @@ means two things. The recommended option is marked **Recommended**. Reply per ro
 | 41 | How many recent points does the hidden table list? (§1.6) | **Recommended:** the last **12** drawn points, newest last, written in place through `rows.js`.<br>Alternative: 5, which reads faster but hides a week-long trend.<br>Alternative: every drawn point, which can be hundreds of rows for a screen-reader user to cross. | Proposed |
 | 42 | Where does the full-value `title` go? (§1.5) | **Recommended:** on the headline value node (`part="value"`), so the tooltip appears over the number only, with the full value also in the tile's accessible name.<br>Alternative: on the widget host, so the tooltip appears anywhere over the tile.<br>Alternative: no `title`; a custom tooltip element, which needs more code and its own accessibility. | Proposed |
 | 43 | What is the density switch called, and where does it live? (§2.1) | **Recommended:** `density="compact"` on `<ts-grid>` (as the story says), applied by the grid's own `:host` rule, plus the same three tokens under `[data-ts-density="compact"]` in the token files for elements outside a grid.<br>Alternative: `data-ts-density` only, like `data-ts-theme` and `data-ts-palette`, so the grid has no attribute of its own.<br>Alternative: tokens only, no attribute: hosts set `--ts-row`, `--ts-pad` and `--ts-gap` themselves. | Proposed |
-| 44 | Do the **default** text sizes move to the rem scale, so labels become 11 px at a 16 px root? (§2.3) | **Recommended:** yes, for everyone: label `.6875rem` (from 10 px), `.xs` the same, `.sm` `.75rem` (from 11 px), and the rest as rem tokens. It is a visible change, listed under Changed and in §13, and it is what the acceptance asks.<br>Alternative: keep the px look by default (`.625rem` labels) and give the 11 px floor only to `density="compact"` or an opt-in token set.<br>Alternative: rem only for the large figures, leaving small text in px. | Proposed |
-| 45 | How do widgets decide what to hide when a tile is short? (§2.2) | **Recommended:** container queries on the tile's height, in `rem` (`8.5rem` and `6.5rem` tiers), so the same rule means "too short for its text" at any root font size.<br>Alternative: container queries in px, which stop meaning that when the reader enlarges the text.<br>Alternative: a `ResizeObserver` in each widget toggling classes, which costs script and runs after layout. | Proposed |
+| 44 | Do the **default** text sizes move to the rem scale, so the label becomes 11 px at a 16 px root? (§2.3) | **Recommended:** yes, but only the label changes size: `--ts-label-size` becomes `max(11px, .6875rem)` (from 10 px) and every other token equals the px size it replaces, so the one visible change is the label. It is listed under Changed and in §13, and it is what the acceptance asks.<br>Alternative: keep the px look by default (10 px labels) and give the 11 px floor only to `density="compact"` or an opt-in token set.<br>Alternative: also raise small text (`.xs` to 11 px, `.sm` to 12 px), which keeps their order but changes much more of the page. | Proposed |
+| 45 | How do widgets decide what to hide when a tile is short? (§2.2) | **Recommended:** container queries on the tile's height, in `rem`, derived from the content box (row minus padding and border): snug at `6.5rem` and tight at `5rem`, so no default tile (7.0 rem and up) loses a line and a compact tile (5.875 rem) loses its secondary line. The same rule means "too short for its text" at any root font size.<br>Alternative: container queries in px, which stop meaning that when the reader enlarges the text.<br>Alternative: a `ResizeObserver` in each widget toggling classes, which costs script and runs after layout. | Proposed |
 | 46 | Who remembers that the first-run hint was dismissed? (§3.2) | **Recommended:** the host. The grid fires `ts-hint-dismiss`, keeps the mark hidden for that element, and stores nothing; the host stops setting `hint` (the library has no storage, RFC 0003 `persist` aside).<br>Alternative: `hint="my-key"` stores the dismissal in `localStorage` like `persist`, so the library stores something the acceptance says it must not.<br>Alternative: a cookie-style `hint-seen` attribute the grid writes, which mutates the host's markup. | Proposed |
 | 47 | What does **Keep previous** do on the profile toast? (§3.3) | **Recommended:** calls the existing `grid.override(previous)`, so the previous profile stays until the schedule next changes, then the schedule takes over. No new state.<br>Alternative: a permanent pin, cleared only by Auto, which a user can forget and which the controls would have to explain.<br>Alternative: no action on the toast; it only tells them. | Proposed |
 | 48 | How does `<ts-breakdown>` fold slices? (§4.1) | **Recommended:** with more than six slices, show the largest **five** and fold the rest into "Other" (`--ts-axis`), so at most six are drawn and each has a series colour.<br>Alternative: show the largest six and fold the rest, giving seven drawn slices and a seventh colour.<br>Alternative: a `max` option with no default fold, which leaves a legend of twenty. | Proposed |
@@ -2407,6 +2623,11 @@ means two things. The recommended option is marked **Recommended**. Reply per ro
 | 69 | Which version carries P2? (§13) | **Recommended:** **0.3.0**, with the §13 table in the changelog under Changed and Breaking. Under 0.x a minor release may break.<br>Alternative: split it: the type-scale change and the layout caps as 0.3.0, the rest as 0.4.0.<br>Alternative: wait and ship with the next breaking change. | Proposed |
 | 70 | What does a `<ts-table>` column do when `width` is not set? (§11.1) | **Recommended:** exactly what it does today, an equal share with the other unset columns, so no existing table moves; `'content'`, `'fill'` and a pixel number are opt-in per column.<br>Alternative: text-format columns default to `'content'`, which is what the first dashboard wanted but moves every table that has a text column.<br>Alternative: all columns default to `'fill'`, which is today's behaviour under a new name and changes nothing. | Proposed |
 | 71 | Where does the default clock live? (§11.4) | **Recommended:** `configure({ clock })`, read after an element's own `clock` and before `Date.now()`; widgets do not inherit their grid's clock.<br>Alternative: widgets also inherit the nearest grid's clock, so one `grid.clock` covers its tiles, but a grid then changes what its children read.<br>Alternative: a global setter outside `configure` (`setClock()`), which is a second configuration mechanism. | Proposed |
+| 72 | Do the presets that set a 10 px label (`terminal`, `graphite`, `paper`) move to the 11 px floor? (§2.3) | **Recommended:** yes: they take the token's value (`max(11px, .6875rem)`), so "labels are at least 11 px" is true for every shipped theme. `paper` and `graphite` restate the default, so they must follow it; `terminal` changes by a pixel.<br>Alternative: state the floor as a property of the default tokens only, and leave presets free to go lower, with the preset docs saying so.<br>Alternative: move only `paper` and `graphite` and leave `terminal`'s design at 10 px. | Proposed |
+| 73 | Who converts the other widgets' px text to the rem tokens? (§2.3) | **Recommended:** a follow-up story, `type-scale-rollout`, that converts the twelve widget and control files the density story does not own and widens the scan test; until it lands those widgets' small text stays px and the docs say so.<br>Alternative: the density story takes all twelve files into its boundary, which is one large change across files other stories finished.<br>Alternative: never convert them; only the label and the converted files scale. | Proposed |
+| 74 | Is a scheduled profile switch announced, and does that amend `docs/ACCESSIBILITY.md` item 18? (§3.3) | **Recommended:** yes: item 18 is amended to "…and a scheduled change of profile, announced once through the grid's polite status region" (the announcement the grid already makes); the profile toast is a labelled group, not a second live region.<br>Alternative: make the toast a `role="status"` region and drop the status-region announcement, which puts the switch in the toast and keeps item 18 as a statement about user-caused changes only through the toast.<br>Alternative: no announcement for a scheduled switch (item 18 as written), leaving screen-reader users unaware that the layout changed. | Proposed |
+| 75 | Do the rem text tokens have a px floor? (§2.3) | **Recommended:** yes: each token is `max(<px>, <rem>)`, so a site with `html { font-size: 62.5% }` keeps today's sizes and a reader's larger setting still enlarges text. The cost: nobody can shrink text below 0.2.0 sizes through the root font size.<br>Alternative: plain rem, which makes the label about 7 px on a 62.5% root and tells such hosts to set the `--ts-text-*` tokens in px.<br>Alternative: a floor on the label only, with every other size plain rem. | Proposed |
+| 76 | How does `<ts-mini-chart>` get a volume profile? (§6.2) | **Recommended:** the host supplies Emberwick's own `ProfileData` (version 1) in `volumeProfile`, and the widget passes it to `createVolumeProfile` from `emberwick/profiles`. Emberwick never computes a profile from bars, and neither do we.<br>Alternative: leave the profile out of this RFC and add it later with its own data contract.<br>Alternative: compute a profile from the bars in Tickslate, which duplicates what Emberwick chose not to do. | Proposed |
 
 ## 16. Points this RFC settles that no decision covers
 
@@ -2429,8 +2650,8 @@ accepts unless you amend it.
    and a drag is silent by design (§3.1).
 8. **A dismissed hint stays dismissed for that element** even if the host forgets to
    remove the attribute (§3.2).
-9. **A scheduled switch and its toast replace the grid's `grid.profile`
-   announcement** when the toast shows, so it is said once (§3.3).
+9. **A scheduled switch is announced once, by the grid's status region,** and the
+   profile toast is a labelled group, not a live region (§3.3).
 10. **`<ts-breakdown>` draws at most six slices** and a zero slice stays in the
     legend (§4.1); `<ts-status>` keeps the host's row order (§4.2); `<ts-feed>`
     keeps the host's newest-first order and compensates the scroll position by hand
@@ -2450,7 +2671,7 @@ accepts unless you amend it.
     a canvas (§6.4).
 19. **`createDashboard` is exported from `tickslate/elements` only** and is not an
     element, so it has no define module or entry (§7).
-20. **`LAYOUT_LIMITS` is not exported**: the caps are constants in `layout.js` and
+20. **The layout caps are not exported**: they are constants in `layout.js` and
     two options of `readLayout` (§8.1).
 21. **The XSS spec finds, it does not fix**; a failing payload is reported with its
     widget and field (§8.3).
@@ -2462,9 +2683,8 @@ accepts unless you amend it.
     Docker the story stops (§9.1).
 25. **`test/api-surface.test.mjs` carries its own regex reader** rather than
     importing a test file (§9.2).
-26. **A new small story, `parked-amendments`,** builds §10.2 and §10.4 once the
-    maintainer accepts them; §10.1 needs no code and §10.3 rides with the density
-    story (§10).
+26. **A new small story, `parked-amendments`,** builds §10.2, §10.3 and §10.4 once the
+    maintainer accepts them; §10.1 needs only a test allowance (§10).
 27. **`--ts-num-width`'s meaning is proposed here**, because the parked list names
     only the token (§10.3).
 28. **The pretend clock is read after an element's own clock**, and `createCalendar`'s
@@ -2473,3 +2693,14 @@ accepts unless you amend it.
     and applying defaults or a saved layout fires no `ts-layout-change` (§11.2).
 30. **A narrow tile truncates its label with an ellipsis and keeps the full text** in
     the DOM, the `title` and the accessible name (§11.3).
+31. **Existing presets are not unchanged**: `nse` and `mcx` gain `Source:` and `Checked:`
+    lines in the same story, and the citation test covers every preset (§5.3).
+32. **A lunch break is bridged for the layout profile by `spans()`** asking
+    `windows()` for the unsplit window, unless `duringBreaks` is `'closed'` (§5.1).
+33. **`docs/ACCESSIBILITY.md` item 18 is amended** to allow one status-region
+    announcement of a scheduled profile change (§3.3).
+34. **Tiers are derived from the content box**, so a default dashboard loses no line,
+    and the rem text tokens have a px floor so a 62.5% root keeps today's sizes (§2).
+35. **Only the converted files are scanned for px text** until `type-scale-rollout`
+    converts the rest (§2.3).
+36. **`volumeProfile` is Emberwick's `ProfileData`**, host-computed (§6.2).
