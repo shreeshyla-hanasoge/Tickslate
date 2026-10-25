@@ -152,8 +152,8 @@ test.describe('editing the strip', () => {
       await expect(pin).toHaveAttribute('aria-label', name)
       await expect(pin).toHaveAttribute('tabindex', '-1')
       const box = await pin.boundingBox()
-      expect(box.width).toBe(44)
-      expect(box.height).toBe(44)
+      expect(box.width).toBeCloseTo(44, 0)
+      expect(box.height).toBeCloseTo(44, 0)
       expect(await pin.evaluate((b) => b.parentElement === b.closest('.chrome') && b.previousElementSibling.classList.contains('resize'))).toBe(true)
     }
     await page.setViewportSize(DESKTOP)

@@ -307,7 +307,6 @@ const TEMPLATE = `
 </style>
 <button class="edit-btn" type="button" hidden></button>
 <div class="strip" part="strip" role="region" hidden>
-  <div class="placeholder" part="placeholder"></div>
   <div class="chromes"></div>
 </div>
 <div class="board" part="board" role="region">
@@ -358,7 +357,7 @@ export class TsGrid extends Base {
     this._chromeLayer = root.querySelector('.board .chromes')
     // The phone top strip (RFC 0003 §19): its own sticky container, with its own placeholder and chrome layer.
     this._stripEl = root.querySelector('.strip')
-    this._stripPlaceholder = root.querySelector('.strip .placeholder')
+    this._stripPlaceholder = null // made when a strip tile is first lifted, so the board's is the only one until then
     this._stripLayer = root.querySelector('.strip .chromes')
     // Manual mode only. The default slot keeps what isn't a tile; each visible tile gets a slot of its own.
     this._restSlot = root.querySelector('.board > slot:not([name])')
@@ -2293,14 +2292,23 @@ export class TsGrid extends Base {
   }
 
   _showPlaceholder(box, animate, id) {
-    const ph = id !== undefined && this._inStrip(id) ? this._stripPlaceholder : this._placeholder
+    let ph = this._placeholder
+    if (id !== undefined && this._inStrip(id)) {
+      if (!this._stripPlaceholder) {
+        this._stripPlaceholder = document.createElement('div')
+        this._stripPlaceholder.className = 'placeholder'
+        this._stripPlaceholder.setAttribute('part', 'placeholder')
+        this._stripEl.insertBefore(this._stripPlaceholder, this._stripEl.firstChild)
+      }
+      ph = this._stripPlaceholder
+    }
     setBox(ph, box, animate && this._motion())
     ph.classList.add('on')
   }
 
   _hidePlaceholder() {
     this._placeholder.classList.remove('on')
-    this._stripPlaceholder.classList.remove('on')
+    if (this._stripPlaceholder) this._stripPlaceholder.classList.remove('on')
   }
 
   // ── Resizing ───────────────────────────────────────────────────────────
