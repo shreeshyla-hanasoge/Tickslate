@@ -249,13 +249,13 @@ Add back did is lost.
 
 ### Moving and resizing
 
-| Method | Move | Resize | Remove |
-|---|---|---|---|
-| Pointer | After the long press, drag. With a mouse in edit mode, drag past 4px. On touch in edit mode, rest on a tile for 200ms so a quick swipe still scrolls. The grid scrolls near the top and bottom edges | Drag the corner handle | The minus badge |
-| Keyboard | Tab to a tile's handle; Space or Enter picks it up, the arrow keys move it, Space or Enter drops it, Escape cancels | `+` or `=` for the next size up, `-` or `_` for down | Delete or Backspace |
-| Tap to place (no drag needed) | Tap a tile to pick it up, then tap another tile to put the held one in that slot, or the held tile to drop it. Escape, or a tap on empty board, cancels | Tap the resize button to step up (past the largest size it wraps to the smallest) | The minus badge |
+| Method | Move | Resize | Remove | Pin to the top (2 columns) |
+|---|---|---|---|---|
+| Pointer | After the long press, drag. With a mouse in edit mode, drag past 4px. On touch in edit mode, rest on a tile for 200ms so a quick swipe still scrolls. The grid scrolls near the top and bottom edges | Drag the corner handle | The minus badge | The pin badge |
+| Keyboard | Tab to a tile's handle; Space or Enter picks it up, the arrow keys move it, Space or Enter drops it, Escape cancels | `+` or `=` for the next size up, `-` or `_` for down | Delete or Backspace | `P`, on a focused or held tile, pins it or unpins it |
+| Tap to place (no drag needed) | Tap a tile to pick it up, then tap another tile to put the held one in that slot, or the held tile to drop it. Escape, or a tap on empty board, cancels | Tap the resize button to step up (past the largest size it wraps to the smallest) | The minus badge | The pin badge |
 
-Each tile's chrome is a plain container of three sibling buttons, so nothing
+Each tile's chrome is a plain container of four sibling buttons, so nothing
 interactive nests inside anything interactive:
 
 | Button | Accessible name | Tab stop |
@@ -263,6 +263,7 @@ interactive nests inside anything interactive:
 | Handle | "Signups, S, position 1 of 6", plus shared instructions | Yes, the tile's only one |
 | Remove | "Remove Signups" | No (reachable by assistive technology) |
 | Resize | "Resize Signups, now Wide" | No |
+| Pin | "Pin Signups to the top", or "Unpin Signups" on a strip tile; 2 columns only, and not for a widget with no `S` size | No |
 
 The label in those names is the tile's `label` attribute, else its `aria-label`,
 else its spec's label, else its id. Tab order follows the visual order.
@@ -322,7 +323,21 @@ host with a fixed header sets that token to the header's height.
   their layout sizes, and `topStrip` is kept, so rotating a phone brings it back.
 - In edit mode each tile's chrome gains a fourth button at 2 columns, **Pin to
   top** (or **Unpin** on a strip tile). It is 44 px and not a tab stop, like the
-  other chrome buttons. A fourth pin is refused with an announcement.
+  other chrome buttons. A fourth pin is refused with an announcement. With a
+  tile focused or held, the `P` key pins or unpins it and says so ("Pinned to
+  the top" or "Unpinned" through `grid.pinned` and `grid.unpinned`, or the full
+  message). Only tiles that show at 2 columns have a button or take the key.
+- A widget with no `S` size cannot be pinned: it has no pin button, `P` says
+  "This widget has no small size" (`grid.pinUnsupported`), `setTopStrip` ignores
+  it with a development warning, and a saved `topStrip` that names it keeps it on
+  the board.
+- Only tiles the grid shows count toward the three. Ids in `topStrip` that this
+  profile does not show (another profile's, or a tile that is not rendered) are
+  kept but never take a slot.
+- Undo puts the strip back only for a step that changed it: a pin, an unpin, or
+  removing a pinned tile. Undoing a move leaves the current pins alone, in every
+  profile. **Add back** after removing a pinned tile returns it to the board,
+  unpinned; undo the removal to get the pin back.
 - Tiles in the strip reorder among themselves by drag, by keyboard (left and
   right arrows) and by tap-to-place. They are not resized there.
 - The strip comes first in Tab and reading order, and mirrors under `dir="rtl"`.
@@ -377,8 +392,8 @@ that loads its script late does not jump. See [Theming](../theming.md).
   inert and the edit handles carry Tab, in placement order, so the new reading
   order is taken at Done.
 - Everything the pointer can do has a keyboard path and a single-pointer path
-  (WCAG 2.5.7): the handle, `+` and `-`, Delete, tap to place and the resize
-  button. Targets in the pill and toast are 44px.
+  (WCAG 2.5.7): the handle, `+` and `-`, Delete, `P`, tap to place and the
+  resize button. Targets in the pill and toast are 44px.
 - Announcements go to a polite status region, each cleared and set on the next
   frame so two identical ones are both spoken: "Editing layout, 6 tiles. Tab to
   a tile, Space to pick it up.", "Signups, picked up. Use the arrow keys to move

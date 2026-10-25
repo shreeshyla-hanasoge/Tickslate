@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes, keepInPlace, visualOrder, splitStrip, stripBoxes, stripSlotAt, mergeStrip } from '../src/elements/grid-geometry.js'
+import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes, keepInPlace, visualOrder, hasSmall, splitStrip, stripBoxes, stripSlotAt, mergeStrip } from '../src/elements/grid-geometry.js'
 import { WIDGETS, place, typeForTag } from '../src/core/index.js'
 import { TsGrid } from '../src/elements/index.js'
 
@@ -250,6 +250,21 @@ test('splitStrip takes the named items in strip order and leaves the rest on the
   assert.deepEqual(board.map((i) => i.id), ['b', 'd', 'e'])
   // The items themselves, not copies: the grid compares them by reference.
   assert.equal(strip[0], stripItems[2])
+})
+
+test('splitStrip leaves an item pinnable() refuses on the board', () => {
+  const { strip, board } = splitStrip(stripItems, ['a', 'b', 'c'], 2, (item) => item.id !== 'b')
+  assert.deepEqual(strip.map((i) => i.id), ['a', 'c'])
+  assert.deepEqual(board.map((i) => i.id), ['b', 'd', 'e'])
+})
+
+test('hasSmall says whether a spec offers S, and an unknown type is a plain tile', () => {
+  assert.equal(hasSmall(['S', 'M']), true)
+  assert.equal(hasSmall(['Wide', 'Tall']), false)
+  assert.equal(hasSmall(WIDGETS.equityCurve.sizes), false)
+  assert.equal(hasSmall(WIDGETS.todayPnl.sizes), true)
+  assert.equal(hasSmall(undefined), true)
+  assert.equal(hasSmall([]), true)
 })
 
 test('splitStrip is empty at 3 or 4 columns and with no strip', () => {

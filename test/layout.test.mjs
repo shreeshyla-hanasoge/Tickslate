@@ -425,6 +425,20 @@ describe('editing', () => {
       'sessionClock',
     ])
   })
+
+  test('setTopStrip counts only the ids it is told to, and keeps the rest without a slot', () => {
+    const layout = { version: 1, device: 'phone', profiles: { market: [...items, s('edgeStats', 'S')], closed: [s('chart', 'M')] } }
+    const shown = new Set(['todayPnl', 'watchlist', 'sessionClock', 'edgeStats'])
+    // A ghost id (only in another profile) sits first and still leaves room for three shown ones.
+    assert.deepEqual(setTopStrip(layout, ['chart', 'todayPnl', 'watchlist', 'sessionClock', 'edgeStats'], (id) => shown.has(id)).topStrip, [
+      'chart',
+      'todayPnl',
+      'watchlist',
+      'sessionClock',
+    ])
+    // Nothing counts: a restored list is whatever it was.
+    assert.equal(setTopStrip(layout, ['todayPnl', 'watchlist', 'sessionClock', 'edgeStats'], () => false).topStrip.length, 4)
+  })
 })
 
 describe('dropIndex', () => {

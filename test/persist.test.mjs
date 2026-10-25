@@ -50,6 +50,18 @@ test('waits for ts-columns-change when columns is 0', () => {
   assert.deepEqual(ids(grid.layout), ['p'])
 })
 
+test('the phone top strip is saved with a change and comes back on load', () => {
+  const storage = fakeStorage()
+  const grid = fakeGrid(2)
+  persistLayout(grid, { key: 'k', storage })
+  const layout = { version: 1, device: 'phone', profiles: { market: ['a', 'b', 'c'].map((id) => item(id)), closed: [] }, topStrip: ['c', 'a'] }
+  fire(grid, 'ts-layout-change', { layout, items: layout.profiles.market, previous: layout, profile: 'market', reason: 'strip', id: 'c' })
+  assert.deepEqual(JSON.parse(storage.data['k:phone']).topStrip, ['c', 'a'])
+  const next = fakeGrid(2)
+  persistLayout(next, { key: 'k', storage })
+  assert.deepEqual(next.layout.topStrip, ['c', 'a'])
+})
+
 test('nothing stored and no defaults leaves the grid alone', () => {
   const grid = fakeGrid(3)
   persistLayout(grid, { key: 'k', storage: fakeStorage() })

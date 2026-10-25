@@ -121,11 +121,21 @@ export function withProfile(layout, name, items) {
   return next
 }
 
-export function setTopStrip(layout, ids) {
+/**
+ * The top strip set to `ids`, in order. `counts(id)` says whether an id is one the grid shows, and only those
+ * count toward TOP_STRIP_MAX: an id it can't show (another profile's, or a tile with no small size) is kept
+ * but never takes a pin slot. Without `counts` every id counts.
+ */
+export function setTopStrip(layout, ids, counts) {
   const strip = []
+  let shown = 0
   for (const id of ids) {
-    if (strip.length === TOP_STRIP_MAX) break
-    if (typeof id === 'string' && !strip.includes(id) && holds(layout, id)) strip.push(id)
+    if (typeof id !== 'string' || strip.includes(id) || !holds(layout, id)) continue
+    if (!counts || counts(id)) {
+      if (shown === TOP_STRIP_MAX) continue
+      shown++
+    }
+    strip.push(id)
   }
   return { ...layout, topStrip: strip }
 }

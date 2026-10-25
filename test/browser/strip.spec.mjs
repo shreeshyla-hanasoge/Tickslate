@@ -252,7 +252,7 @@ test.describe('editing the strip', () => {
       await page.mouse.down()
       await page.mouse.move(mx + (to.x - from.x) / 2, my + 3, { steps: 5 })
       await page.mouse.move(to.x + to.width / 2, my + 3, { steps: 8 })
-      await page.waitForTimeout(300)
+      await settle(page)
       await page.mouse.up()
       await settle(page)
       expect(await saved(page)).toEqual(['beta', 'gamma', 'alpha'])
@@ -291,6 +291,166 @@ test.describe('setTopStrip', () => {
   })
 })
 
+test.describe('keys', () => {
+  test('P pins and unpins the focused tile, and says so; a fourth pin says the strip is full', async ({ page }) => {
+    await load(page, '?strip=alpha,beta')
+    await edit(page)
+    await chrome(page, 'delta', 'handle').focus()
+    await page.keyboard.press('p')
+    await settle(page)
+    expect(await saved(page)).toEqual(['alpha', 'beta', 'delta'])
+    await expect(status(page)).toHaveText('Delta pinned to the top.')
+    await expect(chrome(page, 'delta', 'handle')).toBeFocused()
+    await page.keyboard.press('Shift+P')
+    await settle(page)
+    expect(await saved(page)).toEqual(['alpha', 'beta'])
+    await expect(status(page)).toHaveText('Delta unpinned.')
+    await page.keyboard.press('p')
+    await chrome(page, 'zeta', 'handle').focus()
+    await page.keyboard.press('p')
+    await settle(page)
+    await expect(status(page)).toContainText('The top strip is full. Unpin a tile first.')
+    expect((await events(page)).map((e) => [e.reason, e.id])).toEqual([['strip', 'delta'], ['strip', 'delta'], ['strip', 'delta']])
+    // Each step is one undo.
+    await page.evaluate(() => document.getElementById('g').undo())
+    await settle(page)
+    expect(await saved(page)).toEqual(['alpha', 'beta'])
+  })
+
+  test('P also acts on a held tile, and ignores Ctrl and Meta', async ({ page }) => {
+    await load(page)
+    await edit(page)
+    await chrome(page, 'beta', 'handle').focus()
+    await page.keyboard.press('Control+p')
+    await settle(page)
+    expect(await saved(page)).toEqual(['alpha', 'beta', 'gamma'])
+    await page.keyboard.press('Space')
+    await page.keyboard.press('p')
+    await settle(page)
+    expect(await saved(page)).toEqual(['alpha', 'gamma'])
+    // The pick-up and the cancelled move were spoken in the same frame.
+    await expect(status(page)).toContainText('Beta unpinned.')
+  })
+
+  test('the arrows are mirrored under dir=rtl while reordering the strip', async ({ page }) => {
+    await load(page, '?dir=rtl')
+    await edit(page)
+    await chrome(page, 'alpha', 'handle').focus()
+    await page.keyboard.press('Space')
+    // Visually left is later in the strip when the first tile is at the right.
+    await page.keyboard.press('ArrowRight')
+    await expect(status(page)).toContainText("Can't move further.")
+    await page.keyboard.press('ArrowLeft')
+    await expect(status(page)).toContainText('moved to position 2 of 3')
+    await page.keyboard.press('Space')
+    await settle(page)
+    expect(await saved(page)).toEqual(['beta', 'alpha', 'gamma'])
+  })
+})
+
+test.describe('undo and pin slots', () => {
+  test('a pin step is undone in its own profile, and a move step does not touch it', async ({ page }) => {
+    await load(page, '?closed=1&strip=none')
+    const result = await page.evaluate(async () => {
+      const g = document.getElementById('g')
+      const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      g.move('eta', 0)
+      g.profile = 'closed'
+      await frame()
+      g.setTopStrip(['alpha', 'beta'])
+      g.profile = 'market'
+      await frame()
+      const undone = g.undo()
+      await frame()
+      const market = g.layout.profiles.market.map((item) => item.id)
+      g.profile = 'closed'
+      await frame()
+      const closedUndo = g.undo()
+      await frame()
+      return { undone, market, strip: g.layout.topStrip, closedUndo }
+    })
+    expect(result.undone).toBe(true)
+    expect(result.market[0]).toBe('alpha')
+    // The undo that is the strip's own restores the strip; the move's undo did not touch it.
+    expect(result.closedUndo).toBe(true)
+    expect(result.strip).toEqual([])
+  })
+
+  test('the move undone in market keeps closed\'s pins', async ({ page }) => {
+    await load(page, '?closed=1&strip=none')
+    await page.evaluate(async () => {
+      const g = document.getElementById('g')
+      const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      g.move('eta', 0)
+      g.profile = 'closed'
+      await frame()
+      g.setTopStrip(['alpha', 'beta'])
+      g.profile = 'market'
+      await frame()
+      g.undo()
+      await frame()
+    })
+    expect(await saved(page)).toEqual(['alpha', 'beta'])
+    expect(await page.evaluate(() => document.getElementById('g').layout.profiles.market.map((item) => item.id).indexOf('eta'))).toBe(6)
+  })
+
+  test('ids this profile does not show take no pin slot', async ({ page }) => {
+    await load(page, '?closed=1&strip=omega,alpha,beta')
+    // Omega is only in closed: two pinned tiles show, and a third pin is not refused.
+    expect(await stripIds(page)).toEqual(['alpha', 'beta'])
+    await edit(page)
+    await chrome(page, 'delta', 'pin').click()
+    await settle(page)
+    expect(await stripIds(page)).toEqual(['alpha', 'beta', 'delta'])
+    expect(await saved(page)).toEqual(['alpha', 'beta', 'delta', 'omega'])
+    await chrome(page, 'zeta', 'pin').click()
+    await settle(page)
+    await expect(status(page)).toHaveText('The top strip is full. Unpin a tile first.')
+  })
+
+  test('setTopStrip counts what the grid shows and keeps the rest', async ({ page }) => {
+    await load(page, '?closed=1&strip=omega,alpha')
+    expect(await page.evaluate(() => document.getElementById('g').setTopStrip(['alpha', 'beta', 'gamma', 'delta']))).toBe(true)
+    await settle(page)
+    expect(await stripIds(page)).toEqual(['alpha', 'beta', 'gamma'])
+    expect(await saved(page)).toEqual(['alpha', 'beta', 'gamma', 'omega'])
+    expect(await page.evaluate(() => document.getElementById('g').setTopStrip(['alpha', 'beta', 'gamma']))).toBe(false)
+    expect(await page.evaluate(() => document.getElementById('g').setTopStrip([]))).toBe(true)
+    await settle(page)
+    expect(await saved(page)).toEqual(['omega'])
+  })
+})
+
+test.describe('widgets with no small size', () => {
+  test('have no pin button, say so on P, and are ignored by setTopStrip', async ({ page }) => {
+    await load(page, '?nosize=1')
+    await edit(page)
+    await expect(chrome(page, 'table', 'pin')).toBeHidden()
+    await expect(chrome(page, 'delta', 'pin')).toBeVisible()
+    await chrome(page, 'table', 'handle').focus()
+    await page.keyboard.press('p')
+    await expect(status(page)).toHaveText('This widget has no small size.')
+    expect(await saved(page)).toEqual(['alpha', 'beta', 'gamma'])
+    expect(await events(page)).toEqual([])
+    expect(await page.evaluate(() => document.getElementById('g').setTopStrip(['table', 'alpha']))).toBe(true)
+    expect(await saved(page)).toEqual(['alpha'])
+  })
+
+  test('stay on the board when a saved layout names one', async ({ page }) => {
+    await load(page, '?nosize=1&strip=table,alpha')
+    expect(await stripIds(page)).toEqual(['alpha'])
+    expect(await saved(page)).toEqual(['table', 'alpha'])
+    expect(await tile(page, 'table').getAttribute('size')).toBe('M')
+    const box = await rect(page, 'table')
+    expect(box.w).toBeGreaterThan(300)
+    // Pinning another leaves the saved id where it is.
+    await edit(page)
+    await chrome(page, 'delta', 'pin').click()
+    await settle(page)
+    expect(await saved(page)).toEqual(['alpha', 'delta', 'table'])
+  })
+})
+
 test.describe('axe and pictures', () => {
   for (const theme of ['light', 'dark']) {
     test(`axe is clean in ${theme}, editing or not`, async ({ page }) => {
@@ -307,7 +467,7 @@ test.describe('axe and pictures', () => {
   }
 
   // Run with STRIP_SHOTS=<directory> to write the pictures the story is judged by.
-  for (const [name, query] of [['light', ''], ['dark', '?theme=dark'], ['rtl', '?dir=rtl'], ['header', '?top=48px']]) {
+  for (const [name, query] of [['light', ''], ['dark', '?theme=dark'], ['rtl', '?dir=rtl'], ['dark-rtl', '?theme=dark&dir=rtl'], ['header', '?top=48px'], ['nosize', '?nosize=1&strip=table,alpha,beta']]) {
     test(`picture: ${name}`, async ({ page }) => {
       test.skip(!process.env.STRIP_SHOTS, 'only when STRIP_SHOTS is set')
       await load(page, query)

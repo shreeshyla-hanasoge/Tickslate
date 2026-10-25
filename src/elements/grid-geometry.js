@@ -61,18 +61,24 @@ export function extentOf(w, h, m) {
  * split from the rest of the board. It exists only at 2 columns; at 3 or 4 the
  * board keeps every item at its layout size and `topStrip` is simply not read.
  * Ids with no item in `items` (another profile's, or a tile the host has not
- * rendered) are skipped, and at most TOP_STRIP_MAX count.
+ * rendered) are skipped, and so are items `pinnable(item)` refuses (a widget
+ * with no S size stays on the board), and at most TOP_STRIP_MAX count.
  */
-export function splitStrip(items, topStrip, columns) {
+export function splitStrip(items, topStrip, columns, pinnable) {
   if (columns !== 2 || !Array.isArray(topStrip) || !topStrip.length) return { strip: [], board: items.slice() }
   const byId = new Map(items.map((item) => [item.id, item]))
   const strip = []
   for (const id of topStrip) {
     const item = byId.get(id)
-    if (item && !strip.includes(item) && strip.length < TOP_STRIP_MAX) strip.push(item)
+    if (item && !strip.includes(item) && strip.length < TOP_STRIP_MAX && (!pinnable || pinnable(item))) strip.push(item)
   }
   const pinned = new Set(strip)
   return { strip, board: items.filter((item) => !pinned.has(item)) }
+}
+
+/** Whether a spec's `sizes` offer S, which a strip tile is drawn at. No sizes at all (an unknown type) is a plain 1 x 1 tile. */
+export function hasSmall(sizes) {
+  return !Array.isArray(sizes) || !sizes.length || sizes.includes('S')
 }
 
 /**

@@ -2,7 +2,9 @@
 <!-- A dashboard of seven generic tiles with three pinned to the top strip (RFC 0003 §19).
        ?theme=dark   dark theme        ?dir=rtl   right to left
        ?top=48px     a fixed 48px header, and --ts-strip-top set to match
-       ?strip=a,b    which items start pinned (default: alpha,beta,gamma; "none" for none) -->
+       ?strip=a,b    which items start pinned (default: alpha,beta,gamma; "none" for none)
+       ?closed=1     the closed profile holds alpha to delta and omega, which market does not show
+       ?nosize=1     market also holds a table, a widget with no S size -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -44,7 +46,7 @@
 </main>
 <script type="module">
   const params = new URLSearchParams(location.search)
-  const { setup } = await import('./data.js')
+  const { setup, dataFor } = await import('./data.js')
   await customElements.whenDefined('ts-grid')
   setup()
   document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
@@ -56,12 +58,23 @@
     document.documentElement.style.setProperty('--ts-strip-top', params.get('top'))
   }
   const strip = params.get('strip')
+  const market = ['alpha:M', 'beta:Wide', 'gamma:S', 'delta:M', 'epsilon:Wide', 'zeta:M', 'eta:M'].map((s) => ({ id: s.split(':')[0], type: 'card', size: s.split(':')[1] }))
+  if (params.has('nosize')) {
+    const table = document.createElement('ts-table')
+    table.setAttribute('item', 'table')
+    table.data = dataFor('ts-table')
+    g.append(table)
+    market.push({ id: 'table', size: 'M' })
+  }
+  if (params.has('closed')) {
+    g.insertAdjacentHTML('beforeend', '<ts-card item="omega" label="Omega" size="M"><span slot="value">88</span></ts-card>')
+  }
   g.layout = {
     version: 1,
     device: 'phone',
     profiles: {
-      market: ['alpha:M', 'beta:Wide', 'gamma:S', 'delta:M', 'epsilon:Wide', 'zeta:M', 'eta:M'].map((s) => ({ id: s.split(':')[0], type: 'card', size: s.split(':')[1] })),
-      closed: [],
+      market,
+      closed: params.has('closed') ? ['alpha', 'beta', 'gamma', 'delta', 'omega'].map((id) => ({ id, type: 'card', size: 'M' })) : [],
     },
     topStrip: strip === 'none' ? [] : (strip ? strip.split(',') : ['alpha', 'beta', 'gamma']),
   }
