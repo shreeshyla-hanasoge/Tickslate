@@ -26,11 +26,11 @@
 <!-- site-header -->
 <main class="page" id="main">
   <h1>Bare install</h1>
-  <ts-grid locale="en-IN" currency="INR">
+  <ts-grid locale="en-IN" currency="INR" heading-level="2">
     <ts-today-pnl item="todayPnl" label="Today's P&amp;L"></ts-today-pnl>
     <ts-equity-curve item="equityCurve" label="Equity curve"></ts-equity-curve>
   </ts-grid>
-  <ts-today-pnl class="alone" id="alone" size="S" label="Standalone tile" locale="en-IN" currency="INR"></ts-today-pnl>
+  <ts-today-pnl class="alone" id="alone" size="S" heading-level="2" label="Standalone tile" locale="en-IN" currency="INR"></ts-today-pnl>
 </main>
 
 <script type="module">
@@ -59,5 +59,6 @@
   }
   document.querySelector('ts-equity-curve').data = { days, fees: 4120.5, trades: days.reduce((s, d) => s + d.trades, 0) }
 </script>
+<!-- site-footer -->
 </body>
 </html>

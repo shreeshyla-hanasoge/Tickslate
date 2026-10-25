@@ -17,18 +17,32 @@ package.
 | `/docs/index.html` | generated | The docs hub |
 | `/docs/**/*.html` | `docs/guide/**`, `docs/widgets/`, `docs/reference/`, `docs/theming.md`, `docs/ACCESSIBILITY.md` | One page per Markdown file, rendered at build time |
 | `/changelog.html` | `CHANGELOG.md` | The changelog |
-| `/404.html` | `site/404.html` | Not found (GitHub Pages serves it) |
+| `/404.html` | `site/404.html` | Not found, on GitHub Pages only (see below) |
 
-**Every link names a file.** The LambdaDeploy host answers any path that has
-no file with the root page: `/examples/` and `/docs/` return the landing page
-with status 200, not their `index.html`. So nothing on the site links a
-folder; links go to `/examples/index.html`, `/docs/index.html` and so on.
-Keep it that way when adding a page.
+**Every link names a file.** The LambdaDeploy host does not resolve a folder
+to its `index.html`, and has no not-found page of its own:
 
-The site styles itself with the library's `--ts-*` tokens: Paper in light,
-Graphite in dark, following the system until the visitor picks one with the
-switch in the bar (kept in `localStorage`). It loads nothing from another
-host: no web fonts (the tokens' system fallbacks are used), no analytics.
+- a path **without** a file extension (`/examples/`, `/docs/`, `/nope`)
+  returns the landing page with status 200;
+- a missing path **with** an extension (`/docs/nope.html`, `/x.css`) returns
+  status 403 with S3's `AccessDenied` XML.
+
+So nothing on the site links a folder; links go to `/examples/index.html`,
+`/docs/index.html` and so on. A renamed or removed page leaves its old URL
+showing that XML, so keep page URLs stable. `404.html` is served by GitHub
+Pages only; LambdaDeploy would need an error-document setting to use it.
+
+**One theme for every page.** The site is styled with the library's `--ts-*`
+tokens: Paper in light, Graphite in dark. Every page's bar has the theme
+switch (Auto, Light, Dark). It writes `data-theme` on `<html>`, `auto` by
+default, and keeps the choice in `localStorage`, read before the first paint.
+The playground and the generic example have theme buttons of their own;
+`site/theme.js` keeps those and the switch in step, both ways. The gallery's
+page follows it too; its two theme blocks keep showing Paper and Graphite
+side by side, as they are meant to.
+
+**Nothing from another host:** no web fonts (the tokens' system fallbacks are
+used), no analytics.
 
 ## How it is built
 
@@ -54,15 +68,36 @@ host: no web fonts (the tokens' system fallbacks are used), no analytics.
   bar there (`site/bar.css`), with a theme switch on pages that have no theme
   control of their own. Under `npm run dev` the comment stays a comment, so
   those pages behave exactly as before.
-- **Links and the version.** A link written as `/x` in a site page means the
-  site root; the build puts the base in front. The landing page's install
-  snippets name the version in `package.lib.json`, and its "Your first
-  dashboard" block is the README's quick start, read at build time.
+- **The bar and footer.** The playground, the gallery and the example pages
+  carry `<!-- site-header -->` after `<body>` and `<!-- site-footer -->`
+  before `</body>`; the site build fills them in. Under `npm run dev` they
+  stay comments.
+- **Links.** A link written as `/x` in a site page means the site root; the
+  build puts the base in front. The landing page's "Your first dashboard"
+  block is the README's quick start, read at build time.
+- **The version (`SITE_VERSION`).** The install lines, the CDN pin in the
+  landing page and the playground's Copy HTML, and the footer name
+  `SITE_VERSION`, which defaults to the version in `package.lib.json`. The
+  site must never tell visitors to install a version npm doesn't have, so
+  between a version bump on master and `npm publish`, build with
+  `SITE_VERSION` set to the published version (`SITE_VERSION=0.1.0 npm run
+  build:ld`, or the same before `npm run pack:site`'s upload build). When the
+  two differ, the install section and the docs hub say which version the
+  docs describe and which one npm has, and lines true only of the unreleased
+  version (the IIFE bundle, new in 0.2.0) are left out.
 - **Tokens first.** Each page's stylesheets are linked with `tokens.css`
   first, so a theme preset (the same zero specificity) overrides the
   defaults. The build fails if a page links another stylesheet before it.
-- **Offline.** The build fails if any page or stylesheet would load something
-  from another host.
+- **Offline.** The dev pages link Google Fonts; the site build removes
+  exactly those `<link>`s (`fonts.googleapis.com`, `fonts.gstatic.com`) and
+  nothing else. The build then fails if any page, stylesheet or script would
+  load something from another host: an element's `src` or `href`, CSS `url()`
+  or `@import`, or a script's `import()`, `new URL()` or `fetch()` of an
+  absolute address.
+- **Renderer self-checks.** `npm run build:site` and `npm run build:ld` first
+  run `node scripts/md.mjs --check`: headings, lists, tables, code, links,
+  escaping, the blocked link schemes and the link rewriting. They live in the
+  script because the unit tests import nothing outside `src/` and `node:*`.
 
 ### Commands
 
@@ -94,11 +129,17 @@ in the **duo1c** account. LambdaDeploy builds it on its own server: it runs
 `npm install` and then `vite build` in a folder with a `package.json`, and
 publishes `dist/`.
 
-1. `npm run pack:site`. It writes `dist-ld-src/`: the pages, `src/`, the docs
+1. `npm run pack:site` (with `SITE_VERSION` exported if master's version is
+   not on npm yet, see above; the upload's `vite build` reads it from the
+   environment, so set it on the build server too, or bake the default by
+   running pack-site after the release). It writes `dist-ld-src/`: the pages, `src/`, the docs
    Markdown, `CHANGELOG.md`, `README.md`, `package.lib.json`, the site build
    (`vite.site.config.js`, `scripts/md.mjs`, `scripts/site-docs.mjs`,
    `scripts/entries.mjs`), `vite.ld.config.js` saved as `vite.config.js`, and a
-   `package.json` whose only dependency is the `vite` the repository uses.
+   `package.json` whose only dependency is the `vite` the repository uses, with
+   its `rollup` and `esbuild` pinned through `overrides` to the lockfile's
+   versions. When `SITE_VERSION` is set, pack-site writes it into the
+   upload's `vite.config.js`, so the build server needs no environment.
 2. Optionally check it builds from scratch:
    `cd dist-ld-src && npm install && npx vite build` (the site lands in
    `dist-ld-src/dist/`).
@@ -110,5 +151,6 @@ publishes `dist/`.
 signature mismatch, so a zip of the folder can't be imported; upload each file
 on its own instead.
 
-Redeploy after every release (see [RELEASING.md](RELEASING.md)), so the
-install snippets name the new version, and after any change to the docs.
+Redeploy after every release with `SITE_VERSION` unset (see
+[RELEASING.md](RELEASING.md)), so the install lines name the new version, and
+after any change to the docs.

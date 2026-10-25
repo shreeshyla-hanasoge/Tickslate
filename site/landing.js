@@ -23,6 +23,12 @@ const MIN = 60000
 const DAY = 86400000
 const hero = document.getElementById('hero-grid')
 const trading = document.getElementById('trading-grid')
+
+// Four columns from 1100px of board, not the default 1200, and three from 640px, so a tablet gets three: the page's column
+// is about 1160px wide, and these boards were laid out for four. The tile
+// orders pack with no hole at two, three and four columns.
+for (const grid of [hero, trading]) grid.breakpoints = { tablet: 640, desktop: 1100 }
+const statusEl = document.getElementById('demo-status')
 const tile = (grid, id) => grid.querySelector(`[item="${id}"]`)
 
 // ── The hero board ──────────────────────────────────────────────────────────
@@ -37,6 +43,8 @@ let users = 18420
 let errors = 0.0062
 let spend = 31840
 let signups = 304
+let revenue = 48210
+const revenueTrend = [31200, 34900, 37150, 40400, 42880, 45320, 46900]
 const userTrend = [16900, 17150, 17020, 17480, 17710, 17630, 17990, 18240, 18110, 18420]
 const errorTrend = [0.0091, 0.0084, 0.0088, 0.0079, 0.0073, 0.0075, 0.0069, 0.0066, 0.0064, 0.0062]
 
@@ -62,18 +70,24 @@ function publishHero(asOf) {
     asOf,
     live: true,
   }
+  // The small tiles carry no asOf: their header is the label and the live dot,
+  // so a phone's half-width tile has room for the whole label.
   tile(hero, 'users').data = {
-    value: users, previous: 17690, compareLabel: 'vs last Sunday', series: [...userTrend.slice(1), users], asOf, live: true,
+    value: users, previous: 17690, compareLabel: 'vs Sunday', series: [...userTrend.slice(1), users], live: true,
   }
   tile(hero, 'errors').data = {
     value: errors, previous: 0.0081, format: 'percent', decimals: 2, goodWhen: 'down', compareLabel: 'vs last week',
-    series: [...errorTrend.slice(1), errors], asOf, live: true,
+    series: [...errorTrend.slice(1), errors], live: true,
+  }
+  tile(hero, 'revenue').data = {
+    value: revenue, previous: 45900, format: 'money', decimals: 0, compareLabel: 'vs yesterday',
+    series: revenueTrend.concat(revenue), asOf, live: true,
   }
   tile(hero, 'budget').data = {
-    value: spend, target: 40000, mode: 'limit', format: 'money', decimals: 0, caption: 'This month', asOf,
+    value: spend, target: 40000, mode: 'limit', format: 'money', decimals: 0, caption: 'This month', live: true,
   }
   tile(hero, 'signups').data = {
-    value: signups, previous: 287, compareLabel: 'vs yesterday', series: [212, 240, 251, 266, 270, 281, signups], asOf, live: true,
+    value: signups, previous: 287, compareLabel: 'vs yesterday', series: [212, 240, 251, 266, 270, 281, signups], live: true,
   }
   publishPnl(asOf)
   tile(hero, 'notes').data = { asOf }
@@ -93,7 +107,6 @@ function publishPnl(asOf) {
     asOf,
     live: true,
   }
-  tile(hero, 'pnl').data = data
   tile(trading, 'pnl').data = data
 }
 
@@ -103,8 +116,8 @@ function publishPnl(asOf) {
 // closed for most visitors most of the day.
 const calendar = createCalendar({
   sessions: [
-    { id: 'east', label: 'Harbor Exchange', timeZone: 'Asia/Singapore', days: [1, 2, 3, 4, 5], open: '09:00', close: '17:00' },
-    { id: 'west', label: 'Prairie Exchange', timeZone: 'America/Chicago', days: [1, 2, 3, 4, 5], open: '08:30', close: '15:00' },
+    { id: 'east', label: 'Harbor', timeZone: 'Asia/Singapore', days: [1, 2, 3, 4, 5], open: '09:00', close: '17:00' },
+    { id: 'west', label: 'Prairie', timeZone: 'America/Chicago', days: [1, 2, 3, 4, 5], open: '08:30', close: '15:00' },
   ],
 })
 tile(trading, 'clock').data = { calendar, sessions: ['east', 'west'] }
@@ -140,7 +153,8 @@ const positions = [
 const pnlOf = (p) => round((p.ltp - p.entryPrice) * p.quantity * (p.side === 'long' ? 1 : -1))
 
 function publishTrading(asOf) {
-  tile(trading, 'watch').data = { instruments, asOf, live: true }
+  // No asOf: at Tall on a phone the header has room for the label and the live dot only.
+  tile(trading, 'watch').data = { instruments, live: true }
   tile(trading, 'positions').data = { positions: positions.map((p) => ({ ...p, pnl: pnlOf(p) })), asOf, live: true }
 }
 
@@ -157,6 +171,7 @@ function tick() {
   errors = Math.max(0.001, round(errors + jitter(0.0004), 4))
   if (rand() < 0.3) spend = Math.round(spend + rand() * 60)
   if (rand() < 0.25) signups += 1
+  revenue = Math.round(revenue + rand() * 90)
   const v = intraday[intraday.length - 1].v
   intraday.push({ t: now, v: round(v + jitter(60) + 4) })
   for (const i of instruments) {
@@ -184,10 +199,11 @@ run()
 document.addEventListener('visibilitychange', run)
 
 const pause = document.getElementById('pause')
+// A toggle: its name stays "Pause" and aria-pressed says whether it is on.
 pause.addEventListener('click', () => {
   paused = !paused
   pause.setAttribute('aria-pressed', String(paused))
-  pause.textContent = paused ? 'Resume live data' : 'Pause live data'
+  statusEl.textContent = paused ? 'Live data paused.' : 'Live data resumed.'
   run()
 })
 
@@ -200,7 +216,6 @@ hero.addEventListener('ts-edit-change', (e) => { edit.textContent = e.detail.edi
 // The board starts from its markup every visit; Reset puts back the order and
 // sizes it started with, and any tile removed while editing.
 const initial = JSON.parse(JSON.stringify(hero.layout))
-const statusEl = document.getElementById('demo-status')
 document.getElementById('reset').addEventListener('click', () => {
   hero.editing = false
   hero.layout = initial
@@ -211,7 +226,7 @@ const preset = document.getElementById('preset')
 preset.addEventListener('change', () => {
   if (preset.value) hero.dataset.tsTheme = preset.value
   else delete hero.dataset.tsTheme
-  statusEl.textContent = `Preset: ${preset.selectedOptions[0].textContent}.`
+  statusEl.textContent = `Theme: ${preset.selectedOptions[0].textContent}.`
 })
 document.getElementById('try-preset').addEventListener('click', (e) => {
   e.preventDefault()

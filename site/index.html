@@ -29,43 +29,41 @@
 <main id="main" tabindex="-1">
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap hero-copy">
-      <p class="eyebrow">Open source · MIT · zero dependencies</p>
+      <p class="eyebrow">Free and open source · MIT licence</p>
       <h1 id="hero-title">Dashboards your users can rearrange.</h1>
-      <p class="lede">Tickslate is a library of drop-in dashboard widgets: a grid people can drag and resize, and tiles for figures, charts, tables and cards, for any data. A finance set for trading apps is built in. It is plain HTML elements, so it works with any framework or none.</p>
+      <p class="lede">Tickslate gives you ready-made dashboard tiles (numbers, charts, tables and cards) and a grid your users can drag, resize and save.</p>
       <div class="cta">
-        <a class="btn primary" href="#install">Install</a>
-        <a class="btn" href="/playground.html">Open the playground</a>
-        <a class="btn" href="/docs/index.html">Read the docs</a>
+        <a class="btn primary" href="#install">Get started</a>
+        <a class="btn" href="/widgets.html">See every widget</a>
+        <a class="text-link" href="/playground.html">or open the playground</a>
       </div>
     </div>
 
     <div class="wrap">
       <div class="demo">
-        <div class="demo-bar">
-          <p class="demo-hint" id="demo-hint"><strong>Try editing:</strong> long-press a tile or press Edit layout, then drag a tile to move it or pull its corner to resize. The figures are made up and tick every two seconds.</p>
-          <div class="demo-tools" role="group" aria-label="Demo controls">
-            <button type="button" class="btn small primary" id="edit" aria-describedby="demo-hint">Edit layout</button>
-            <button type="button" class="btn small" id="pause" aria-pressed="false">Pause live data</button>
-            <button type="button" class="btn small" id="reset">Reset</button>
-            <label class="pick">Preset
-              <select id="preset">
-                <option value="">Default</option>
-                <option value="neutral">Neutral</option>
-                <option value="paper">Paper</option>
-                <option value="graphite">Graphite</option>
-                <option value="calm">Calm</option>
-                <option value="signal">Signal</option>
-                <option value="terminal">Terminal</option>
-              </select>
-            </label>
-          </div>
+        <div class="demo-tools" role="group" aria-label="Demo controls">
+          <button type="button" class="btn small primary" id="edit" aria-describedby="demo-hint">Edit layout</button>
+          <button type="button" class="btn small" id="pause" aria-pressed="false">Pause</button>
+          <button type="button" class="btn small" id="reset">Reset</button>
+          <label class="pick"><span class="pick-label">Theme</span>
+            <select id="preset">
+              <option value="">Default</option>
+              <option value="neutral">Neutral</option>
+              <option value="paper">Paper</option>
+              <option value="graphite">Graphite</option>
+              <option value="calm">Calm</option>
+              <option value="signal">Signal</option>
+              <option value="terminal">Terminal</option>
+            </select>
+          </label>
         </div>
+        <p class="demo-hint" id="demo-hint"><strong>Try it:</strong> press Edit layout, or press and hold a tile, then drag to move it or pull its corner to resize. The numbers are made up and change every two seconds; Pause stops them.</p>
         <ts-grid id="hero-grid" class="demo-grid" aria-label="Live demo dashboard" heading-level="2" locale="en-US" currency="USD">
           <ts-chart item="requests" label="Requests per minute" size="M"></ts-chart>
-          <ts-metric item="users" label="Users online" size="S"></ts-metric>
+          <ts-metric item="users" label="Users" size="S"></ts-metric>
           <ts-metric item="errors" label="Errors" size="S"></ts-metric>
-          <ts-today-pnl item="pnl" label="Today's P&amp;L" size="Wide"></ts-today-pnl>
-          <ts-progress item="budget" label="Cloud budget" size="S"></ts-progress>
+          <ts-metric item="revenue" label="Revenue" size="Wide"></ts-metric>
+          <ts-progress item="budget" label="Budget" size="S"></ts-progress>
           <ts-metric item="signups" label="Signups" size="S"></ts-metric>
           <ts-card item="notes" label="Release notes" sizes="S Wide M" size="Wide">
             <ul class="notes">
@@ -77,6 +75,7 @@
         </ts-grid>
         <p class="sr-only" id="demo-status" role="status"></p>
       </div>
+      <p class="hero-more">Add it to any web page with one script tag, or use it from React, Vue, Svelte or Angular. A set of tiles for trading apps is included.</p>
     </div>
   </section>
 
@@ -91,7 +90,7 @@
       <li><a href="https://www.npmjs.com/package/tickslate">npm</a></li>
       <li><a href="https://github.com/shreeshyla-hanasoge/Tickslate">GitHub</a></li>
     </ul>
-    <p class="quick-version">Version <code>__TICKSLATE_VERSION__</code></p>
+    <p class="quick-version">Version <code>__TICKSLATE_VERSION__</code> on npm</p>
   </nav>
 
   <section class="wrap section" id="what" aria-labelledby="what-title">
@@ -100,27 +99,37 @@
     <ul class="cards three">
       <li class="card">
         <h3>A grid people can rearrange</h3>
-        <p>Seven tile sizes on a grid of four columns that becomes three on a tablet and two on a phone. Users long-press to edit, drag to move, pull a corner to resize, and undo a removal. One line saves their layout.</p>
+        <p>Tiles come in seven sizes and reflow from four columns on a wide screen to two on a phone. People press and hold to move or resize a tile, remove the ones they don't need, and undo a mistake. Your app saves their arrangement with one line of code.</p>
       </li>
       <li class="card">
-        <h3>Widgets for any data</h3>
-        <p>A KPI tile with its change, trend and target; line, area and bar charts; a progress gauge; a sortable table; and a card that holds anything else, including a chart from another library.</p>
+        <h3>Tiles for any data</h3>
+        <p>A headline number with its change and trend; line, area and bar charts; a progress bar toward a goal or a limit; a sortable table; and a plain card for anything else, even a chart from another library.</p>
       </li>
       <li class="card">
-        <h3>A finance set built in</h3>
-        <p>Today's profit and loss, an equity curve with drawdown, exchange session clocks, a watchlist, open positions, a P&amp;L calendar, edge stats and capital funding, all speaking the words a trading app uses.</p>
+        <h3>Built for trading apps too</h3>
+        <p>Today's profit and loss, account growth over time with its deepest dip, market open and close clocks, a watchlist, open positions, a calendar of winning and losing days, trading statistics and account funding.</p>
       </li>
     </ul>
     <ul class="traits">
-      <li><strong>Framework-free.</strong> Custom elements with no runtime dependencies. This site is plain HTML and ES modules too.</li>
-      <li><strong>Themeable.</strong> Every colour, radius and font is a <code>--ts-*</code> CSS variable. Six presets ship with it.</li>
-      <li><strong>Accessible.</strong> Keyboard editing, tiles that say what they show, and signs as well as colours on every gain and loss.</li>
+      <li><strong>Works anywhere.</strong> Standard web components with nothing else to install. This site is built the same way: plain HTML and no framework.</li>
+      <li><strong>Your brand.</strong> Every colour, corner and font is a setting (a <code>--ts-*</code> CSS variable). Six ready-made themes are included.</li>
+      <li><strong>Accessible.</strong> Works by keyboard, says out loud what each tile shows, and never uses colour alone for gains and losses.</li>
     </ul>
   </section>
 
   <section class="wrap section" id="install" aria-labelledby="install-title">
     <h2 id="install-title">Install</h2>
+    <!-- version-notice -->
     <div class="install">
+      <div class="snippet">
+        <h3>With no build step</h3>
+        <div class="code">
+          <pre id="code-cdn" tabindex="0"><code>&lt;script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@__TICKSLATE_VERSION__/elements.js"&gt;&lt;/script&gt;</code></pre>
+          <button type="button" class="copy" data-copy="code-cdn" aria-label="Copy the script tag">Copy</button>
+        </div>
+        <p>One tag loads every widget. The URL pins an exact version, so a new release never changes your page.</p>
+        <!-- if-released --><p>Need a classic script instead? <code>cdn/tickslate.iife.js</code> from the same address loads everything and sets <code>window.Tickslate</code>.</p><!-- /if-released -->
+      </div>
       <div class="snippet">
         <h3>With a bundler</h3>
         <div class="code">
@@ -133,14 +142,6 @@
         </div>
         <p>That registers <code>&lt;ts-grid&gt;</code> and every widget. Each widget also has its own entry, such as <code>tickslate/elements/metric</code>, so you pay only for what you use.</p>
       </div>
-      <div class="snippet">
-        <h3>With no build step</h3>
-        <div class="code">
-          <pre id="code-cdn" tabindex="0"><code>&lt;script src="https://cdn.jsdelivr.net/npm/tickslate@__TICKSLATE_VERSION__/cdn/tickslate.iife.js"&gt;&lt;/script&gt;</code></pre>
-          <button type="button" class="copy" data-copy="code-cdn" aria-label="Copy the script tag">Copy</button>
-        </div>
-        <p>One script tag loads every element. The URL pins an exact version, so a new release never changes your page.</p>
-      </div>
     </div>
     <div class="snippet wide">
       <h3>Your first dashboard</h3>
@@ -148,7 +149,7 @@
         <pre id="code-quick" tabindex="0"><code><!-- readme:quickstart --></code></pre>
         <button type="button" class="copy" data-copy="code-quick" aria-label="Copy the dashboard markup">Copy</button>
       </div>
-      <p>The markup is the layout: the grid reads its children in order. <a href="/examples/quickstart.html">See this snippet running</a>, or read <a href="/docs/widgets/ts-grid.html">the grid's page</a>.</p>
+      <p>The markup is the layout: the grid reads its children in order, and the last line saves what each user changes. <a href="/examples/quickstart.html">See this snippet running</a>, or read <a href="/docs/widgets/ts-grid.html">the grid's page</a>.</p>
     </div>
     <p class="sr-only" id="copy-status" role="status"></p>
   </section>
@@ -157,7 +158,7 @@
     <h2 id="stack-title">Works with your stack</h2>
     <p class="section-lede">The widgets are standard custom elements, so one implementation serves every framework. Each guide shows how data and events reach them.</p>
     <ul class="stack">
-      <li><a href="/docs/guide/frameworks/react.html"><strong>React</strong><span>Props and events, React 18 and 19</span></a></li>
+      <li><a href="/docs/guide/frameworks/react.html"><strong>React</strong><span>A recipe for React 18 and 19</span></a></li>
       <li><a href="/docs/guide/frameworks/vue.html"><strong>Vue</strong><span>Bind <code>data</code> as a property</span></a></li>
       <li><a href="/docs/guide/frameworks/svelte.html"><strong>Svelte</strong><span>No compiler setting needed</span></a></li>
       <li><a href="/docs/guide/frameworks/angular.html"><strong>Angular</strong><span>One schema, then the usual bindings</span></a></li>
@@ -182,7 +183,7 @@
     </ul>
     <h3 class="group-title">The finance set</h3>
     <ul class="cards showcase">
-      <li class="card"><a href="/docs/widgets/ts-today-pnl.html"><code>&lt;ts-today-pnl&gt;</code></a><p>Today's net, realized and unrealized profit and loss.</p><span class="sizes">S · Wide · M</span></li>
+      <li class="card"><a href="/docs/widgets/ts-today-pnl.html"><code>&lt;ts-today-pnl&gt;</code></a><p>Today's net, realised and unrealised profit and loss.</p><span class="sizes">S · Wide · M</span></li>
       <li class="card"><a href="/docs/widgets/ts-equity-curve.html"><code>&lt;ts-equity-curve&gt;</code></a><p>Cumulative P&amp;L with ranges, the peak and the drawdown.</p><span class="sizes">Wide · M · XL</span></li>
       <li class="card"><a href="/docs/widgets/ts-session-clock.html"><code>&lt;ts-session-clock&gt;</code></a><p>Whether a session is open, and how long until it changes.</p><span class="sizes">S · Banner</span></li>
       <li class="card"><a href="/docs/widgets/ts-watchlist.html"><code>&lt;ts-watchlist&gt;</code></a><p>Instruments with price, change and where they sit in the day's range.</p><span class="sizes">S · Tall · M</span></li>
@@ -195,14 +196,14 @@
 
   <section class="wrap section" id="trading" aria-labelledby="trading-title">
     <h2 id="trading-title">Built for trading apps</h2>
-    <p class="section-lede">The finance widgets know what a trading screen needs: a sign and an arrow on every gain and loss, session times in the exchange's own zone, figures that update in place without moving the layout, and a header that says when the data has gone stale. These six run on the same made-up feed as the board above.</p>
+    <p class="section-lede">The finance tiles know what a trading screen needs: a sign and an arrow on every gain and loss, session times in the exchange's own zone, figures that update in place without moving the layout, and a header that says when the data has gone stale. These six tiles run on the same made-up numbers as the board above. This one is locked, as a finished app's would be.</p>
     <ts-grid id="trading-grid" class="demo-grid" aria-label="Trading dashboard demo" locked heading-level="3" locale="en-US" currency="USD">
       <ts-today-pnl item="pnl" label="Today's P&amp;L" size="S"></ts-today-pnl>
       <ts-session-clock item="clock" label="Sessions" size="S"></ts-session-clock>
       <ts-equity-curve item="equity" label="Equity curve" size="M"></ts-equity-curve>
       <ts-watchlist item="watch" label="Watchlist" size="Tall"></ts-watchlist>
-      <ts-open-positions item="positions" label="Open positions" size="M"></ts-open-positions>
-      <ts-pnl-calendar item="calendar" label="Daily P&amp;L" size="M"></ts-pnl-calendar>
+      <ts-pnl-calendar item="calendar" label="Daily P&amp;L" size="Tall"></ts-pnl-calendar>
+      <ts-open-positions item="positions" label="Open positions" size="Wide"></ts-open-positions>
     </ts-grid>
     <p class="aside">Want this as a page? The <a href="/playground.html">playground</a> runs a full trading board with a schedule that swaps layouts at the market close, and its Copy HTML button gives you the page.</p>
   </section>
@@ -212,7 +213,7 @@
       <h2>Accessible by default</h2>
       <ul class="ticks">
         <li><strong>Keyboard editing.</strong> Tab to a tile, Space to pick it up, the arrow keys to move it, Space to drop, and plus or minus to resize.</li>
-        <li><strong>Tiles that say what they show.</strong> A screen reader hears “Users online, 18,420, up 4.1%”, not just “Users online”, and each chart states its result in words.</li>
+        <li><strong>Tiles that say what they show.</strong> A screen reader hears “Users, 18,420, up 4.1% vs Sunday”, not just “Users”, and each chart states its result in words.</li>
         <li><strong>Never colour alone.</strong> Gains carry a plus sign and losses a true minus, each with an arrow, so the meaning survives any palette.</li>
         <li><strong>Forced colours and reduced motion.</strong> Boundaries, focus rings and chart lines stay visible in high-contrast modes, and nothing wiggles when motion is turned down.</li>
       </ul>
@@ -234,17 +235,7 @@
   </section>
 </main>
 
-<footer class="site-foot">
-  <div class="site-foot-in">
-    <p>Tickslate is MIT licensed. Every figure on this site is made up.</p>
-    <ul>
-      <li><a href="https://github.com/shreeshyla-hanasoge/Tickslate">GitHub</a></li>
-      <li><a href="https://www.npmjs.com/package/tickslate">npm</a></li>
-      <li><a href="/changelog.html">Version __TICKSLATE_VERSION__</a></li>
-      <li><a href="https://github.com/shreeshyla-hanasoge/Tickslate/blob/master/LICENSE">Licence</a></li>
-    </ul>
-  </div>
-</footer>
+<!-- site-footer -->
 
 <script type="module" src="./site.js"></script>
 <script type="module" src="./landing.js"></script>

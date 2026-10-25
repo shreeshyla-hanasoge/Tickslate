@@ -20,12 +20,18 @@ const mdIn = (root, dir) => (existsSync(join(root, dir))
   ? readdirSync(join(root, dir)).filter((f) => f.endsWith('.md')).sort().map((f) => `${dir}/${f}`)
   : [])
 
+// The finance set, as the landing page splits it. A widget page not named here
+// is listed with the generic ones.
+const FINANCE = ['ts-today-pnl', 'ts-equity-curve', 'ts-session-clock', 'ts-watchlist', 'ts-open-positions', 'ts-pnl-calendar', 'ts-edge-stats', 'ts-capital-funding']
+const isFinance = (f) => FINANCE.includes(posix.basename(f, '.md'))
+
 // Groups in sidebar order. Found rather than listed, so a new guide or widget
 // page is on the site the day it lands in docs/.
 const GROUPS = [
   { id: 'guides', title: 'Guides', files: (root) => mdIn(root, 'docs/guide') },
   { id: 'frameworks', title: 'Frameworks', files: (root) => mdIn(root, 'docs/guide/frameworks') },
-  { id: 'widgets', title: 'Widgets', files: (root) => mdIn(root, 'docs/widgets') },
+  { id: 'widgets', title: 'Widgets: any dashboard', files: (root) => mdIn(root, 'docs/widgets').filter((f) => !isFinance(f)) },
+  { id: 'finance', title: 'Widgets: finance', files: (root) => mdIn(root, 'docs/widgets').filter(isFinance) },
   { id: 'reference', title: 'Reference', files: (root) => [...mdIn(root, 'docs/reference'), 'docs/theming.md', 'docs/ACCESSIBILITY.md'].filter((f) => existsSync(join(root, f))) },
   { id: 'project', title: 'Project', files: (root) => ['CHANGELOG.md'].filter((f) => existsSync(join(root, f))) },
 ]
@@ -82,12 +88,15 @@ export function summaryOf(md) {
  * repository to GitHub, where it renders.
  */
 export function rewriteLink(href, fromSrc, pages) {
-  if (/^([a-z]+:|#|\/\/)/i.test(href)) return href
-  const [pathPart, hash = ''] = href.split('#')
-  const frag = hash ? `#${hash}` : ''
+  if (/^([a-z][a-z0-9+.-]*:|#|\/\/)/i.test(href)) return href
+  // The query and the fragment ride along to wherever the path goes.
+  const m = href.match(/^([^?#]*)(\?[^#]*)?(#.*)?$/)
+  const pathPart = m[1]
+  const frag = (m[2] || '') + (m[3] || '')
   if (!pathPart) return href
-  const target = posix.normalize(posix.join(posix.dirname(fromSrc), pathPart))
-  if (target.startsWith('..')) return href
+  const target = posix.normalize(posix.join(posix.dirname(fromSrc), pathPart)).replace(/\/$/, '')
+  // Above the repository root there is nothing to link; GitHub's view of the repo is the nearest honest target.
+  if (target.startsWith('..')) return `${REPO}#readme`
   const page = pages.find((p) => p.src === target)
   if (page) return page.path + frag
   if (target === 'index.html') return `/playground.html${frag}`
@@ -102,6 +111,7 @@ export function rewriteLink(href, fromSrc, pages) {
 // ── The page shell ──────────────────────────────────────────────────────────
 
 const NAV = [
+  { href: '/#install', label: 'Install', key: 'install' },
   { href: '/playground.html', label: 'Playground', key: 'playground' },
   { href: '/widgets.html', label: 'Widgets', key: 'widgets' },
   { href: '/examples/index.html', label: 'Examples', key: 'examples' },
@@ -112,21 +122,18 @@ const NAV = [
 const MARK = '<svg class="site-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect x="2" y="2" width="9" height="9" rx="2.5"/><rect x="13" y="2" width="9" height="5" rx="2"/><rect x="13" y="9" width="9" height="13" rx="2.5"/><rect x="2" y="13" width="9" height="9" rx="2.5"/></svg>'
 
 /**
- * The site bar every page shares: the wordmark home, the main links and
- * GitHub, and on pages that have no theme control of their own a theme switch.
- * `skip` names the id the skip link jumps to.
+ * The site bar every page shares: the wordmark home, the main links, GitHub,
+ * npm and the theme switch. `skip` names the id the skip link jumps to.
  */
-export function siteHeader({ current = '', toggle = false, skip = 'main' } = {}) {
+export function siteHeader({ current = '', skip = 'main' } = {}) {
   const links = NAV.map((l) => `<li><a href="${l.href}"${l.key === current ? ' aria-current="page"' : ''}>${l.label}</a></li>`).join('')
-  const theme = toggle
-    ? '<button type="button" class="site-theme" data-site-theme aria-label="Colour theme: follows your system. Change it" title="Colour theme"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg><span data-site-theme-label>Auto</span></button>'
-    : ''
+  const theme = '<button type="button" class="site-theme" data-site-theme aria-label="Colour theme: follows your system. Change it" title="Colour theme"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg><span data-site-theme-label>Auto</span></button>'
   return `<a class="site-skip" href="#${skip}">Skip to content</a>
 <header class="site-bar">
   <div class="site-bar-in">
     <a class="site-word" href="/"${current === 'home' ? ' aria-current="page"' : ''}>${MARK}<span>Tickslate</span></a>
     <nav class="site-nav" aria-label="Site">
-      <ul>${links}<li><a href="${REPO}">GitHub</a></li></ul>
+      <ul>${links}<li><a href="${REPO}">GitHub</a></li><li><a href="${NPM}">npm</a></li></ul>
     </nav>
     ${theme}
   </div>
@@ -175,30 +182,37 @@ function shell({ title, description, current, body, pages, path }) {
 ${head({ title, description })}
 </head>
 <body>
-${siteHeader({ current, toggle: true })}
+${siteHeader({ current })}
 <div class="docs">
 ${sidebar(pages, path)}
 <main id="main" class="docs-main" tabindex="-1">
 ${body}
 </main>
 </div>
-${footer()}
+${siteFooter()}
 <script type="module" src="/site/site.js"></script>
 </body>
 </html>
 `
 }
 
-export function footer() {
+/** The footer every page shares. `version` is the published one the install lines name. */
+export function siteFooter({ version = '__TICKSLATE_VERSION__' } = {}) {
   return `<footer class="site-foot">
   <div class="site-foot-in">
-    <p>Tickslate is MIT licensed. Every figure on this site is made up.</p>
-    <ul>
-      <li><a href="${REPO}">GitHub</a></li>
-      <li><a href="${NPM}">npm</a></li>
-      <li><a href="/changelog.html">Version __TICKSLATE_VERSION__</a></li>
-      <li><a href="${REPO}/blob/master/LICENSE">Licence</a></li>
-    </ul>
+    <p>Tickslate is MIT licensed. Every figure on this site is made up. <span class="site-foot-v">Version ${version} on npm.</span></p>
+    <nav aria-label="Footer">
+      <ul>
+        <li><a href="/#install">Install</a></li>
+        <li><a href="/docs/index.html">Docs</a></li>
+        <li><a href="/widgets.html">Widgets</a></li>
+        <li><a href="/examples/index.html">Examples</a></li>
+        <li><a href="/changelog.html">Changelog</a></li>
+        <li><a href="${REPO}">GitHub</a></li>
+        <li><a href="${NPM}">npm</a></li>
+        <li><a href="${REPO}/blob/master/LICENSE">Licence</a></li>
+      </ul>
+    </nav>
   </div>
 </footer>`
 }
@@ -232,8 +246,9 @@ export function renderDocsHub(pages) {
   }).join('\n')
   const body = `<div class="prose hub">
 <h1>Documentation</h1>
-<p class="lede">Everything the library does, one page per widget, plus guides for each framework and the reference for the core functions, events and theme tokens. New here? Start with the <a href="/#install">install steps</a>, then read <a href="/docs/widgets/ts-grid.html"><code>&lt;ts-grid&gt;</code></a>.</p>
-<p>These pages are built from the Markdown in the repository's <a href="${TREE}docs">docs folder</a>, so they match the code of the version on the site, ${'__TICKSLATE_VERSION__'}.</p>
+<p class="lede">Everything the library does: a page per widget, guides for each framework, and the reference for the core functions, events and theme tokens. New here? <a href="/#install">Install it</a>, then read <a href="/docs/widgets/ts-grid.html"><code>&lt;ts-grid&gt;</code></a>.</p>
+<p>These pages are built from the Markdown in the repository's <a href="${TREE}docs">docs folder</a> and describe version __TICKSLATE_DOCS_VERSION__.</p>
+<!-- version-notice -->
 ${sections}
 </div>`
   return shell({

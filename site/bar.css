@@ -52,10 +52,13 @@
   .site-bar { position: static; }
   .site-bar-in { padding: 8px 16px; gap: 4px 12px; }
   .site-word { flex: 1 1 auto; }
-  /* The links take their own row under the wordmark and the theme switch. */
-  .site-nav { order: 3; flex-basis: 100%; }
-  .site-nav ul { margin-inline-start: -10px; }
-  .site-nav a { padding: 0 9px; min-height: 40px; }
+  /* The links take one row under the wordmark and the theme switch, and
+     scroll sideways rather than wrap, so the page starts higher on a phone. */
+  .site-nav { order: 3; flex-basis: 100%; min-width: 0; }
+  .site-nav ul { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding-inline: 6px; scrollbar-width: none; }
+  .site-nav ul::-webkit-scrollbar { display: none; }
+  .site-nav li { flex: none; }
+  .site-nav a { padding: 0 9px; min-height: 40px; white-space: nowrap; }
 }
 
 .site-foot { border-block-start: 1px solid var(--ts-line); font: 14px/1.5 var(--ts-font-ui); color: var(--ts-muted); }
@@ -64,6 +67,7 @@
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;
 }
 .site-foot p { margin: 0; }
+.site-foot nav { min-width: 0; }
 .site-foot ul { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; padding: 0; list-style: none; }
 .site-foot a { color: var(--ts-ink); text-underline-offset: 3px; }
 @media (max-width: 699px) { .site-foot-in { padding: 24px 16px 32px; } }
@@ -71,4 +75,9 @@
 @media (forced-colors: active) {
   .site-nav a[aria-current="page"] { outline: 1px solid CanvasText; }
   .site-theme { border-color: ButtonText; }
+}
+
+@media print {
+  .site-bar, .site-skip, .site-theme { display: none; }
+  .site-foot { border: 0; }
 }

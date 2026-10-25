@@ -37,10 +37,19 @@ for (const f of readdirSync(from('examples'))) if (f.endsWith('.html')) copy(`ex
 // The docs the site renders, and nothing else from docs/ (the RFCs link to GitHub).
 for (const p of ['docs/guide', 'docs/widgets', 'docs/reference', 'docs/theming.md', 'docs/ACCESSIBILITY.md']) copy(p)
 
-writeFileSync(join(out, 'vite.config.js'), readFileSync(from('vite.ld.config.js'), 'utf8'))
+// A SITE_VERSION set here is written into the upload's config, so the build
+// server needs no environment of its own (docs/site.md, "The version").
+let ldConfig = readFileSync(from('vite.ld.config.js'), 'utf8')
+if (process.env.SITE_VERSION) {
+  if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(process.env.SITE_VERSION)) throw new Error(`SITE_VERSION must be a version such as 0.1.0; got "${process.env.SITE_VERSION}".`)
+  ldConfig = ldConfig.replace("siteConfig({ base: '/'", `siteConfig({ siteVersion: '${process.env.SITE_VERSION}', base: '/'`)
+  if (!ldConfig.includes(process.env.SITE_VERSION)) throw new Error('pack-site could not write SITE_VERSION into vite.config.js; vite.ld.config.js changed shape.')
+}
+writeFileSync(join(out, 'vite.config.js'), ldConfig)
 
 // The same vite the repository's lockfile installs, so the upload builds what was checked here.
-const viteVersion = JSON.parse(readFileSync(from('node_modules/vite/package.json'), 'utf8')).version
+const installed = (name) => JSON.parse(readFileSync(from(`node_modules/${name}/package.json`), 'utf8')).version
+const viteVersion = installed('vite')
 const pkg = {
   name: 'tickslate-site',
   private: true,
@@ -50,6 +59,9 @@ const pkg = {
   scripts: { build: 'vite build', preview: 'vite preview' },
   // In dependencies, not devDependencies, so an install with NODE_ENV=production still gets it.
   dependencies: { vite: viteVersion },
+  // There is no lockfile in the upload, so vite's own bundler and transformer
+  // are held to the versions this repository's lockfile installs.
+  overrides: { rollup: installed('rollup'), esbuild: installed('esbuild') },
 }
 writeFileSync(join(out, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
 
@@ -63,4 +75,4 @@ const walk = (dir) => {
   }
 }
 walk(out)
-console.log(`${relative(root, out)}/: ${files} files, ${(bytes / 1024).toFixed(0)} kB. Upload it, then run npm install and vite build there; the site lands in dist/.`)
+console.log(`${relative(root, out)}/: ${files} files, site version ${process.env.SITE_VERSION || pkg.version}, ${(bytes / 1024).toFixed(0)} kB. Upload it, then run npm install and vite build there; the site lands in dist/.`)

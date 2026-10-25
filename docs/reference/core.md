@@ -20,7 +20,7 @@ Contents: [sizes](#sizes-and-breakpoints) · [catalog](#widget-catalog) ·
 
 Amounts are in major units (rupees, dollars). Anywhere a number is read, the
 core accepts a number, a decimal string (`"12.50"`) or a decimal-library object
-with `toNumber()` (Decimal.js, big.js); see [`toNumber`](#tonumber).
+with `toNumber()` (Decimal.js, big.js); see [`toNumber`](#tonumberv).
 
 ## `version`
 

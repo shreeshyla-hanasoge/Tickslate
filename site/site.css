@@ -46,16 +46,21 @@ code { font: .9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
   font: var(--ts-num-weight) clamp(36px, 6vw, 64px)/1.04 var(--ts-font-num); letter-spacing: -.02em;
 }
 .lede { max-width: 62ch; margin: 0 0 28px; color: var(--ts-muted); font-size: clamp(17px, 2vw, 19px); line-height: 1.55; }
-.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-block-end: 40px; }
+.cta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-block-end: 40px; }
+.text-link { font-weight: 600; }
+.hero-more { max-width: 66ch; margin: 18px 0 0; color: var(--ts-muted); font-size: 17px; }
+.notice {
+  max-width: 76ch; margin: 0 0 20px; padding: 10px 14px; border-inline-start: 3px solid var(--ts-warn);
+  border-radius: var(--ts-radius-sm); background: var(--ts-surface); color: var(--ts-ink); font-size: 15px;
+}
 
 .demo {
   padding: 16px; border: 1px solid var(--ts-line); border-radius: calc(var(--ts-radius) + 6px);
   background: color-mix(in srgb, var(--ts-surface-2) 55%, var(--ts-bg));
 }
-.demo-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin-block-end: 14px; }
-.demo-hint { flex: 1 1 360px; margin: 0; color: var(--ts-muted); font-size: 14px; line-height: 1.5; }
+.demo-hint { max-width: 90ch; margin: 0 0 14px; color: var(--ts-muted); font-size: 14px; line-height: 1.5; }
 .demo-hint strong { color: var(--ts-ink); }
-.demo-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.demo-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block-end: 10px; }
 .pick { display: inline-flex; align-items: center; gap: 8px; color: var(--ts-muted); font-size: 13px; font-weight: 500; }
 .pick select {
   min-height: 36px; padding: 0 10px; border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm);
@@ -70,13 +75,25 @@ code { font: .9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
 .notes li:first-child { border-block-start: 0; padding-block-start: 0; }
 .notes .when { color: var(--ts-muted); font-variant-numeric: tabular-nums; }
 
+/* A phone gets the board on its first screen: no eyebrow, a tighter heading,
+   the two buttons side by side and the controls on one row. */
 @media (max-width: 699px) {
-  .hero { padding-block: 36px 16px; }
-  .cta { margin-block-end: 28px; }
-  .cta .btn { flex: 1 1 auto; }
+  .hero { padding-block: 22px 16px; }
+  .eyebrow { display: none; }
+  .hero h1 { margin-block-end: 12px; font-size: 34px; }
+  .lede { margin-block-end: 18px; font-size: 17px; }
+  .cta { margin-block-end: 20px; }
+  .cta .btn { flex: 1 1 0; padding: 0 10px; }
+  .text-link { flex-basis: 100%; }
   .demo { padding: 10px; margin-inline: -6px; }
-  .demo-tools .btn, .pick { flex: 1 1 auto; }
-  .pick select { flex: 1 1 auto; }
+  .demo-tools { flex-wrap: nowrap; gap: 6px; }
+  .demo-tools .btn { flex: none; padding: 0 10px; }
+  .pick { flex: 1 1 auto; min-width: 0; gap: 6px; }
+  /* The select keeps its name; only the visible word goes, to give the select room. */
+  .pick-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .pick select { flex: 1 1 auto; min-width: 0; }
+  .demo-hint { font-size: 13px; }
+  .hero-more { font-size: 16px; }
 }
 
 /* ── Jump-to strip ── */
@@ -109,9 +126,12 @@ code { font: .9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
 .traits { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 24px; margin: 24px 0 0; padding: 0; list-style: none; }
 .traits li { padding-inline-start: 14px; border-inline-start: 3px solid var(--ts-accent); font-size: 15px; color: var(--ts-muted); }
 .traits strong { color: var(--ts-ink); }
+.traits code { white-space: nowrap; }
 
 /* ── Install ── */
-.install { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+/* One column: the script tag is a long line and needs the width. */
+.install { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; max-width: 980px; }
+.snippet.wide { max-width: 980px; }
 .snippet { min-width: 0; }
 .snippet.wide { margin-block-start: 24px; }
 .snippet h3 { margin: 0 0 10px; font: 600 16px/1.3 var(--ts-font-ui); }
@@ -240,4 +260,14 @@ code { font: .9em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
 @media (forced-colors: active) {
   .card, .panel, .stack a, .code pre, .table-wrap, .demo { border-color: CanvasText; }
   .btn.primary { border-color: ButtonText; }
+}
+
+/* ── Print: the content, not the controls ── */
+@media print {
+  .copy, .docs-side, .demo-tools, .demo-hint, .quick, .docs-source { display: none; }
+  .docs { display: block; padding: 0; }
+  body { font-size: 11pt; }
+  .code pre, .prose pre { padding-inline-end: 16px; white-space: pre-wrap; }
+  pre, table, .card, .panel, ts-grid > * { break-inside: avoid; }
+  .site-bar { position: static; }
 }

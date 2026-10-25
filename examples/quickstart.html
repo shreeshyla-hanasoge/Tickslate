@@ -16,12 +16,15 @@
   /* Page chrome only. */
   body { margin: 0; font: 14px system-ui, sans-serif; background: var(--ts-bg, Canvas); color: var(--ts-ink, CanvasText); }
   .page { max-width: 960px; margin: 0 auto; padding: 24px; }
+  .sub { margin: 0 0 16px; font-size: 14px; font-weight: 500; color: var(--ts-muted, GrayText); }
 </style>
 </head>
 <body>
 <!-- site-header -->
 <main class="page" id="main">
 <h1>Quick start</h1>
+<!-- The tiles' headings are level 3 (the grid's default), so a level 2 heading comes first. -->
+<h2 class="sub">The README snippet, running</h2>
 <!-- quickstart -->
 <ts-grid>
   <ts-metric label="Signups" size="S" data='{"value": 1204, "previous": 1075, "compareLabel": "vs last week"}'></ts-metric>
@@ -34,5 +37,6 @@
 </script>
 <!-- /quickstart -->
 </main>
+<!-- site-footer -->
 </body>
 </html>

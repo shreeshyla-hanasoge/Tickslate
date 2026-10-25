@@ -11,14 +11,21 @@
  * Not covered, because no doc uses them: setext headings, indented code
  * blocks, reference-style links, images, footnotes, strikethrough, task lists
  * and raw HTML. Raw HTML is escaped and shown as text rather than passed
- * through, so a doc can never inject markup into the site. HTML comments are
- * dropped.
+ * through, so a doc can never inject markup into the site, and a link whose
+ * target has a scheme other than http, https or mailto (javascript:, data:)
+ * renders as its text. HTML comments, whole-line or inline, are dropped.
  *
  *   renderMarkdown(source, { link }) -> { html, title, headings }
  *
  * `link(href)` rewrites every link target (a relative .md link becomes the
  * generated page, for example); it defaults to leaving targets alone.
+ *
+ * `node scripts/md.mjs --check` runs the self-checks at the end of this file;
+ * `npm run build:site` runs them first. They live here, not in test/, because
+ * the unit tests import nothing outside src/ and node:*.
  */
+
+import { pathToFileURL } from 'node:url'
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }
 export const escapeHtml = (text) => String(text).replace(/[&<>"]/g, (c) => ESC[c])
@@ -59,12 +66,15 @@ function renderInline(src, opts) {
     return hold(`<code>${escapeHtml(trimmed)}</code>`)
   })
 
+  // Comments are for whoever edits the Markdown, never for the page.
+  s = s.replace(/<!--[\s\S]*?-->/g, '')
+
   // Autolinks in angle brackets.
   s = s.replace(/<(https?:\/\/[^\s<>]+)>/g, (_, url) => hold(anchor(url, escapeHtml(url), opts)))
 
   // Links. The text may hold code placeholders and emphasis, so it is rendered
   // on its own; the target stops at the first space or closing bracket.
-  s = s.replace(/\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\(\s*<?([^\s)>]*)>?(?:\s+"([^"]*)")?\s*\)/g, (_, text, href, title) => {
+  s = s.replace(/\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\(\s*<?((?:[^\s()<>]|\([^\s()<>]*\))*)>?(?:\s+"([^"]*)")?\s*\)/g, (_, text, href, title) => {
     return hold(anchor(href, emphasis(escapeText(text)), opts, title))
   })
 
@@ -98,8 +108,13 @@ function emphasis(s) {
     .replace(/(^|[^\w])_(?=[^\s_])([\s\S]*?[^\s_])_(?!\w)/g, '$1<em>$2</em>')
 }
 
+// A target is a relative path, a fragment, or http, https or mailto. Anything
+// else (javascript:, data:, vbscript:) would run or load something; it renders as text.
+const SAFE_TARGET = /^(?:https?:|mailto:|#|[^:/?#]*(?:[/?#]|$))/i
+
 function anchor(href, inner, opts, title) {
   const target = opts.link ? opts.link(href) : href
+  if (!SAFE_TARGET.test(target)) return inner
   const t = title ? ` title="${escapeHtml(title)}"` : ''
   return `<a href="${escapeHtml(target)}"${t}>${inner}</a>`
 }
@@ -250,7 +265,8 @@ class Renderer {
       }
 
       // A paragraph runs to a blank line or the start of another block.
-      const para = [line.trim()]
+      // Only the start is trimmed: two trailing spaces are a hard break.
+      const para = [line.trimStart()]
       i++
       while (i < lines.length && !isBlank(lines[i]) && !startsBlock(lines[i]) && !(lines[i].includes('|') && TABLE_RULE.test(lines[i + 1] || ''))) {
         para.push(lines[i].replace(/^ +/, ''))
@@ -308,4 +324,91 @@ export function renderMarkdown(source, opts = {}) {
   const html = r.blocks(lines)
   const h1 = r.headings.find((h) => h.level === 1)
   return { html, title: h1 ? h1.text : '', headings: r.headings }
+}
+
+// ── Self-checks ─────────────────────────────────────────────────────────────
+
+async function check() {
+  const { default: assert } = await import('node:assert/strict')
+  const { rewriteLink } = await import('./site-docs.mjs')
+  const html = (md, opts) => renderMarkdown(md, opts).html
+  const cases = [
+    ['headings and GitHub ids', () => {
+      const r = renderMarkdown('# `<ts-grid>`\n\n## Data shape\n\n## Data shape\n\n### `toNumber(v)`')
+      assert.equal(r.title, '<ts-grid>')
+      assert.deepEqual(r.headings.map((h) => h.id), ['ts-grid', 'data-shape', 'data-shape-1', 'tonumberv'])
+      assert.match(r.html, /<h1 id="ts-grid"><code>&lt;ts-grid&gt;<\/code><\/h1>/)
+    }],
+    ['paragraphs, emphasis and hard breaks', () => {
+      assert.equal(html('One **two** *three* _four_ snake_case_name.'), '<p>One <strong>two</strong> <em>three</em> <em>four</em> snake_case_name.</p>')
+      assert.equal(html('line one  \nline two'), '<p>line one<br>\nline two</p>')
+      assert.equal(html('a\\\nb'), '<p>a<br>\nb</p>')
+    }],
+    ['lists: tight, loose, nested, ordered with a start', () => {
+      assert.equal(html('- a\n- b'), '<ul>\n<li>a</li>\n<li>b</li>\n</ul>')
+      assert.equal(html('- a\n\n- b'), '<ul>\n<li><p>a</p></li>\n<li><p>b</p></li>\n</ul>')
+      assert.equal(html('3. a\n   - b\n4. c'), '<ol start="3">\n<li>a\n<ul>\n<li>b</li>\n</ul></li>\n<li>c</li>\n</ol>')
+      assert.equal(html('- a\n  wrapped'), '<ul>\n<li>a\nwrapped</li>\n</ul>')
+    }],
+    ['tables with alignment and escaped pipes', () => {
+      const t = html('| A | B |\n|---|--:|\n| `a\\|b` | 2 |')
+      assert.match(t, /<th scope="col">A<\/th><th scope="col" style="text-align: end">B<\/th>/)
+      assert.match(t, /<td><code>a\|b<\/code><\/td><td style="text-align: end">2<\/td>/)
+      assert.match(t, /^<div class="table-wrap" tabindex="0">/)
+    }],
+    ['code fences and inline code are escaped, never parsed', () => {
+      assert.equal(html('```html\n<b>**x**</b>\n```'), '<pre data-lang="html" tabindex="0"><code class="language-html">&lt;b&gt;**x**&lt;/b&gt;</code></pre>')
+      assert.equal(html('`<i>` and `` a`b ``'), '<p><code>&lt;i&gt;</code> and <code>a`b</code></p>')
+    }],
+    ['links, autolinks, parentheses and titles', () => {
+      assert.equal(html('[x](a.md#b "T")'), '<p><a href="a.md#b" title="T">x</a></p>')
+      assert.equal(html('[x](https://e.org/Foo_(bar))'), '<p><a href="https://e.org/Foo_(bar)">x</a></p>')
+      assert.equal(html('<https://e.org/a> and https://e.org/b.'), '<p><a href="https://e.org/a">https://e.org/a</a> and <a href="https://e.org/b">https://e.org/b</a>.</p>')
+      assert.equal(html('[`code` link](x.md)', { link: (h) => `/${h}` }), '<p><a href="/x.md"><code>code</code> link</a></p>')
+    }],
+    ['unsafe link schemes render as text', () => {
+      assert.equal(html('[click](javascript:alert(1))'), '<p>click</p>')
+      assert.equal(html('[d](data:text/html,x)'), '<p>d</p>')
+      assert.equal(html('[m](mailto:a@b.c)'), '<p><a href="mailto:a@b.c">m</a></p>')
+    }],
+    ['raw HTML is escaped and comments are dropped', () => {
+      assert.equal(html('<script>alert(1)</script>'), '<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>')
+      assert.equal(html('a <!-- hidden --> b'), '<p>a  b</p>')
+      assert.equal(html('<!-- whole\nline -->\ntext'), '<p>text</p>')
+      assert.equal(html('P&L; &amp; &nbsp; "q"'), '<p>P&amp;L; &amp; &nbsp; &quot;q&quot;</p>')
+    }],
+    ['block quotes and rules', () => {
+      assert.equal(html('> **Note.** x\n\n---'), '<blockquote>\n<p><strong>Note.</strong> x</p>\n</blockquote>\n<hr>')
+    }],
+    ['site links: pages, examples, queries, GitHub', () => {
+      const pages = [{ src: 'docs/theming.md', path: '/docs/theming.html', group: 'reference' }, { src: 'docs/widgets/ts-grid.md', path: '/docs/widgets/ts-grid.html', group: 'widgets' }]
+      const from = 'docs/widgets/ts-grid.md'
+      assert.equal(rewriteLink('../theming.md#dark', from, pages), '/docs/theming.html#dark')
+      assert.equal(rewriteLink('../../widgets.html?preset=calm#x', from, pages), '/widgets.html?preset=calm#x')
+      assert.equal(rewriteLink('../../index.html', from, pages), '/playground.html')
+      assert.equal(rewriteLink('../../examples/bare.html', from, pages), '/examples/bare.html')
+      assert.equal(rewriteLink('./', from, pages), '/docs/index.html#widgets')
+      assert.equal(rewriteLink('../rfc/0001-api.md', from, pages), 'https://github.com/shreeshyla-hanasoge/Tickslate/blob/master/docs/rfc/0001-api.md')
+      assert.equal(rewriteLink('../../src/', from, pages), 'https://github.com/shreeshyla-hanasoge/Tickslate/tree/master/src')
+      assert.equal(rewriteLink('../../../../x.md', from, pages), 'https://github.com/shreeshyla-hanasoge/Tickslate#readme')
+      assert.equal(rewriteLink('#local', from, pages), '#local')
+    }],
+  ]
+  let failed = 0
+  for (const [name, run] of cases) {
+    try {
+      run()
+    } catch (e) {
+      failed++
+      console.error(`md.mjs check failed: ${name}\n${e.message}`)
+    }
+  }
+  if (failed) process.exit(1)
+  console.log(`md.mjs: ${cases.length} self-checks pass`)
+}
+
+// Run as a script with --check; importing this module runs nothing. Not
+// awaited, since site-docs.mjs, which the checks load, imports this module.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && process.argv.includes('--check')) {
+  check().catch((e) => { console.error(e); process.exit(1) })
 }

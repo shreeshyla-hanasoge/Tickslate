@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -63,7 +63,8 @@
   <header>
     <h1>Studio dashboard</h1>
     <div class="bar" role="group" aria-label="Page controls">
-      <button type="button" data-theme-pick="light" aria-pressed="true">Paper</button>
+      <button type="button" data-theme-pick="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-theme-pick="light" aria-pressed="false">Paper</button>
       <button type="button" data-theme-pick="dark" aria-pressed="false">Graphite</button>
       <button type="button" data-width-pick="full" aria-pressed="true">Full width</button>
       <button type="button" data-width-pick="narrow" aria-pressed="false">351 px</button>
@@ -72,7 +73,7 @@
   <p class="hint">Cards in implicit mode: no layout, no data, only slotted content. Use "Edit layout" on the grid to move and resize them, then resize one with the keyboard and watch the placeholder chart follow.</p>
 
   <div class="frame" id="frame">
-    <ts-grid id="grid" currency="USD" time-zone="UTC">
+    <ts-grid id="grid" currency="USD" time-zone="UTC" heading-level="2">
       <ts-metric item="signups" label="Signups" size="M" id="signups"></ts-metric>
       <ts-metric item="revenue" label="Revenue" size="S" id="revenue"></ts-metric>
       <ts-metric item="seats" label="Active seats" size="S" id="seats"></ts-metric>
@@ -232,5 +233,6 @@
   pick('theme', (theme) => document.documentElement.setAttribute('data-theme', theme))
   pick('width', (width) => document.getElementById('frame').classList.toggle('narrow', width === 'narrow'))
 </script>
+<!-- site-footer -->
 </body>
 </html>
