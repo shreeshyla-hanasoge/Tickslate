@@ -811,6 +811,7 @@ describe('<ts-grid> observer guards', () => {
       delete globalThis.ResizeObserver
       delete globalThis.MutationObserver
     }
-    assert.deepEqual(log, ['resize.observe', 'mutation.observe', 'resize.disconnect', 'mutation.disconnect'])
+    // Two mutation observers: the one for dir flips (RTL) and the one for children.
+    assert.deepEqual(log, ['resize.observe', 'mutation.observe', 'mutation.observe', 'resize.disconnect', 'mutation.disconnect', 'mutation.disconnect'])
   })
 })
