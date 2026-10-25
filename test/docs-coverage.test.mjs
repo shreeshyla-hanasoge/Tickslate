@@ -327,8 +327,28 @@ describe('the trading dashboard example and guide', () => {
       assert.ok(guide.includes(tag), `the guide should cover <${tag}>`)
     }
   })
-  test('the page answers every action the widgets emit', () => {
-    const page = read('examples/trading.html')
-    for (const action of emittedActions()) assert.ok(page.includes(`'${action}'`), `examples/trading.html should handle the ${action} action`)
+  // emittedActions() only sees this.emit('literal'); most actions go through
+  // ACTION_* constants, so the page test reads both. The list is also kept by hand:
+  // a new action fails the first test until it is added here and handled in the page.
+  const ACTIONS = ['add-instrument', 'exit-all', 'exit-position', 'open', 'range', 'rebalance', 'retry', 'select', 'sort']
+  const widgetActions = () => {
+    const names = new Set(emittedActions())
+    for (const file of elementFiles()) {
+      for (const m of stripComments(read(file)).matchAll(/\bconst\s+ACTION_\w+\s*=\s*'([\w-]+)'/g)) names.add(m[1])
+    }
+    return [...names].sort()
+  }
+  test('the widgets emit exactly the actions this test lists', () => {
+    assert.deepEqual(widgetActions(), ACTIONS)
   })
+  test('every action but open is in the events reference (open is only in widget.d.ts and the widget pages)', () => {
+    const events = read('docs/reference/events.md')
+    for (const action of ACTIONS.filter((a) => a !== 'open')) assert.match(events, new RegExp(`\\| \`${action}\` \\|`), `docs/reference/events.md should list ${action}`)
+  })
+  for (const action of ACTIONS) {
+    test(`the page handles the ${action} action`, () => {
+      const page = stripComments(read('examples/trading.html'))
+      assert.ok(new RegExp(`action === '${action}'`).test(page), `examples/trading.html should handle the ${action} action in its ts-action listener`)
+    })
+  }
 })

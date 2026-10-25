@@ -51,21 +51,27 @@
   .status .num { font: var(--ts-num-weight) 20px/1 var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--ts-ink); }
   .status .open { color: var(--ts-profit); font-weight: 600; }
   .status .shut { color: var(--ts-muted); font-weight: 600; }
-  .pretend { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; }
-  .pretend input { font: 13px var(--ts-font-ui); min-height: 36px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line); background: var(--ts-surface); color: var(--ts-ink); padding: 0 8px; }
+  /* Wraps and shrinks: in the terminal preset's mono font this row is wider than a phone. */
+  .pretend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-inline-start: auto; max-inline-size: 100%; }
+  .pretend input { min-inline-size: 0; max-inline-size: 100%; font: 13px var(--ts-font-ui); min-height: 36px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line); background: var(--ts-surface); color: var(--ts-ink); padding: 0 8px; }
   .activity { margin-block-start: 28px; }
   .activity h2 { font: 600 14px var(--ts-font-ui); margin: 0 0 8px; }
   .activity ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--ts-muted); }
   .activity li { display: flex; gap: 10px; }
   .activity time { font-variant-numeric: tabular-nums; color: var(--ts-muted); flex: none; }
   .activity li:first-child { color: var(--ts-ink); }
-  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } .pretend { margin-inline-start: 0; } }
+  /* On a phone the notes and demo controls fold away so the tiles start near the top; from 700px they are always shown. */
+  .demo > summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ts-accent); min-height: 36px; display: flex; align-items: center; }
+  @media (min-width: 700px) { .demo > summary { display: none; } }
+  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } .pretend { margin-inline-start: 0; } h1 { font-size: 22px; } }
 
   /* The confirm panel. A native dialog: modal, labelled, Escape closes it, focus returns to the button that opened it. */
   dialog { max-width: min(420px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--ts-line); border-radius: var(--ts-radius); background: var(--ts-surface); color: var(--ts-ink); box-shadow: var(--ts-shadow); }
   dialog::backdrop { background: color-mix(in srgb, var(--ts-ink) 45%, transparent); }
   dialog h2 { font: 600 16px var(--ts-font-ui); margin: 0 0 8px; }
   dialog p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; color: var(--ts-muted); }
+  /* The UA rule for [hidden] loses to the display set on label, which would show an empty picker. */
+  dialog [hidden] { display: none; }
   dialog label { display: block; margin: 0 0 14px; font-size: 13px; color: var(--ts-muted); }
   dialog select { display: block; margin-top: 6px; width: 100%; min-height: 36px; font: 14px var(--ts-font-ui); background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm); }
   dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; padding: 0; }
@@ -85,50 +91,53 @@
       <a href="index.html">Examples</a>
     </nav>
   </header>
-  <p class="hint">Made-up figures from a seeded feed that ticks every second. Long-press a tile, or press Edit layout, to rearrange it; the arrangement is saved in this browser, and a separate one is used while the market is open and after it closes. Exit a position, rebalance an account, add an instrument or open a fill to see the host answer each request. Walk-through: <a href="../docs/guide/trading-dashboard.md">docs/guide/trading-dashboard.md</a>.</p>
-
-  <div class="controls">
-    <fieldset class="bar"><legend>Layout</legend>
-      <button type="button" id="edit" class="primary">Edit layout</button>
-      <button type="button" id="reset">Reset layout</button>
-    </fieldset>
-    <fieldset class="bar"><legend>Theme</legend>
-      <button type="button" data-theme-pick="auto" aria-pressed="true">Auto</button>
-      <button type="button" data-theme-pick="light" aria-pressed="false">Light</button>
-      <button type="button" data-theme-pick="dark" aria-pressed="false">Dark</button>
-      <button type="button" data-theme-pick="terminal" aria-pressed="false">Terminal</button>
-    </fieldset>
-    <fieldset class="bar"><legend>Feed</legend>
-      <button type="button" id="pause" aria-pressed="false">Pause feed</button>
-      <button type="button" id="outage" aria-pressed="false">Simulate outage</button>
-    </fieldset>
-    <ts-grid-controls for="board"></ts-grid-controls>
-  </div>
-
   <div class="status">
     <span id="clock" class="num"></span>
     <span id="sessions"></span>
-    <label class="pretend">Pretend it's <input type="datetime-local" id="pretend" step="1"> IST
-      <button type="button" id="live">Live</button></label>
   </div>
 
+  <details class="demo" open>
+    <summary>Notes and demo controls</summary>
+    <p class="hint">Made-up figures from a seeded feed that ticks every second. Long-press a tile, or press Edit layout, to rearrange it; the arrangement is saved in this browser, one for the market-hours layout and one for after the close, on a phone and on a desktop. A tile you add from the picker is saved to the layout showing at that moment only. Some tiles scroll inside themselves when their rows do not fit. Exit a position, rebalance an account, add an instrument or open a fill to see the host answer each request. Walk-through: <a href="https://github.com/shreeshyla-hanasoge/Tickslate/blob/master/docs/guide/trading-dashboard.md">the trading dashboard guide</a>.</p>
+
+    <div class="controls">
+      <fieldset class="bar"><legend>Layout</legend>
+        <button type="button" id="edit" class="primary">Edit layout</button>
+        <button type="button" id="reset">Reset layout</button>
+      </fieldset>
+      <fieldset class="bar"><legend>Theme</legend>
+        <button type="button" data-theme-pick="auto" aria-pressed="true">Auto</button>
+        <button type="button" data-theme-pick="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-pick="dark" aria-pressed="false">Dark</button>
+        <button type="button" data-theme-pick="terminal" aria-pressed="false">Terminal</button>
+      </fieldset>
+      <fieldset class="bar"><legend>Feed</legend>
+        <button type="button" id="pause" aria-pressed="false">Pause feed</button>
+        <button type="button" id="outage" aria-pressed="false">Simulate outage</button>
+      </fieldset>
+      <ts-grid-controls for="board"></ts-grid-controls>
+      <label class="pretend">Pretend it's <input type="datetime-local" id="pretend" step="1"> IST
+        <button type="button" id="live">Live</button></label>
+    </div>
+  </details>
+  <script>if (!matchMedia('(min-width: 700px)').matches) document.querySelector('.demo').open = false</script>
+
   <!--
-    The grid is given its layout and then its persist key from the script below,
-    and not the other way round: persist saves what a device with nothing saved
-    falls back to as the layout the grid has when the key arrives. A framework
-    sets props before the element connects and gets this for free.
+    The grid is given its layouts through persistLayout in the script below:
+    one default for a desktop and one for a phone, used until the user saves
+    an arrangement of their own.
   -->
-  <ts-grid id="board" aria-label="Trading dashboard" locale="en-IN" currency="INR" time-zone="Asia/Kolkata" heading-level="2" stale-after="20s">
-    <ts-session-clock item="sessionClock" label="Markets"></ts-session-clock>
+  <ts-grid id="board" aria-label="Trading dashboard" locale="en-IN" currency="INR" time-zone="Asia/Kolkata" heading-level="2" stale-after="20s" edit-controls="off">
+    <ts-session-clock item="sessionClock" label="Sessions"></ts-session-clock>
     <ts-today-pnl item="todayPnl" label="Today's P&amp;L" activatable></ts-today-pnl>
     <ts-watchlist item="watchlist" label="Watchlist"></ts-watchlist>
-    <ts-capital-funding item="capitalFunding" label="Capital funding"></ts-capital-funding>
+    <ts-capital-funding item="capitalFunding" label="Funding"></ts-capital-funding>
     <ts-open-positions item="openPositions" label="Open positions"></ts-open-positions>
-    <ts-metric item="winRate" label="Win rate today"></ts-metric>
-    <ts-progress item="lossLimit" label="Daily loss limit"></ts-progress>
-    <ts-table item="fills" label="Fills today"></ts-table>
+    <ts-metric item="winRate" label="Win rate"></ts-metric>
+    <ts-progress item="lossLimit" label="Loss limit"></ts-progress>
+    <ts-table item="fills" label="Fills"></ts-table>
     <ts-pnl-calendar item="pnlCalendar" label="Daily P&amp;L" activatable></ts-pnl-calendar>
-    <ts-edge-stats item="edgeStats" label="Edge, last 30 days" activatable></ts-edge-stats>
+    <ts-edge-stats item="edgeStats" label="Edge, 30 days" activatable></ts-edge-stats>
     <ts-equity-curve item="equityCurve" label="Equity" activatable></ts-equity-curve>
   </ts-grid>
   <ts-widget-picker for="board"></ts-widget-picker>
@@ -153,7 +162,7 @@
 
 <script type="module">
   import { createCalendar, createFormatter, presets, edgeStats, histogram, funding, localDate, zonedTime } from 'tickslate'
-  import 'tickslate/elements'
+  import { persistLayout } from 'tickslate/elements'
 
   const TZ = 'Asia/Kolkata'
   const KEY = 'trading-example'
@@ -174,7 +183,11 @@
   grid.clock = now
   const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: TZ })
 
-  // ── The layout: one arrangement while the market is open, another after the close ──
+  // ── The layouts: one arrangement while the market is open, another after the close ──
+  // The desktop layout is for 3 and 4 columns. The phone layout is its own
+  // list, not the desktop order squeezed into 2 columns: P&L and the sessions
+  // come first, so they are on screen when the page opens. Labels stay short
+  // because a half-width tile gives its heading very little room.
   const LAYOUT = {
     version: 1,
     device: 'desktop',
@@ -192,24 +205,57 @@
         { id: 'edgeStats', size: 'M' },
         { id: 'equityCurve', size: 'M' },
       ],
+      // Every row adds up to four columns, so nothing leaves a gap.
       closed: [
-        { id: 'sessionClock', size: 'S' },
+        { id: 'sessionClock', size: 'Banner' },
         { id: 'todayPnl', size: 'Wide' },
         { id: 'winRate', type: 'metric', size: 'S' },
+        { id: 'lossLimit', type: 'progress', size: 'S' },
         { id: 'equityCurve', size: 'XL' },
         { id: 'pnlCalendar', size: 'Banner' },
         { id: 'edgeStats', size: 'M' },
         { id: 'openPositions', size: 'M' },
-        { id: 'lossLimit', type: 'progress', size: 'S' },
-        { id: 'watchlist', size: 'S' },
-        { id: 'fills', type: 'table', size: 'XL' },
         { id: 'capitalFunding', size: 'L' },
+        { id: 'watchlist', size: 'Tall' },
+        { id: 'fills', type: 'table', size: 'XL' },
       ],
     },
   }
-  grid.layout = LAYOUT
-  // Saves every edit to localStorage under trading-example:desktop and :phone.
-  grid.persist = KEY
+  const PHONE_LAYOUT = {
+    version: 1,
+    device: 'phone',
+    profiles: {
+      market: [
+        { id: 'sessionClock', size: 'Banner' },
+        { id: 'todayPnl', size: 'M' },
+        { id: 'lossLimit', type: 'progress', size: 'Wide' },
+        { id: 'winRate', type: 'metric', size: 'Wide' },
+        { id: 'openPositions', size: 'M' },
+        { id: 'watchlist', size: 'M' },
+        { id: 'capitalFunding', size: 'L' },
+        { id: 'fills', type: 'table', size: 'M' },
+        { id: 'pnlCalendar', size: 'Banner' },
+        { id: 'edgeStats', size: 'M' },
+        { id: 'equityCurve', size: 'M' },
+      ],
+      closed: [
+        { id: 'sessionClock', size: 'Banner' },
+        { id: 'todayPnl', size: 'M' },
+        { id: 'winRate', type: 'metric', size: 'Wide' },
+        { id: 'lossLimit', type: 'progress', size: 'Wide' },
+        { id: 'equityCurve', size: 'M' },
+        { id: 'pnlCalendar', size: 'Banner' },
+        { id: 'edgeStats', size: 'M' },
+        { id: 'openPositions', size: 'M' },
+        { id: 'capitalFunding', size: 'L' },
+        { id: 'watchlist', size: 'M' },
+        { id: 'fills', type: 'table', size: 'M' },
+      ],
+    },
+  }
+  // persistLayout, not the persist attribute, because the phone has defaults of its own.
+  // It saves every edit to localStorage under trading-example:desktop and :phone.
+  const layouts = persistLayout(grid, { key: KEY, defaults: { desktop: LAYOUT, phone: PHONE_LAYOUT } })
   // The picker offers new tiles of these catalog types; the ts-add-request handler below renders them.
   grid.addTypes = ['metric', 'progress', 'edgeStats', 'chart', 'card']
 
@@ -508,10 +554,12 @@
     const wins = fills.filter((f) => f.pnl > 0).length
     return {
       value: fills.length ? wins / fills.length : 0,
-      previous: edgeStats(trades).winRate,
+      // The change is in percentage points, so it is given as a change (delta)
+      // with no previous: a previous would make the tile show a relative one.
+      delta: (fills.length ? wins / fills.length : 0) - edgeStats(trades).winRate,
       format: 'percent',
       decimals: 0,
-      compareLabel: 'vs last 60 trades',
+      compareLabel: 'pts vs last 60',
       ...stamp(),
     }
   })
@@ -522,7 +570,7 @@
     mode: 'limit',
     format: 'money',
     decimals: 0,
-    caption: 'Closed losses plus open losses. Resets at the next open.',
+    caption: 'Closed plus open losses. Resets at the open.',
     ...stamp(),
   }))
 
@@ -550,8 +598,9 @@
   bind('capitalFunding', () => ({ accounts, ...stamp() }))
 
   const FILL_COLUMNS = [
-    { key: 'time', label: 'Time', format: 'time', priority: 1 },
+    // The table gives its spare width to the first column today, so the text column goes first.
     { key: 'sym', label: 'Instrument', priority: 0 },
+    { key: 'time', label: 'Time', format: 'time', priority: 1 },
     { key: 'side', label: 'Side', priority: 4 },
     { key: 'qty', label: 'Qty', format: 'number', decimals: 0, priority: 3 },
     { key: 'price', label: 'Price', format: 'number', decimals: 2, priority: 5 },
@@ -740,7 +789,7 @@
   // The grid asks; the host renders a child carrying the id it was given.
   const ADDABLE = {
     metric: (id) => {
-      const el = Object.assign(document.createElement('ts-metric'), { label: 'Open positions' })
+      const el = Object.assign(document.createElement('ts-metric'), { label: 'Positions held' })
       bind(id, () => ({ value: positions.length, goodWhen: 'neither', ...stamp() }))
       return el
     },
@@ -757,9 +806,10 @@
       return el
     },
     chart: (id) => {
-      const el = Object.assign(document.createElement('ts-chart'), { label: 'ALPHA 50 close' })
+      const el = Object.assign(document.createElement('ts-chart'), { label: 'ALPHA 50 price' })
       el.setAttribute('sizes', 'Wide M L XL')
-      bind(id, () => ({ series: [{ name: 'ALPHA 50', kind: 'area', points: history.map((d, i) => ({ x: d.date, y: 24000 + i * 9 + d.pnl / 25 })) }], ...stamp() }))
+      // The feed's own ticks, so the line moves with the watchlist.
+      bind(id, () => ({ series: [{ name: 'ALPHA 50', kind: 'line', points: markets.find((m) => m.id === 'alpha').ticks.map((k) => ({ x: k.t, y: k.price })) }], ...stamp() }))
       return el
     },
     card: () => {
@@ -816,7 +866,7 @@
     paused = !paused
     pauseBtn.setAttribute('aria-pressed', String(paused))
     pauseBtn.textContent = paused ? 'Resume feed' : 'Pause feed'
-    // Tiles keep the last asOf; after 20 seconds (stale-after on the grid) they read as stale.
+    // Tiles keep the last asOf. Once it is older than 20 seconds (stale-after on the grid) they read as stale, on the next 15 second tick the tiles share.
     if (!paused) publish()
     log(paused ? 'Feed paused: tiles will read as stale' : 'Feed resumed')
   })
@@ -826,12 +876,14 @@
   edit.addEventListener('click', () => { grid.editing = !grid.editing })
   grid.addEventListener('ts-edit-change', (e) => { edit.textContent = e.detail.editing ? 'Done' : 'Edit layout' })
   document.getElementById('reset').addEventListener('click', () => {
-    for (const d of ['desktop', 'phone']) {
-      try { localStorage.removeItem(`${KEY}:${d}`) } catch {}
-    }
-    // A layout the host sets is not a user edit, so nothing is saved by this.
-    grid.layout = LAYOUT
-    log('Layout reset')
+    // Removes the saved arrangement of each device and shows this device's default again.
+    layouts.reset('desktop')
+    layouts.reset('phone')
+    // The equity range is a setting of its own; Reset puts it back too, so "reset" means everything this page saved.
+    range = 'All'
+    try { localStorage.removeItem(`${KEY}:range`) } catch {}
+    tile('equityCurve').range = range
+    log('Layout and equity range reset')
   })
   grid.addEventListener('ts-profile-change', (e) => log(`Showing the ${e.detail.profile === 'market' ? 'market hours' : 'after close'} layout (${e.detail.reason})`))
 
@@ -869,6 +921,7 @@
     reload('Back on the real clock')
   })
 
+  const weekday = new Intl.DateTimeFormat('en-IN', { weekday: 'short', timeZone: TZ })
   const sessionsEl = document.getElementById('sessions')
   function tick() {
     const t = now()
@@ -880,11 +933,21 @@
       const state = Object.assign(document.createElement('span'), { className: s.open ? 'open' : 'shut', textContent: s.open ? 'open' : 'closed' })
       part.append(`${calendar.session(id).label} `, state)
       if (s.open) part.append(` · closes ${fmt.time(s.closesAt)}`)
-      else if (s.opensAt) part.append(` · opens ${fmt.time(s.opensAt)}`)
+      else if (s.opensAt) {
+        // Name the day when the next open is not today: a weekend or a holiday.
+        const day = localDate(s.opensAt, TZ) === localDate(t, TZ) ? '' : `${weekday.format(s.opensAt)} `
+        part.append(` · opens ${day}${fmt.time(s.opensAt)}`)
+      }
       sessionsEl.append(part, ' ')
     }
     sessionsEl.append(`layout: ${grid.profile}`)
   }
+
+  // The notes and demo controls fold on a phone; from 700px they are always open.
+  const demo = document.querySelector('.demo')
+  const wide = matchMedia('(min-width: 700px)')
+  demo.open = wide.matches
+  wide.addEventListener('change', () => { if (wide.matches) demo.open = true })
 
   // ── Go ──────────────────────────────────────────────────────────────────
   const FAST = ['watchlist', 'openPositions', 'todayPnl', 'winRate', 'lossLimit']

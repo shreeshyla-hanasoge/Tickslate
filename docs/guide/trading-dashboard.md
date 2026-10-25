@@ -46,7 +46,7 @@ The grid, with the picker and the controls beside it:
 
 ```html
 <ts-grid id="board" aria-label="Trading dashboard" heading-level="2" stale-after="20s">
-  <ts-session-clock item="sessionClock" label="Markets"></ts-session-clock>
+  <ts-session-clock item="sessionClock" label="Sessions"></ts-session-clock>
   <ts-today-pnl item="todayPnl" label="Today's P&amp;L" activatable></ts-today-pnl>
   <ts-watchlist item="watchlist" label="Watchlist"></ts-watchlist>
   <ts-open-positions item="openPositions" label="Open positions"></ts-open-positions>
@@ -195,7 +195,7 @@ grid.addEventListener('ts-action', async (e) => {
 })
 ```
 
-The example page does this for all ten rows of the table above, with a native
+The example page does this for every row of the table above, with a native
 `<dialog>` as its confirm panel. Its activity list at the bottom shows each
 answer.
 
@@ -235,9 +235,18 @@ device (desktop and phone are stored apart). A saved layout can name a tile your
 app no longer renders, or a size a tile no longer has: the grid repairs it and
 fires `ts-layout-issues`.
 
-The example page sets the grid's `layout` and then `persist`, in that order, so
-that "nothing saved" means your layout. A framework, which sets properties before
-an element connects, gets this without thinking about it.
+The example page does not use the `persist` attribute: it calls `persistLayout`
+with `defaults` for each device, because a phone should not get the desktop
+order squeezed into two columns. Its phone default is a full layout of its own
+(both profiles), with the session banner and P&L first so they are on screen
+when the page opens. A layout that only names `device: 'desktop'` is reused on a
+phone, in the same order.
+
+A tile the user adds from the picker belongs to the profile showing when it was
+added (market or closed) and to that device. It is saved there only, so a tile
+added during market hours is gone after the close and back at the next open;
+say so in your own copy, as the example does. The example's grid also sets
+`edit-controls="off"`, because the page has its own Edit layout button.
 
 ## Schedule and the market presets
 
@@ -299,13 +308,23 @@ The widgets already have their own tests; yours should cover the wiring.
 - **Names.** Every tile is a `role="group"` named with its headline, and a live
   tile's name ends with `, live` (or `, stale` once its data is older than
   `stale-after`). Query by role and name, for example
-  `getByRole('group', { name: /^Open positions/ })`. Playwright and Testing
-  Library both see through open shadow roots.
+  `getByRole('group', { name: /^Open positions, (live|stale)$/ })`. A tile has
+  two groups: the tile itself ("Open positions, live") and, inside it, the
+  scroll region that holds its rows, which is a focusable group too so a
+  keyboard can scroll it ("Open positions, positions"). A pattern that only
+  checks the start of the name matches both and fails Playwright's strict mode,
+  so match the whole tile name, or take `.first()`, which is the tile. Some
+  tiles put their headline result in the name (`Funding, 2 accounts, live`,
+  `Equity, +₹25,760.08 over 71 trading days, live`), so for those match the start
+  and take `.first()`: `getByRole('group', { name: /^Funding, / }).first()`. Playwright
+  and Testing Library both see through open shadow roots.
 - **Heading level.** Each tile's label is a heading: `getByRole('heading', { level: 2, name: 'Watchlist' })`
   when the grid has `heading-level="2"`.
 - **The landmark.** The grid is one region named by your `aria-label`.
-- **Staleness.** Stop sending data (or send an old `asOf`), advance the clock
-  past `stale-after`, and expect `, stale` in the name.
+- **Staleness.** Stop sending data (or send an old `asOf`) and expect `, stale`
+  in the name. Tiles check their age on a shared 15 second tick, so allow up to
+  15 seconds plus `stale-after` (35 seconds for `stale-after="20s"`), or use fake
+  timers.
 - **Actions.** Press the button (`getByRole('button', { name: 'Exit ALPHA 24500 CE, Long 150' })`),
   assert your confirm panel, confirm, and assert both the order your fake broker
   received and the row leaving the tile.
@@ -340,7 +359,14 @@ library; plan around them.
 - **Right-to-left and a strict content security policy.** Both are in review
   ([§9](../rfc/0003-p1-surfaces.md) and [§14](../rfc/0003-p1-surfaces.md)).
   Until they land, test an `rtl` or CSP-locked page yourself before relying on it.
-- **Weekend trading.** The P&L calendar has no cell for a Saturday or Sunday, so
-  an entry on one is counted in a note, not drawn.
+- **Weekend trading.** The P&L calendar draws the days of the locale's working
+  week (with `en-IN` that is Monday to Saturday, and Sunday is the weekend), so
+  an entry on a weekend day is counted in a note, not drawn.
+- **Column widths and short labels on a phone.** A table gives its spare width to
+  the first column and leaves the others narrow, so put the text column (the
+  instrument) first, as the fills table does. A half-width phone tile gives its
+  heading very little room, so keep labels short (`Funding`, `Win rate`,
+  `Loss limit`) until the trading-polish story lands per-column widths and a
+  fuller phone design.
 
 The maintainer's board tracks all of these.
