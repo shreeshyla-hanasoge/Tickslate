@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { connect } from 'node:net'
 import { createReadStream, existsSync, statSync } from 'node:fs'
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -110,6 +110,18 @@ function serve(dir, preferred) {
   })
 }
 
+// The tail of npm's newest debug log, so a CI failure explains itself without a second run.
+async function npmLogTail(cache) {
+  try {
+    const dir = join(cache, '_logs')
+    const logs = (await readdir(dir)).sort()
+    const text = await readFile(join(dir, logs[logs.length - 1]), 'utf8')
+    return `\n--- ${logs[logs.length - 1]} (last 60 lines) ---\n${text.split('\n').slice(-60).join('\n')}`
+  } catch {
+    return ''
+  }
+}
+
 async function cleanup() {
   // A child still running would write into the directory removed below.
   for (const child of children) child.kill('SIGTERM')
@@ -148,7 +160,14 @@ async function main() {
       // pulls npm's release by accident. Here it becomes the tarball just packed (absolute path).
       manifest.dependencies.tickslate = `file:${tarball}`
       await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
-      await run(npm, ['install', '--no-audit', '--no-fund', '--no-package-lock', '--prefer-offline'], { cwd: dir })
+      // A private cache: a runner's restored ~/.npm can hold entries that crash npm 10's resolver.
+      const env = { ...process.env, npm_config_cache: join(tmp, 'npm-cache') }
+      try {
+        await run(npm, ['install', '--no-audit', '--no-fund', '--no-package-lock'], { cwd: dir, env })
+      } catch (err) {
+        err.message += await npmLogTail(env.npm_config_cache)
+        throw err
+      }
       if (example.build) await run(npm, ['run', 'build'], { cwd: dir })
       console.log(`built ${example.name}`)
       prepared.push({ ...example, dir, serveDir: example.build ? join(dir, 'dist') : dir, index: i })
