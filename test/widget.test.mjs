@@ -304,7 +304,8 @@ describe('rendering', () => {
 
   describe('every', () => {
     test('re-renders on the period while connected and visible', async (t) => {
-      t.mock.timers.enable({ apis: ['setInterval'] })
+      // The shared ticker waits for a second boundary (a timeout, read from Date), then beats on an interval.
+      t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'] })
       const el = make()
       el.connect()
       el.data = { n: 1 }
@@ -322,7 +323,8 @@ describe('rendering', () => {
     })
 
     test('calling every with the same period keeps the timer running', async (t) => {
-      t.mock.timers.enable({ apis: ['setInterval'] })
+      // The shared ticker waits for a second boundary (a timeout, read from Date), then beats on an interval.
+      t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'] })
       const el = make()
       el.connect()
       el.data = { n: 1 }
@@ -338,7 +340,8 @@ describe('rendering', () => {
     })
 
     test('pauses while hidden, renders at once on becoming visible, and stops on disconnect', async (t) => {
-      t.mock.timers.enable({ apis: ['setInterval'] })
+      // The shared ticker waits for a second boundary (a timeout, read from Date), then beats on an interval.
+      t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'] })
       const el = make()
       el.connect()
       el.data = { n: 1 }

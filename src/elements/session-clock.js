@@ -125,6 +125,40 @@ function lookup(calendar, id, t) {
  * no countdown, and its rail is full.
  */
 function laneState(calendar, id, now) {
+  const base = laneBase(calendar, id, now)
+  const { st, win, endless } = base
+  // What moves each second is derived here from the cached boundaries; the calendar is not asked again.
+  const progress = st.open && st.startedAt !== null && st.closesAt !== null ? (now - st.startedAt) / (st.closesAt - st.startedAt) : null
+  return {
+    open: st.open,
+    endless,
+    win,
+    opensAt: st.opensAt,
+    closesAt: st.closesAt,
+    // Open with a known close but no known start (a run that began over a month ago): there is no fraction to show.
+    partial: st.open && !endless && st.startedAt === null,
+    progress: endless ? 100 : st.open && progress !== null ? round(progress * 100, 2) : 0,
+    // More than a day away, a weekday says more than a duration does.
+    far: !st.open && st.opensAt !== null && st.opensAt - now > DAY,
+  }
+}
+
+// The calendar's answer for a session only changes when the session opens or
+// closes, or when the day turns, so it is asked once for that stretch of time
+// and not once a second per lane (RFC 0003 §23). Calendars are immutable, so
+// a different calendar is a different key; the weak map frees the cache with it.
+const laneCache = new WeakMap()
+
+function cacheFor(calendar) {
+  let cache = laneCache.get(calendar)
+  if (!cache) laneCache.set(calendar, (cache = new Map()))
+  return cache
+}
+
+function laneBase(calendar, id, now) {
+  const cache = cacheFor(calendar)
+  const hit = cache.get(`lane|${id}`)
+  if (hit && now >= hit.from && now < hit.until) return hit
   const st = calendar.state(id, now)
   const endless = st.open && st.closesAt === null
   let win = null
@@ -135,18 +169,26 @@ function laneState(calendar, id, now) {
     const next = calendar.state(id, st.opensAt)
     if (next.open && next.closesAt !== null && next.startedAt !== null) win = { open: next.startedAt, close: next.closesAt }
   }
-  return {
-    open: st.open,
-    endless,
-    win,
-    opensAt: st.opensAt,
-    closesAt: st.closesAt,
-    // Open with a known close but no known start (a run that began over a month ago): there is no fraction to show.
-    partial: st.open && !endless && st.startedAt === null,
-    progress: endless ? 100 : st.open && st.progress !== null ? round(st.progress * 100, 2) : 0,
-    // More than a day away, a weekday says more than a duration does.
-    far: !st.open && st.opensAt !== null && st.opensAt - now > DAY,
+  const change = st.open ? st.closesAt : st.opensAt
+  const dayEnd = (Math.floor(now / DAY) + 1) * DAY
+  const entry = { st, win, endless, from: now, until: change === null ? dayEnd : Math.min(change, dayEnd) }
+  if (cache.size >= 64) cache.clear()
+  cache.set(`lane|${id}`, entry)
+  return entry
+}
+
+// The next candle close holds until it is reached, so it too is asked once per candle.
+function candleClose(calendar, id, now, tf) {
+  const cache = cacheFor(calendar)
+  const key = `candle|${tf}|${id}`
+  const hit = cache.get(key)
+  if (hit && now >= hit.from && now < hit.until) return hit.until
+  const at = calendar.candleClose(id, now, tf)
+  if (at !== null && at > now) {
+    if (cache.size >= 64) cache.clear()
+    cache.set(key, { from: now, until: at })
   }
+  return at
 }
 
 // Candidate ticks depend only on the session window and the timeframes, so
@@ -334,7 +376,7 @@ function banner(d, ids, first, env, now, ctx) {
     const times = windowTimes(env, st.win, now, t)
     let next = null
     if (st.open && tfs.length) {
-      const closes = tfs.map((tf) => d.calendar.candleClose(id, now, tf)).filter((t) => t !== null)
+      const closes = tfs.map((tf) => candleClose(d.calendar, id, now, tf)).filter((t) => t !== null)
       if (closes.length) {
         // A loop rather than a spread into Math.min: no argument list grows with the data.
         let at = Infinity

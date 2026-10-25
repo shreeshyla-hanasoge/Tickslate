@@ -1146,25 +1146,36 @@ export class TsGrid extends Base {
     // Measuring renders, and rendering changes the grid's own height, which the
     // observer reports again within the same frame. WebKit raises that as an
     // uncaught "ResizeObserver loop" error, so the work waits for the next frame.
-    this._resizeObserver = new ResizeObserver(() => {
+    // Each observer is optional (RFC 0003 §23): jsdom and happy-dom have none. A grid that cannot watch its own width
+    // still measures again on a window resize, and one that cannot watch its children takes them when the host sets
+    // layout. A guard, not a polyfill.
+    const onResize = () => {
       cancelAnimationFrame(this._measureFrame)
       this._measureFrame = requestAnimationFrame(() => this._measure(false))
-    })
-    this._resizeObserver.observe(this)
-    // A dir attribute flipped on the grid or an ancestor changes no size, so the observer above never hears of it.
-    this._dirObserver = new MutationObserver(() => this._measure(false))
-    // Through a slot to the shadow tree the grid is slotted into: that wrapper's dir is what the grid inherits.
-    for (let node = this; node; node = node.assignedSlot || node.parentNode || node.host) this._dirObserver.observe(node, { attributes: true, attributeFilter: ['dir'] })
-    this._mutationObserver = new MutationObserver((records) => {
-      if (!records.some((r) => this._concerns(r))) return
-      this._cancelGesture()
-      // A host answering ts-add-request renders its child here; the layout before it came is what Undo goes back to.
-      const arrived = this._arrivedAdds()
-      const before = this._layout
-      this._sync(true)
-      if (arrived.length) this._finishAdds(arrived, before)
-    })
-    this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
+    }
+    if (typeof ResizeObserver === 'function') {
+      this._resizeObserver = new ResizeObserver(onResize)
+      this._resizeObserver.observe(this)
+    } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      this._onWindowResize = onResize
+      window.addEventListener('resize', onResize)
+    }
+    if (typeof MutationObserver === 'function') {
+      // A dir attribute flipped on the grid or an ancestor changes no size, so the observer above never hears of it.
+      this._dirObserver = new MutationObserver(() => this._measure(false))
+      // Through a slot to the shadow tree the grid is slotted into: that wrapper's dir is what the grid inherits.
+      for (let node = this; node; node = node.assignedSlot || node.parentNode || node.host) this._dirObserver.observe(node, { attributes: true, attributeFilter: ['dir'] })
+      this._mutationObserver = new MutationObserver((records) => {
+        if (!records.some((r) => this._concerns(r))) return
+        this._cancelGesture()
+        // A host answering ts-add-request renders its child here; the layout before it came is what Undo goes back to.
+        const arrived = this._arrivedAdds()
+        const before = this._layout
+        this._sync(true)
+        if (arrived.length) this._finishAdds(arrived, before)
+      })
+      this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
+    }
     if (!this._explicit) this._reconcile()
     this._measure(true)
     // After the first measure, so the device is known and the layout on show is the defaults.
@@ -1185,10 +1196,15 @@ export class TsGrid extends Base {
     this._offCatalog = null
     for (const pending of this._pendingAdds.values()) clearTimeout(pending.timer)
     this._pendingAdds.clear()
-    this._resizeObserver.disconnect()
-    this._dirObserver.disconnect()
+    if (this._resizeObserver) this._resizeObserver.disconnect()
+    this._resizeObserver = null
+    if (this._onWindowResize) window.removeEventListener('resize', this._onWindowResize)
+    this._onWindowResize = null
+    if (this._dirObserver) this._dirObserver.disconnect()
+    this._dirObserver = null
     cancelAnimationFrame(this._measureFrame)
-    this._mutationObserver.disconnect()
+    if (this._mutationObserver) this._mutationObserver.disconnect()
+    this._mutationObserver = null
     this._cancelGesture()
     this._stopEditing()
     this._hideToast(false)
@@ -2042,6 +2058,8 @@ export class TsGrid extends Base {
         if (node.classList.contains('resize')) return { kind: 'resize', id: node.parentElement.dataset.id }
         if (node.classList.contains('pin')) return { kind: 'pin', id: node.parentElement.dataset.id }
         if (node.classList.contains('handle')) return { kind: 'chrome', id: node.parentElement.dataset.id }
+        // The empty panel sits inside the board, but its Add back button and list are controls: a press on them is not a tap on the bare board, which would end editing on pointerup and drop or move the click that opens the list.
+        if (node.classList.contains('anchor')) return { kind: 'none' }
         if (node === this._board || node === this._stripEl) return { kind: 'board' }
       } else if (node.parentElement === this && node.hasAttribute('item')) {
         const id = node.getAttribute('item')
@@ -2240,7 +2258,19 @@ export class TsGrid extends Base {
     const x = g.x - g.offsetX - (g.board0.left - (scroll.x - g.scroll0.x))
     const y = g.y - g.offsetY - (g.board0.top - (scroll.y - g.scroll0.y))
     if (g.strip) return { x, y, target: stripSlotAt(x, this._strip.length, m, { rtl: this._rtl }) }
-    const target = dropIndex(this._order, g.id, cellAt(x, y, g.cols, m, { rtl: this._rtl }), this._columns, this._resolve, m.pitchX / m.pitchY)
+    // The slot under the tile depends on the whole cell it is over, the order and the column count, and every frame of
+    // a drag asks again whether or not the pointer crossed into another cell. The pointer's cell is rounded to the
+    // cell grid, which is where the slots are, and asked again with the same cell the answer is the last one.
+    const at = cellAt(x, y, g.cols, m, { rtl: this._rtl })
+    const cell = { col: Math.round(at.col), row: Math.round(at.row) }
+    const memo = g.memo
+    let target
+    if (memo && memo.order === this._order && memo.columns === this._columns && memo.pitchX === m.pitchX && memo.pitchY === m.pitchY && memo.col === cell.col && memo.row === cell.row) {
+      target = memo.target
+    } else {
+      target = dropIndex(this._order, g.id, cell, this._columns, this._resolve, m.pitchX / m.pitchY)
+      g.memo = { order: this._order, columns: this._columns, pitchX: m.pitchX, pitchY: m.pitchY, col: cell.col, row: cell.row, target }
+    }
     return { x, y, target }
   }
 

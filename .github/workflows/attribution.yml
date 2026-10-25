@@ -1,0 +1,36 @@
+name: Attribution
+
+on:
+  # edited makes a body edit start a fresh run: a plain re-run reuses the old event payload.
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  attribution:
+    name: no AI attribution
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so origin/<base>..HEAD resolves. HEAD is GitHub's merge
+      # commit, whose fixed message is clean: the range holds the PR's own
+      # commits, which are the ones scanned.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      # The body goes through env and printf, never into the shell text, so a
+      # crafted body can't inject commands.
+      - name: Write the PR body to a file
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+      - name: Check commit messages and PR body
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          node scripts/check-attribution.mjs --self-test
+          node scripts/check-attribution.mjs "origin/$BASE_REF" HEAD --body-file "$RUNNER_TEMP/pr-body.txt"
