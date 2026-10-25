@@ -1,4 +1,4 @@
-import type { Calendar, Device, Layout, LayoutItem, LayoutIssue, MessageOverrides, ProfileSchedule, Catalog, SizeName, Translate } from '../core/index.js'
+import type { Calendar, Device, Layout, LayoutItem, LayoutIssue, Thresholds, MessageOverrides, ProfileSchedule, Catalog, SizeName, Translate } from '../core/index.js'
 
 /**
  * Remote or async storage for `persistLayout`: either method may return a
@@ -101,6 +101,8 @@ export declare class TsGrid extends HTMLElement {
   /** In implicit mode, the layout seeded from the children. Reading never changes anything; setting it (a Layout or an item array) is read through readLayout(); repairs fire `ts-layout-issues`. */
   get layout(): Layout
   set layout(value: Layout | LayoutItem[])
+  /** Column thresholds in px of the grid's own width. Defaults to `{ tablet: 700, desktop: 1200 }`; a missing key keeps its default and an invalid set is ignored with one development warning. Setting it re-measures. Property only. */
+  breakpoints: Thresholds
   /** Defaults to WIDGETS. May be a function that resolves one item to its spec. */
   catalog: Catalog
   /** Overrides for the grid's own strings and for every tile inside it; null clears. Assign a new object to change them. */

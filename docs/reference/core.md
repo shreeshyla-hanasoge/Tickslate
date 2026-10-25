@@ -123,9 +123,10 @@ const catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Ta
 | `metric` | `ts-metric` | S, Wide, M | shipped |
 | `chart` | `ts-chart` | Wide, M, L, XL | shipped |
 | `table` | `ts-table` | Tall, M, L, XL | shipped |
-| `pnlCalendar` | `ts-pnl-calendar` | Tall, M, Banner (phone: Banner is 2 rows) | catalog entry only; the element is not yet shipped |
-| `edgeStats` | `ts-edge-stats` | S, Wide, M | catalog entry only |
-| `capitalFunding` | `ts-capital-funding` | S, Tall, L | catalog entry only |
+| `progress` | `ts-progress` | S, Wide | shipped |
+| `pnlCalendar` | `ts-pnl-calendar` | Tall, M, Banner (phone: Banner is 2 rows) | shipped |
+| `edgeStats` | `ts-edge-stats` | S, Wide, M | shipped |
+| `capitalFunding` | `ts-capital-funding` | S, Tall, L | shipped |
 | `openPositions` | `ts-open-positions` | Wide, M, L | shipped |
 | `watchlist` | `ts-watchlist` | S, Tall, M | shipped |
 | `miniChart` | `ts-mini-chart` | M, L, XL | catalog entry only |
@@ -531,6 +532,75 @@ within a month, as when a session never closes. `<ts-grid>` uses both for its `s
 
 ## Stats
 
+### `edgeStats(trades)`
+
+```ts
+edgeStats(trades: readonly TradeResult[]): EdgeStats
+interface TradeResult { pnl: Numeric; holdMs?: number }
+interface EdgeStats {
+  trades: number; wins: number; losses: number
+  winRate: number | null          // 0..1
+  profitFactor: number | null     // Infinity with a win and no loss
+  avgWin: number | null; avgLoss: number | null   // avgLoss is negative
+  expectancy: number | null       // per trade
+  avgHoldMs?: number | null
+}
+```
+
+What `<ts-edge-stats>` shows, for a host that wants the same numbers elsewhere.
+A numeric string is read; a trade whose `pnl` cannot be read is skipped, not
+counted as zero. A trade that made exactly nothing counts in `trades` and in
+`expectancy`, and is neither a win nor a loss. With no trades every figure is
+`null` and the counts are 0. With a win and no loss `profitFactor` is
+`Infinity`, which the widget shows as `∞`.
+
+```js
+edgeStats([{ pnl: 300 }, { pnl: -100 }, { pnl: 200 }])
+// { trades: 3, wins: 2, losses: 1, winRate: 0.667, profitFactor: 5, avgWin: 250, avgLoss: -100, expectancy: 133.33, avgHoldMs: null }
+```
+
+### `histogram(values, edges)`
+
+```ts
+histogram(values: readonly Numeric[], edges: readonly Numeric[]): Array<{ from: number; to: number; count: number }>
+```
+
+Counts `values` between consecutive `edges`. Buckets are half-open, `[from, to)`,
+and the last one is closed, so the largest edge is counted. Edges are sorted and
+de-duplicated; a value outside every bucket is not counted; fewer than two edges
+make no buckets. It builds the `distribution` of `<ts-edge-stats>` once you give
+each bucket a label and a `sign`.
+
+```js
+histogram([-12, 4, 10, 10, 30], [-50, 0, 10, 30])
+// [{ from: -50, to: 0, count: 1 }, { from: 0, to: 10, count: 1 }, { from: 10, to: 30, count: 3 }]
+```
+
+### `funding(account)`
+
+```ts
+funding(account: FundingAccount): FundedAccount
+interface FundedAccount {
+  id: string; name: string; balance: number
+  allocated: number             // the sum of the amounts
+  free: number                  // what is left of the balance, never below 0
+  shortfall: number             // the sum of the allocations' short amounts
+  fundedShare: number | null    // funded ÷ allocated, 0..1; null with nothing allocated
+  allocations: Array<{ id: string; name: string; detail?: string; amount: number; funded: number; short: number; live: boolean; pnl: number | null }>
+}
+```
+
+How an account's balance covers its allocations, in array order: each takes what
+is left and is short by the rest. A `funded` an allocation carries replaces that
+figure, held to 0 up to its amount, and takes that much from the balance for the
+allocations after it. A balance that cannot be read, or is negative, funds nothing;
+an amount that cannot be read is 0. `<ts-capital-funding>` draws this.
+
+```js
+funding({ id: 'a', name: 'Broker A', balance: 100, allocations: [{ id: 'x', name: 'X', amount: 60 }, { id: 'y', name: 'Y', amount: 60 }] })
+// allocations[0]: funded 60, short 0; allocations[1]: funded 40, short 20; free 0, shortfall 20
+```
+
 ### `equitySeries(days, options?)`
 
 ```ts
@@ -560,4 +630,32 @@ equityStats([
   { date: '2026-10-01', pnl: 420.5, trades: 6 },
   { date: '2026-10-02', pnl: -180 },
 ]) // { net: 240.5, peak: 420.5, maxDrawdown: 180, tradingDays: 2, trades: 6 }
+```
+
+### `dayStats(days, options?)`
+
+```ts
+dayStats(days: readonly DayResult[], options?: { timeZone?: string }): {
+  net: number; greenDays: number; redDays: number
+  greenRate: number | null; best: number | null; worst: number | null
+}
+```
+
+The figures `<ts-pnl-calendar>` shows, from the same series as the equity
+curve. Each date is read with `toDay(date, timeZone)` and rows that share a date
+are **summed** into one day. A day is green when its net is above zero and red
+when below; a day that nets to exactly zero is neither. `greenRate` is
+`greenDays / (greenDays + redDays)`, `best` and `worst` are the highest and
+lowest day, and `net` is the sum of every day. Entries whose date or `pnl`
+cannot be read are skipped. Each day's total is settled to the cent before it is
+counted, so a day that sums to dust (0.1 + 0.2 - 0.3) or to 0.004 is neither green
+nor red. Empty input gives `net: 0`, `greenDays: 0`, `redDays: 0` and `null` for the
+rest.
+
+```js
+dayStats([
+  { date: '2026-10-01', pnl: 300 },
+  { date: '2026-10-01', pnl: -100 }, // the same day: 200
+  { date: '2026-10-02', pnl: -50 },
+]) // { net: 150, greenDays: 1, redDays: 1, greenRate: 0.5, best: 200, worst: -50 }
 ```

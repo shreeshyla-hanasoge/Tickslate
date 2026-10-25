@@ -42,6 +42,7 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     --ts-row: 150px;
     --ts-gap: 16px;
+    --ts-grid-max-width: none;
     --ts-pad: 18px;
     --ts-row-compact: 150px;
     --ts-gap-compact: 10px;

@@ -165,7 +165,7 @@ const SHARED_TYPES = ['WidgetFreshness', 'ViewModelContext', 'WidgetState', 'TsC
 // widget (the layout persistence options go with the grid, and so do the
 // attribute tables the framework typings read). A type that fits neither rule
 // fails the check below, so it is placed on purpose.
-const TYPE_EXTRAS = { grid: ['PersistLayoutOptions', 'TsWidgetAttributes', 'TsElementAttributes'], 'equity-curve': ['EquityRange'], 'open-positions': ['OpenPosition'] }
+const TYPE_EXTRAS = { grid: ['PersistLayoutOptions', 'TsWidgetAttributes', 'TsElementAttributes'], 'equity-curve': ['EquityRange'], 'open-positions': ['OpenPosition'], 'pnl-calendar': ['CalendarModel'], 'edge-stats': ['EdgeStatName', 'EdgeStatFigure'] }
 const stubTypes = new Set()
 for (const entry of entries) {
   const lines = []

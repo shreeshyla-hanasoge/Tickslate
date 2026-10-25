@@ -14,9 +14,14 @@ export declare const SIZE_NAMES: readonly SizeName[]
 export declare const BREAKPOINTS: Readonly<{ desktop: 1200; tablet: 700 }>
 
 export declare function isSize(name: unknown): name is SizeName
-export declare function columnsFor(width: number): Columns
+/** Grid-width thresholds in px. A missing key keeps its default; an invalid set falls back to BREAKPOINTS. */
+export interface Thresholds {
+  tablet?: number
+  desktop?: number
+}
+export declare function columnsFor(width: number, thresholds?: Thresholds): Columns
 /** 'phone' below 700 px. A tablet uses the desktop layout, clamped to 3 columns. */
-export declare function deviceFor(width: number): Device
+export declare function deviceFor(width: number, thresholds?: Thresholds): Device
 /** `size` if supported, else the nearest supported size. An unknown name snaps to the smallest. */
 export declare function snapSize(size: string, supported: readonly SizeName[]): SizeName
 
@@ -73,6 +78,7 @@ export declare const WIDGETS: Readonly<{
   metric: WidgetSpec
   chart: WidgetSpec
   table: WidgetSpec
+  progress: WidgetSpec
 }>
 
 /** The profile a layout uses when none is named. */
@@ -285,6 +291,7 @@ export interface Messages {
   'widget.metric.label': string
   'widget.chart.label': string
   'widget.table.label': string
+  'widget.progress.label': string
   'widget.todayPnl.description': string
   'widget.equityCurve.description': string
   'widget.pnlCalendar.description': string
@@ -298,6 +305,7 @@ export interface Messages {
   'widget.metric.description': string
   'widget.chart.description': string
   'widget.table.description': string
+  'widget.progress.description': string
   'category.General': string
   'category.Performance': string
   'category.Accounts': string
@@ -308,8 +316,12 @@ export interface Messages {
   'widget.metric.empty': string
   'widget.chart.empty': string
   'widget.table.empty': string
+  'widget.progress.empty': string
+  'widget.edgeStats.empty': string
+  'widget.capitalFunding.empty': string
   'widget.watchlist.empty': string
   'widget.openPositions.empty': string
+  'widget.pnlCalendar.empty': string
   'size.S': string
   'size.Wide': string
   'size.Tall': string
@@ -473,6 +485,53 @@ export interface Messages {
   'table.join': string
   'table.select': string
   'table.region': string
+  'progress.text': string
+  'progress.result': string
+  'progress.withState': string
+  'progress.aria': string
+  'progress.noTarget': string
+  'progress.near': string
+  'progress.over': string
+  'progress.done': string
+  'edge.winRate': string
+  'edge.profitFactor': string
+  'edge.avgWinLoss': string
+  'edge.expectancy': string
+  'edge.perTrade': string
+  'edge.winLoss': string
+  'edge.spoken': string
+  'edge.na': string
+  'edge.noLosses': string
+  'edge.trades.one': string
+  'edge.trades.other': string
+  'edge.meta': string
+  'edge.aria': string
+  'edge.join': string
+  'edge.distribution': string
+  'edge.dist': string
+  'edge.distPeak': string
+  'edge.bucket': string
+  'funding.aria': string
+  'funding.accounts.one': string
+  'funding.accounts.other': string
+  'funding.firstOnly': string
+  'funding.join': string
+  'funding.region': string
+  'funding.balance': string
+  'funding.allocated': string
+  'funding.free': string
+  'funding.short': string
+  'funding.full': string
+  'funding.funded': string
+  'funding.nothing': string
+  'funding.share': string
+  'funding.account': string
+  'funding.bar': string
+  'funding.live': string
+  'funding.hidden.one': string
+  'funding.hidden.other': string
+  'funding.rebalance': string
+  'funding.rebalanceLabel': string
   'watchlist.aria': string
   'watchlist.instruments.one': string
   'watchlist.instruments.other': string
@@ -513,6 +572,24 @@ export interface Messages {
   'positions.exitAll': string
   'positions.exitAllLabel.one': string
   'positions.exitAllLabel.other': string
+  'calendar.net': string
+  'calendar.best': string
+  'calendar.worst': string
+  'calendar.greenRate': string
+  'calendar.date': string
+  'calendar.cell': string
+  'calendar.cellNone': string
+  'calendar.cellUpcoming': string
+  'calendar.noDays': string
+  'calendar.dayCount.one': string
+  'calendar.dayCount.other': string
+  'calendar.aria': string
+  'calendar.ariaEmpty': string
+  'calendar.chartLabel': string
+  'calendar.chartEmpty': string
+  'calendar.chartNote': string
+  'calendar.weekend.one': string
+  'calendar.weekend.other': string
 }
 
 export type MessageKey = keyof Messages
@@ -658,6 +735,88 @@ export interface EquityPoint {
 /** The running equity curve of a daily P&L series, sorted by date. The input is not changed. */
 export declare function equitySeries(days: readonly DayResult[], options?: { timeZone?: string }): EquityPoint[]
 
+export interface TradeResult {
+  /** The trade's profit or loss in major units; a numeric string is accepted. A trade whose pnl can't be read is skipped. */
+  pnl: Numeric
+  /** How long the trade was held, in milliseconds. */
+  holdMs?: number
+}
+
+export interface EdgeStats {
+  /** The readable trades. A trade that made exactly nothing counts here and is neither a win nor a loss. */
+  trades: number
+  wins: number
+  losses: number
+  /** wins ÷ trades, 0..1. */
+  winRate: number | null
+  /** Gross profit ÷ gross loss. Infinity with a win and no loss; null with no trades (and with only break-even trades). */
+  profitFactor: number | null
+  avgWin: number | null
+  /** A negative number. */
+  avgLoss: number | null
+  /** The mean result per trade. */
+  expectancy: number | null
+  /** The mean of the hold times that were given; null when none was. */
+  avgHoldMs?: number | null
+}
+
+/** Win rate, profit factor, average win and loss and expectancy of a list of trades. With no trades every figure is null. */
+export declare function edgeStats(trades: readonly TradeResult[]): EdgeStats
+
+/** Counts between consecutive edges: [from, to) for each bucket, and the last one [from, to], so the largest edge is counted. */
+export declare function histogram(values: readonly Numeric[], edges: readonly Numeric[]): Array<{ from: number; to: number; count: number }>
+
+export interface FundingAllocation {
+  id: string
+  /** The strategy. */
+  name: string
+  /** 'NIFTY 50 · 5m'. */
+  detail?: string
+  amount: Numeric
+  live?: boolean
+  pnl?: Numeric
+  /** The host's own funded amount, held to 0..amount. It replaces the rule, and consumes the balance for the allocations after it. */
+  funded?: Numeric
+}
+
+export interface FundingAccount {
+  id: string
+  /** 'Broker A'. */
+  name: string
+  balance: Numeric
+  allocations: FundingAllocation[]
+}
+
+export interface FundedAllocation {
+  id: string
+  name: string
+  detail?: string
+  amount: number
+  funded: number
+  /** amount − funded. */
+  short: number
+  live: boolean
+  pnl: number | null
+}
+
+export interface FundedAccount {
+  id: string
+  name: string
+  balance: number
+  /** The sum of the allocations' amounts. */
+  allocated: number
+  /** What is left of the balance after the allocations, never below 0. */
+  free: number
+  /** The sum of the allocations' short amounts. */
+  shortfall: number
+  /** funded ÷ allocated, 0..1; null with nothing allocated. */
+  fundedShare: number | null
+  allocations: FundedAllocation[]
+}
+
+/** Fills an account's allocations from its balance in array order; each is short by what the balance could not cover. */
+export declare function funding(account: FundingAccount): FundedAccount
+
 export interface EquityStats {
   /** Equity at the end of the series. */
   net: number
@@ -672,3 +831,20 @@ export interface EquityStats {
 }
 
 export declare function equityStats(days: readonly DayResult[], options?: { timeZone?: string }): EquityStats
+
+export interface DayStats {
+  /** The sum of every day, weekend entries included. */
+  net: number
+  /** Days whose net is above zero. */
+  greenDays: number
+  /** Days whose net is below zero. */
+  redDays: number
+  /** greenDays over greenDays + redDays; null when no day was green or red. */
+  greenRate: number | null
+  /** The highest and lowest day net; null with no days. */
+  best: number | null
+  worst: number | null
+}
+
+/** Per-day figures of a daily P&L series. Rows with the same date are summed first. */
+export declare function dayStats(days: readonly DayResult[], options?: { timeZone?: string }): DayStats
