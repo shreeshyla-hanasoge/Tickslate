@@ -146,6 +146,9 @@ const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §2
 // rounds up to 25.5 kB.
 // Two new entries (edge-stats-and-funding, 2026-10-16): the edge stats measure 22,349 B bundled with the core, so 24,584 B with 10 %,
 // which rounds up to 24.5 kB; the capital funding measures 23,555 B, so 25,911 B with 10 %, which rounds up to 25.5 kB.
+// A new entry (layout-list-editor, 2026-10-25): the layout list measures 11,196 B bundled with the core, so 12,316 B with
+// 10 %, which rounds up to 12.5 kB.
+const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
   'edge-stats': newEntry(24.5),
@@ -162,6 +165,7 @@ const ENTRY_BUDGETS = {
   'open-positions': remeasuredEighth(26),
   progress: newEntry(22),
   'pnl-calendar': newEntry(25.5),
+  'layout-list': layoutListEntry(12.5),
 }
 
 /**

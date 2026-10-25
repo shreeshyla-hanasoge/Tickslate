@@ -380,6 +380,22 @@ export interface Messages {
   'controls.market': string
   'controls.closed': string
   'controls.next': string
+  'list.label': string
+  'list.sizes': string
+  'list.moveUp': string
+  'list.moveUpItem': string
+  'list.moveDown': string
+  'list.moveDownItem': string
+  'list.remove': string
+  'list.removeItem': string
+  'list.undo': string
+  'list.undone': string
+  'list.nothingToUndo': string
+  'list.moved': string
+  'list.resized': string
+  'list.removed': string
+  'list.empty': string
+  'list.noGrid': string
   'pnl.today': string
   'pnl.realised': string
   'pnl.unrealised': string

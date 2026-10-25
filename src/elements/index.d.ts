@@ -955,6 +955,24 @@ export type TsSessionClockAction = TsCommonAction
  * @csspart next - The line naming the next scheduled switch.
  */
 
+/**
+ * The markup of <ts-layout-list>, for the manifest. Its class is in controls.d.ts. It fires no event of its own:
+ * an edit it makes reaches the host as the grid's `ts-layout-change`.
+ *
+ * @element ts-layout-list
+ * @attr {string} for - The id of the <ts-grid> it edits.
+ * @csspart list - The labelled region around the list.
+ * @csspart rows - The ordered list of tiles.
+ * @csspart row - One tile.
+ * @csspart name - The tile's name.
+ * @csspart size - A size button on a row.
+ * @csspart move - A Move up or Move down button.
+ * @csspart remove - A row's Remove button.
+ * @csspart undo - The Undo button.
+ * @csspart status - The line that says what changed.
+ * @csspart empty - The text shown when the layout has no tile.
+ */
+
 /** The attributes of the TsWidget base, as the framework typings (`tickslate/jsx`, `vue`, `svelte`) offer them. Kept in step with the `@base` block above by test/manifest.test.mjs. */
 export interface TsWidgetAttributes {
   size?: SizeName | undefined
@@ -984,6 +1002,7 @@ export interface TsElementAttributes {
   'ts-edge-stats': { stat?: EdgeStatName | undefined }
   'ts-widget-picker': { for?: string | undefined }
   'ts-grid-controls': { for?: string | undefined; picker?: string | undefined }
+  'ts-layout-list': { for?: string | undefined }
   'ts-grid': {
     editing?: boolean | undefined
     profile?: string | undefined

@@ -147,6 +147,24 @@ export const EN = Object.freeze({
   'controls.closed': 'After close',
   'controls.next': 'Switches to {profile} at {time}',
 
+  // <ts-layout-list>
+  'list.label': 'Edit layout as a list',
+  'list.sizes': 'Size of {label}',
+  'list.moveUp': 'Move up',
+  'list.moveUpItem': 'Move up {label}',
+  'list.moveDown': 'Move down',
+  'list.moveDownItem': 'Move down {label}',
+  'list.remove': 'Remove',
+  'list.removeItem': 'Remove {label}',
+  'list.undo': 'Undo',
+  'list.undone': 'Undone',
+  'list.nothingToUndo': 'Nothing to undo',
+  'list.moved': '{label} moved to position {position} of {total}',
+  'list.resized': '{label} resized to {size}',
+  'list.removed': '{label} removed',
+  'list.empty': 'No widgets on this layout',
+  'list.noGrid': 'No dashboard to edit yet',
+
   // <ts-today-pnl>
   'pnl.today': 'Today',
   'pnl.realised': 'Realised',
