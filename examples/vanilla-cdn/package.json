@@ -4,6 +4,6 @@
   "version": "0.0.0",
   "description": "Tickslate from a plain script tag. No build step: install, then serve this folder with any static server.",
   "dependencies": {
-    "tickslate": "*"
+    "tickslate": "file:../../dist-lib"
   }
 }

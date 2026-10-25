@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "svelte": "5.57.2",
-    "tickslate": "*"
+    "tickslate": "file:../../dist-lib"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.1",

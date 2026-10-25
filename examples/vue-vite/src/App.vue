@@ -2,8 +2,9 @@
 // How this is wired:
 // - vite.config.js tells the compiler `ts-*` tags are custom elements (isCustomElement).
 // - env.d.ts imports 'tickslate/vue', so vue-tsc checks every tag in this template.
-// - `.prop` assigns the DOM property whether or not the element has upgraded yet. A plain
-//   `:data` would write the attribute "[object Object]" if the elements load late.
+// - `.prop` assigns the DOM property whether or not the element has upgraded yet. Here the
+//   elements load first, so a plain `:data` would also work; `.prop` is what keeps a late load
+//   (or server rendering) from writing the attribute "[object Object]".
 // - `@ts-action` listens for the element event of that name; it bubbles, so the grid hears all tiles.
 // - `persist` is a plain attribute: the grid saves and restores its layout in localStorage.
 import { ref } from 'vue'

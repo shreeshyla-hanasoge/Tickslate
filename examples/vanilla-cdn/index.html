@@ -6,7 +6,7 @@
 <title>Tickslate: plain script tag</title>
 <!--
   No build step. The one script below registers every element and sets
-  window.Tickslate. Here it comes from the installed package (npm install, then
+  window.Tickslate (used at the bottom for its version). Here it comes from the installed package (npm install, then
   serve this folder); on a page with no node_modules use the CDN instead:
     <script src="https://unpkg.com/tickslate"></script>
   (unpkg serves the package's "unpkg" field, which is this same file).
@@ -34,6 +34,7 @@
     <ts-card item="notes" label="Notes" sizes="S Wide M"><p>Deploy freeze from Friday.</p></ts-card>
   </ts-grid>
   <p id="last-action" role="status">No action yet.</p>
+  <p id="version"></p>
 </div>
 
 <script src="./node_modules/tickslate/cdn/tickslate.iife.js"></script>
@@ -51,6 +52,9 @@
       ]
     }]
   }
+
+  // The script tag also sets window.Tickslate, the same API as the ES module entry.
+  $('#version').textContent = 'Tickslate ' + window.Tickslate.version
 
   // ts-action bubbles from every tile, so one listener on the grid hears them all.
   $('ts-grid').addEventListener('ts-action', function (event) {

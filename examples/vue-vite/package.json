@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "tickslate": "*",
+    "tickslate": "file:../../dist-lib",
     "vue": "3.5.44"
   },
   "devDependencies": {

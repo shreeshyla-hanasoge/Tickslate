@@ -40,8 +40,12 @@ upgrade. `tickslate/tokens.css` handles that. While a tag is not yet defined:
 
 - `ts-grid:not(:defined)` is a block one row tall (`--ts-row`, 150px by
   default), and its children are hidden;
-- a known widget tag standing alone reserves one row of height, or two for the
-  sizes M, Tall, L and XL.
+- a widget tag standing alone reserves one row of height, or two for the
+  sizes M, Tall, L and XL. The rule lists `ts-today-pnl`, `ts-equity-curve`,
+  `ts-session-clock`, `ts-pnl-calendar`, `ts-edge-stats`, `ts-capital-funding`,
+  `ts-open-positions`, `ts-watchlist`, `ts-mini-chart`, `ts-card`, `ts-metric`
+  and `ts-chart`. `ts-progress`, `ts-table`, `ts-grid-controls` and `ts-widget-picker` are not in it, so
+  give those a height yourself (below).
 
 So load the stylesheet in the server-rendered `<head>`, not from the client
 script, or the placeholder rules arrive too late to help:
