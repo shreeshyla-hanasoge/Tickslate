@@ -287,7 +287,7 @@ describe('docs/guide/your-own-widget.md', () => {
 })
 
 describe('links', () => {
-  const pages = ['docs/theming.md', 'docs/reference/core.md', 'docs/reference/events.md', 'docs/guide/your-own-widget.md']
+  const pages = ['docs/theming.md', 'docs/reference/core.md', 'docs/reference/events.md', 'docs/guide/your-own-widget.md', 'docs/guide/trading-dashboard.md']
   for (const f of readdirSync(join(root, 'docs/widgets'))) if (f.endsWith('.md')) pages.push(`docs/widgets/${f}`)
 
   for (const page of pages) {
@@ -307,5 +307,28 @@ describe('links', () => {
     for (const m of doc.matchAll(/\]\(#([\w-]+)\)/g)) {
       assert.match(doc, new RegExp(`^## \`${escapeRe(m[1])}\``, 'm'), `no heading for #${m[1]}`)
     }
+  })
+})
+
+describe('the trading dashboard example and guide', () => {
+  test('every example page is linked from the examples index and built into the site', () => {
+    const index = read('examples/index.html')
+    const site = read('vite.site.config.js')
+    for (const f of readdirSync(join(root, 'examples')).filter((n) => n.endsWith('.html') && n !== 'index.html')) {
+      assert.ok(index.includes(`href="${f}"`), `examples/index.html should link ${f}`)
+      assert.ok(site.includes(`examples/${f}`), `vite.site.config.js should build examples/${f}`)
+    }
+  })
+  test('the README and the guide point at the example, and the guide at its widgets', () => {
+    assert.ok(read('README.md').includes('examples/trading.html'))
+    const guide = read('docs/guide/trading-dashboard.md')
+    assert.ok(guide.includes('examples/trading.html'))
+    for (const tag of ['ts-today-pnl', 'ts-equity-curve', 'ts-session-clock', 'ts-watchlist', 'ts-open-positions', 'ts-pnl-calendar', 'ts-edge-stats', 'ts-capital-funding']) {
+      assert.ok(guide.includes(tag), `the guide should cover <${tag}>`)
+    }
+  })
+  test('the page answers every action the widgets emit', () => {
+    const page = read('examples/trading.html')
+    for (const action of emittedActions()) assert.ok(page.includes(`'${action}'`), `examples/trading.html should handle the ${action} action`)
   })
 })

@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickslate trading dashboard</title>
+<!--
+  A complete trading dashboard: every finance widget, a metric, a loss-limit
+  gauge and a table of fills on one grid that saves its layout, switches
+  arrangement when the exchange opens and closes, and lets the user add tiles
+  from a picker. Copy this page to start a trading app; the guide that walks
+  through it is docs/guide/trading-dashboard.md.
+
+  What belongs to Tickslate and what belongs to you:
+    - Tickslate draws what it is given. It fetches nothing and sends nothing.
+    - THE FEED below is a seeded random walk standing in for your broker's
+      quotes, positions, orders and fills. Replace it with your own data layer
+      and keep the publish() calls.
+    - THE ACTION HANDLERS answer every ts-action the tiles fire. A button in a
+      tile is a request: confirm with the user, send the order, then give the
+      tile its new data. The tile never changes itself.
+
+  Every string on this page is page copy, not library text. All figures are
+  made up. Nothing here names a real product.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<!-- An opt-in preset: it does nothing until an element carries data-ts-theme="terminal". -->
+<link rel="stylesheet" href="/src/themes/presets/terminal.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  .page { max-width: 1312px; margin: 0 auto; padding: 24px 24px 96px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding-bottom: 8px; }
+  h1 { font: 500 28px/1 var(--ts-font-num); margin: 0; flex: 1 1 auto; }
+  .links { display: flex; gap: 14px; }
+  .links a, .hint a { color: var(--ts-accent); font-size: 13px; font-weight: 500; }
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
+  .hint { color: var(--ts-muted); font-size: 13px; line-height: 1.5; margin: 0 0 16px; max-width: 90ch; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; min-inline-size: 0; }
+  .bar legend { padding: 0; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  button, .dialog-btn {
+    min-height: 36px; padding: 0 14px; border-radius: var(--ts-radius-sm); cursor: pointer;
+    border: 1px solid var(--ts-line); background: var(--ts-surface); color: var(--ts-ink); font: 500 13px var(--ts-font-ui);
+  }
+  button[aria-pressed="true"] { background: var(--ts-ink); color: var(--ts-bg); border-color: var(--ts-ink); }
+  button.primary { background: var(--ts-accent); color: var(--ts-surface); border-color: var(--ts-accent); }
+  @media (pointer: coarse) { button { min-height: 44px; } }
+  .status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0 0 12px; font-size: 13px; color: var(--ts-muted); }
+  .status .num { font: var(--ts-num-weight) 20px/1 var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--ts-ink); }
+  .status .open { color: var(--ts-profit); font-weight: 600; }
+  .status .shut { color: var(--ts-muted); font-weight: 600; }
+  .pretend { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; }
+  .pretend input { font: 13px var(--ts-font-ui); min-height: 36px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line); background: var(--ts-surface); color: var(--ts-ink); padding: 0 8px; }
+  .activity { margin-block-start: 28px; }
+  .activity h2 { font: 600 14px var(--ts-font-ui); margin: 0 0 8px; }
+  .activity ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--ts-muted); }
+  .activity li { display: flex; gap: 10px; }
+  .activity time { font-variant-numeric: tabular-nums; color: var(--ts-muted); flex: none; }
+  .activity li:first-child { color: var(--ts-ink); }
+  @media (max-width: 699px) { .page { padding: 16px 12px 96px; } .pretend { margin-inline-start: 0; } }
+
+  /* The confirm panel. A native dialog: modal, labelled, Escape closes it, focus returns to the button that opened it. */
+  dialog { max-width: min(420px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--ts-line); border-radius: var(--ts-radius); background: var(--ts-surface); color: var(--ts-ink); box-shadow: var(--ts-shadow); }
+  dialog::backdrop { background: color-mix(in srgb, var(--ts-ink) 45%, transparent); }
+  dialog h2 { font: 600 16px var(--ts-font-ui); margin: 0 0 8px; }
+  dialog p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; color: var(--ts-muted); }
+  dialog label { display: block; margin: 0 0 14px; font-size: 13px; color: var(--ts-muted); }
+  dialog select { display: block; margin-top: 6px; width: 100%; min-height: 36px; font: 14px var(--ts-font-ui); background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm); }
+  dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; padding: 0; }
+
+  /* Content the host slots into a card; tokens only, so it follows the theme. */
+  .prose { margin: 0 0 8px; line-height: 1.45; }
+  .prose + .prose { color: var(--ts-muted); }
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <h1>Trading dashboard</h1>
+    <nav class="links" aria-label="Other pages">
+      <a href="../index.html">Playground</a>
+      <a href="../widgets.html">Widget gallery</a>
+      <a href="index.html">Examples</a>
+    </nav>
+  </header>
+  <p class="hint">Made-up figures from a seeded feed that ticks every second. Long-press a tile, or press Edit layout, to rearrange it; the arrangement is saved in this browser, and a separate one is used while the market is open and after it closes. Exit a position, rebalance an account, add an instrument or open a fill to see the host answer each request. Walk-through: <a href="../docs/guide/trading-dashboard.md">docs/guide/trading-dashboard.md</a>.</p>
+
+  <div class="controls">
+    <fieldset class="bar"><legend>Layout</legend>
+      <button type="button" id="edit" class="primary">Edit layout</button>
+      <button type="button" id="reset">Reset layout</button>
+    </fieldset>
+    <fieldset class="bar"><legend>Theme</legend>
+      <button type="button" data-theme-pick="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-theme-pick="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-pick="dark" aria-pressed="false">Dark</button>
+      <button type="button" data-theme-pick="terminal" aria-pressed="false">Terminal</button>
+    </fieldset>
+    <fieldset class="bar"><legend>Feed</legend>
+      <button type="button" id="pause" aria-pressed="false">Pause feed</button>
+      <button type="button" id="outage" aria-pressed="false">Simulate outage</button>
+    </fieldset>
+    <ts-grid-controls for="board"></ts-grid-controls>
+  </div>
+
+  <div class="status">
+    <span id="clock" class="num"></span>
+    <span id="sessions"></span>
+    <label class="pretend">Pretend it's <input type="datetime-local" id="pretend" step="1"> IST
+      <button type="button" id="live">Live</button></label>
+  </div>
+
+  <!--
+    The grid is given its layout and then its persist key from the script below,
+    and not the other way round: persist saves what a device with nothing saved
+    falls back to as the layout the grid has when the key arrives. A framework
+    sets props before the element connects and gets this for free.
+  -->
+  <ts-grid id="board" aria-label="Trading dashboard" locale="en-IN" currency="INR" time-zone="Asia/Kolkata" heading-level="2" stale-after="20s">
+    <ts-session-clock item="sessionClock" label="Markets"></ts-session-clock>
+    <ts-today-pnl item="todayPnl" label="Today's P&amp;L" activatable></ts-today-pnl>
+    <ts-watchlist item="watchlist" label="Watchlist"></ts-watchlist>
+    <ts-capital-funding item="capitalFunding" label="Capital funding"></ts-capital-funding>
+    <ts-open-positions item="openPositions" label="Open positions"></ts-open-positions>
+    <ts-metric item="winRate" label="Win rate today"></ts-metric>
+    <ts-progress item="lossLimit" label="Daily loss limit"></ts-progress>
+    <ts-table item="fills" label="Fills today"></ts-table>
+    <ts-pnl-calendar item="pnlCalendar" label="Daily P&amp;L" activatable></ts-pnl-calendar>
+    <ts-edge-stats item="edgeStats" label="Edge, last 30 days" activatable></ts-edge-stats>
+    <ts-equity-curve item="equityCurve" label="Equity" activatable></ts-equity-curve>
+  </ts-grid>
+  <ts-widget-picker for="board"></ts-widget-picker>
+
+  <section class="activity" aria-labelledby="activity-h">
+    <h2 id="activity-h">What the host did</h2>
+    <ol id="activity" aria-live="polite"><li><span>Nothing yet. Press a button in a tile.</span></li></ol>
+  </section>
+</main>
+
+<dialog id="ask" aria-labelledby="ask-title" aria-describedby="ask-body">
+  <form method="dialog">
+    <h2 id="ask-title"></h2>
+    <p id="ask-body"></p>
+    <label id="ask-pick-label" hidden><span id="ask-pick-text"></span><select id="ask-pick"></select></label>
+    <menu>
+      <button type="submit" value="cancel" id="ask-cancel">Cancel</button>
+      <button type="submit" value="ok" id="ask-ok" class="primary"></button>
+    </menu>
+  </form>
+</dialog>
+
+<script type="module">
+  import { createCalendar, createFormatter, presets, edgeStats, histogram, funding, localDate, zonedTime } from 'tickslate'
+  import 'tickslate/elements'
+
+  const TZ = 'Asia/Kolkata'
+  const KEY = 'trading-example'
+  const grid = document.getElementById('board')
+
+  // ── Sessions, the schedule and a pretend clock ──────────────────────────
+  // Holidays are the host's: the library ships the hours, not the exchange
+  // calendar. These dates are examples only; take yours from the exchange.
+  const calendar = createCalendar({
+    sessions: [presets.nse(), presets.mcx()],
+    holidays: { nse: ['2026-11-10', '2026-11-24', '2026-12-25'], mcx: ['2026-12-25'] },
+  })
+  // 'market' from 15 minutes before the open to 5 minutes after the close, else 'closed'.
+  grid.schedule = { calendar, market: { sessions: ['nse'], leadMinutes: 15, lagMinutes: 5 } }
+
+  let offset = 0
+  const now = () => Date.now() + offset
+  grid.clock = now
+  const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: TZ })
+
+  // ── The layout: one arrangement while the market is open, another after the close ──
+  const LAYOUT = {
+    version: 1,
+    device: 'desktop',
+    profiles: {
+      market: [
+        { id: 'sessionClock', size: 'Banner' },
+        { id: 'todayPnl', size: 'M' },
+        { id: 'watchlist', size: 'Tall' },
+        { id: 'capitalFunding', size: 'Tall' },
+        { id: 'openPositions', size: 'L' },
+        { id: 'winRate', type: 'metric', size: 'S' },
+        { id: 'lossLimit', type: 'progress', size: 'S' },
+        { id: 'fills', type: 'table', size: 'L' },
+        { id: 'pnlCalendar', size: 'Tall' },
+        { id: 'edgeStats', size: 'M' },
+        { id: 'equityCurve', size: 'M' },
+      ],
+      closed: [
+        { id: 'sessionClock', size: 'S' },
+        { id: 'todayPnl', size: 'Wide' },
+        { id: 'winRate', type: 'metric', size: 'S' },
+        { id: 'equityCurve', size: 'XL' },
+        { id: 'pnlCalendar', size: 'Banner' },
+        { id: 'edgeStats', size: 'M' },
+        { id: 'openPositions', size: 'M' },
+        { id: 'lossLimit', type: 'progress', size: 'S' },
+        { id: 'watchlist', size: 'S' },
+        { id: 'fills', type: 'table', size: 'XL' },
+        { id: 'capitalFunding', size: 'L' },
+      ],
+    },
+  }
+  grid.layout = LAYOUT
+  // Saves every edit to localStorage under trading-example:desktop and :phone.
+  grid.persist = KEY
+  // The picker offers new tiles of these catalog types; the ts-add-request handler below renders them.
+  grid.addTypes = ['metric', 'progress', 'edgeStats', 'chart', 'card']
+
+  // ── A seeded feed (replace this whole section with your data layer) ─────
+  function mulberry32(seed) {
+    let a = seed
+    return () => {
+      a = (a + 0x6d2b79f5) | 0
+      let t = Math.imul(a ^ (a >>> 15), 1 | a)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  }
+  let rand = mulberry32(2026)
+  const gauss = () => rand() + rand() + rand() - 1.5
+  const round = (v, d = 2) => Math.round(v * 10 ** d) / 10 ** d
+  const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10)
+
+  // Made-up instruments. vol is the size of one tick as a fraction of the price.
+  const MARKET_DEFS = [
+    { id: 'alpha', symbol: 'ALPHA 50', exchange: 'NSE', ltp: 24350.45, prev: 24300, decimals: 2, vol: 0.00035 },
+    { id: 'beta', symbol: 'BETA BANK', exchange: 'NSE', ltp: 51200, prev: 51500, decimals: 2, vol: 0.0004 },
+    { id: 'gamma', symbol: 'GAMMA IT', exchange: 'NSE', ltp: 3215.8, prev: 3190.25, decimals: 2, vol: 0.0005 },
+    { id: 'delta', symbol: 'DELTA AUTO', exchange: 'NSE', ltp: 1842.35, prev: 1851, decimals: 2, vol: 0.0005 },
+    { id: 'theta', symbol: 'THETA GOLD', exchange: 'MCX', ltp: 7150, prev: 7121, decimals: 0, vol: 0.0003 },
+    { id: 'kappa', symbol: 'KAPPA CRUDE', exchange: 'MCX', ltp: 6384, prev: 6402, decimals: 0, vol: 0.0004 },
+    // Not on the watchlist at the start: the Add instrument flow offers them.
+    { id: 'lambda', symbol: 'LAMBDA PHARMA', exchange: 'NSE', ltp: 1126.7, prev: 1119.4, decimals: 2, vol: 0.0005, listed: false },
+    { id: 'mu', symbol: 'MU STEEL', exchange: 'NSE', ltp: 902.15, prev: 911.8, decimals: 2, vol: 0.0006, listed: false },
+    { id: 'nu', symbol: 'NU POWER', exchange: 'NSE', ltp: 468.9, prev: 462.3, decimals: 2, vol: 0.0006, listed: false },
+    // Option contracts the open positions trade; they are not on the watchlist either.
+    { id: 'ce', symbol: 'ALPHA 24500 CE', exchange: 'NSE', ltp: 131.8, prev: 126, decimals: 2, vol: 0.004, listed: false, contract: true },
+    { id: 'pe', symbol: 'ALPHA 24400 PE', exchange: 'NSE', ltp: 99.4, prev: 94, decimals: 2, vol: 0.004, listed: false, contract: true },
+  ]
+  // Open positions, with entry, stop and target as distances from the opening price of the day.
+  const POSITION_DEFS = [
+    { id: 'pos-1', mk: 'ce', strategy: 'Opening range', account: 'Broker A', side: 'long', qty: 150, lots: 3, entry: -3.8, stop: -13.8, target: 10.2, at: 0.12 },
+    { id: 'pos-2', mk: 'pe', strategy: 'Mean reversion', account: 'Broker A', side: 'short', qty: 225, lots: 3, entry: -2.9, stop: 6.6, target: -15.4, at: 0.3 },
+    { id: 'pos-3', mk: 'theta', strategy: 'Trend follow', account: 'Broker B', side: 'long', qty: 100, lots: 1, entry: -9, stop: -60, target: 85, at: 0.45 },
+    { id: 'pos-4', mk: 'beta', strategy: 'Spread carry', account: 'Broker B', side: 'short', qty: 30, lots: 1, entry: 38, stop: 120, target: -150, at: 0.6 },
+  ]
+  const FILL_DEFS = [
+    { sym: 'GAMMA IT FUT', side: 'Sell', qty: 120, price: 3202.4, pnl: 4120.5, at: 0.08 },
+    { sym: 'KAPPA CRUDE FUT', side: 'Buy', qty: 100, price: 6391, pnl: -2460, at: 0.22 },
+    { sym: 'ALPHA 24600 CE', side: 'Sell', qty: 150, price: 74.25, pnl: 3310.25, at: 0.38 },
+    { sym: 'DELTA AUTO FUT', side: 'Buy', qty: 250, price: 1846.9, pnl: -1925.75, at: 0.52 },
+    { sym: 'ALPHA 24300 PE', side: 'Sell', qty: 225, price: 61.5, pnl: 1580, at: 0.7 },
+    { sym: 'BETA BANK 51000 CE', side: 'Buy', qty: 90, price: 188.6, pnl: -1215.5, at: 0.84 },
+  ]
+  const feeFor = (qty, price) => round(18.5 + qty * price * 0.0003)
+  const LOSS_LIMIT = 10000
+  const MARGIN_LIMIT = 350000
+
+  // The state the tiles are drawn from. In your app this is your store.
+  let day, ref, markets, positions, fills, readings, history, historyFees, trades, accounts
+  let sort = { key: 'time', dir: 'desc' }
+  let range = 'All'
+  try { range = localStorage.getItem(`${KEY}:range`) || 'All' } catch {}
+  let paused = false
+  let outage = false
+  let fillSeq = 0
+  const timers = new Set()
+  const later = (fn, ms) => {
+    const id = setTimeout(() => { timers.delete(id); fn() }, ms)
+    timers.add(id)
+  }
+
+  // The latest session that has opened: before the open on a trading day, and on a weekend or holiday, the dashboard shows the last one.
+  function pickSession() {
+    const t = now()
+    let d = localDate(t, TZ)
+    for (let i = 0; i < 12; i++) {
+      const h = calendar.hours('nse', d)
+      if (h && t >= h.open) return { date: d, open: h.open, close: h.close }
+      d = addDays(d, -1)
+    }
+    throw new Error('No trading day found')
+  }
+
+  function startDay() {
+    for (const id of timers) clearTimeout(id)
+    timers.clear()
+    rand = mulberry32(2026)
+    day = pickSession()
+    const t = now()
+    ref = Math.min(t, day.close)
+    const span = Math.max(ref - day.open, 0)
+    const at = (frac) => day.open + Math.round(span * frac)
+
+    markets = MARKET_DEFS.map((def) => {
+      // Ticks look back from the current price, one every 30 seconds.
+      let p = def.ltp
+      const ticks = []
+      for (let i = 0; i < 40; i++) {
+        ticks.unshift({ t: t - i * 30000, price: round(p, def.decimals) })
+        p /= 1 + def.vol * 3 * gauss()
+      }
+      const prices = ticks.map((k) => k.price)
+      return {
+        ...def,
+        open: def.ltp,
+        listed: def.listed !== false,
+        low: round(Math.min(...prices) * (1 - def.vol * 2), def.decimals),
+        high: round(Math.max(...prices) * (1 + def.vol * 2), def.decimals),
+        ticks,
+      }
+    })
+    const mk = (id) => markets.find((m) => m.id === id)
+
+    positions = POSITION_DEFS.map((def) => {
+      const m = mk(def.mk)
+      const dp = m.decimals
+      return {
+        id: def.id,
+        mk: def.mk,
+        name: m.symbol + (def.mk === 'ce' || def.mk === 'pe' ? '' : ' FUT'),
+        strategy: def.strategy,
+        account: def.account,
+        side: def.side,
+        qty: def.qty,
+        lots: def.lots,
+        entry: round(m.open + def.entry, dp),
+        stop: round(m.open + def.stop, dp),
+        target: round(m.open + def.target, dp),
+        openedAt: at(def.at),
+        pending: false,
+      }
+    })
+
+    fills = FILL_DEFS.map((def) => ({
+      id: `f-${++fillSeq}`,
+      t: at(def.at),
+      sym: def.sym,
+      side: def.side,
+      qty: def.qty,
+      price: def.price,
+      pnl: def.pnl,
+      fee: feeFor(def.qty, def.price),
+    }))
+
+    // Sixty past trades and seventy days of daily P&L, for edge stats, the equity curve and the calendar.
+    trades = Array.from({ length: 60 }, () => ({
+      pnl: rand() < 0.58 ? round(600 + rand() * 3200) : -round(400 + rand() * 1800),
+      holdMs: Math.round((5 + rand() * 85) * 60000),
+    }))
+    history = []
+    let d = day.date
+    while (history.length < 70) {
+      d = addDays(d, -1)
+      if (!calendar.isTradingDay('nse', d)) continue
+      const i = 69 - history.length
+      const drift = i < 22 ? 650 : i < 40 ? -1150 : 900
+      history.unshift({ date: d, pnl: Math.round(drift + gauss() * 2800), trades: 2 + Math.floor(rand() * 8) })
+    }
+    historyFees = 21460.35
+
+    accounts = [
+      {
+        id: 'acct-a',
+        name: 'Broker A',
+        balance: 18640.4,
+        allocations: [
+          { id: 's1', name: 'Opening range', detail: 'ALPHA 50 · 5m', amount: 25000, live: true, pnl: 1240 },
+          { id: 's2', name: 'Mean reversion', detail: 'BETA BANK · 15m', amount: 25000, pnl: -310 },
+        ],
+      },
+      {
+        id: 'acct-b',
+        name: 'Broker B',
+        balance: 150000,
+        allocations: [
+          { id: 's3', name: 'Trend follow', detail: 'THETA GOLD · 1h', amount: 40000, live: true, pnl: 2210 },
+          { id: 's4', name: 'Spread carry', detail: 'KAPPA CRUDE · 30m', amount: 30000, pnl: 0 },
+          { id: 's5', name: 'Gap fade', detail: 'GAMMA IT · 5m', amount: 20000, live: true, pnl: -640 },
+        ],
+      },
+    ]
+
+    // The intraday curve: a walk from the open that lands on the current net.
+    const steps = Math.max(Math.round(span / 300000), 2)
+    const walk = [0]
+    for (let i = 1; i <= steps; i++) walk.push(walk[i - 1] + gauss() * 520)
+    readings = walk.map((v, i) => ({ t: day.open + Math.round((span * i) / steps), v }))
+    const last = readings[readings.length - 1]
+    const gap = totals().net - last.v
+    readings.forEach((r, i) => { r.v = round(r.v + (gap * i) / steps) })
+  }
+
+  const dir = (p) => (p.side === 'long' ? 1 : -1)
+  const ltpOf = (p) => markets.find((m) => m.id === p.mk).ltp
+  const pnlOf = (p) => round(dir(p) * (ltpOf(p) - p.entry) * p.qty)
+
+  function totals() {
+    const unrealized = round(positions.reduce((s, p) => s + pnlOf(p), 0))
+    const realized = round(fills.reduce((s, f) => s + f.pnl, 0))
+    // Each open position has paid its entry leg already.
+    const fees = round(fills.reduce((s, f) => s + f.fee, 0) + positions.length * 21.2)
+    const lossUsed = round(fills.reduce((s, f) => s + Math.max(-f.pnl, 0), 0) + positions.reduce((s, p) => s + Math.max(-pnlOf(p), 0), 0))
+    return { unrealized, realized, fees, net: round(realized + unrealized - fees), lossUsed }
+  }
+
+  function tickMarkets() {
+    const t = now()
+    for (const m of markets) {
+      m.ltp = round(Math.max(m.ltp + m.ltp * m.vol * gauss(), 0.05), m.decimals)
+      m.low = Math.min(m.low, m.ltp)
+      m.high = Math.max(m.high, m.ltp)
+      m.ticks.push({ t, price: m.ltp })
+      if (m.ticks.length > 60) m.ticks.shift()
+    }
+  }
+
+  // ── Publishing: give each tile its data ─────────────────────────────────
+  // asOf says when the data was taken and live says it is still arriving; a
+  // tile then shows its age, goes stale if the feed stops, and flashes figures
+  // that move. Widgets are matched by their item attribute.
+  const tile = (id) => grid.querySelector(`[item="${id}"]`)
+  const binders = new Map() // item -> () => data, so tiles added from the picker are fed too
+  const stamp = () => ({ asOf: now(), live: !paused })
+
+  function bind(id, build) {
+    binders.set(id, build)
+  }
+  function publish(...ids) {
+    for (const id of ids.length ? ids : binders.keys()) {
+      const el = tile(id)
+      const build = binders.get(id)
+      if (el && build) el.data = build()
+    }
+  }
+
+  bind('watchlist', () => ({
+    instruments: markets.filter((m) => m.listed).map((m) => ({
+      id: m.id,
+      symbol: m.symbol,
+      exchange: m.exchange,
+      ltp: m.ltp,
+      prevClose: m.prev,
+      dayLow: m.low,
+      dayHigh: m.high,
+      decimals: m.decimals,
+      ticks: m.ticks,
+    })),
+    ...stamp(),
+  }))
+
+  bind('openPositions', () => ({
+    positions: positions.map((p) => {
+      const m = markets.find((x) => x.id === p.mk)
+      return {
+        id: p.id,
+        instrument: p.name,
+        strategy: p.strategy,
+        account: p.account,
+        side: p.side,
+        quantity: p.qty,
+        lots: p.lots,
+        entryPrice: p.entry,
+        ltp: m.ltp,
+        pnl: pnlOf(p),
+        stop: p.stop,
+        target: p.target,
+        pending: p.pending,
+        openedAt: p.openedAt,
+        path: m.ticks,
+      }
+    }),
+    margin: round(positions.reduce((s, p) => s + p.entry * p.qty * 0.12, 0)),
+    ...stamp(),
+  }))
+
+  bind('todayPnl', () => {
+    const { net, realized, unrealized, fees } = totals()
+    // The curve ends at the clock, inside the session; the final reading follows the net.
+    const to = Math.min(Math.max(now(), day.open), day.close)
+    const end = readings[readings.length - 1]
+    if (to > end.t) readings.push({ t: to, v: net })
+    else end.v = net
+    const marks = [
+      ...positions.map((p) => ({ t: p.openedAt, kind: 'entry', label: p.name })),
+      ...fills.map((f) => ({ t: f.t, kind: 'exit', label: f.sym })),
+    ]
+    return {
+      net, realized, unrealized, fees,
+      closedCount: fills.length,
+      openCount: positions.length,
+      intraday: readings,
+      marks,
+      window: { from: day.open, to: day.close },
+      ...stamp(),
+    }
+  })
+
+  const edgeNow = () => edgeStats([...trades, ...fills.map((f) => ({ pnl: f.pnl }))])
+  bind('winRate', () => {
+    const wins = fills.filter((f) => f.pnl > 0).length
+    return {
+      value: fills.length ? wins / fills.length : 0,
+      previous: edgeStats(trades).winRate,
+      format: 'percent',
+      decimals: 0,
+      compareLabel: 'vs last 60 trades',
+      ...stamp(),
+    }
+  })
+
+  bind('lossLimit', () => ({
+    value: totals().lossUsed,
+    target: LOSS_LIMIT,
+    mode: 'limit',
+    format: 'money',
+    decimals: 0,
+    caption: 'Closed losses plus open losses. Resets at the next open.',
+    ...stamp(),
+  }))
+
+  const fmtEdge = (v) => fmt.number(v, { compact: true })
+  const EDGES = [-6000, -3000, -1500, -500, 0, 500, 1500, 3000, 6000]
+  bind('edgeStats', () => {
+    const all = [...trades, ...fills.map((f) => ({ pnl: f.pnl }))]
+    return {
+      stats: edgeStats(all),
+      scope: 'Last 30 days',
+      distribution: histogram(all.map((t) => t.pnl), EDGES).map((b) => ({
+        label: `${fmtEdge(b.from)} to ${fmtEdge(b.to)}`,
+        count: b.count,
+        sign: b.to <= 0 ? -1 : 1,
+      })),
+      ...stamp(),
+    }
+  })
+
+  // One array of days feeds both the equity curve and the calendar. Today's row is the live net.
+  const daysNow = () => [...history, { date: day.date, pnl: totals().net, trades: fills.length + positions.length }]
+  bind('equityCurve', () => ({ days: daysNow(), fees: round(historyFees + totals().fees), ...stamp() }))
+  bind('pnlCalendar', () => ({ days: daysNow(), ...stamp() }))
+
+  bind('capitalFunding', () => ({ accounts, ...stamp() }))
+
+  const FILL_COLUMNS = [
+    { key: 'time', label: 'Time', format: 'time', priority: 1 },
+    { key: 'sym', label: 'Instrument', priority: 0 },
+    { key: 'side', label: 'Side', priority: 4 },
+    { key: 'qty', label: 'Qty', format: 'number', decimals: 0, priority: 3 },
+    { key: 'price', label: 'Price', format: 'number', decimals: 2, priority: 5 },
+    { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', priority: 2 },
+  ]
+  bind('fills', () => ({
+    columns: FILL_COLUMNS,
+    rows: fills.map((f) => ({ id: f.id, time: f.t, sym: f.sym, side: f.side, qty: f.qty, price: f.price, pnl: f.pnl, fee: f.fee })),
+    // Send the user's sort back, or the next update would undo it.
+    sort,
+    asOf: now(),
+  }))
+
+  bind('sessionClock', () => ({ calendar, sessions: ['nse', 'mcx'], timeframes: [5, 15] }))
+
+  // ── Per-tile setup: which requests each tile may make ───────────────────
+  // A button only exists when its action is listed. 'retry' is the error view's.
+  const ACTIONS = {
+    watchlist: ['add-instrument', 'retry'],
+    openPositions: ['exit-position', 'exit-all', 'retry'],
+    capitalFunding: ['rebalance', 'retry'],
+    fills: ['select', 'retry'],
+  }
+  function setUpTile(el) {
+    el.clock = now
+    el.actions = ACTIONS[el.getAttribute('item')] || ['retry']
+  }
+  for (const el of grid.children) if ('actions' in el) setUpTile(el)
+  tile('equityCurve').range = range
+
+  // ── The confirm panel ───────────────────────────────────────────────────
+  const dialog = document.getElementById('ask')
+  const pick = document.getElementById('ask-pick')
+  // Resolves to the chosen option's value (or true) when confirmed, and false otherwise.
+  function ask({ title, body, ok, options, optionsLabel }) {
+    document.getElementById('ask-title').textContent = title
+    document.getElementById('ask-body').textContent = body
+    const confirmBtn = document.getElementById('ask-ok')
+    confirmBtn.textContent = ok || 'Confirm'
+    confirmBtn.hidden = !ok
+    document.getElementById('ask-cancel').textContent = ok ? 'Cancel' : 'Close'
+    const label = document.getElementById('ask-pick-label')
+    label.hidden = !options
+    pick.replaceChildren(...(options || []).map((o) => Object.assign(document.createElement('option'), { value: o.value, textContent: o.label })))
+    document.getElementById('ask-pick-text').textContent = optionsLabel || ''
+    return new Promise((resolve) => {
+      dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok' ? (options ? pick.value : true) : false), { once: true })
+      dialog.returnValue = ''
+      dialog.showModal()
+    })
+  }
+
+  // ── The activity list: what the host did in answer ──────────────────────
+  const activity = document.getElementById('activity')
+  function log(text) {
+    if (!activity.dataset.started) {
+      activity.replaceChildren()
+      activity.dataset.started = '1'
+    }
+    const li = document.createElement('li')
+    const time = Object.assign(document.createElement('time'), { textContent: fmt.time(now(), { seconds: true }) })
+    li.append(time, Object.assign(document.createElement('span'), { textContent: text }))
+    activity.prepend(li)
+    while (activity.children.length > 8) activity.lastElementChild.remove()
+  }
+
+  // ── Answering the requests ──────────────────────────────────────────────
+  // The rule for every one: confirm, send, then hand the tile its new data.
+  function closePositions(ids) {
+    const targets = positions.filter((p) => ids.includes(p.id) && !p.pending)
+    if (!targets.length) return
+    // The order is in flight: mark it, so the button stays but cannot be pressed twice.
+    for (const p of targets) p.pending = true
+    publish('openPositions')
+    // Stands in for the broker's answer.
+    later(() => {
+      for (const p of targets) {
+        const m = markets.find((x) => x.id === p.mk)
+        const pnl = pnlOf(p)
+        fills.push({
+          id: `f-${++fillSeq}`, t: Math.min(Math.max(now(), day.open), day.close), sym: p.name,
+          side: p.side === 'long' ? 'Sell' : 'Buy', qty: p.qty, price: m.ltp, pnl, fee: feeFor(p.qty, m.ltp),
+        })
+        positions = positions.filter((x) => x !== p)
+        log(`Exited ${p.name}: ${fmt.money(pnl)}`)
+      }
+      publish()
+    }, 700)
+  }
+
+  function rebalanceTransfer(accountId) {
+    const funded = accounts.map((a) => funding(a))
+    const to = funded.find((a) => a.id === accountId)
+    if (!to || to.shortfall <= 0) return null
+    const from = funded.filter((a) => a.id !== accountId).sort((a, b) => b.free - a.free)[0]
+    if (!from || from.free <= 0) return { to, from: null, amount: 0 }
+    return { to, from, amount: round(Math.min(to.shortfall, from.free)) }
+  }
+
+  grid.addEventListener('ts-action', async (e) => {
+    const { action } = e.detail
+    const el = e.target
+    if (action === 'exit-position') {
+      const p = positions.find((x) => x.id === e.detail.id)
+      // Refuse a repeat press: the tile marks the position pending, but the host owns the rule.
+      if (!p || p.pending) return e.preventDefault()
+      const ok = await ask({
+        title: `Exit ${p.name}?`,
+        body: `Send a market order to ${p.side === 'long' ? 'sell' : 'buy'} ${p.qty} at about ${fmt.price(ltpOf(p))}. Profit or loss so far: ${fmt.money(pnlOf(p))}.`,
+        ok: 'Exit position',
+      })
+      if (ok) closePositions([p.id])
+      else log(`Kept ${p.name}`)
+    } else if (action === 'exit-all') {
+      const open = positions.filter((p) => !p.pending)
+      if (!open.length) return e.preventDefault()
+      const total = open.reduce((s, p) => s + pnlOf(p), 0)
+      const ok = await ask({
+        title: `Exit all ${open.length} positions?`,
+        body: `Send market orders to close every open position. Profit or loss so far: ${fmt.money(total)}.`,
+        ok: 'Exit all',
+      })
+      if (ok) closePositions(open.map((p) => p.id))
+      else log('Kept all positions')
+    } else if (action === 'add-instrument') {
+      const options = markets.filter((m) => !m.listed && m.exchange === 'NSE' && !m.contract).map((m) => ({ value: m.id, label: `${m.symbol} · ${m.exchange}` }))
+      if (!options.length) return log('Every instrument is already on the watchlist')
+      const id = await ask({ title: 'Add an instrument', body: 'Choose an instrument to follow. A real app would show its search here.', ok: 'Add to watchlist', options, optionsLabel: 'Instrument' })
+      if (id) {
+        const m = markets.find((x) => x.id === id)
+        m.listed = true
+        publish('watchlist')
+        log(`Added ${m.symbol} to the watchlist`)
+      }
+    } else if (action === 'rebalance') {
+      const plan = rebalanceTransfer(e.detail.id)
+      const name = accounts.find((a) => a.id === e.detail.id)?.name
+      if (!plan) return log(`${name} is fully funded: nothing to move`)
+      if (!plan.from) return log(`${name} is short, and no other account has free balance`)
+      const ok = await ask({
+        title: `Rebalance ${name}?`,
+        body: `Move ${fmt.money(plan.amount, { sign: 'negative' })} from ${plan.from.name} to ${plan.to.name}. ${plan.to.name} is short ${fmt.money(plan.to.shortfall, { sign: 'negative' })}.`,
+        ok: 'Move funds',
+      })
+      if (!ok) return log('Rebalance cancelled')
+      later(() => {
+        accounts = accounts.map((a) => (a.id === plan.from.id ? { ...a, balance: round(a.balance - plan.amount) } : a.id === plan.to.id ? { ...a, balance: round(a.balance + plan.amount) } : a))
+        publish('capitalFunding')
+        log(`Moved ${fmt.money(plan.amount, { sign: 'negative' })} from ${plan.from.name} to ${plan.to.name}`)
+      }, 500)
+    } else if (action === 'select' && el.localName === 'ts-table') {
+      const f = fills.find((x) => x.id === e.detail.id)
+      if (!f) return
+      await ask({
+        title: f.sym,
+        body: `${f.side} ${f.qty} at ${fmt.price(f.price)} at ${fmt.time(f.t, { seconds: true })}. Profit or loss ${fmt.money(f.pnl)}, fees ${fmt.money(f.fee, { sign: 'negative' })}. A real app would open the order here.`,
+      })
+    } else if (action === 'select') {
+      // A chart point: value is its x, y its figure, index its position in the series.
+      log(`Selected point ${e.detail.index + 1} of ${e.detail.series} on ${el.label}: ${fmt.number(e.detail.y)}`)
+    } else if (action === 'open') {
+      // The tile asked to be opened. A real app would route to a page.
+      const where = { todayPnl: 'the trades report', equityCurve: 'the performance page', pnlCalendar: 'the journal', edgeStats: 'the strategy statistics' }
+      log(`Open ${where[e.detail.id] || e.detail.id}: a real app would navigate here`)
+    } else if (action === 'retry') {
+      // The same as a re-fetch: clear the error, show loading, give the data again.
+      setOutage(false)
+      for (const t of tiles()) t.state = 'loading'
+      later(() => {
+        for (const t of tiles()) t.state = null
+        publish()
+        log('Retried: the feed is back')
+      }, 800)
+    } else if (action === 'sort') {
+      // The table has already re-sorted; remember the choice so the next update keeps it.
+      sort = { key: e.detail.value, dir: e.detail.dir }
+      log(`Sorted fills by ${e.detail.value}, ${e.detail.dir === 'asc' ? 'ascending' : 'descending'}`)
+    } else if (action === 'range') {
+      range = e.detail.value
+      try { localStorage.setItem(`${KEY}:range`, range) } catch {}
+      log(`Equity range ${range} saved`)
+    }
+  })
+
+  // ── Adding tiles from the picker ────────────────────────────────────────
+  // The grid asks; the host renders a child carrying the id it was given.
+  const ADDABLE = {
+    metric: (id) => {
+      const el = Object.assign(document.createElement('ts-metric'), { label: 'Open positions' })
+      bind(id, () => ({ value: positions.length, goodWhen: 'neither', ...stamp() }))
+      return el
+    },
+    progress: (id) => {
+      const el = Object.assign(document.createElement('ts-progress'), { label: 'Margin used' })
+      bind(id, () => ({
+        value: positions.reduce((s, p) => s + p.entry * p.qty * 0.12, 0), target: MARGIN_LIMIT, mode: 'limit', format: 'money', decimals: 0, ...stamp(),
+      }))
+      return el
+    },
+    edgeStats: (id) => {
+      const el = Object.assign(document.createElement('ts-edge-stats'), { label: 'Expectancy', stat: 'expectancy' })
+      bind(id, () => ({ stats: edgeNow(), scope: 'last 30 days', ...stamp() }))
+      return el
+    },
+    chart: (id) => {
+      const el = Object.assign(document.createElement('ts-chart'), { label: 'ALPHA 50 close' })
+      el.setAttribute('sizes', 'Wide M L XL')
+      bind(id, () => ({ series: [{ name: 'ALPHA 50', kind: 'area', points: history.map((d, i) => ({ x: d.date, y: 24000 + i * 9 + d.pnl / 25 })) }], ...stamp() }))
+      return el
+    },
+    card: () => {
+      const el = Object.assign(document.createElement('ts-card'), { label: 'Notes' })
+      el.setAttribute('sizes', 'S Wide M')
+      el.innerHTML = '<p class="prose">Scale in after the first pullback, not before.</p><p class="prose">Review at the close.</p>'
+      return el
+    },
+  }
+  function render(type, id) {
+    const el = ADDABLE[type](id)
+    el.setAttribute('item', id)
+    setUpTile(el)
+    if (el.localName === 'ts-chart') el.actions = ['select', 'retry']
+    grid.append(el)
+    publish(id)
+  }
+  grid.addEventListener('ts-add-request', (e) => {
+    if (!ADDABLE[e.detail.type]) return
+    // Cancelling the request says "I will render that".
+    e.preventDefault()
+    render(e.detail.type, e.detail.id)
+    log(`Added a ${e.detail.type} tile`)
+  })
+  // A saved layout can name tiles the user added on an earlier visit. The grid
+  // keeps them but cannot draw them: they are the host's children to render.
+  function renderSaved() {
+    const have = new Set([...grid.children].map((el) => el.getAttribute('item')))
+    for (const items of Object.values(grid.layout.profiles)) {
+      for (const { id, type = id } of items) {
+        if (!have.has(id) && ADDABLE[type]) {
+          render(type, id)
+          have.add(id)
+        }
+      }
+    }
+  }
+  grid.addEventListener('ts-columns-change', renderSaved)
+
+  // ── Outage, pause and loading ───────────────────────────────────────────
+  const tiles = () => [...grid.children].filter((el) => 'state' in el)
+  const outageBtn = document.getElementById('outage')
+  function setOutage(on) {
+    outage = on
+    outageBtn.setAttribute('aria-pressed', String(on))
+    for (const el of tiles()) el.error = on ? "Couldn't reach the data service" : null
+  }
+  outageBtn.addEventListener('click', () => {
+    setOutage(!outage)
+    log(outage ? 'Every tile shows its error view' : 'Errors cleared')
+  })
+  const pauseBtn = document.getElementById('pause')
+  pauseBtn.addEventListener('click', () => {
+    paused = !paused
+    pauseBtn.setAttribute('aria-pressed', String(paused))
+    pauseBtn.textContent = paused ? 'Resume feed' : 'Pause feed'
+    // Tiles keep the last asOf; after 20 seconds (stale-after on the grid) they read as stale.
+    if (!paused) publish()
+    log(paused ? 'Feed paused: tiles will read as stale' : 'Feed resumed')
+  })
+
+  // ── Layout controls, theme and the pretend clock ────────────────────────
+  const edit = document.getElementById('edit')
+  edit.addEventListener('click', () => { grid.editing = !grid.editing })
+  grid.addEventListener('ts-edit-change', (e) => { edit.textContent = e.detail.editing ? 'Done' : 'Edit layout' })
+  document.getElementById('reset').addEventListener('click', () => {
+    for (const d of ['desktop', 'phone']) {
+      try { localStorage.removeItem(`${KEY}:${d}`) } catch {}
+    }
+    // A layout the host sets is not a user edit, so nothing is saved by this.
+    grid.layout = LAYOUT
+    log('Layout reset')
+  })
+  grid.addEventListener('ts-profile-change', (e) => log(`Showing the ${e.detail.profile === 'market' ? 'market hours' : 'after close'} layout (${e.detail.reason})`))
+
+  const root = document.documentElement
+  function pickTheme(theme) {
+    // Terminal is a preset on top of the dark theme: data-ts-theme on the page, data-theme for the mode.
+    root.dataset.theme = theme === 'terminal' ? 'dark' : theme
+    if (theme === 'terminal') document.body.dataset.tsTheme = 'terminal'
+    else delete document.body.dataset.tsTheme
+    for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === theme))
+  }
+  for (const b of document.querySelectorAll('[data-theme-pick]')) b.addEventListener('click', () => pickTheme(b.dataset.themePick))
+
+  const pretend = document.getElementById('pretend')
+  function reload(text) {
+    startDay()
+    publish()
+    log(text)
+  }
+  pretend.addEventListener('change', () => {
+    if (!pretend.value) return
+    // The value reads 2026-10-26T10:30:15, as a clock on the wall of the exchange's zone.
+    const [date, clockTime] = pretend.value.split('T')
+    const [h, m, s = '00'] = clockTime.split(':')
+    offset = zonedTime(date, `${h}:${m}`, TZ) + Number(s) * 1000 - Date.now()
+    grid.clock = now
+    tick()
+    reload('Clock moved: the day was loaded again')
+  })
+  document.getElementById('live').addEventListener('click', () => {
+    offset = 0
+    pretend.value = ''
+    grid.clock = now
+    tick()
+    reload('Back on the real clock')
+  })
+
+  const sessionsEl = document.getElementById('sessions')
+  function tick() {
+    const t = now()
+    document.getElementById('clock').textContent = `${fmt.time(t, { seconds: true })} IST`
+    sessionsEl.replaceChildren()
+    for (const id of calendar.sessions) {
+      const s = calendar.state(id, t)
+      const part = document.createElement('span')
+      const state = Object.assign(document.createElement('span'), { className: s.open ? 'open' : 'shut', textContent: s.open ? 'open' : 'closed' })
+      part.append(`${calendar.session(id).label} `, state)
+      if (s.open) part.append(` · closes ${fmt.time(s.closesAt)}`)
+      else if (s.opensAt) part.append(` · opens ${fmt.time(s.opensAt)}`)
+      sessionsEl.append(part, ' ')
+    }
+    sessionsEl.append(`layout: ${grid.profile}`)
+  }
+
+  // ── Go ──────────────────────────────────────────────────────────────────
+  const FAST = ['watchlist', 'openPositions', 'todayPnl', 'winRate', 'lossLimit']
+  const SLOW = ['edgeStats', 'equityCurve', 'pnlCalendar', 'capitalFunding']
+  const ONCE = ['fills', 'sessionClock']
+  startDay()
+  publish()
+  renderSaved()
+  tick()
+  let beat = 0
+  setInterval(() => {
+    tick()
+    if (paused || outage) return
+    tickMarkets()
+    beat++
+    // Quotes, positions and P&L move every second; the slower tiles every five.
+    const added = [...binders.keys()].filter((id) => ![...FAST, ...SLOW, ...ONCE].includes(id))
+    publish(...FAST, ...added)
+    if (beat % 5 === 0) publish(...SLOW)
+  }, 1000)
+</script>
+</body>
+</html>
