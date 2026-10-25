@@ -424,7 +424,9 @@ describe('large inputs', () => {
       const vm = equityCurveModel({ days }, v, ctx('All'))
       assert.equal(vm.tradingDays, n)
       assert.equal(vm.chartLabel, `Equity curve: peak ${fmt.money(5e6)}, lowest ${fmt.money(-25e6)}, ends at ${fmt.money(5e6)}`)
-      assert.equal(vm.chart.line.split(' L').length, n)
+      // The line is thinned to 2 × the box width (RFC 0003 §23); the peak line and band below still cover every day.
+      const drawn = vm.chart.line.split(' L').length
+      assert.ok(drawn <= 2 * vm.chart.width && drawn > 2, `${drawn} points`)
     }
   })
 

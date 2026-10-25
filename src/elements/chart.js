@@ -47,6 +47,40 @@ export function linePath(points, x, y) {
 }
 
 /**
+ * At most `max` of the points, for a line that cannot show more than it has
+ * pixels (RFC 0003 §23). The first and last point stay; the readings between
+ * are cut into equal runs by position and each run keeps its lowest and its
+ * highest, in the order they came, so a spike narrower than a pixel still
+ * shows and the day's low, high and last value are exactly the data's. One
+ * pass, no sort, no copy of the input.
+ */
+export function downsample(points, max) {
+  const n = points.length
+  const cap = Math.max(2, Math.floor(max))
+  if (!(max < n) || n <= cap) return points
+  const buckets = Math.floor((cap - 2) / 2)
+  const out = [points[0]]
+  const inner = n - 2
+  for (let b = 0; b < buckets; b++) {
+    // Integer edges, so the runs tile the interior with no gap and no overlap.
+    const from = 1 + Math.floor((b * inner) / buckets)
+    const to = 1 + Math.floor(((b + 1) * inner) / buckets)
+    if (to <= from) continue
+    let lo = from
+    let hi = from
+    for (let i = from + 1; i < to; i++) {
+      if (points[i].y < points[lo].y) lo = i
+      if (points[i].y > points[hi].y) hi = i
+    }
+    if (lo === hi) out.push(points[lo])
+    else if (lo < hi) out.push(points[lo], points[hi])
+    else out.push(points[hi], points[lo])
+  }
+  out.push(points[n - 1])
+  return out
+}
+
+/**
  * The line, the filled area down to zero and the scales used to make them, so
  * a widget can place marks and extra lines (a peak, a drawdown) on the same
  * axes.
@@ -55,8 +89,11 @@ export function linePath(points, x, y) {
  * inside the box. `zeroY` is where value 0 falls, clamped to the plotted
  * area: a widget clips the profit colour to above it and the loss colour to
  * below it, and when every value is on one side the split falls on an edge.
+ *
+ * The scales and the zero line are measured on every point; only the drawing
+ * is thinned, to `maxPoints` (default 2 × width, Infinity for all of them).
  */
-export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, includeZero = true } = {}) {
+export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, includeZero = true, maxPoints } = {}) {
   const pts = (points || []).filter(finite)
   const [x0, x1] = xDomain || (pts.length ? extent(pts, 'x') : [0, 1])
   let [y0, y1] = yDomain || (pts.length ? extent(pts, 'y') : [0, 1])
@@ -81,7 +118,8 @@ export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, in
     const py = round(y(pts[0].y))
     line = `M${firstX} ${py} L${lastX} ${py}`
   } else {
-    line = linePath(pts, x, y)
+    const cap = maxPoints === undefined || Number.isNaN(maxPoints) ? 2 * width : maxPoints
+    line = linePath(downsample(pts, cap), x, y)
     firstX = round(x(pts[0].x))
     lastX = round(x(pts[pts.length - 1].x))
   }

@@ -1,6 +1,8 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths } from '../src/elements/chart.js'
+import { todayPnlModel, CHART_BOX } from '../src/elements/today-pnl.js'
+import { createFormatter, createMessages } from '../src/core/index.js'
+import { downsample, scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths } from '../src/elements/chart.js'
 
 describe('scale', () => {
   test('maps linearly, including to a reversed range', () => {
@@ -113,7 +115,8 @@ describe('large inputs', () => {
     // 7919 is coprime with 2001, so the values visit every whole number from
     // -1000 to 1000 and the extremes are known without scanning.
     const points = Array.from({ length: n }, (_, i) => ({ x: i, y: ((i * 7919) % 2001) - 1000 }))
-    const { line, area, zeroY } = linePaths(points, { width: 900, height: 220, pad: 4 })
+    // Downsampling is off here: this test is about the full series reaching the line.
+    const { line, area, zeroY } = linePaths(points, { width: 900, height: 220, pad: 4, maxPoints: Infinity })
     const drawn = line.slice(1).split(' L').map((p) => p.split(' ').map(Number))
     assert.equal(drawn.length, n)
     // The first point is the lowest value, at the left edge; the last is at the right.
@@ -312,5 +315,118 @@ describe('barPaths minimums and boxes', () => {
   test('a runaway band count lists a bounded number of centres and does not throw', () => {
     const r = barPaths([[{ x: 0, y: 1 }]], { ...box, categories: 1e9, yDomain: [0, 1] })
     assert.ok(r.centres.length <= 1024)
+  })
+})
+
+describe('downsampling (RFC 0003 §23)', () => {
+  // Made-up readings: a slow wave with a one-reading spike and a one-reading dip that a pixel could hide.
+  const wave = (n) => Array.from({ length: n }, (_, i) => ({ x: i, y: Math.round(Math.sin(i / 500) * 300) }))
+  const series = wave(50000)
+  series[12345] = { x: 12345, y: 999 }
+  series[40001] = { x: 40001, y: -777 }
+  const points = (line) => line.slice(1).split(' L').map((p) => p.split(' ').map(Number))
+
+  test('keeps at most 2 × the viewBox width by default', () => {
+    const { line } = linePaths(series, { width: 375, height: 100, pad: 4 })
+    const drawn = points(line)
+    assert.ok(drawn.length <= 750, `${drawn.length} points`)
+    assert.ok(drawn.length > 700, 'and uses the budget, not a fraction of it')
+  })
+
+  test('maxPoints sets the limit, and Infinity turns downsampling off', () => {
+    assert.ok(points(linePaths(series, { width: 375, height: 100, maxPoints: 100 }).line).length <= 100)
+    assert.equal(points(linePaths(series, { width: 375, height: 100, maxPoints: Infinity }).line).length, 50000)
+    assert.equal(linePaths(series, { width: 375, height: 100, maxPoints: 100 }).line.length < linePaths(series, { width: 375, height: 100, maxPoints: Infinity }).line.length, true)
+  })
+
+  test('a series within the limit is drawn point for point', () => {
+    const few = wave(600)
+    const a = linePaths(few, { width: 375, height: 100 })
+    const b = linePaths(few, { width: 375, height: 100, maxPoints: Infinity })
+    assert.equal(a.line, b.line)
+    assert.equal(a.area, b.area)
+  })
+
+  test('the low, the high and the last value are exact, and the scales are the full series’', () => {
+    const full = linePaths(series, { width: 375, height: 100, maxPoints: Infinity })
+    const thin = linePaths(series, { width: 375, height: 100 })
+    const drawn = points(thin.line)
+    const ys = drawn.map(([, y]) => y)
+    // Higher values are higher on screen, so the spike is the smallest y and the dip the largest.
+    assert.equal(Math.min(...ys), Math.min(...points(full.line).map(([, y]) => y)))
+    assert.equal(Math.max(...ys), Math.max(...points(full.line).map(([, y]) => y)))
+    assert.equal(drawn[0][0], 4)
+    assert.deepEqual(drawn[drawn.length - 1], points(full.line).pop())
+    assert.equal(thin.zeroY, full.zeroY)
+    assert.equal(thin.y(999), full.y(999))
+    assert.ok(thin.area.startsWith(thin.line))
+  })
+
+  test('downsample keeps the first and last points and each run’s extremes in order', () => {
+    const pts = [5, 1, 9, 2, 8, 3, 7, 4, 6, 0].map((y, x) => ({ x, y }))
+    // Four points: the first, the last and the one run's low and high.
+    const out = downsample(pts, 4)
+    assert.deepEqual(out.map((p) => p.x), [0, 1, 2, 9])
+    assert.equal(out.length, 4)
+    // The run's low (y 1, x 1) comes before its high (y 9, x 2) because x 1 came first.
+    assert.deepEqual(out.slice(1, 3).map((p) => p.y), [1, 9])
+  })
+
+  test('downsample hands back the input when nothing needs cutting, and never exceeds the limit', () => {
+    const few = wave(10)
+    assert.equal(downsample(few, 10), few)
+    assert.equal(downsample(few, Infinity), few)
+    for (const max of [2, 3, 4, 5, 7, 20, 99]) {
+      const out = downsample(series, max)
+      assert.ok(out.length <= Math.max(2, max), `${out.length} for ${max}`)
+      assert.equal(out[0], series[0])
+      assert.equal(out[out.length - 1], series[series.length - 1])
+    }
+  })
+
+  test('flat and equal readings do not break the buckets', () => {
+    const flat = Array.from({ length: 5000 }, (_, i) => ({ x: i, y: 7 }))
+    const out = downsample(flat, 100)
+    assert.ok(out.length <= 100 && out.length >= 3)
+  })
+
+  test('a 500,000-reading series returns inside a generous bound', () => {
+    const big = Array.from({ length: 500000 }, (_, i) => ({ x: i, y: Math.sin(i / 9000) * 900 + ((i * 7919) % 101) }))
+    let best = Infinity
+    let drawn
+    for (let i = 0; i < 5; i++) {
+      const start = performance.now()
+      drawn = linePaths(big, { width: 375, height: 100, pad: 4 })
+      best = Math.min(best, performance.now() - start)
+    }
+    assert.ok(points(drawn.line).length <= 750)
+    // About 15 ms idle; the best of five, because load only ever adds time.
+    assert.ok(best < 100, `${best.toFixed(1)} ms`)
+  })
+
+  test("Today's P&L returns for 500,000 readings inside a generous bound, drawing at most 2 × the box width", () => {
+    const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
+    const ctx = { fmt, t: createMessages(), now: 0, label: "Today's P&L" }
+    const from = Date.UTC(2026, 2, 2, 3, 45)
+    const n = 500000
+    const intraday = Array.from({ length: n }, (_, i) => ({ t: from + i * 40, v: Math.round(Math.sin(i / 9000) * 900 + ((i * 7919) % 101)) }))
+    const data = { net: 1200, intraday, window: { from, to: from + n * 40 }, live: true }
+    let best = Infinity
+    let vm
+    for (let i = 0; i < 7; i++) {
+      const start = performance.now()
+      vm = todayPnlModel(data, 'M', ctx)
+      best = Math.min(best, performance.now() - start)
+    }
+    const drawn = points(vm.chart.line)
+    assert.ok(drawn.length <= 2 * CHART_BOX.width && drawn.length > CHART_BOX.width, `${drawn.length} points`)
+    assert.equal(vm.dropped, 0)
+    // The label states the day's true low and the last reading, whatever was cut from the drawing.
+    let low = Infinity
+    for (const r of intraday) low = Math.min(low, r.v)
+    assert.ok(vm.chart.ariaLabel.includes(fmt.money(low, { decimals: 0 })))
+    // Under 50 ms when the machine is idle (about 35 ms measured); 100 ms is the ceiling for a busy CI runner,
+    // taken as the best of seven because load only ever adds time.
+    assert.ok(best < 100, `${best.toFixed(1)} ms`)
   })
 })

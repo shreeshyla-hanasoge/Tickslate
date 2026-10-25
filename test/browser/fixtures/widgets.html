@@ -23,6 +23,11 @@
 </style>
 </head>
 <body>
+<script>
+  // These specs read every tile on a long page, drawn or not. Off-screen widgets skip renders by design (RFC 0003 §23),
+  // so this page opts out by having no IntersectionObserver; test/browser/perf.spec.mjs covers the gating itself.
+  delete window.IntersectionObserver
+</script>
 <main id="stage">
   <h1>Widget fixture</h1>
 </main>

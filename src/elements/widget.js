@@ -131,10 +131,14 @@
  *   now()           clock() or Date.now().
  *   $(selector)     querySelector in the shadow root, cached until the
  *                   template is rebuilt.
- *   requestRender() Schedule a render (coalesced per microtask).
+ *   requestRender() Schedule a render (coalesced per microtask). A widget that
+ *                   is display: none, or more than a screen from the viewport,
+ *                   waits and renders once when it comes back (RFC 0003 §23).
  *   every(ms)       Re-render every `ms` while connected and the page is
  *                   visible; every(0) stops. Re-renders at once when the page
  *                   becomes visible again. Call it again to change the period.
+ *                   A whole number of seconds shares one ticker with the other
+ *                   widgets, aligned to the second.
  *   emit(action, detail)
  *                   Dispatch a bubbling, composed 'ts-action' CustomEvent
  *                   with detail `{ action, ...detail }` (RFC §8.3).
@@ -168,7 +172,7 @@ import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isS
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
 import { translator } from './messages-cache.js'
-import { subscribe } from './ticker.js'
+import { subscribe, shareable } from './ticker.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -605,6 +609,72 @@ function unmount(widget) {
 const ACTION_OPEN = 'open'
 const findLink = (t) => t?.closest ? t.closest('[part~="link"]') : (t?.getAttribute?.('part') === 'link' ? t : null)
 
+// Time-slicing the renders of one burst (RFC 0003 §23). The microtasks of a tick all run in the same task, so the time
+// they spend adds up; past SLICE_MS the next render waits for a new task, and the browser can paint and take input
+// between the slices. Only in a real page, which has requestAnimationFrame.
+const SLICE_MS = 12
+let spent = 0
+let sliceOpen = false
+
+const sliceClock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+// A page that paints frames. A test's fake DOM has none, and there a render must land in its microtask however long a
+// busy machine takes over it.
+const sliceLive = () => typeof requestAnimationFrame === 'function'
+
+function sliceSpent() {
+  return sliceLive() && spent > SLICE_MS
+}
+
+function sliced(ms) {
+  if (!sliceLive()) return
+  spent += ms
+  if (!sliceOpen) {
+    sliceOpen = true
+    // The timer fires in a later task than every microtask queued so far, and before any timer set after it.
+    setTimeout(() => {
+      spent = 0
+      sliceOpen = false
+    }, 0)
+  }
+}
+
+// One observer for every widget on the page, with a margin of a screen on each side: a widget that is display: none,
+// or further than that from the viewport, skips its renders until it comes back (RFC 0003 §23). It reports a box-less
+// element (display: none) as not intersecting, which is the case we want. Absent in Node and old engines, where every
+// widget simply stays "in view".
+let viewObserver = null
+const watched = new Set()
+
+function watchView(el) {
+  if (typeof IntersectionObserver === 'undefined') return
+  if (!viewObserver) {
+    viewObserver = new IntersectionObserver(
+      (entries) => {
+        // Entries queue per target; the last one for an element is where it is now.
+        const latest = new Map()
+        for (const entry of entries) latest.set(entry.target, entry.isIntersecting)
+        for (const [target, on] of latest) if (target._setInView) target._setInView(on)
+      },
+      { rootMargin: '100% 100% 100% 100%' },
+    )
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      // A printout is of the whole page, whatever was in view: draw everything first, then go back to watching.
+      window.addEventListener('beforeprint', () => watched.forEach((el) => el._setInView(true)))
+      window.addEventListener('afterprint', () => watched.forEach((el) => {
+        viewObserver.unobserve(el)
+        viewObserver.observe(el)
+      }))
+    }
+  }
+  watched.add(el)
+  viewObserver.observe(el)
+}
+
+function unwatchView(el) {
+  watched.delete(el)
+  if (viewObserver) viewObserver.unobserve(el)
+}
+
 export class TsWidget extends Base {
   static get observedAttributes() {
     return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level', 'href', 'activatable', 'stale-after', 'flash']
@@ -627,6 +697,10 @@ export class TsWidget extends Base {
     this._grid = null // the grid this widget has told about itself, so it hears when the grid's messages or locale change
     this._every = 0
     this._timer = 0
+    // False once the viewport observer has seen this widget hidden or far off-screen (RFC 0003 §23). True until
+    // then, so a widget renders on connect and never stays blank where there is no observer.
+    this._inView = true
+    this._skipped = false
     this._unsubFresh = null
     this._flashes = new Map()
     this._failed = false
@@ -896,10 +970,42 @@ export class TsWidget extends Base {
     this._queued = true
     // A microtask, not a frame: setting data twice in one tick costs one
     // render, yet a test can await the result without waiting for a frame.
-    queueMicrotask(() => {
+    queueMicrotask(() => this._flush())
+  }
+
+  _flush() {
+    if (!this.isConnected) {
       this._queued = false
-      if (this.isConnected) this._render()
-    })
+      return
+    }
+    // Hidden or far away: remember that a render was wanted, and make it when the widget comes back.
+    if (!this._inView) {
+      this._queued = false
+      this._skipped = true
+      return
+    }
+    // Thirty tiles fed in one tick would all render in one task, which on a slow phone is a long one. A page that has
+    // spent its slice puts the rest in the next task; _queued stays set meanwhile, so requests still merge.
+    if (sliceSpent()) {
+      setTimeout(() => this._flush(), 0)
+      return
+    }
+    this._queued = false
+    const from = sliceClock()
+    try {
+      this._render()
+    } finally {
+      sliced(sliceClock() - from)
+    }
+  }
+
+  /** Called by the viewport observer when this widget enters or leaves the render zone. */
+  _setInView(on) {
+    this._inView = on
+    if (on && this._skipped) {
+      this._skipped = false
+      this.requestRender()
+    }
   }
 
   every(ms) {
@@ -959,6 +1065,7 @@ export class TsWidget extends Base {
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
+    watchView(this)
     if (DEV) this._watchForData()
     this.requestRender()
   }
@@ -966,6 +1073,9 @@ export class TsWidget extends Base {
   disconnectedCallback() {
     if (DEV) clearTimeout(this._undefTimer)
     unmount(this)
+    unwatchView(this)
+    this._inView = true
+    this._skipped = false
     this._link(null)
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVisibility)
     this._disarm()
@@ -1186,11 +1296,14 @@ export class TsWidget extends Base {
 
   _arm() {
     if (this._timer || !this._every || !this.isConnected || !this._visible()) return
-    this._timer = setInterval(() => this.requestRender(), this._every)
+    const render = () => this.requestRender()
+    // A whole number of seconds rides the page's one shared ticker; subscribe() hands back the function that leaves it.
+    this._timer = shareable(this._every) ? subscribe(render, this._every) : setInterval(render, this._every)
   }
 
   _disarm() {
-    clearInterval(this._timer)
+    if (typeof this._timer === 'function') this._timer()
+    else clearInterval(this._timer)
     this._timer = 0
   }
 

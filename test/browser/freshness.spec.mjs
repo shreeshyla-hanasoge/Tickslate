@@ -120,7 +120,7 @@ test.describe('the stale dot', () => {
     }
   })
 
-  test('thirty live tiles run on one 15 s timer', async ({ page }) => {
+  test('thirty live tiles run on one shared timer, a beat a second', async ({ page }) => {
     await page.addInitScript(() => {
       window.__intervals = []
       const real = window.setInterval
@@ -141,6 +141,9 @@ test.describe('the stale dot', () => {
       }
     })
     await page.evaluate(() => window.__f.nextFrame())
-    expect(await page.evaluate(() => window.__intervals.filter((i) => i.ms === 15000).length)).toBe(1)
+    // The shared ticker (RFC 0003 §23) waits for the next second boundary, then beats once a second for all of them,
+    // the 15 s freshness refresh included: one 1 s interval, and none of 15 s.
+    await expect.poll(() => page.evaluate(() => window.__intervals.filter((i) => i.ms === 1000).length), { timeout: 3000 }).toBe(1)
+    expect(await page.evaluate(() => window.__intervals.filter((i) => i.ms === 15000).length)).toBe(0)
   })
 })
