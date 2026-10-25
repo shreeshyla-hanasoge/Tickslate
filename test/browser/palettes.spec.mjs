@@ -9,7 +9,7 @@ const PAGE = '/test/browser/fixtures/presets.html'
 
 // [--ts-profit, --ts-loss, --ts-accent] per palette and mode; the values of tokens.css.
 const PALETTE = {
-  cvd: { light: ['#1D4ED8', '#C2410C', '#7E22CE'], dark: ['#60A5FA', '#FB923C', '#C084FC'] },
+  cvd: { light: ['#1D4ED8', '#C2410C', '#7C10A3'], dark: ['#60A5FA', '#FB923C', '#EBB2FF'] },
   'red-up': { light: ['#C0362C', '#0E7A4E', '#2C52C4'], dark: ['#FB7185', '#34D399', '#818CF8'] },
 }
 // The calm preset's own profit, loss and accent, which a palette on the same element replaces.
@@ -63,6 +63,32 @@ for (const [name, look] of Object.entries(PALETTE)) {
       expect(await read(page, `<div data-theme="light"><div class="dark">${el()}</div></div>`)).toEqual(look.dark)
     })
 
+    test('survives a themed island below it: data-theme="dark", .dark, data-theme="light", data-theme="auto"', async ({ page }) => {
+      const wrap = (inner) => `<div data-ts-palette="${name}">${inner}</div>`
+      expect(await read(page, wrap('<div id="target" data-theme="dark"></div>'))).toEqual(look.dark)
+      expect(await read(page, wrap('<div id="target" class="dark"></div>'))).toEqual(look.dark)
+      expect(await read(page, wrap('<div id="target" data-theme="light"></div>'))).toEqual(look.light)
+      expect(await read(page, wrap('<div data-theme="dark"><section id="target"></section></div>'))).toEqual(look.dark)
+      // The palette sits on a page that is itself dark, and the island is light.
+      expect(await read(page, `<div class="dark" data-ts-palette="${name}"><div id="target" data-theme="light"></div></div>`)).toEqual(look.light)
+      // Islands inside islands: the nearest decides.
+      expect(await read(page, wrap('<div data-theme="dark"><div id="target" data-theme="light"></div></div>'))).toEqual(look.light)
+      expect(await read(page, wrap('<div data-theme="light"><div id="target" class="dark"></div></div>'))).toEqual(look.dark)
+      await page.emulateMedia({ colorScheme: 'dark' })
+      expect(await read(page, wrap('<div id="target" data-theme="auto"></div>'))).toEqual(look.dark)
+      await page.emulateMedia({ colorScheme: 'light' })
+      expect(await read(page, wrap('<div id="target" data-theme="auto"></div>'))).toEqual(look.light)
+    })
+
+    test('survives a themed custom element below it (a ts-grid)', async ({ page }) => {
+      expect(await read(page, `<div data-ts-palette="${name}"><ts-grid id="target" data-theme="dark"></ts-grid></div>`)).toEqual(look.dark)
+      expect(await read(page, `<div data-ts-palette="${name}"><ts-grid id="target" data-theme="light"></ts-grid></div>`)).toEqual(look.light)
+    })
+
+    test('a preset on the island keeps the island, as for any ancestor palette (documented)', async ({ page }) => {
+      expect(await read(page, `<div data-ts-palette="${name}"><div id="target" data-ts-theme="calm" data-theme="dark"></div></div>`)).toEqual(CALM.dark)
+    })
+
     test('is inherited by an element below it', async ({ page }) => {
       expect(await read(page, `<div data-ts-palette="${name}"><div id="target"></div></div>`)).toEqual(look.light)
     })
@@ -89,11 +115,17 @@ for (const [name, look] of Object.entries(PALETTE)) {
   })
 }
 
+test('the nearer of two nested palettes decides, through an island too', async ({ page }) => {
+  const inner = (outer, near) => `<div data-ts-palette="${outer}"><div data-ts-palette="${near}"><div id="target" data-theme="dark"></div></div></div>`
+  expect(await read(page, inner('cvd', 'red-up'))).toEqual(PALETTE['red-up'].dark)
+  expect(await read(page, inner('red-up', 'cvd'))).toEqual(PALETTE.cvd.dark)
+})
+
 test('the palette moves --ts-focus with the accent', async ({ page }) => {
   expect(await read(page, '<div id="target" data-ts-palette="cvd"></div>', ['--ts-focus', '--ts-accent', '--ts-series-1']))
-    .toEqual(['#7E22CE', '#7E22CE', '#7E22CE'])
+    .toEqual(['#7C10A3', '#7C10A3', '#7C10A3'])
   expect(await read(page, '<div id="target" data-ts-palette="cvd" data-ts-theme="calm"></div>', ['--ts-focus', '--ts-accent']))
-    .toEqual(['#7E22CE', '#7E22CE'])
+    .toEqual(['#7C10A3', '#7C10A3'])
 })
 
 // ---------------------------------------------------------------- prefers-contrast: more

@@ -150,7 +150,8 @@ switcher that shows every widget in each one.
 
 Two opt-in colour choices, each one attribute, built into `tokens.css` and the
 injected defaults (no extra file). Put the attribute on the grid, a widget, or
-any ancestor.
+any ancestor, including one above a grid that sets its own `data-theme`,
+`.dark` or `data-theme="auto"` (see Through themed islands below).
 
 ```html
 <ts-grid data-ts-palette="cvd">...</ts-grid>
@@ -159,7 +160,7 @@ any ancestor.
 
 | `data-ts-palette` | Effect |
 |---|---|
-| `cvd` | Profit becomes blue and loss orange (`#1D4ED8` and `#C2410C` in light, `#60A5FA` and `#FB923C` in dark). The accent, `--ts-focus` and the first series move from blue to purple, and the fourth series becomes a cyan so it stays apart from it. |
+| `cvd` | Profit becomes blue and loss orange (`#1D4ED8` and `#C2410C` in light, `#60A5FA` and `#FB923C` in dark). The accent, `--ts-focus` and the first series move from blue to purple, and series 2, 3 and 4 are re-chosen (terracotta or amber, teal, and a blue-green or cyan) so all six series colours stay at least 30 ΔE apart and the first two stay at least 15 ΔE from profit and loss under deuteranopia and protanopia. |
 | `red-up` | Swaps the values of `--ts-profit` and `--ts-loss`, for markets where red means a rise. Nothing else changes. |
 
 - **One value per element.** There is no combined `cvd red-up`.
@@ -169,10 +170,21 @@ any ancestor.
   the presets: the nearest `data-theme` decides, with the same one gap (a light
   island in a dark island in a light page; put `data-theme="light"` on the
   element itself there).
+- **`red-up` and colour vision.** It is the default pair swapped, so it keeps
+  the default pair's separation: ΔE (CIE76, deuteranopia / protanopia) is 30.0 /
+  12.0 in light and 9.2 / 29.0 in dark. It is a market convention, not a
+  colour-vision aid; use `cvd` for that.
 - **Checked.** `test/palettes.test.mjs` simulates deuteranopia and protanopia
   with the Machado 2009 matrices and measures CIE76 ΔE: under `cvd`, profit and
   loss are at least 40 apart in both themes. Text stays at 4.5:1 and the series
   and focus at 3:1 on `--ts-surface`, as in Contrast floors below.
+- **Through themed islands.** A palette set once on `<body>` still applies to a
+  `<ts-grid data-theme="dark">`, a `.dark` element, a `data-theme="light"`
+  island or a `data-theme="auto"` grid below it: each of those picks the
+  palette's light or dark values for its own mode. The nearest palette wins
+  between `cvd` and `red-up`. An island that carries a `data-ts-theme` preset
+  keeps the preset's colours (a preset beats a palette on an ancestor, as
+  under Presets above); put the palette beside the preset to have it win.
 - **With a preset.** The palette wins when both are on the same element; see
   Presets above. Palette contrast is tested against the default tokens only.
 - Gains and losses still carry a sign and an arrow, so colour is never the only
@@ -183,9 +195,10 @@ any ancestor.
 Under `@media (prefers-contrast: more)` the default tokens raise `--ts-line`
 to at least 3:1 and `--ts-muted` to at least 7:1 against `--ts-surface`, in
 light (`#8A8374` and `#4A463E`) and dark (`#6B7280` and `#D1D5DB`). It needs no
-attribute. A preset sets its own `--ts-line` and `--ts-muted` on the element
-that names it, so under a preset the preference does not apply; set the two
-tokens on that grid yourself inside the same media query if you need it.
+attribute. Each theme preset restates a raised pair for its own colours (the
+pairs are specific to the preset, not the two default values above), so the
+preference applies under a preset too; every preset is checked against the
+same 3:1 and 7:1 floors in `test/presets.test.mjs`.
 
 ## Tokens
 

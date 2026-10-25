@@ -46,21 +46,29 @@ const find = (selector, at = '') => {
 const paper = find(':where(:root)')
 const graphite = { ...paper, ...find(':where([data-theme="dark"], .dark)') }
 
-// The same three alternatives presets use: the nearest dark or light element decides.
+// A palette is three rules: the light base, the dark rule and the auto rule inside
+// prefers-color-scheme: dark. Each lists the same alternatives as presets (the nearest
+// dark or light element decides) plus a descendant one, so a palette set once on an
+// ancestor survives a themed island below it.
 const LT = '[data-theme="light"]'
-const alts = (anc, own, p) => [
-  `${anc}:not(${LT}) [data-ts-palette="${p}"]:not(${LT}):not(${LT} *)`,
-  `${LT} ${anc}:not(${LT}) [data-ts-palette="${p}"]:not(${LT})`,
-  `[data-ts-palette="${p}"]${own}:not(${LT})`,
-]
 const DARK = ':is([data-theme="dark"], .dark)'
-const DARK_SEL = (p) => `:where(${alts(DARK, DARK, p).join(', ')})`
-const AUTO_SEL = (p) => `:where(${alts('[data-theme="auto"]', '[data-theme="auto"]', p).join(', ')})`
+const AUTO = '[data-theme="auto"]'
+const own = (p) => `[data-ts-palette="${p}"]`
+const findRule = (p, test, at = '') => {
+  const r = rules.find((x) => x.at === at && x.selector.startsWith(':where(') && x.selector.match(/data-ts-palette="([\w-]+)"/)?.[1] === p && test(x.selector))
+  assert.ok(r, `no ${at} rule for ${p}`)
+  return r
+}
 const palette = (p) => ({
-  base: find(`:where([data-ts-palette="${p}"])`),
-  dark: find(DARK_SEL(p)),
-  auto: find(AUTO_SEL(p), '@media (prefers-color-scheme: dark)'),
+  base: findRule(p, (s) => s.startsWith(`:where(${own(p)},`)).vars,
+  dark: findRule(p, (s) => s.includes(DARK)).vars,
+  auto: findRule(p, (s) => s.includes(AUTO), '@media (prefers-color-scheme: dark)').vars,
 })
+const selectorOf = {
+  base: (p) => findRule(p, (s) => s.startsWith(`:where(${own(p)},`)).selector,
+  dark: (p) => findRule(p, (s) => s.includes(DARK)).selector,
+  auto: (p) => findRule(p, (s) => s.includes(AUTO), '@media (prefers-color-scheme: dark)').selector,
+}
 
 // WCAG 2.x relative luminance and contrast, as in test/tokens.test.mjs.
 const rgb = (hex) => {
@@ -153,6 +161,24 @@ describe('every palette block is zero specificity and sets only palette tokens',
   }
 })
 
+describe('a palette on an ancestor reaches a themed island below it', () => {
+  for (const name of ['cvd', 'red-up']) {
+    const other = name === 'cvd' ? 'red-up' : 'cvd'
+    const alt = (kind) => selectorOf[kind](name).replace(/^:where\(|\)$/g, '').split(/,\s(?=\[|:is)/).find((a) => a.startsWith(own(name) + ' '))
+    for (const [kind, island] of [['base', LT], ['dark', DARK], ['auto', AUTO]]) {
+      test(`${name}: the ${kind} rule has a descendant alternative for ${island}`, () => {
+        const a = alt(kind)
+        assert.ok(a, 'no alternative starting at the palette element followed by a descendant')
+        assert.ok(a.startsWith(`${own(name)} ${island}`), a)
+        // Zero specificity inside :where; a preset or an own palette on the island keeps the island.
+        assert.ok(a.includes(':not([data-ts-palette]):not([data-ts-theme])'), a)
+        // The nearer of two nested palettes decides.
+        assert.ok(a.includes(`:not(${own(name)} ${own(other)} *)`), a)
+      })
+    }
+  }
+})
+
 describe('data-ts-palette="cvd"', () => {
   const p = palette('cvd')
   const themes = { Paper: { ...paper, ...p.base }, Graphite: { ...graphite, ...p.dark } }
@@ -190,9 +216,25 @@ describe('data-ts-palette="cvd"', () => {
           assert.ok(r >= 3, `${r.toFixed(2)}:1`)
         })
       }
-      test('the six series colours stay different', () => {
-        assert.equal(new Set([1, 2, 3, 4, 5, 6].map((n) => theme[`--ts-series-${n}`].toLowerCase())).size, 6)
+      const SERIES = [1, 2, 3, 4, 5, 6].map((n) => `--ts-series-${n}`)
+      test('every pair of the six series colours is at least 30 ΔE apart with normal vision', () => {
+        for (let i = 0; i < SERIES.length; i++) {
+          for (let j = i + 1; j < SERIES.length; j++) {
+            const d = deltaE(rgb(theme[SERIES[i]]), rgb(theme[SERIES[j]]))
+            assert.ok(d >= 30, `${SERIES[i]} and ${SERIES[j]} are ${d.toFixed(1)} apart`)
+          }
+        }
       })
+      for (const [sim, matrix] of Object.entries(MACHADO)) {
+        test(`series 1 and 2 stay at least 15 ΔE from profit and loss under ${sim}`, () => {
+          for (const s of ['--ts-series-1', '--ts-series-2']) {
+            for (const pl of ['--ts-profit', '--ts-loss']) {
+              const d = separation(theme[s], theme[pl], matrix)
+              assert.ok(d >= 15, `${s} and ${pl}: ΔE ${d.toFixed(1)}`)
+            }
+          }
+        })
+      }
     })
   }
 })
@@ -209,6 +251,15 @@ describe('data-ts-palette="red-up"', () => {
       test('sets nothing else', () => {
         const owned = Object.keys(p.base).concat(Object.keys(p.dark))
         assert.deepEqual([...new Set(owned)].sort(), ['--ts-loss', '--ts-profit'])
+      })
+      test('keeps exactly the default pair separation, which is weak under one simulation (documented in docs/theming.md)', () => {
+        for (const matrix of Object.values(MACHADO)) {
+          const was = separation(plain['--ts-profit'], plain['--ts-loss'], matrix)
+          const now = separation(swapped['--ts-profit'], swapped['--ts-loss'], matrix)
+          assert.ok(Math.abs(was - now) < 1e-9, `${was} against ${now}`)
+        }
+        const figures = Object.values(MACHADO).map((m) => separation(swapped['--ts-profit'], swapped['--ts-loss'], m).toFixed(1))
+        assert.deepEqual(figures, name === 'Paper' ? ['30.0', '12.0'] : ['9.2', '29.0'])
       })
       for (const token of ['--ts-profit', '--ts-loss']) {
         test(`${token} reaches 4.5:1 on --ts-surface`, () => {

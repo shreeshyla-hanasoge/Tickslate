@@ -82,10 +82,10 @@ for (const [name, look] of Object.entries(LOOK)) {
     test('keeps its other tokens but takes the palette profit and accent (or the default ones it leaves alone) when a palette is on the same element', async ({ page }) => {
       const [bg] = look.light
       const [lightBg, lightProfit, lightAccent] = await read(page, el('data-ts-palette="cvd"'))
-      expect([lightBg, lightProfit, lightAccent]).toEqual([bg, '#1D4ED8', '#7E22CE'])
+      expect([lightBg, lightProfit, lightAccent]).toEqual([bg, '#1D4ED8', '#7C10A3'])
       // Dark: the preset's dark page, and the palette's dark values.
       const [darkBg, darkProfit, darkAccent] = await read(page, el('data-theme="dark" data-ts-palette="cvd"'))
-      expect([darkBg, darkProfit, darkAccent]).toEqual([look.dark[0], '#60A5FA', '#C084FC'])
+      expect([darkBg, darkProfit, darkAccent]).toEqual([look.dark[0], '#60A5FA', '#EBB2FF'])
       // red-up swaps profit and loss and leaves the accent to tokens.css.
       expect(await read(page, wrap('<div class="dark">', '</div>', el('data-ts-palette="red-up"')))).toEqual([look.dark[0], '#FB7185', DEFAULT.dark[2]])
     })
