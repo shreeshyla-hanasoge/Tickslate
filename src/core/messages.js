@@ -164,6 +164,7 @@ export const EN = Object.freeze({
   'list.removed': '{label} removed',
   'list.empty': 'No widgets on this layout',
   'list.noGrid': 'No dashboard to edit yet',
+  'list.locked': 'This layout is locked',
 
   // <ts-today-pnl>
   'pnl.today': 'Today',

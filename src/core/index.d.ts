@@ -396,6 +396,7 @@ export interface Messages {
   'list.removed': string
   'list.empty': string
   'list.noGrid': string
+  'list.locked': string
   'pnl.today': string
   'pnl.realised': string
   'pnl.unrealised': string

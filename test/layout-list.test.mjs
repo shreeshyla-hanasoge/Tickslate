@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { WIDGETS, EN, createMessages } from '../src/core/index.js'
-import { listRows, editRow } from '../src/elements/layout-list.js'
+import { listRows, editRow, layoutState } from '../src/elements/layout-list.js'
 
 // The layout list's row model and its edits (RFC 0003 §20). Both are pure or take the grid's public API,
 // so a fake grid with the same move/resize/remove/undo and ts-layout-change stands in for the real one.
@@ -22,6 +22,11 @@ class FakeGrid extends EventTarget {
     this.items = list
     this.history = []
     this.calls = []
+    this.profile = 'market'
+  }
+  // What the real grid exposes, so an edit can be checked by reading it back.
+  get layout() {
+    return { profiles: { market: this.items } }
   }
   _commit(reason, id, next) {
     this.history.push(this.items)
@@ -101,10 +106,10 @@ describe('listRows', () => {
     assert.deepEqual(row.sizes.map((s) => s.size), ['S', 'M'])
   })
 
-  test('a tile the catalog does not know has no size buttons and is named by its type, then its id', () => {
+  test('a tile the catalog does not know has no size buttons and is named by its id, as the grid names it', () => {
     const [a, b] = listRows([{ id: 'x1', type: 'mystery', size: 'M' }, { id: 'toString', size: 'S' }], WIDGETS, t)
     assert.deepEqual(a.sizes, [])
-    assert.equal(a.label, 'mystery')
+    assert.equal(a.label, 'x1')
     assert.deepEqual(b.sizes, [])
     assert.equal(b.label, 'toString')
   })
@@ -184,9 +189,62 @@ describe('editRow, through the grid', () => {
   })
 })
 
+describe('editRow does not announce an edit that did not happen', () => {
+  // The real move() answers true for a tile that is already where it was asked to go, and a stale row can name a tile that is gone.
+  const labelled = (grid) => rows(grid.items, () => '')
+
+  test('a move that left the order as it was says nothing', () => {
+    const grid = new FakeGrid()
+    grid.move = (id, to) => {
+      grid.calls.push(['move', id, to])
+      return true
+    }
+    assert.equal(editRow(grid, labelled(grid), 'down', 'sales', t), '')
+    assert.equal(grid.calls.length, 1)
+  })
+
+  test('a resize and a remove that changed nothing say nothing', () => {
+    const grid = new FakeGrid()
+    grid.resize = () => true
+    grid.remove = () => true
+    assert.equal(editRow(grid, labelled(grid), 'size', 'notes', t, 'Wide'), '')
+    assert.equal(editRow(grid, labelled(grid), 'remove', 'notes', t), '')
+  })
+
+  test('a row the grid no longer has (stale rows) is not edited at all', () => {
+    const grid = new FakeGrid()
+    const stale = labelled(grid)
+    grid.items = grid.items.filter((i) => i.id !== 'notes')
+    assert.equal(editRow(grid, stale, 'remove', 'notes', t), '')
+    assert.deepEqual(grid.items.map((i) => i.id), ['sales', 'traffic'])
+  })
+
+  test('a grid that exposes no layout is trusted on its return value', () => {
+    const grid = new FakeGrid()
+    Object.defineProperty(grid, 'layout', { value: undefined })
+    assert.equal(layoutState(grid), null)
+    assert.equal(editRow(grid, labelled(grid), 'remove', 'notes', t), 'Card removed')
+  })
+
+  test('layoutState reads the active profile as id and size, in order', () => {
+    assert.equal(layoutState(new FakeGrid()), 'sales:Wide|notes:S|traffic:M')
+    const grid = new FakeGrid()
+    grid.profile = 'closed'
+    assert.equal(layoutState(grid), null)
+  })
+
+  test('the position and total go through the formatter that is passed in', () => {
+    const grid = new FakeGrid()
+    const arabic = new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 0 })
+    const text = editRow(grid, labelled(grid), 'down', 'sales', t, undefined, (n) => arabic.format(n))
+    assert.equal(text, `Metric moved to position ${arabic.format(2)} of ${arabic.format(3)}`)
+    assert.notEqual(arabic.format(2), '2')
+  })
+})
+
 describe('the messages', () => {
   test('every list.* key the element reads exists in English', () => {
-    for (const key of ['label', 'sizes', 'moveUp', 'moveUpItem', 'moveDown', 'moveDownItem', 'remove', 'removeItem', 'undo', 'undone', 'nothingToUndo', 'moved', 'resized', 'removed', 'empty', 'noGrid']) {
+    for (const key of ['label', 'sizes', 'moveUp', 'moveUpItem', 'moveDown', 'moveDownItem', 'remove', 'removeItem', 'undo', 'undone', 'nothingToUndo', 'moved', 'resized', 'removed', 'empty', 'noGrid', 'locked']) {
       assert.ok(typeof EN[`list.${key}`] === 'string' && EN[`list.${key}`], `list.${key}`)
     }
     assert.equal(EN['list.undone'], 'Undone')

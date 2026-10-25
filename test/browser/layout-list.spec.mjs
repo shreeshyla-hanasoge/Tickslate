@@ -104,18 +104,18 @@ test.describe('editing with the keyboard', () => {
     test.skip(test.info().project.use.hasTouch, 'no keyboard on a phone')
     await load(page)
     await page.locator('#before').focus()
-    // Tab on until the list is reached (the grid's own Edit button comes first), then take Sales' controls: its three size buttons, Move up, Move down, Remove.
+    // Tab on until the list is reached (the grid's own Edit button comes first), then take Sales' controls: its sizes are one Tab stop (the pressed one), then Move up, Move down, Remove.
     const stops = []
     for (let i = 0; i < 12 && !stops.length; i++) {
       await page.keyboard.press('Tab')
       const at = await deepActive(page)
       if (at.row) stops.push(at)
     }
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 3; i++) {
       await page.keyboard.press('Tab')
       stops.push(await deepActive(page))
     }
-    expect(stops.map((s) => s.label)).toEqual(['Small, 1 by 1', 'Wide, 2 by 1', 'Medium, 2 by 2', 'Move up Sales', 'Move down Sales', 'Remove Sales'])
+    expect(stops.map((s) => s.label)).toEqual(['Wide, 2 by 1', 'Move up Sales', 'Move down Sales', 'Remove Sales'])
     await page.keyboard.press('Shift+Tab')
     expect(await deepActive(page)).toMatchObject({ row: 'sales', action: 'down' })
     await page.keyboard.press('Enter')
@@ -130,6 +130,29 @@ test.describe('editing with the keyboard', () => {
     expect(await ids(page)).toEqual(['notes', 'tasks', 'sales', 'traffic', 'queue'])
     await expect(status(page)).toHaveText('Sales moved to position 3 of 5')
     expect(await events(page)).toHaveLength(2)
+  })
+
+  test('the arrow keys move between a row\'s sizes, which are one Tab stop', async ({ page }) => {
+    test.skip(test.info().project.use.hasTouch, 'no keyboard on a phone')
+    await load(page)
+    await row(page, 'sales').getByRole('button', { name: 'Wide, 2 by 1' }).focus()
+    await page.keyboard.press('ArrowRight')
+    expect((await deepActive(page)).label).toBe('Medium, 2 by 2')
+    await page.keyboard.press('ArrowRight')
+    expect((await deepActive(page)).label).toBe('Small, 1 by 1')
+    await page.keyboard.press('End')
+    expect((await deepActive(page)).label).toBe('Medium, 2 by 2')
+    // Focus is the stop while it is in the row: Tab goes on to Move up, and nothing was resized by moving.
+    await page.keyboard.press('Tab')
+    expect((await deepActive(page)).label).toBe('Move up Sales')
+    expect(await events(page)).toEqual([])
+    // Back in, the stop is where focus last was (Medium), and Enter resizes to it.
+    await page.keyboard.press('Shift+Tab')
+    expect((await deepActive(page)).label).toBe('Medium, 2 by 2')
+    await page.keyboard.press('Enter')
+    expect((await events(page))[0]).toMatchObject({ reason: 'resize', id: 'sales' })
+    const tabbable = await page.evaluate(() => [...document.getElementById('l').shadowRoot.querySelectorAll('li[data-id=sales] .sizes button')].filter((b) => b.tabIndex === 0).length)
+    expect(tabbable).toBe(1)
   })
 
   test('the grid itself shows the new order', async ({ page }) => {
@@ -236,9 +259,11 @@ test.describe('finding the grid and the profile', () => {
   })
 
   test('a grid that arrives after the list is picked up', async ({ page }) => {
-    await load(page, '&late=1')
+    await load(page, '&late')
     await expect(page.locator('ts-layout-list li')).toHaveCount(0)
     await expect(page.locator('ts-layout-list .empty')).toHaveText('No dashboard to edit yet')
+    // The test adds the grid itself, so nothing depends on how fast the page was.
+    await page.evaluate(() => window.__addGrid())
     await expect.poll(() => ids(page)).toEqual(['sales', 'notes', 'tasks', 'traffic', 'queue'])
     await press(page, row(page, 'notes').getByRole('button', { name: 'Remove Notes' }))
     expect(await ids(page)).toEqual(['sales', 'tasks', 'traffic', 'queue'])
@@ -258,11 +283,176 @@ test.describe('finding the grid and the profile', () => {
       document.getElementById('l').for = 'g2'
     })
     await expect.poll(() => ids(page)).toEqual(['solo'])
-    // The old grid is no longer listened to: it changes and the list does not.
-    await page.evaluate(() => window.__fx.grid.move('queue', 0))
+    // The old grid is no longer listened to: count the list's redraws while the old grid is edited every way it can be.
+    await page.evaluate(() => {
+      const list = document.getElementById('l')
+      const draw = list._render
+      window.__draws = 0
+      list._render = function (...args) {
+        window.__draws++
+        return draw.apply(this, args)
+      }
+    })
+    await page.evaluate(() => {
+      const old = window.__fx.grid
+      old.move('queue', 0)
+      old.layout = old.layout
+      old.setAttribute('profile', 'market')
+      old.setAttribute('locked', '')
+      const extra = document.createElement('ts-card')
+      extra.setAttribute('item', 'late')
+      old.append(extra)
+      old._stateChanged()
+    })
     await settle(page)
+    await page.waitForTimeout(200)
+    expect(await page.evaluate(() => window.__draws)).toBe(0)
     expect(await ids(page)).toEqual(['solo'])
-    expect(await page.evaluate(() => document.getElementById('l').for)).toBe('g2')
+    expect(await page.evaluate(() => [window.__fx.grid._stateListeners.size, document.getElementById('l').for])).toEqual([0, 'g2'])
+    // The new grid is listened to, once per edit.
+    await page.evaluate(() => document.getElementById('g2').remove())
+    await page.waitForTimeout(200)
+    expect(await page.evaluate(() => window.__draws)).toBeGreaterThan(0)
+    await expect(page.locator('ts-layout-list .empty')).toHaveText('No dashboard to edit yet')
+    // A removed grid is not listened to either.
+    const after = await page.evaluate(() => window.__draws)
+    await page.evaluate(() => window.__fx.grid.move('sales', 1))
+    await page.waitForTimeout(200)
+    expect(await page.evaluate(() => window.__draws)).toBe(after)
+  })
+
+  test('a list that left the page before its grid was defined does not bind to it', async ({ page }) => {
+    await page.goto('/test/browser/fixtures/layout-list-only.html')
+    await page.waitForFunction(() => window.__ready === true)
+    const result = await page.evaluate(async () => {
+      const list = document.getElementById('l')
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      list.remove()
+      await import('/src/elements/define/grid.js')
+      await customElements.whenDefined('ts-grid')
+      await new Promise((r) => setTimeout(r, 50))
+      const grid = document.getElementById('g')
+      return { bound: list._grid === null, listeners: grid._stateListeners.size }
+    })
+    expect(result).toEqual({ bound: true, listeners: 0 })
+  })
+})
+
+// The grid says nothing when a host sets layout, or when tiles come and go in implicit mode; the list reads it again on its own and before each action.
+test.describe('a grid changed without an event', () => {
+  const replaceLayout = (page, order) => page.evaluate((order) => {
+    const sizes = { sales: 'Wide', notes: 'S', tasks: 'S', traffic: 'M', queue: 'Wide' }
+    const types = { sales: 'metric', traffic: 'chart' }
+    window.__fx.grid.layout = order.map((id) => ({ id, type: types[id] || 'card', size: sizes[id] }))
+  }, order)
+  // The grid's own setter, bypassing anything on the instance: no event, no hook, as if the list had missed the change.
+  const silently = (page, order) => page.evaluate((order) => {
+    const sizes = { sales: 'Wide', notes: 'S', tasks: 'S', traffic: 'M', queue: 'Wide' }
+    const types = { sales: 'metric', traffic: 'chart' }
+    const desc = Object.getOwnPropertyDescriptor(customElements.get('ts-grid').prototype, 'layout')
+    desc.set.call(window.__fx.grid, order.map((id) => ({ id, type: types[id] || 'card', size: sizes[id] })))
+  }, order)
+
+  test('grid.layout = ... after the first draw is drawn', async ({ page }) => {
+    await load(page)
+    await replaceLayout(page, ['queue', 'sales', 'notes', 'tasks', 'traffic'])
+    await expect.poll(() => ids(page)).toEqual(['queue', 'sales', 'notes', 'tasks', 'traffic'])
+    await replaceLayout(page, ['tasks', 'sales'])
+    await expect.poll(() => ids(page)).toEqual(['tasks', 'sales'])
+  })
+
+  test('a button on a stale row acts on the fresh layout, and says what really happened', async ({ page }) => {
+    await load(page)
+    await silently(page, ['queue', 'sales', 'notes', 'tasks', 'traffic'])
+    // The list still shows sales first. Move down Sales: in the fresh layout it is second, so it goes to third.
+    expect(await ids(page)).toEqual(['sales', 'notes', 'tasks', 'traffic', 'queue'])
+    await press(page, row(page, 'sales').getByRole('button', { name: 'Move down Sales' }))
+    expect(await page.evaluate(() => window.__fx.grid.layout.profiles.market.map((i) => i.id))).toEqual(['queue', 'notes', 'sales', 'tasks', 'traffic'])
+    await expect(status(page)).toHaveText('Sales moved to position 3 of 5')
+    expect(await ids(page)).toEqual(['queue', 'notes', 'sales', 'tasks', 'traffic'])
+  })
+
+  test('a button on a row the grid no longer has does nothing and says nothing', async ({ page }) => {
+    await load(page)
+    const stale = row(page, 'notes').getByRole('button', { name: 'Remove Notes' })
+    await silently(page, ['sales', 'tasks', 'traffic', 'queue'])
+    await stale.dispatchEvent('click')
+    expect(await events(page)).toEqual([])
+    await expect(status(page)).toHaveText('')
+    expect(await ids(page)).toEqual(['sales', 'tasks', 'traffic', 'queue'])
+  })
+
+  test('a move that would change nothing is not announced', async ({ page }) => {
+    await load(page)
+    // The list is stale in the other direction: the fresh layout has one tile, so Move down on Sales is now an end.
+    await silently(page, ['sales'])
+    await row(page, 'sales').getByRole('button', { name: 'Move down Sales' }).dispatchEvent('click')
+    expect(await events(page)).toEqual([])
+    await expect(status(page)).toHaveText('')
+  })
+
+  test('tiles added to and removed from an implicit grid are drawn', async ({ page }) => {
+    await load(page, '&implicit')
+    expect(await names(page)).toEqual(['Sales', 'Notes', 'Tasks', 'Traffic', 'Queue'])
+    await page.evaluate(() => {
+      const el = document.createElement('ts-card')
+      el.setAttribute('item', 'extra')
+      el.setAttribute('label', 'Extra')
+      window.__fx.grid.append(el)
+    })
+    await expect.poll(() => ids(page)).toEqual(['sales', 'notes', 'tasks', 'traffic', 'queue', 'extra'])
+    await page.evaluate(() => window.__fx.grid.querySelector('[item=notes]').remove())
+    await expect.poll(() => ids(page)).toEqual(['sales', 'tasks', 'traffic', 'queue', 'extra'])
+    // A rename is drawn too.
+    await page.evaluate(() => window.__fx.grid.querySelector('[item=tasks]').setAttribute('label', 'To do'))
+    await expect.poll(() => names(page)).toContain('To do')
+  })
+})
+
+test.describe('a locked grid', () => {
+  const buttons = (page) => page.evaluate(() => [...document.getElementById('l').shadowRoot.querySelectorAll('button')].map((b) => b.getAttribute('aria-disabled')))
+
+  test('every button and Undo are aria-disabled and inert, and the list says why', async ({ page }) => {
+    await load(page, '&locked')
+    const states = await buttons(page)
+    expect(states.length).toBeGreaterThan(10)
+    expect(states.every((s) => s === 'true')).toBe(true)
+    await expect(page.locator('ts-layout-list .locked')).toHaveText('This layout is locked')
+    await row(page, 'queue').getByRole('button', { name: 'Move up Queue' }).dispatchEvent('click')
+    await row(page, 'notes').getByRole('button', { name: 'Medium, 2 by 2' }).dispatchEvent('click')
+    await row(page, 'notes').getByRole('button', { name: 'Remove Notes' }).dispatchEvent('click')
+    await page.locator('ts-layout-list .undo').dispatchEvent('click')
+    expect(await events(page)).toEqual([])
+    expect(await ids(page)).toEqual(['sales', 'notes', 'tasks', 'traffic', 'queue'])
+    await expect(status(page)).toHaveText('This layout is locked')
+    // Still in the Tab order, like the ends.
+    await row(page, 'notes').getByRole('button', { name: 'Remove Notes' }).focus()
+    expect((await deepActive(page)).label).toBe('Remove Notes')
+  })
+
+  test('following the locked attribute as it is set and removed', async ({ page }) => {
+    await load(page)
+    await expect(page.locator('ts-layout-list .locked')).toBeHidden()
+    await page.evaluate(() => window.__fx.grid.setAttribute('locked', ''))
+    await expect.poll(async () => (await buttons(page)).every((s) => s === 'true')).toBe(true)
+    await expect(page.locator('ts-layout-list .locked')).toBeVisible()
+    await page.evaluate(() => window.__fx.grid.removeAttribute('locked'))
+    await expect.poll(async () => (await buttons(page)).filter((s) => s === 'true').length).toBe(2)
+    await expect(page.locator('ts-layout-list .locked')).toBeHidden()
+    await press(page, row(page, 'queue').getByRole('button', { name: 'Move up Queue' }))
+    expect((await events(page)).map((e) => e.reason)).toEqual(['move'])
+  })
+
+  test('a list that was already drawn goes inert when the grid is locked, before any event', async ({ page }) => {
+    await load(page)
+    const target = row(page, 'notes').getByRole('button', { name: 'Remove Notes' })
+    // Locked silently and pressed at once: the press itself reads the lock.
+    await page.evaluate(() => {
+      const grid = window.__fx.grid
+      grid.setAttribute('locked', '')
+    })
+    await target.dispatchEvent('click')
+    expect(await events(page)).toEqual([])
   })
 })
 

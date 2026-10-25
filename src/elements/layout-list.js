@@ -44,7 +44,8 @@ export function listRows(items, catalog, t, labelOf) {
     const own = typeof labelOf === 'function' ? labelOf(item) : ''
     return {
       id: item.id,
-      label: own || wording(t, type, spec, 'label') || (typeof type === 'string' ? type : item.id),
+      // The grid's own order: the tile's label, the catalog's wording for its type, then the id (never the bare type name, which two tiles can share).
+      label: own || wording(t, type, spec, 'label') || item.id,
       size: item.size,
       sizes: sizes.map((size) => ({ size, name: sizeName(t, size), pressed: size === item.size })),
       canMoveUp: index > 0,
@@ -54,26 +55,77 @@ export function listRows(items, catalog, t, labelOf) {
 }
 
 /**
+ * The active profile as `id:size` pairs in order, so an edit can be checked by
+ * what the grid holds afterwards. null when the grid exposes no readable layout.
+ */
+export function layoutState(grid) {
+  const layout = grid && grid.layout
+  const profiles = layout && layout.profiles
+  const list = profiles && hasOwn(profiles, grid.profile) ? profiles[grid.profile] : null
+  return Array.isArray(list) ? list.map((item) => `${item && item.id}:${item && item.size}`).join('|') : null
+}
+
+/**
  * Make one edit through the grid and return what to say about it ('' when
  * nothing changed). The ends are guarded here as well as disabled in the
- * markup, because aria-disabled leaves a button clickable.
+ * markup, because aria-disabled leaves a button clickable. The grid's return
+ * value is not trusted: move() answers true for a tile that is already there,
+ * so the layout before and after is compared, and nothing is announced for an
+ * edit that did not happen. `num` formats the figures a message carries.
  */
-export function editRow(grid, rows, action, id, t, size) {
+export function editRow(grid, rows, action, id, t, size, num = String) {
   const at = rows.findIndex((row) => row.id === id)
   if (at < 0) return ''
   const row = rows[at]
+  const before = layoutState(grid)
+  const done = (ok) => ok && (before === null || layoutState(grid) !== before)
   if (action === 'up' || action === 'down') {
     if (!(action === 'up' ? row.canMoveUp : row.canMoveDown)) return ''
     const to = at + (action === 'up' ? -1 : 1)
-    return grid.move(id, to) ? t('list.moved', { label: row.label, position: to + 1, total: rows.length }) : ''
+    return done(grid.move(id, to)) ? t('list.moved', { label: row.label, position: num(to + 1), total: num(rows.length) }) : ''
   }
   if (action === 'size') {
     if (size === row.size) return ''
-    return grid.resize(id, size) ? t('list.resized', { label: row.label, size: sizeName(t, size) }) : ''
+    return done(grid.resize(id, size)) ? t('list.resized', { label: row.label, size: sizeName(t, size) }) : ''
   }
-  if (action === 'remove') return grid.remove(id) ? t('list.removed', { label: row.label }) : ''
+  if (action === 'remove') return done(grid.remove(id)) ? t('list.removed', { label: row.label }) : ''
   return ''
 }
+
+// Setting grid.layout fires nothing and touches no attribute, so the one place a list can hear it is the setter. The hook is put on the
+// grid once, whoever asks, and is never taken off (it is a pass-through); each list adds and removes only its own function.
+const layoutHooks = new WeakMap()
+function onLayoutSet(grid, fn) {
+  let hook = layoutHooks.get(grid)
+  if (!hook) {
+    let proto = grid
+    let desc = null
+    while (proto && !(desc = Object.getOwnPropertyDescriptor(proto, 'layout'))) proto = Object.getPrototypeOf(proto)
+    if (!desc || !desc.set || !desc.get) return () => {}
+    hook = new Set()
+    layoutHooks.set(grid, hook)
+    const set = hook
+    Object.defineProperty(grid, 'layout', {
+      configurable: true,
+      enumerable: desc.enumerable,
+      get() {
+        return desc.get.call(this)
+      },
+      set(value) {
+        try {
+          desc.set.call(this, value)
+        } finally {
+          for (const f of [...set]) f()
+        }
+      },
+    })
+  }
+  hook.add(fn)
+  return () => hook.delete(fn)
+}
+
+// The attributes of the grid and its tiles that change which rows there are, how they are named or whether they can be used.
+const WATCHED = ['profile', 'locked', 'item', 'size', 'hidden', 'label', 'aria-label']
 
 let template = null
 const TEMPLATE = `
@@ -102,6 +154,7 @@ const TEMPLATE = `
   .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-block-start: 12px; }
   .status { flex: 1 1 10em; margin: 0; min-block-size: 1.35em; color: var(--ts-muted); }
   .empty { margin: 0; padding-block: 16px; color: var(--ts-muted); }
+  .locked { margin: 0; padding-block-end: 8px; color: var(--ts-muted); font-weight: 600; }
   @media (forced-colors: active) {
     button { border-color: ButtonText; }
     button[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
@@ -109,6 +162,7 @@ const TEMPLATE = `
   }
 </style>
 <div class="wrap" part="list" role="region" tabindex="-1">
+  <p class="locked" part="locked" hidden></p>
   <ol class="rows" part="rows"></ol>
   <p class="empty" part="empty" hidden></p>
   <div class="foot">
@@ -132,11 +186,17 @@ export class TsLayoutList extends Base {
     this._wrap = root.querySelector('.wrap')
     this._ol = root.querySelector('.rows')
     this._empty = root.querySelector('.empty')
+    this._lockedNote = root.querySelector('.locked')
     this._undo = root.querySelector('.undo')
     this._status = root.querySelector('.status')
     this._grid = null
     this._offState = null
-    this._attrs = null // watches the grid's `profile` attribute
+    this._offLayout = null
+    this._attrs = null // watches the grid's children and the attributes that change a row
+    this._drawn = false
+    this._busy = false
+    this._fmt = null
+    this._fmtLocale = undefined
     this._rows = [] // the rows as last drawn: the order an edit's index and a lost focus are read from
     this._nodes = new Map() // id -> <li>, so a redraw moves rows and patches them instead of rebuilding
     this._watch = null // watches the page for the grid arriving or leaving
@@ -144,11 +204,33 @@ export class TsLayoutList extends Base {
     this._sayFrame = 0
     this._sayTimer = 0
     this._waiting = false
+    this._refreshFrame = 0
+    this._refreshTimer = 0
     this._onChange = () => this._render()
+    // For changes the grid makes without an event: once a frame at most, with a timer for a tab that is not painting.
+    this._onQuiet = () => {
+      if (this._refreshFrame || this._refreshTimer) return
+      const go = () => {
+        cancelAnimationFrame(this._refreshFrame)
+        clearTimeout(this._refreshTimer)
+        this._refreshFrame = this._refreshTimer = 0
+        if (this._grid) this._render()
+      }
+      this._refreshFrame = requestAnimationFrame(go)
+      this._refreshTimer = setTimeout(go, 120)
+    }
     this._wrap.addEventListener('click', (e) => {
       const button = e.target.closest ? e.target.closest('button') : null
       if (button) this._press(button)
     })
+    // Not redrawn on pointerdown or focusin: rows that reorder between a press and its release move the button out from under the finger,
+    // and the click is lost. _press reads the grid again at click time instead, which is the moment that matters.
+    this._wrap.addEventListener('focusin', (e) => {
+      const target = e.target
+      // One Tab stop for a row's sizes (they are one choice); the arrow keys move within them and the one focused becomes the stop.
+      if (target.dataset && target.dataset.action === 'size') this._rove(target)
+    })
+    this._wrap.addEventListener('keydown', (e) => this._keydown(e))
   }
 
   /** The id of the <ts-grid> it edits. */
@@ -188,7 +270,9 @@ export class TsLayoutList extends Base {
     cancelAnimationFrame(this._frame)
     cancelAnimationFrame(this._sayFrame)
     clearTimeout(this._sayTimer)
-    this._frame = this._sayFrame = 0
+    cancelAnimationFrame(this._refreshFrame)
+    clearTimeout(this._refreshTimer)
+    this._frame = this._sayFrame = this._refreshFrame = this._refreshTimer = 0
     this._detach()
   }
 
@@ -207,6 +291,8 @@ export class TsLayoutList extends Base {
     }
     if (this._offState) this._offState()
     this._offState = null
+    if (this._offLayout) this._offLayout()
+    this._offLayout = null
     if (this._attrs) this._attrs.disconnect()
     this._attrs = null
     this._grid = null
@@ -221,7 +307,8 @@ export class TsLayoutList extends Base {
       this._waiting = true
       customElements.whenDefined('ts-grid').then(() => {
         this._waiting = false
-        this._attach()
+        // The list may have left the page while it waited; a detached list must not bind to a grid and hold listeners on it.
+        if (this.isConnected) this._attach()
       })
     }
     // The page changed somewhere else: the grid is as it was, so there is nothing to draw again.
@@ -233,9 +320,13 @@ export class TsLayoutList extends Base {
       grid.addEventListener('ts-profile-change', this._onChange)
       // The grid says so when its messages or locale change, which reword every label here.
       if (typeof grid._onState === 'function') this._offState = grid._onState(this._onChange)
-      // A host that sets the `profile` attribute gets no ts-profile-change (that event is for the schedule and overrides), yet the list shown changes.
-      this._attrs = new MutationObserver(this._onChange)
-      this._attrs.observe(grid, { attributes: true, attributeFilter: ['profile'] })
+      // None of these fire an event: the `profile` and `locked` attributes, a host's `layout = ...`, and tiles added, removed or changed in implicit mode.
+      this._offLayout = onLayoutSet(grid, this._onQuiet)
+      this._attrs = new MutationObserver((records) => {
+        // Only the grid's own children and attributes; a ticking widget changing its light DOM is not a layout change.
+        if (records.some((r) => r.target === grid || r.target.parentNode === grid)) this._onQuiet()
+      })
+      this._attrs.observe(grid, { attributes: true, attributeFilter: WATCHED, childList: true, subtree: true })
     }
     this._render()
   }
@@ -269,18 +360,67 @@ export class TsLayoutList extends Base {
     return profiles && hasOwn(profiles, name) && Array.isArray(profiles[name]) ? profiles[name] : []
   }
 
+  /**
+   * Whole numbers in the grid's `locale` (else the configured one), as RFC 0003 §1.2 asks of a figure in a message. Intl directly:
+   * the core's formatter would add several kB to an entry that is otherwise a few buttons.
+   */
+  _num(grid) {
+    const locale = grid.getAttribute('locale') || currentConfig().locale || undefined
+    if (!this._fmt || this._fmtLocale !== locale) {
+      this._fmtLocale = locale
+      try {
+        this._fmt = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
+      } catch {
+        this._fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 })
+      }
+    }
+    return (n) => this._fmt.format(n)
+  }
+
   _press(button) {
     const grid = this._grid
-    if (!grid || button.getAttribute('aria-disabled') === 'true') return
+    if (!grid) return
+    // The grid may have changed since the last draw without saying so (a host's layout, a tile added): read it again before acting on a row drawn from the old one.
+    this._render()
     const t = this._translate()
+    if (button.getAttribute('aria-disabled') === 'true') {
+      // A locked list is inert, and says why when pressed; the ends of the list say nothing, as before.
+      if (grid.locked) this._say(t('list.locked'))
+      return
+    }
     const action = button.dataset.action
     if (action === 'undo') {
       this._say(t(grid.undo() ? 'list.undone' : 'list.nothingToUndo'))
       return
     }
     const li = button.closest('li')
-    const text = li ? editRow(grid, this._rows, action, li.dataset.id, t, button.dataset.size) : ''
+    // A row the fresh read no longer has (removed by the host meanwhile) is not acted on and not announced.
+    if (!li || this._nodes.get(li.dataset.id) !== li) return
+    const text = editRow(grid, this._rows, action, li.dataset.id, t, button.dataset.size, this._num(grid))
     if (text) this._say(text)
+  }
+
+  /** Make `button` the one Tab stop of its size group. */
+  _rove(button) {
+    for (const other of button.parentNode.children) other.tabIndex = other === button ? 0 : -1
+  }
+
+  /** Arrow keys, Home and End move between a row's size buttons; the group is one choice and one Tab stop. */
+  _keydown(e) {
+    const button = e.target
+    if (!button.dataset || button.dataset.action !== 'size' || e.altKey || e.ctrlKey || e.metaKey) return
+    const group = [...button.parentNode.children]
+    const at = group.indexOf(button)
+    const rtl = typeof getComputedStyle === 'function' && getComputedStyle(button.parentNode).direction === 'rtl'
+    const step = { ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1, ArrowDown: 1, ArrowUp: -1 }[e.key]
+    let to = -1
+    if (step) to = (at + step + group.length) % group.length
+    else if (e.key === 'Home') to = 0
+    else if (e.key === 'End') to = group.length - 1
+    if (to < 0) return
+    e.preventDefault()
+    this._rove(group[to])
+    group[to].focus()
   }
 
   /**
@@ -303,11 +443,26 @@ export class TsLayoutList extends Base {
   }
 
   _render() {
+    // Drawing can move focus, and a focus move is a focusin that asks for a draw; one draw at a time.
+    if (this._busy) return
+    this._busy = true
+    try {
+      this._draw()
+    } finally {
+      this._busy = false
+    }
+  }
+
+  _draw() {
     const grid = this._grid
     const t = this._translate()
+    const locked = !!(grid && grid.locked)
     this._drawn = true
     this._wrap.setAttribute('aria-label', t('list.label'))
     if (this._undo.textContent !== t('list.undo')) this._undo.textContent = t('list.undo')
+    this._undo.setAttribute('aria-disabled', String(locked))
+    this._lockedNote.hidden = !locked
+    this._lockedNote.textContent = locked ? t('list.locked') : ''
     // Read before the redraw: after it, a removed row's button is gone and the page has taken focus.
     const focus = this._focus()
     const rows = grid ? listRows(this._items(grid), this._catalog(grid), t, (item) => this._labelOf(grid, item.id)) : []
@@ -327,7 +482,7 @@ export class TsLayoutList extends Base {
     for (const row of rows) {
       let li = this._nodes.get(row.id)
       if (!li) this._nodes.set(row.id, (li = this._newRow(row.id)))
-      this._patch(li, row, t)
+      this._patch(li, row, t, locked)
       if (li === next) next = next.nextSibling
       else this._ol.insertBefore(li, next)
     }
@@ -394,7 +549,7 @@ export class TsLayoutList extends Base {
   }
 
   /** Write a row's words and states, touching only what differs, so a redraw doesn't flicker a screen reader's cursor. */
-  _patch(li, row, t) {
+  _patch(li, row, t, locked) {
     const set = (el, text) => {
       if (el.textContent !== text) el.textContent = text
     }
@@ -417,8 +572,13 @@ export class TsLayoutList extends Base {
       }
     }
     sizes.hidden = !row.sizes.length
+    // One Tab stop per group: the pressed size (else the first), unless focus is already inside and has chosen its own.
+    const stop = Math.max(0, row.sizes.findIndex((s) => s.pressed))
+    const inside = sizes.contains(this.shadowRoot.activeElement)
     row.sizes.forEach((s, i) => {
       const button = sizes.children[i]
+      if (!inside) button.tabIndex = i === stop ? 0 : -1
+      attr(button, 'aria-disabled', String(locked))
       set(button, t(`size.${s.size}`))
       // The word on the button is short ("Medium"); the name carries the whole size ("Medium, 2 by 2").
       attr(button, 'aria-label', s.name)
@@ -427,11 +587,12 @@ export class TsLayoutList extends Base {
     const [up, down, remove] = li.querySelectorAll('.acts button')
     set(up, t('list.moveUp'))
     attr(up, 'aria-label', t('list.moveUpItem', { label: row.label }))
-    attr(up, 'aria-disabled', String(!row.canMoveUp))
+    attr(up, 'aria-disabled', String(locked || !row.canMoveUp))
     set(down, t('list.moveDown'))
     attr(down, 'aria-label', t('list.moveDownItem', { label: row.label }))
-    attr(down, 'aria-disabled', String(!row.canMoveDown))
+    attr(down, 'aria-disabled', String(locked || !row.canMoveDown))
     set(remove, t('list.remove'))
     attr(remove, 'aria-label', t('list.removeItem', { label: row.label }))
+    attr(remove, 'aria-disabled', String(locked))
   }
 }

@@ -20,11 +20,16 @@ import 'tickslate/elements/layout-list'
 
 One row per tile in the grid's active profile, in order, numbered. It draws again
 when the grid fires `ts-layout-change` or `ts-profile-change`, when the grid
-turns up later in the page, and when `for` changes.
+turns up later in the page, when `for` changes, and when the host changes the
+grid without an event: `layout = ...`, the `profile` or `locked` attribute, or
+tiles added, removed or renamed. It also reads the grid again at the moment a
+button is pressed, so a press never acts on a row the grid no longer has, and an
+edit that changed nothing is not announced.
 
-- **The name** is the tile's `label` attribute, else its catalog label.
+- **The name** is the tile's `label` attribute, else its catalog label, else its id, as the grid names it.
 - **Sizes**: one button per size the tile's widget supports, the current one with
   `aria-pressed="true"`. The button reads "Medium" and is named "Medium, 2 by 2".
+  The sizes are one Tab stop; the arrow keys, Home and End move between them.
 - **Move up** and **Move down**. On the first row Move up, and on the last row
   Move down, are `aria-disabled` rather than removed, so they stay where a
   switch or a screen reader expects them.
@@ -32,6 +37,14 @@ turns up later in the page, and when `for` changes.
   brought back with the picker's **Add back**, or with **Undo**.
 - **Undo** calls `grid.undo()`. The line beside it says "Undone", or "Nothing to
   undo" when there was nothing to undo.
+
+## Locked grids
+
+While the grid is `locked` (a read-only dashboard), the list is read-only too:
+every row button and Undo are `aria-disabled` and do nothing, and the line "This
+layout is locked" is shown. Pressing one says so in the status line. The lock is
+for the user's hands and the list is the user's hands; the host's own calls to
+`move`, `resize`, `remove` and `undo` still work.
 
 ## Edits
 
