@@ -92,6 +92,85 @@ const STYLED = () => {
   }
 }
 
+// The whole edit path, driven the way a person does: keyboard move, pointer drag, remove, Undo, Add back from the
+// picker's list and an add the host answers. Every step runs under the page's policy, and afterEach fails on a violation.
+async function editEverything(page) {
+  const frame = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const touch = test.info().project.use.hasTouch
+  const press = (locator) => (touch ? locator.tap() : locator.click())
+  const handle = (id) => page.locator(`#g >> .chrome[data-id="${id}"] .handle`)
+  const reasons = () => page.evaluate(() => window.__reasons)
+  await page.evaluate(() => {
+    const g = document.getElementById('g')
+    window.__reasons = []
+    g.addTypes = '*'
+    g.addEventListener('ts-layout-change', (e) => window.__reasons.push(e.detail.reason))
+    // What a framework does with the request: render the child it names.
+    g.addEventListener('ts-add-request', (e) => {
+      e.preventDefault()
+      const el = document.createElement(`ts-${e.detail.type}`)
+      el.setAttribute('item', e.detail.id)
+      el.setAttribute('label', `New ${e.detail.type}`)
+      g.append(el)
+    })
+    g.editing = true
+  })
+  await frame()
+
+  // Keyboard: pick up, step, drop.
+  await handle('notes').focus()
+  await page.keyboard.press('Enter')
+  for (const key of ['ArrowUp', 'ArrowUp', 'ArrowLeft']) await page.keyboard.press(key)
+  await page.keyboard.press('Enter')
+  await expect.poll(reasons).toContain('move')
+
+  // A pointer drag, where there is a mouse: the tile is lifted (the grid is dragging) and dropped on another.
+  if (!touch) {
+    const centre = async (id) => {
+      const box = await page.locator(`#g > [item="${id}"]`).boundingBox()
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+    // The keyboard move scrolled to the tile it moved; the tiles to drag must be on screen.
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await frame()
+    const order = await page.evaluate(() => document.getElementById('g').readingOrder)
+    const from = await centre(order[0])
+    await page.mouse.move(from.x, from.y)
+    await page.mouse.down()
+    await page.waitForTimeout(650)
+    const to = await centre(order[3])
+    await page.mouse.move(to.x, to.y, { steps: 12 })
+    await expect.poll(() => page.evaluate(() => document.getElementById('g').hasAttribute('dragging'))).toBe(true)
+    await page.waitForTimeout(300)
+    await page.mouse.up()
+    await expect.poll(() => page.evaluate(() => document.getElementById('g').hasAttribute('dragging'))).toBe(false)
+  }
+
+  // Remove, then Undo from the toast, then remove again and bring it back from the picker's Add back row.
+  await press(page.locator('#g >> .chrome[data-id="notes"] .remove'))
+  await expect.poll(reasons).toContain('remove')
+  await press(page.locator('#g >> .toast .undo'))
+  await expect.poll(reasons).toContain('undo')
+  // The grid ignores a second remove for a moment, so a double click is not two.
+  await page.waitForTimeout(600)
+  await press(page.locator('#g >> .chrome[data-id="notes"] .remove'))
+  await expect.poll(() => page.evaluate(() => document.getElementById('g').hiddenItems.length)).toBe(1)
+  await page.evaluate(() => document.getElementById('p').show())
+  await frame()
+  await press(page.locator('ts-widget-picker .chip[aria-label^="Add back"]'))
+  await expect.poll(() => page.evaluate(() => document.getElementById('g').hiddenItems.length)).toBe(0)
+
+  // A picker add: the request goes to the host, which renders the child.
+  await page.evaluate(() => document.getElementById('p').show())
+  await frame()
+  await page.locator('ts-widget-picker .search').fill('metric')
+  await press(page.locator('ts-widget-picker .row .chip', { hasText: 'Small' }).first())
+  await expect.poll(reasons).toContain('add')
+  await expect(page.locator('#g > ts-metric')).toHaveCount(2)
+  await frame()
+  return reasons()
+}
+
 test.describe('under default-src, style-src and script-src self', () => {
   // The fixture has no inline script and no network use, so default-src 'none' with the three it needs is as strict.
   test('and under default-src none with only script, style and connect and img allowed from self', async ({ page }) => {
@@ -157,6 +236,13 @@ test.describe('under default-src, style-src and script-src self', () => {
     expect(placed.ticksPlaced).toBe(true)
     expect(placed.points).toBeGreaterThan(0)
     expect(placed.pointsPlaced).toBe(true)
+  })
+
+  test('the edit path (keyboard move, pointer drag, remove, Undo, Add back and a picker add) draws no violation', async ({ page }) => {
+    await serve(page, STRICT)
+    await boot(page)
+    const reasons = await editEverything(page)
+    for (const reason of ['move', 'remove', 'undo', 'add']) expect(reasons).toContain(reason)
   })
 
   test('the grid edits: chrome appears, the picker opens, a tile is removed and every state draws', async ({ page }) => {
@@ -292,6 +378,46 @@ test.describe('where constructable sheets are missing', () => {
     }
     expect(styled.grid).toBe('block')
   })
+})
+
+test('configure() with the nonce already applied leaves the fallback <style> elements alone', async ({ page }) => {
+  await page.addInitScript(() => { delete CSSStyleSheet.prototype.replaceSync })
+  await serve(page, `default-src 'self'; style-src 'self' 'nonce-stable'; script-src 'self'`)
+  await page.goto(PAGE)
+  await page.waitForFunction(() => customElements.get('ts-metric') && document.querySelector('ts-metric').shadowRoot.querySelector('style'))
+  const out = await page.evaluate(async () => {
+    const { configure } = await import('/src/core/index.js')
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    configure({ styleNonce: 'stable' })
+    await frame()
+    // The browser hides a connected element's nonce, which is why the library remembers what it applied.
+    const roots = [...document.querySelectorAll('*')].filter((el) => el.shadowRoot).map((el) => el.shadowRoot)
+    const styled = roots.filter((r) => r.querySelector('style'))
+    const changes = []
+    const watch = new MutationObserver((records) => changes.push(...records))
+    for (const r of roots) watch.observe(r, { childList: true })
+    const before = styled.map((r) => r.querySelector('style'))
+    configure({ locale: 'de-DE' })
+    configure({ currency: 'EUR' })
+    configure({ locale: 'fr-FR', styleNonce: 'stable' })
+    await frame()
+    watch.takeRecords().forEach((r) => changes.push(r))
+    return {
+      roots: styled.length,
+      changed: changes.length,
+      same: styled.every((r, i) => r.querySelector('style') === before[i]),
+      hidden: before.every((s) => s.getAttribute('nonce') === ''),
+      display: getComputedStyle(document.getElementById('linked').shadowRoot.querySelector('.tile')).display,
+    }
+  })
+  expect(out.roots).toBeGreaterThanOrEqual(11)
+  expect(out.changed).toBe(0)
+  expect(out.same).toBe(true)
+  expect(out.display).toBe('flex')
+  // Only the blocked first attempt, before the nonce, is expected.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+  await page.evaluate(() => { window.__violations = [] })
+  errors.length = 0
 })
 
 test('a nonce configured after the elements are defined styles the fallback <style> they already made', async ({ page }) => {

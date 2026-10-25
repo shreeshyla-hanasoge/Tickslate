@@ -13,7 +13,7 @@
 import { currentConfig } from '../core/index.js'
 import { sizeName } from '../core/messages.js'
 import { ensureTokens } from './default-tokens.js'
-import { mountShadow } from './html.js'
+import { inertWhenBlocked, mountShadow } from './html.js'
 import { translator } from './messages-cache.js'
 import { pickerItems } from './picker-model.js'
 import { widgetCatalog } from './registry.js'
@@ -113,7 +113,11 @@ export class TsWidgetPicker extends Base {
   constructor() {
     super()
     const root = this.attachShadow({ mode: 'open' })
-    mountShadow(root, CSS, TEMPLATE)
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._dialog = root.querySelector('dialog')
     this._title = root.querySelector('.title')
     this._close = root.querySelector('.close')
@@ -368,3 +372,4 @@ export class TsWidgetPicker extends Base {
     this.close()
   }
 }
+inertWhenBlocked(TsWidgetPicker)

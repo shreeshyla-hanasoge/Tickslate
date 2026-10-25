@@ -344,7 +344,7 @@ proves it by counting the writes to the tile's `innerHTML`. Skipping a write tha
 wouldn't change anything is an optimisation you can leave out.
 
 Don't use `innerHTML` in `update` for data. Text goes through `textContent`;
-if you must build markup from data, escape it (below).
+if you must build markup from data, escape it (below). On a page with Trusted Types, `template` and `skeleton` must be module constants and data goes through `textContent` and attributes (see docs/guide/security.md).
 
 ### Freshness and flashes
 

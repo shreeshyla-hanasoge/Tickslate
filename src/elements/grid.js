@@ -64,7 +64,7 @@ import {
   visualOrder,
 } from './grid-geometry.js'
 import { ensureTokens } from './default-tokens.js'
-import { mountShadow, setHTML } from './html.js'
+import { inertWhenBlocked, mountShadow, setHTML } from './html.js'
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
@@ -317,7 +317,11 @@ export class TsGrid extends Base {
     // Asked of the root, not assumed: a declarative shadow root without shadowrootslotassignment="manual" is reused as it is, and assigns by name.
     this._manual = root.slotAssignment === 'manual'
     if (DEV && canAssign && !this._manual) warnOnce('grid-slot-assignment', NAMED_ROOT_WARNING)
-    mountShadow(root, CSS, TEMPLATE)
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._board = root.querySelector('.board')
     this._placeholder = root.querySelector('.placeholder')
     this._chromeLayer = root.querySelector('.chromes')
@@ -2554,6 +2558,7 @@ export class TsGrid extends Base {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }))
   }
 }
+inertWhenBlocked(TsGrid, ['_link', '_unlink', '_announce'])
 
 /** Anything but the grid's own furniture: scripts, styles and the empty-board slot are never tiles. */
 function isTile(el) {

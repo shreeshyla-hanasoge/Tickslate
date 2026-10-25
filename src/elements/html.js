@@ -35,7 +35,7 @@ let policy // undefined until markup is first written; null where there is no Tr
 
 const REFUSED = "the page's trusted-types directive does not allow the 'tickslate' policy; add it (a second copy of Tickslate also needs 'allow-duplicates'), or Tickslate cannot render"
 
-function trusted(markup) {
+function resolvePolicy() {
   if (policy === undefined) {
     const tt = globalThis.trustedTypes
     if (!tt || typeof tt.createPolicy !== 'function') policy = null
@@ -49,6 +49,16 @@ function trusted(markup) {
       }
     }
   }
+}
+
+/** False when the page's trusted-types directive refused the `tickslate` policy: no markup can be written, so elements stay empty. */
+export function markupAllowed() {
+  resolvePolicy()
+  return policy !== false
+}
+
+function trusted(markup) {
+  resolvePolicy()
   // Closed when refused: null means the string is never offered to a sink, so the template stays empty.
   if (policy === false) return null
   return policy ? policy.createHTML(markup) : markup
@@ -153,7 +163,11 @@ export function adoptCSS(root, css) {
 // Fallback <style> elements, so a nonce configured after they were made reaches them (the elements in the page's
 // HTML upgrade when the entry evaluates, before the host's own script can call configure()).
 const fallbacks = new Set()
+// The nonce each fallback was last given. A browser hides a nonce from getAttribute once the element is connected, so
+// the attribute can't say whether it is current; this can.
+const applied = new WeakMap()
 let watching = false
+let pruneAt = 32
 
 function renonce(nonce) {
   for (const ref of fallbacks) {
@@ -162,8 +176,9 @@ function renonce(nonce) {
       fallbacks.delete(ref)
       continue
     }
-    if (nonce && style.getAttribute('nonce') !== nonce) {
+    if (nonce && applied.get(style) !== nonce) {
       style.setAttribute('nonce', nonce)
+      applied.set(style, nonce)
       // A style blocked at insertion is evaluated again only when it is inserted again.
       const parent = style.parentNode
       const next = style.nextSibling
@@ -177,9 +192,17 @@ function renonce(nonce) {
 export function styleElement(css, doc = document) {
   const style = doc.createElement('style')
   const nonce = currentConfig().styleNonce
-  if (nonce) style.setAttribute('nonce', nonce)
+  if (nonce) {
+    style.setAttribute('nonce', nonce)
+    applied.set(style, nonce)
+  }
   style.textContent = css
   if (typeof WeakRef === 'function') {
+    // Dead refs are dropped as the set grows, so pages that make and discard many widgets without calling configure() stay flat.
+    if (fallbacks.size >= pruneAt) {
+      for (const ref of fallbacks) if (!ref.deref()) fallbacks.delete(ref)
+      pruneAt = Math.max(32, fallbacks.size * 2)
+    }
     fallbacks.add(new WeakRef(style))
     if (!watching) {
       watching = true
@@ -191,13 +214,40 @@ export function styleElement(css, doc = document) {
 
 /**
  * Fills a new shadow root: its CSS, then its constant markup. Where there is
- * no real DOM it writes both as one string, as before.
+ * no real DOM it writes both as one string, as before. Returns false when the
+ * markup did not arrive (the page's trusted-types directive refused the
+ * `tickslate` policy), so a constructor can stop instead of reading nodes
+ * that are not there.
  */
 export function mountShadow(root, css, markup) {
   if (!live()) {
     root.innerHTML = `<style>${css}</style>${markup}`
-    return
+    return true
   }
   adoptCSS(root, css)
   root.appendChild(cloneHTML(markup))
+  return markupAllowed()
+}
+
+/**
+ * For an element whose constructor stopped because its markup never arrived:
+ * every public method, accessor and lifecycle callback of `Ctor`, and each
+ * name in `internals` (members other elements call, such as a grid's `_link`),
+ * then does nothing (reads give undefined) while `this._blocked` is true, so
+ * the host's own `document.createElement(...)`, property writes and `remove()`
+ * keep working.
+ */
+export function inertWhenBlocked(Ctor, internals = []) {
+  const proto = Ctor.prototype
+  const wrap = (fn) => function (...args) {
+    return this._blocked ? undefined : fn.apply(this, args)
+  }
+  for (const key of Object.getOwnPropertyNames(proto)) {
+    if (key === 'constructor' || (key[0] === '_' && !internals.includes(key))) continue
+    const d = Object.getOwnPropertyDescriptor(proto, key)
+    if (typeof d.value === 'function') d.value = wrap(d.value)
+    if (d.get) d.get = wrap(d.get)
+    if (d.set) d.set = wrap(d.set)
+    Object.defineProperty(proto, key, d)
+  }
 }

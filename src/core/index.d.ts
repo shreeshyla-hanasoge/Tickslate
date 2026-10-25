@@ -264,9 +264,9 @@ export declare function configure(options: FormatOptions & {
   /** The CSP nonce for the `<style>` element widgets fall back to where constructed sheets are missing (below Safari 16.4). */
   styleNonce?: string
 }): void
-export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides }
+export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides; styleNonce?: string }
 /** Calls `fn` with the new defaults after every configure(); returns a function that stops it. Registers nothing until called. */
-export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides }) => void): () => void
+export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides; styleNonce?: string }) => void): () => void
 /** A finite number from a number, a decimal string or a decimal-library object; else NaN. */
 export declare function toNumber(v: unknown): number
 

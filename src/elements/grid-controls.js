@@ -12,7 +12,7 @@
 
 import { activeProfile, createFormatter, currentConfig, localDate, nextProfileChange } from '../core/index.js'
 import { ensureTokens } from './default-tokens.js'
-import { mountShadow } from './html.js'
+import { inertWhenBlocked, mountShadow } from './html.js'
 
 const CSS = `
   :host { display: block; }
@@ -52,7 +52,11 @@ export class TsGridControls extends Base {
   constructor() {
     super()
     const root = this.attachShadow({ mode: 'open' })
-    mountShadow(root, CSS, TEMPLATE)
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._wrap = root.querySelector('.wrap')
     this._switcher = root.querySelector('.switcher')
     this._options = [...root.querySelectorAll('.opt')]
@@ -247,3 +251,4 @@ export class TsGridControls extends Base {
     return t('controls.next', { profile: t(`controls.${to}`), time })
   }
 }
+inertWhenBlocked(TsGridControls)

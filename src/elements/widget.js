@@ -167,7 +167,7 @@
 import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isSize, SIZES, SIZE_NAMES, toTime, toNumber } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
-import { escapeHtml, mountShadow, setHTML, setNodes, setText } from './html.js'
+import { escapeHtml, markupAllowed, mountShadow, setHTML, setNodes, setText } from './html.js'
 import { translator } from './messages-cache.js'
 import { subscribe } from './ticker.js'
 
@@ -1328,6 +1328,8 @@ export class TsWidget extends Base {
   }
 
   _render() {
+    // Nothing can be drawn when the page's trusted-types directive refused the policy (html.js warned once in development).
+    if (!markupAllowed()) return
     // Asked once for this render: it is also where a grid that was not defined at connect is found.
     const config = currentConfig()
     const grid = findGrid(this)

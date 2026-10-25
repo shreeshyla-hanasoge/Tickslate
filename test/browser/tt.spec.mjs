@@ -81,6 +81,85 @@ const RENDERED = () => {
   }
 }
 
+// The whole edit path, driven the way a person does: keyboard move, pointer drag, remove, Undo, Add back from the
+// picker's list and an add the host answers. Every step runs under the page's policy, and afterEach fails on a violation.
+async function editEverything(page) {
+  const frame = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const touch = test.info().project.use.hasTouch
+  const press = (locator) => (touch ? locator.tap() : locator.click())
+  const handle = (id) => page.locator(`#g >> .chrome[data-id="${id}"] .handle`)
+  const reasons = () => page.evaluate(() => window.__reasons)
+  await page.evaluate(() => {
+    const g = document.getElementById('g')
+    window.__reasons = []
+    g.addTypes = '*'
+    g.addEventListener('ts-layout-change', (e) => window.__reasons.push(e.detail.reason))
+    // What a framework does with the request: render the child it names.
+    g.addEventListener('ts-add-request', (e) => {
+      e.preventDefault()
+      const el = document.createElement(`ts-${e.detail.type}`)
+      el.setAttribute('item', e.detail.id)
+      el.setAttribute('label', `New ${e.detail.type}`)
+      g.append(el)
+    })
+    g.editing = true
+  })
+  await frame()
+
+  // Keyboard: pick up, step, drop.
+  await handle('notes').focus()
+  await page.keyboard.press('Enter')
+  for (const key of ['ArrowUp', 'ArrowUp', 'ArrowLeft']) await page.keyboard.press(key)
+  await page.keyboard.press('Enter')
+  await expect.poll(reasons).toContain('move')
+
+  // A pointer drag, where there is a mouse: the tile is lifted (the grid is dragging) and dropped on another.
+  if (!touch) {
+    const centre = async (id) => {
+      const box = await page.locator(`#g > [item="${id}"]`).boundingBox()
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
+    // The keyboard move scrolled to the tile it moved; the tiles to drag must be on screen.
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await frame()
+    const order = await page.evaluate(() => document.getElementById('g').readingOrder)
+    const from = await centre(order[0])
+    await page.mouse.move(from.x, from.y)
+    await page.mouse.down()
+    await page.waitForTimeout(650)
+    const to = await centre(order[3])
+    await page.mouse.move(to.x, to.y, { steps: 12 })
+    await expect.poll(() => page.evaluate(() => document.getElementById('g').hasAttribute('dragging'))).toBe(true)
+    await page.waitForTimeout(300)
+    await page.mouse.up()
+    await expect.poll(() => page.evaluate(() => document.getElementById('g').hasAttribute('dragging'))).toBe(false)
+  }
+
+  // Remove, then Undo from the toast, then remove again and bring it back from the picker's Add back row.
+  await press(page.locator('#g >> .chrome[data-id="notes"] .remove'))
+  await expect.poll(reasons).toContain('remove')
+  await press(page.locator('#g >> .toast .undo'))
+  await expect.poll(reasons).toContain('undo')
+  // The grid ignores a second remove for a moment, so a double click is not two.
+  await page.waitForTimeout(600)
+  await press(page.locator('#g >> .chrome[data-id="notes"] .remove'))
+  await expect.poll(() => page.evaluate(() => document.getElementById('g').hiddenItems.length)).toBe(1)
+  await page.evaluate(() => document.getElementById('p').show())
+  await frame()
+  await press(page.locator('ts-widget-picker .chip[aria-label^="Add back"]'))
+  await expect.poll(() => page.evaluate(() => document.getElementById('g').hiddenItems.length)).toBe(0)
+
+  // A picker add: the request goes to the host, which renders the child.
+  await page.evaluate(() => document.getElementById('p').show())
+  await frame()
+  await page.locator('ts-widget-picker .search').fill('metric')
+  await press(page.locator('ts-widget-picker .row .chip', { hasText: 'Small' }).first())
+  await expect.poll(reasons).toContain('add')
+  await expect(page.locator('#g > ts-metric')).toHaveCount(2)
+  await frame()
+  return reasons()
+}
+
 test.describe('under require-trusted-types-for and trusted-types tickslate', () => {
   test('enforcement is real where the engine has it: a plain string is refused at a sink', async ({ page }) => {
     await serve(page, TT)
@@ -157,27 +236,58 @@ test.describe('under require-trusted-types-for and trusted-types tickslate', () 
   })
 
   for (const list of ['trusted-types other', "trusted-types 'none'"]) {
-    test(`with ${list} the page is told why nothing renders, and no string reaches a sink`, async ({ page }) => {
+    test(`with ${list} nothing renders, nothing throws, and development says why once`, async ({ page }) => {
       await serve(page, `require-trusted-types-for 'script'; ${list}`)
       const warnings = []
+      const thrown = []
       page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
+      page.on('pageerror', (error) => thrown.push(error.message))
       await page.goto(PAGE)
-      await page.waitForFunction(() => customElements.get('ts-metric'))
+      await page.waitForFunction(() => customElements.get('ts-metric') && customElements.get('ts-grid') && customElements.get('ts-widget-picker'))
       await page.waitForTimeout(300)
-      expect(warnings.some((w) => /does not allow the 'tickslate' policy/.test(w))).toBe(true)
+      expect(warnings.filter((w) => /does not allow the 'tickslate' policy/.test(w))).toHaveLength(1)
       // Tickslate wrote nothing: the only violations are the browser refusing createPolicy itself, never a markup sink.
       const v = await page.evaluate(() => window.__violations)
       expect(v.filter((x) => /sink/.test(x))).toEqual([])
-      // The widgets are defined and keep their (empty) tile.
-      const tile = await page.evaluate(() => !!document.getElementById('linked').shadowRoot.querySelector('.tile'))
-      expect(tile).toBe(true)
-      // The elements whose content is markup (the grid, the picker, a widget's body) then throw on the nodes that never
-      // appeared; that is "Tickslate cannot render", said once by the warning above, and not asserted away here.
-      // The refusal is the point of this spec; the collectors would fail the afterEach.
+      // No constructor threw, and the host's own code can still make the elements and use their API.
+      expect(thrown).toEqual([])
+      const out = await page.evaluate(() => {
+        const g = document.createElement('ts-grid')
+        const c = document.createElement('ts-grid-controls')
+        const p = document.createElement('ts-widget-picker')
+        const m = document.createElement('ts-metric')
+        document.body.append(g, c, p, m)
+        g.editing = true
+        g.layout = { items: [] }
+        p.show()
+        m.data = { value: 1 }
+        const grid = document.getElementById('g')
+        return {
+          made: [g, c, p, m].map((el) => el.localName),
+          created: !!window.__ready,
+          boardPresent: !!grid.shadowRoot.querySelector('.board'),
+          tileKids: document.getElementById('linked').shadowRoot.querySelector('.tile').children.length,
+        }
+      })
+      expect(out.made).toEqual(['ts-grid', 'ts-grid-controls', 'ts-widget-picker', 'ts-metric'])
+      expect(out.boardPresent).toBe(false)
+      expect(out.tileKids).toBe(0)
+      // The widgets neither log "could not render its data" nor throw: they draw nothing.
+      expect(errors.filter((e) => /could not render/.test(e))).toEqual([])
+      expect(thrown).toEqual([])
+      // What remains is the browser's own report of the refused policy, which is the point of this spec.
+      expect(errors.filter((e) => !/trusted ?type|trusted-types/i.test(e))).toEqual([])
       await page.evaluate(() => { window.__violations = [] })
       errors.length = 0
     })
   }
+
+  test('the edit path (keyboard move, pointer drag, remove, Undo, Add back and a picker add) draws no violation', async ({ page }) => {
+    await serve(page, ALL)
+    await boot(page)
+    const reasons = await editEverything(page)
+    for (const reason of ['move', 'remove', 'undo', 'add']) expect(reasons).toContain(reason)
+  })
 
   test('the grid edits and every view of a tile draws', async ({ page }) => {
     await serve(page, TT)

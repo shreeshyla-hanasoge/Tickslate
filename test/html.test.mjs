@@ -151,6 +151,64 @@ describe('the Trusted Types policy', () => {
     assert.match(warns[0], /trusted-types directive does not allow the 'tickslate' policy/)
   })
 
+  test('a refused policy leaves mountShadow reporting false, so a constructor can stop without throwing', async () => {
+    install()
+    const warn = console.warn
+    console.warn = () => {}
+    try {
+      globalThis.trustedTypes = {
+        createPolicy() {
+          throw new TypeError('Policy "tickslate" disallowed')
+        },
+      }
+      const { mountShadow, markupAllowed } = await load()
+      assert.equal(markupAllowed(), false)
+      assert.equal(mountShadow(new Node('root'), '.a{}', '<b>one</b>'), false)
+      // Allowed: the same call says true.
+      globalThis.trustedTypes = { createPolicy: (name, rules) => ({ createHTML: (m) => rules.createHTML(m) }) }
+      const fresh = await load()
+      assert.equal(fresh.markupAllowed(), true)
+      assert.equal(fresh.mountShadow(new Node('root'), '.a{}', '<b>one</b>'), true)
+    } finally {
+      console.warn = warn
+    }
+  })
+
+  test('inertWhenBlocked silences public members of a blocked element and leaves a working one alone', async () => {
+    install()
+    const { inertWhenBlocked } = await load()
+    class El {
+      constructor(blocked) {
+        this._blocked = blocked
+        this.calls = 0
+      }
+      get value() {
+        return 7
+      }
+      set value(v) {
+        this.calls++
+      }
+      connectedCallback() {
+        this.calls++
+      }
+      _internal() {
+        return 'ran'
+      }
+    }
+    inertWhenBlocked(El)
+    const blocked = new El(true)
+    blocked.value = 1
+    blocked.connectedCallback()
+    assert.equal(blocked.value, undefined)
+    assert.equal(blocked.calls, 0)
+    assert.equal(blocked._internal(), 'ran', 'underscore members are the element\'s own, reached only from guarded entry points')
+    const open = new El(false)
+    open.value = 1
+    open.connectedCallback()
+    assert.equal(open.value, 7)
+    assert.equal(open.calls, 2)
+  })
+
   test('the policy is reachable from nowhere: no global, no registered symbol, no exported string-to-HTML helper', async () => {
     install({ trustedTypes: true })
     const mod = await load()
@@ -251,6 +309,32 @@ describe('adopted sheets', () => {
     assert.deepEqual(log, ['remove', 'insert'])
   })
 
+  test('a nonce that is already applied is not applied again, even when the browser hides it from getAttribute', async () => {
+    install({ sheets: false })
+    configure({ styleNonce: 'same' })
+    const { adoptCSS } = await load()
+    const root = new Node('root')
+    const log = []
+    root.appendChild = (n) => {
+      n.parentNode = root
+      n.nextSibling = null
+      n.remove = () => log.push('remove')
+      root.insertBefore = () => log.push('insert')
+      root.children.push(n)
+    }
+    adoptCSS(root, '.a{}')
+    // A connected <style> under an enforcing CSP reads its nonce back as "".
+    root.children[0].getAttribute = () => ''
+    configure({ locale: 'de-DE' })
+    configure({ currency: 'EUR' })
+    configure({ styleNonce: 'same' })
+    assert.deepEqual(log, [], 'nothing was removed or inserted')
+    configure({ styleNonce: 'next' })
+    assert.deepEqual(log, ['remove', 'insert'], 'a new nonce still reaches it, once')
+    configure({ locale: 'fr-FR' })
+    assert.deepEqual(log, ['remove', 'insert'])
+  })
+
   test('a root with no adoptedStyleSheets (an older engine) takes the fallback too', async () => {
     install()
     const { adoptCSS } = await load()
@@ -268,6 +352,25 @@ describe('templates are pure functions of the variant', () => {
     const elements = await import('../src/elements/index.js')
     const classes = Object.entries(elements).filter(([name, v]) => name.startsWith('Ts') && typeof v === 'function' && typeof v.template === 'function' && v !== elements.TsWidget)
     assert.ok(classes.length >= 9, 'the scan found the widgets')
+    // A template that read the configured locale or currency would differ after configure(), which is what "no data" means here.
+    const before = new Map()
+    for (const [name, Ctor] of classes) {
+      for (const variant of SIZE_NAMES) {
+        before.set(`${name} ${variant}`, [Ctor.template(variant), typeof Ctor.skeleton === 'function' ? Ctor.skeleton(variant) : null])
+      }
+    }
+    configure({ locale: 'de-DE', currency: 'JPY' })
+    try {
+      for (const [name, Ctor] of classes) {
+        for (const variant of SIZE_NAMES) {
+          const [template, skeleton] = before.get(`${name} ${variant}`)
+          assert.equal(Ctor.template(variant), template, `${name} ${variant} does not follow the configured locale or currency`)
+          if (skeleton !== null) assert.equal(Ctor.skeleton(variant), skeleton, `${name} ${variant} skeleton does not follow the configured locale or currency`)
+        }
+      }
+    } finally {
+      configure({ locale: '', currency: '' })
+    }
     for (const [name, Ctor] of classes) {
       for (const variant of SIZE_NAMES) {
         const first = Ctor.template(variant)
@@ -300,10 +403,33 @@ describe('the sources', () => {
   // Comments explain these rules, so they are stripped before the scan.
   const code = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
+  // What the two scans below look for. A read of innerHTML is harmless; a write in any spelling, and every other way a
+  // string becomes DOM, is not. The style scan takes a `style=` attribute in any quote, a template expression or an
+  // escaped quote (spaces around the = only inside a tag, so a variable named style is left alone), and a setAttribute whose first argument is "style" in any case or quote.
+  const SINKS = /\b(innerHTML|outerHTML)['"`\]\s]*\+?=(?!=)|\[\s*['"`](innerHTML|outerHTML)|\b(setHTMLUnsafe|parseHTMLUnsafe|insertAdjacentHTML)\b|document\.write|createContextualFragment|DOMParser|\.srcdoc/
+  const STYLES = /[\s"'`]style=\s*(["'`\\]|\$\{)|<[a-z][^<>]*\sstyle\s+=|setAttribute\(\s*['"`]\s*style\s*['"`]|\.cssText/i
+
+  test('the scans catch every spelling they exist for', () => {
+    for (const line of [
+      'el.innerHTML = x', 'el.innerHTML += x', "el['innerHTML'] = x", 'el["outerHTML"]=x', 'el.outerHTML = x',
+      'el.setHTMLUnsafe(x)', 'Document.parseHTMLUnsafe(x)', "el.insertAdjacentHTML('beforeend', x)", 'document.write(x)',
+      'new DOMParser()', 'range.createContextualFragment(x)', 'frame.srcdoc = x',
+    ]) assert.match(line, SINKS, line)
+    for (const line of [
+      'const t = `<i style="a:b">`', "const t = '<i style=\\'a:b\\'>'", 'const t = `<i style=${x}>`', 'const t = "<i  style = \'a\'>"', 'const t = `<i class="a"\n style\n= ${x}>`',
+      'el.setAttribute(`style`, x)', "el.setAttribute('STYLE', x)", 'el.setAttribute( "style" , x)', 'el.style.cssText = x',
+    ]) assert.match(line, STYLES, line)
+    for (const line of ['const html = ptsEl.innerHTML', 'if (el.innerHTML) clear()', 'el.style.setProperty(k, v)', 'const style = doc.createElement(k)', "el.setAttribute('class', x)"]) {
+      assert.doesNotMatch(line, SINKS, line)
+      assert.doesNotMatch(line, STYLES, line)
+    }
+  })
+
   test('markup is written in html.js alone', async () => {
     for (const [file, source] of await sources()) {
       if (file === 'elements/html.js') continue
-      assert.doesNotMatch(code(source), /\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML|document\.write|createContextualFragment|DOMParser|\.srcdoc/, file)
+      const found = code(source).match(SINKS)
+      assert.equal(found, null, `${file}: ${found && found[0]}`)
     }
   })
 
@@ -311,7 +437,8 @@ describe('the sources', () => {
     for (const [file, source] of await sources()) {
       // html.js writes one only in the string it hands a DOM-less test double, never to a browser.
       if (file === 'elements/html.js') continue
-      assert.doesNotMatch(code(source), /\sstyle="|setAttribute\(\s*['"]style['"]|\.cssText/, file)
+      const found = code(source).match(STYLES)
+      assert.equal(found, null, `${file}: ${found && found[0]}`)
     }
   })
 
