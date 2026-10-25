@@ -160,10 +160,13 @@ async function main() {
       // pulls npm's release by accident. Here it becomes the tarball just packed (absolute path).
       manifest.dependencies.tickslate = `file:${tarball}`
       await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
+      // --legacy-peer-deps: npm 10.8's peer-set resolver (#loadPeerSet) throws "Cannot read
+      // properties of null (reading 'edgesOut')" on the hosted runner for these trees; the examples
+      // list every package they need, so nothing relies on auto-installed peers.
       // A private cache: a runner's restored ~/.npm can hold entries that crash npm 10's resolver.
       const env = { ...process.env, npm_config_cache: join(tmp, 'npm-cache') }
       try {
-        await run(npm, ['install', '--no-audit', '--no-fund', '--no-package-lock'], { cwd: dir, env })
+        await run(npm, ['install', '--no-audit', '--no-fund', '--no-package-lock', '--legacy-peer-deps'], { cwd: dir, env })
       } catch (err) {
         err.message += await npmLogTail(env.npm_config_cache)
         throw err
