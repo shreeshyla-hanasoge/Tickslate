@@ -364,6 +364,12 @@ export interface Messages {
   'grid.add': string
   'grid.added': string
   'grid.addFailed': string
+  'grid.strip': string
+  'grid.pin': string
+  'grid.unpin': string
+  'grid.pinned': string
+  'grid.unpinned': string
+  'grid.stripFull': string
   'picker.title': string
   'picker.search': string
   'picker.close': string

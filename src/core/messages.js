@@ -126,6 +126,12 @@ export const EN = Object.freeze({
   'grid.add': 'Add',
   'grid.added': '{label} added.',
   'grid.addFailed': '{label} could not be added.',
+  'grid.strip': 'Pinned to the top',
+  'grid.pin': 'Pin {label} to the top',
+  'grid.unpin': 'Unpin {label}',
+  'grid.pinned': '{label} pinned to the top.',
+  'grid.unpinned': '{label} unpinned.',
+  'grid.stripFull': 'The top strip is full. Unpin a tile first.',
 
   // <ts-widget-picker>
   'picker.title': 'Add a widget',

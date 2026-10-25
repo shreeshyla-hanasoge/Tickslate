@@ -203,6 +203,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `move(id, toIndex)` | `(id, number) => boolean` | Moves the item to that index in the active profile (clamped). Commits with reason `'move'`. `false` for an unknown id |
 | `resize(id, size)` | `(id, SizeName) => boolean` | Snaps to the item's spec. Commits with reason `'resize'`. `false` for an unknown id |
 | `remove(id)` | `(id) => boolean` | Removes the item, which becomes a hidden child. Commits with reason `'remove'`. `false` for an unknown id |
+| `setTopStrip(ids)` | `(readonly string[]) => boolean` | Pins up to three tiles, in order, to the phone top strip, or unpins by leaving them out (see below). Commits with reason `'strip'` and records an undo step. `false` when nothing changed |
 | `profileOverride` | `string \| null` (readonly) | The profile `override()` is showing, or `null` when the schedule decides |
 | `openPicker` | `(() => void) \| null` | Set by [`<ts-grid-controls>`](ts-grid-controls.md) while a picker is linked. The edit pill then shows **Add**, which calls it |
 | `schedule` | `(ProfileSchedule & { calendar }) \| null` | Switches between `'market'` and `'closed'` on time |
@@ -301,7 +302,7 @@ All bubble and are composed. Details and types are in
 
 | Event | When |
 |---|---|
-| `ts-layout-change` | The layout changed by a user's move, resize, remove, add back or undo. Carries the whole layout to save |
+| `ts-layout-change` | The layout changed by a user's move, resize, remove, add back, pin or unpin (reason `'strip'`) or undo. Carries the whole layout to save |
 | `ts-layout-issues` | You set `layout` or `catalog` and `readLayout` repaired something |
 | `ts-edit-change` | Edit mode started or ended |
 | `ts-reading-order-change` | The order of the visible tiles changed: at Done after an edit that moved or removed tiles (before `ts-edit-change`), or when a `layout` you set, a new column count or a tile appearing or going changes it. Not for the first order with a tile in it, nor for your first `layout` before any edit, nor mid-edit |
@@ -309,12 +310,34 @@ All bubble and are composed. Details and types are in
 | `ts-profile-change` | The shown profile changed by schedule or `override()` |
 | `ts-add-request` | `add()` or the picker asks for a new tile. Cancelable: `preventDefault()` and render a child with `item=id` |
 
+## The phone top strip
+
+At 2 columns (phones) up to three tiles can be pinned above the board, where
+they stay while the page scrolls. They are the items named in the layout's
+`topStrip`, in that order: one row, equal in width, each at its `S` variant. The
+strip sticks `var(--ts-strip-top, 0px)` below the top of the viewport, so a
+host with a fixed header sets that token to the header's height.
+
+- At 3 or 4 columns there is no strip: the pinned tiles return to the board at
+  their layout sizes, and `topStrip` is kept, so rotating a phone brings it back.
+- In edit mode each tile's chrome gains a fourth button at 2 columns, **Pin to
+  top** (or **Unpin** on a strip tile). It is 44 px and not a tab stop, like the
+  other chrome buttons. A fourth pin is refused with an announcement.
+- Tiles in the strip reorder among themselves by drag, by keyboard (left and
+  right arrows) and by tap-to-place. They are not resized there.
+- The strip comes first in Tab and reading order, and mirrors under `dir="rtl"`.
+- `setTopStrip(ids)` does the same from code. Every change fires
+  `ts-layout-change` with reason `'strip'` and can be undone.
+- The strip needs the grid's manual slot assignment (Safari 16.4 and later, and
+  every current engine); where that is missing the tiles stay on the board.
+
 ## Parts and slots
 
 | Part | Element |
 |---|---|
 | `board` | The area the tiles sit in |
 | `placeholder` | The slot a lifted tile will land in |
+| `strip` | The phone top strip: the sticky row of pinned tiles above the board |
 | `toast` | The undo toast |
 | `edit-pill` | The Done and Add back pill |
 | `empty` | The empty board panel |

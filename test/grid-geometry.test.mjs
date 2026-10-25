@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes, keepInPlace, visualOrder } from '../src/elements/grid-geometry.js'
+import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes, keepInPlace, visualOrder, splitStrip, stripBoxes, stripSlotAt, mergeStrip } from '../src/elements/grid-geometry.js'
 import { WIDGETS, place, typeForTag } from '../src/core/index.js'
 import { TsGrid } from '../src/elements/index.js'
 
@@ -238,4 +238,80 @@ test('with rtl cellAt is the inverse of boxOf, clamped', () => {
 
 test('extentOf takes the option and ignores it', () => {
   assert.deepEqual(extentOf(624, 316, desktop, { rtl: true }), extentOf(624, 316, desktop))
+})
+
+// ── The phone top strip (RFC 0003 §19) ──
+
+const stripItems = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, size: 'M' }))
+
+test('splitStrip takes the named items in strip order and leaves the rest on the board', () => {
+  const { strip, board } = splitStrip(stripItems, ['c', 'a'], 2)
+  assert.deepEqual(strip.map((i) => i.id), ['c', 'a'])
+  assert.deepEqual(board.map((i) => i.id), ['b', 'd', 'e'])
+  // The items themselves, not copies: the grid compares them by reference.
+  assert.equal(strip[0], stripItems[2])
+})
+
+test('splitStrip is empty at 3 or 4 columns and with no strip', () => {
+  for (const columns of [3, 4]) {
+    const { strip, board } = splitStrip(stripItems, ['a', 'b'], columns)
+    assert.deepEqual(strip, [])
+    assert.deepEqual(board.map((i) => i.id), ['a', 'b', 'c', 'd', 'e'])
+  }
+  assert.deepEqual(splitStrip(stripItems, undefined, 2).strip, [])
+  assert.deepEqual(splitStrip(stripItems, [], 2).board.length, 5)
+})
+
+test('splitStrip skips ids with no item, repeats, and anything past three', () => {
+  const { strip, board } = splitStrip(stripItems, ['x', 'b', 'b', 'a', 'c', 'd'], 2)
+  assert.deepEqual(strip.map((i) => i.id), ['b', 'a', 'c'])
+  assert.deepEqual(board.map((i) => i.id), ['d', 'e'])
+})
+
+test('splitStrip does not change what it is given', () => {
+  const before = JSON.stringify(stripItems)
+  const { board } = splitStrip(stripItems, [], 2)
+  board.pop()
+  assert.equal(JSON.stringify(stripItems), before)
+})
+
+const phone = metrics(390, 2, 150, 10)
+
+test('stripBoxes are equal in width, span the board, and are one compact row tall', () => {
+  for (const count of [1, 2, 3]) {
+    const boxes = stripBoxes(count, phone)
+    assert.equal(boxes.length, count)
+    assert.ok(boxes.every((b) => b.w === boxes[0].w && b.h === 150 && b.y === 0))
+    assert.equal(boxes[0].x, 0)
+    const last = boxes[count - 1]
+    assert.ok(Math.abs(last.x + last.w - 390) < 1e-9)
+    for (let i = 1; i < count; i++) assert.ok(Math.abs(boxes[i].x - (boxes[i - 1].x + boxes[i - 1].w + 10)) < 1e-9)
+  }
+  assert.deepEqual(stripBoxes(0, phone), [])
+  assert.equal(stripBoxes(3, phone)[0].w, (390 - 20) / 3)
+})
+
+test('stripBoxes mirror under rtl: the first tile is at the right edge', () => {
+  const ltr = stripBoxes(3, phone)
+  const rtl = stripBoxes(3, phone, { rtl: true })
+  rtl.forEach((box, i) => {
+    assert.ok(Math.abs(box.x - (390 - ltr[i].x - ltr[i].w)) < 1e-9)
+    assert.equal(box.w, ltr[i].w)
+  })
+  assert.ok(rtl[0].x > rtl[1].x && rtl[1].x > rtl[2].x)
+})
+
+test('stripSlotAt picks the slot whose box starts nearest, either direction', () => {
+  const ltr = stripBoxes(3, phone)
+  ltr.forEach((box, i) => assert.equal(stripSlotAt(box.x + 5, 3, phone), i))
+  assert.equal(stripSlotAt(-300, 3, phone), 0)
+  assert.equal(stripSlotAt(900, 3, phone), 2)
+  const rtl = stripBoxes(3, phone, { rtl: true })
+  rtl.forEach((box, i) => assert.equal(stripSlotAt(box.x - 5, 3, phone, { rtl: true }), i))
+  assert.equal(stripSlotAt(900, 3, phone, { rtl: true }), 0)
+})
+
+test('mergeStrip refills the visible slots and leaves unseen ids where they were', () => {
+  assert.deepEqual(mergeStrip(['a', 'x', 'b'], ['b', 'a']), ['b', 'x', 'a'])
+  assert.deepEqual(mergeStrip(['a', 'b'], ['a', 'b']), ['a', 'b'])
 })

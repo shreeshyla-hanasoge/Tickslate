@@ -6,7 +6,7 @@
  * and how a changed set of children updates the grid's own list.
  */
 
-import { isSize, snapSize } from '../core/index.js'
+import { TOP_STRIP_MAX, isSize, snapSize } from '../core/index.js'
 
 export function metrics(width, columns, rowHeight, gap) {
   const colWidth = Math.max(0, (width - gap * (columns - 1)) / columns)
@@ -54,6 +54,62 @@ export function extentOf(w, h, m) {
     cols: Math.min(m.columns, Math.max(1, (w + m.gap) / m.pitchX)),
     rows: Math.max(1, (h + m.gap) / m.pitchY),
   }
+}
+
+/**
+ * The phone top strip (RFC 0003 §19): the items `topStrip` names, in its order,
+ * split from the rest of the board. It exists only at 2 columns; at 3 or 4 the
+ * board keeps every item at its layout size and `topStrip` is simply not read.
+ * Ids with no item in `items` (another profile's, or a tile the host has not
+ * rendered) are skipped, and at most TOP_STRIP_MAX count.
+ */
+export function splitStrip(items, topStrip, columns) {
+  if (columns !== 2 || !Array.isArray(topStrip) || !topStrip.length) return { strip: [], board: items.slice() }
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const strip = []
+  for (const id of topStrip) {
+    const item = byId.get(id)
+    if (item && !strip.includes(item) && strip.length < TOP_STRIP_MAX) strip.push(item)
+  }
+  const pinned = new Set(strip)
+  return { strip, board: items.filter((item) => !pinned.has(item)) }
+}
+
+/**
+ * The boxes of `count` strip tiles: equal in width, filling the board's width,
+ * one compact row tall. With `rtl` the first tile sits at the right edge.
+ */
+export function stripBoxes(count, m, o) {
+  const rtl = !!(o && o.rtl)
+  const total = m.columns * m.colWidth + (m.columns - 1) * m.gap
+  const w = count > 0 ? Math.max(0, (total - m.gap * (count - 1)) / count) : 0
+  const boxes = []
+  for (let i = 0; i < count; i++) {
+    const x = i * (w + m.gap)
+    boxes.push({ x: rtl ? total - w - x : x, y: 0, w, h: m.rowHeight })
+  }
+  return boxes
+}
+
+/** The strip slot nearest a dragged tile's left edge `x`: boxes run in strip order, so the nearest left edge is the slot. */
+export function stripSlotAt(x, count, m, o) {
+  let best = 0
+  let bestDistance = Infinity
+  stripBoxes(count, m, o).forEach((box, i) => {
+    const d = Math.abs(box.x - x)
+    if (d < bestDistance) {
+      best = i
+      bestDistance = d
+    }
+  })
+  return best
+}
+
+/** Write a new order for the visible strip ids back into the whole top strip, leaving ids the grid can't see (another profile's) in their slots. */
+export function mergeStrip(full, visibleIds) {
+  const visible = new Set(visibleIds)
+  let next = 0
+  return full.map((id) => (visible.has(id) ? visibleIds[next++] : id))
 }
 
 /**

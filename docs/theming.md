@@ -184,6 +184,7 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-pad` | Padding inside a tile | `18px` | `16px` | Every tile |
 | `--ts-row-compact` | Row height at 2 columns (phones) | `150px` | same | `<ts-grid>` at 2 columns. Set in px |
 | `--ts-gap-compact` | Gap at 2 columns (phones) | `10px` | same | `<ts-grid>` at 2 columns. Set in px |
+| `--ts-strip-top` | How far below the top of the page the phone top strip sticks | `0px` | same | `<ts-grid>` at 2 columns, when tiles are pinned. Set it to the height of your own fixed header |
 | `--ts-num-weight` | Weight of figures | `500` | same | Every figure; the headline figures take `--ts-headline-weight`, which follows it |
 | `--ts-num-weight-small` | Weight of small figures | `500` | `600` | Secondary figures; Graphite is heavier because light-on-dark text reads thinner |
 | `--ts-label-size` | Size of a tile's label | `10px` | same | The label in every header, and the small labels beside figures |

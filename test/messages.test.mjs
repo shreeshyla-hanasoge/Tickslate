@@ -671,7 +671,7 @@ describe('every widget and the grid, in the pseudo-locale', () => {
       g._order = [{ id: 'pnl', type: 'todayPnl', size: 'M' }]
       g._chrome('pnl')
       const names = stringsOf(...g._chromes.values())
-      assert.equal(names.length, 3)
+      assert.equal(names.length, 4)
       for (const text of names) assert.equal(leaks(text), '', text)
       // No label attribute and the catalog entry's English default: the message wins.
       assert.ok(names.every((s) => s.includes("⟦Today's P&L⟧") || s.includes('⟦')), JSON.stringify(names))
