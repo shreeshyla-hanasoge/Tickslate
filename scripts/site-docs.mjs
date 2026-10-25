@@ -127,7 +127,8 @@ const MARK = '<svg class="site-mark" viewBox="0 0 24 24" width="22" height="22" 
  */
 export function siteHeader({ current = '', skip = 'main' } = {}) {
   const links = NAV.map((l) => `<li><a href="${l.href}"${l.key === current ? ' aria-current="page"' : ''}>${l.label}</a></li>`).join('')
-  const theme = '<button type="button" class="site-theme" data-site-theme aria-label="Colour theme: follows your system. Change it" title="Colour theme"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg><span data-site-theme-label>Auto</span></button>'
+  // The accessible name starts with the visible word (WCAG 2.5.3), then says what it is.
+  const theme = '<button type="button" class="site-theme" data-site-theme><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg><span data-site-theme-label>Auto</span><span class="site-sr" data-site-theme-more>: colour theme, follows your system. Press to change it</span></button>'
   return `<a class="site-skip" href="#${skip}">Skip to content</a>
 <header class="site-bar">
   <div class="site-bar-in">

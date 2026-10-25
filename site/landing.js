@@ -216,10 +216,14 @@ hero.addEventListener('ts-edit-change', (e) => { edit.textContent = e.detail.edi
 // The board starts from its markup every visit; Reset puts back the order and
 // sizes it started with, and any tile removed while editing.
 const initial = JSON.parse(JSON.stringify(hero.layout))
+// Reset is a fresh start: it also turns live data back on.
 document.getElementById('reset').addEventListener('click', () => {
   hero.editing = false
   hero.layout = initial
-  statusEl.textContent = 'The board is back to how it started.'
+  paused = false
+  pause.setAttribute('aria-pressed', 'false')
+  run()
+  statusEl.textContent = 'The board is back to how it started, with live data on.'
 })
 
 const preset = document.getElementById('preset')

@@ -17,7 +17,7 @@ package.
 | `/docs/index.html` | generated | The docs hub |
 | `/docs/**/*.html` | `docs/guide/**`, `docs/widgets/`, `docs/reference/`, `docs/theming.md`, `docs/ACCESSIBILITY.md` | One page per Markdown file, rendered at build time |
 | `/changelog.html` | `CHANGELOG.md` | The changelog |
-| `/404.html` | `site/404.html` | Not found, on GitHub Pages only (see below) |
+| `/404.html` | `site/404.html` | Not found. Published at `/404.html` on LambdaDeploy and `/Tickslate/404.html` on GitHub Pages, but only GitHub Pages serves it for a missing path (see below) |
 
 **Every link names a file.** The LambdaDeploy host does not resolve a folder
 to its `index.html`, and has no not-found page of its own:
