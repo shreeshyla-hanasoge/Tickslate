@@ -1506,7 +1506,7 @@ export class TsGrid extends Base {
     if (changed && !first && !quiet) this._emit('ts-reading-order-change', { order: [...order] })
   }
 
-  /** The visible tiles' ids in visual order, row by row and left to right by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
+  /** The visible tiles' ids in visual order, row by row, in the page's inline direction (so right to left under dir=rtl), by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
   get readingOrder() {
     return this._readingOrder
   }
