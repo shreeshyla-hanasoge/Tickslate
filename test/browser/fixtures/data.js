@@ -127,6 +127,9 @@ export function dataFor(tag, scale = 1) {
         ],
         asOf: FROZEN,
       }
+    case 'ts-progress':
+      // The target stays positive for a negative scale, so every set draws a gauge; the magnitude is in the figures.
+      return { value: 6400 * scale, target: 10000 * Math.abs(scale), mode: 'limit', format: 'money', caption: 'Resets at 09:15', asOf: FROZEN }
     case 'ts-table': {
       // The first column carries the data's magnitude too, so a narrow size that shows only it still shows the data changing.
       const t = table(scale)
@@ -145,6 +148,12 @@ export function dataFor(tag, scale = 1) {
       p.positions[0].instrument = `${p.positions[0].instrument} ${Math.floor(Math.log10(Math.abs(scale) + 1) * 10)}`
       return p
     }
+    case 'ts-pnl-calendar':
+      return pnlCalendar({ scale })
+    case 'ts-edge-stats':
+      return edgeStatsData(scale)
+    case 'ts-capital-funding':
+      return fundingData(scale)
     case 'ts-today-pnl':
       return todayPnl(scale)
     case 'ts-equity-curve':
@@ -237,5 +246,55 @@ export function openPositions({ n = 9, step = 0, plain = false, scale = 1 } = {}
       }
       return out
     }),
+  }
+}
+
+/**
+ * About 400 days of daily P&L ending the day before TODAY: weekdays with a few holidays left out, runs of red,
+ * two weekend special sessions and a day with two rows. `scale` multiplies every figure.
+ */
+export function pnlCalendar({ scale = 1, step = 0 } = {}) {
+  const r = seeded(77)
+  const days = []
+  for (let i = 400; i >= 1; i--) {
+    const date = shiftDay(TODAY, -i)
+    const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
+    const weekend = dow === 0 || dow === 6
+    // Two Saturday special sessions; a holiday now and then.
+    if (weekend && !(dow === 6 && i % 97 === 0)) continue
+    if (!weekend && r() < 0.06) continue
+    const cold = Math.sin(i / 17) < -0.35
+    const pnl = Math.round(((r() - (cold ? 0.62 : 0.4)) * 9200 + (r() < 0.04 ? 14000 : 0)) * scale)
+    days.push({ date, pnl })
+    if (i === 30) days.push({ date, pnl: 450 * scale })
+  }
+  days.push({ date: TODAY, pnl: Math.round((1240 + step * 10) * scale) })
+  return { days, asOf: FROZEN, live: true }
+}
+
+// ── Edge stats and capital funding ────────────────────────────────────────
+// The magnitude is in a count and a name, so the S size, which shows neither of the scaled figures, still shows the data changing.
+const magnitude = (scale) => Math.floor(Math.log10(Math.abs(scale) + 1) * 10)
+
+export function edgeStatsData(scale = 1) {
+  const m = magnitude(scale)
+  return {
+    stats: { trades: 40 + m, wins: 22, losses: 18, winRate: 0.55, profitFactor: 1.42, avgWin: 2400 * scale, avgLoss: -1700 * scale, expectancy: 560 * scale },
+    scope: 'Last 30 days',
+    distribution: ['−3k', '−2k', '−1k', '0', '1k', '2k', '3k'].map((label, i) => ({ label, count: 3 + ((i * 7 + m) % 11), sign: i < 3 ? -1 : 1 })),
+    asOf: FROZEN,
+    live: true,
+  }
+}
+
+export function fundingData(scale = 1) {
+  const m = magnitude(scale)
+  return {
+    accounts: [
+      { id: 'a', name: `Broker A ${m}`, balance: 18640.4 * scale, allocations: [{ id: 'a1', name: 'Opening range', detail: 'NIFTY 50 · 5m', amount: 25000 * scale, live: true, pnl: 1240.5 * scale }, { id: 'a2', name: 'Mean reversion', amount: 25000 * scale, pnl: -310 * scale }] },
+      { id: 'b', name: 'Broker B', balance: 452800.5 * scale, allocations: [{ id: 'b1', name: 'Trend follow', amount: 200000 * scale }, { id: 'b2', name: 'Gap fade', amount: 150000 * scale }] },
+    ],
+    asOf: FROZEN,
+    live: true,
   }
 }

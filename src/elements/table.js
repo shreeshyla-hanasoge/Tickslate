@@ -238,7 +238,7 @@ th {
 td { border-block-end: 1px solid var(--ts-line); }
 tbody tr { position: relative; }
 tbody tr:last-child td { border-block-end: 0; }
-td.n { font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate; }
+td.n { font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate; direction: var(--ts-fig-dir, ltr); }
 .sort {
   display: inline-flex; align-items: center; gap: 4px; max-inline-size: 100%; margin: 0; padding: 0; border: 0; background: none;
   font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; min-block-size: 18px;

@@ -536,3 +536,25 @@ test.describe('tap-to-place', () => {
     expect(await page.evaluate(() => [...document.querySelectorAll('#g > [item]')].some((el) => el.hasAttribute('inert')))).toBe(false)
   })
 })
+
+// The empty board's panel sits inside the board. A press on its Add back
+// button was read as a tap on the bare board, which ended editing on
+// pointerup and could lose the click that opens the list. It is a mouse press
+// on purpose: tap() and keyboard Enter never travelled that path.
+test('a mouse click on the empty board\'s Add back opens its list and keeps editing', async ({ page }) => {
+  await load(page)
+  await page.evaluate(() => {
+    const g = document.getElementById('g')
+    g.editing = true
+    for (const { id } of g.layout.profiles[g.profile]) g.remove(id)
+  })
+  await settle(page)
+  const add = page.locator('ts-grid .empty .add')
+  await expect(add).toBeVisible()
+  const box = await add.boundingBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.up()
+  await expect(page.locator('ts-grid .empty .menu')).toBeVisible()
+  expect(await editing(page)).toBe(true)
+})
