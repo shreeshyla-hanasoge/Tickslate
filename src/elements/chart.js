@@ -7,6 +7,11 @@
  * with `vector-effect: non-scaling-stroke` keeping lines the same weight.
  */
 
+import { DEV, warnOnce } from './dev.js'
+
+// The fewest points that still hold the first, the last, a low and a high.
+const MIN_POINTS = 4
+
 const round = (v) => Math.round(v * 10) / 10
 
 const finite = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)
@@ -118,7 +123,13 @@ export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, in
     const py = round(y(pts[0].y))
     line = `M${firstX} ${py} L${lastX} ${py}`
   } else {
-    const cap = maxPoints === undefined || Number.isNaN(maxPoints) ? 2 * width : maxPoints
+    // null (a JSON host's "unset") and NaN mean the default. Below four a line keeps neither its low nor its high, so
+    // that is the floor, and a width that gives less (0) gets it too.
+    let cap = maxPoints == null || Number.isNaN(maxPoints) ? 2 * width : maxPoints
+    if (cap < MIN_POINTS) {
+      if (DEV && maxPoints != null && !Number.isNaN(maxPoints)) warnOnce('maxPoints-floor', `linePaths maxPoints is ${maxPoints}; a line needs at least ${MIN_POINTS} points to keep its low and high, so it draws ${MIN_POINTS}. Pass Infinity to draw every point.`)
+      cap = MIN_POINTS
+    }
     line = linePath(downsample(pts, cap), x, y)
     firstX = round(x(pts[0].x))
     lastX = round(x(pts[pts.length - 1].x))

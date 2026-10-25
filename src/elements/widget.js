@@ -621,8 +621,12 @@ const sliceClock = () => (typeof performance !== 'undefined' ? performance.now()
 // busy machine takes over it.
 const sliceLive = () => typeof requestAnimationFrame === 'function'
 
+// While the page is printing, a render must land in its microtask: the browser takes its snapshot as the beforeprint
+// handlers return, and a timer would run after it.
+let printing = false
+
 function sliceSpent() {
-  return sliceLive() && spent > SLICE_MS
+  return !printing && sliceLive() && spent > SLICE_MS
 }
 
 function sliced(ms) {
@@ -641,7 +645,9 @@ function sliced(ms) {
 // One observer for every widget on the page, with a margin of a screen on each side: a widget that is display: none,
 // or further than that from the viewport, skips its renders until it comes back (RFC 0003 §23). It reports a box-less
 // element (display: none) as not intersecting, which is the case we want. Absent in Node and old engines, where every
-// widget simply stays "in view".
+// widget simply stays "in view". Its margin reaches only past the viewport, not past an overflow: auto ancestor (the
+// observer has one root, and a root per scroll container would cost more than the lead is worth): inside a scrolled
+// panel a tile draws when it first intersects the panel, which is a frame later, never later than that.
 let viewObserver = null
 const watched = new Set()
 
@@ -659,16 +665,27 @@ function watchView(el) {
     )
     if (typeof window !== 'undefined' && window.addEventListener) {
       // A printout is of the whole page, whatever was in view: draw everything first, then go back to watching.
-      window.addEventListener('beforeprint', () => watched.forEach((el) => el._setInView(true)))
-      window.addEventListener('afterprint', () => watched.forEach((el) => {
-        viewObserver.unobserve(el)
-        viewObserver.observe(el)
-      }))
+      window.addEventListener('beforeprint', () => {
+        printing = true
+        watched.forEach((el) => el._setInView(true))
+        // The microtasks of this handler run before the snapshot; the time-slicer would put them after it. Drawn here,
+        // not queued, so nothing depends on when they run.
+        watched.forEach((el) => el._drawNow())
+      })
+      window.addEventListener('afterprint', () => {
+        printing = false
+        watched.forEach((el) => {
+          viewObserver.unobserve(el)
+          viewObserver.observe(el)
+        })
+      })
     }
   }
   watched.add(el)
   viewObserver.observe(el)
 }
+
+const boxless = (el) => typeof getComputedStyle === 'function' && getComputedStyle(el).display === 'contents'
 
 function unwatchView(el) {
   watched.delete(el)
@@ -701,6 +718,8 @@ export class TsWidget extends Base {
     // then, so a widget renders on connect and never stays blank where there is no observer.
     this._inView = true
     this._skipped = false
+    // True once the widget has drawn something other than its loading skeleton; only then may a render wait.
+    this._drawn = false
     this._unsubFresh = null
     this._flashes = new Map()
     this._failed = false
@@ -974,15 +993,25 @@ export class TsWidget extends Base {
   }
 
   _flush() {
+    // Already drawn by _drawNow (a printout), or the request was cancelled: nothing is owed.
+    if (!this._queued) return
     if (!this.isConnected) {
       this._queued = false
       return
     }
-    // Hidden or far away: remember that a render was wanted, and make it when the widget comes back.
-    if (!this._inView) {
-      this._queued = false
-      this._skipped = true
-      return
+    // Hidden or far away: remember that a render was wanted, and make it when the widget comes back. Only a widget that
+    // already holds its content waits: the first content always draws, so the accessibility tree never keeps a
+    // loading skeleton for data that has arrived, whatever order the host set things in.
+    if (!this._inView && this._drawn) {
+      // A host that gives the element no box (display: contents) is never "intersecting", whatever is on screen.
+      if (!this._skipped && boxless(this)) {
+        this._inView = true
+        unwatchView(this)
+      } else {
+        this._queued = false
+        this._skipped = true
+        return
+      }
     }
     // Thirty tiles fed in one tick would all render in one task, which on a slow phone is a long one. A page that has
     // spent its slice puts the rest in the next task; _queued stays set meanwhile, so requests still merge.
@@ -997,6 +1026,13 @@ export class TsWidget extends Base {
     } finally {
       sliced(sliceClock() - from)
     }
+  }
+
+  /** Draw now if a render is owed, past the time-slicer: for a printout, which cannot wait for a timer. */
+  _drawNow() {
+    if (!this.isConnected || !this._queued) return
+    this._queued = false
+    this._render()
   }
 
   /** Called by the viewport observer when this widget enters or leaves the render zone. */
@@ -1456,6 +1492,7 @@ export class TsWidget extends Base {
     const state = this.state
 
     if (state === 'error' || this._error || this._parseError) {
+      this._drawn = true
       this._failed = false
       return this._showError(label, this._error, grid)
     }
@@ -1463,6 +1500,7 @@ export class TsWidget extends Base {
       this._failed = false
       return this._showLoading(label, variant, grid)
     }
+    this._drawn = true
     if (this._data === null) {
       this._failed = false
       return this._showEmpty(label, grid)

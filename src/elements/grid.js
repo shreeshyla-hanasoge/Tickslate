@@ -2063,9 +2063,11 @@ export class TsGrid extends Base {
     const scroll = scrollPos(g.scroller)
     const x = g.x - g.offsetX - (g.board0.left - (scroll.x - g.scroll0.x))
     const y = g.y - g.offsetY - (g.board0.top - (scroll.y - g.scroll0.y))
-    // The slot under the tile depends on the cell it is over, the order and the column count, and every frame of a
-    // drag asks again whether or not the pointer moved. Asked again with the same cell, the answer is the last one.
-    const cell = cellAt(x, y, g.cols, m)
+    // The slot under the tile depends on the whole cell it is over, the order and the column count, and every frame of
+    // a drag asks again whether or not the pointer crossed into another cell. The pointer's cell is rounded to the
+    // cell grid, which is where the slots are, and asked again with the same cell the answer is the last one.
+    const at = cellAt(x, y, g.cols, m)
+    const cell = { col: Math.round(at.col), row: Math.round(at.row) }
     const memo = g.memo
     let target
     if (memo && memo.order === this._order && memo.columns === this._columns && memo.pitchX === m.pitchX && memo.pitchY === m.pitchY && memo.col === cell.col && memo.row === cell.row) {

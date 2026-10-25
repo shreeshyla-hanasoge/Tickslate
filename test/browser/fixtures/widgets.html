@@ -25,7 +25,7 @@
 <body>
 <script>
   // These specs read every tile on a long page, drawn or not. Off-screen widgets skip renders by design (RFC 0003 §23),
-  // so this page opts out by having no IntersectionObserver; test/browser/perf.spec.mjs covers the gating itself.
+  // so this page opts out by having no IntersectionObserver. The gating itself (first draw, later renders, print, display: contents) runs on every engine in test/browser/perf.spec.mjs, on freshness.html, which keeps the observer.
   delete window.IntersectionObserver
 </script>
 <main id="stage">

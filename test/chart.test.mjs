@@ -2,6 +2,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { todayPnlModel, CHART_BOX } from '../src/elements/today-pnl.js'
 import { createFormatter, createMessages } from '../src/core/index.js'
+import { resetWarnings } from '../src/elements/dev.js'
 import { downsample, scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths } from '../src/elements/chart.js'
 
 describe('scale', () => {
@@ -428,5 +429,57 @@ describe('downsampling (RFC 0003 §23)', () => {
     // Under 50 ms when the machine is idle (about 35 ms measured); 100 ms is the ceiling for a busy CI runner,
     // taken as the best of seven because load only ever adds time.
     assert.ok(best < 100, `${best.toFixed(1)} ms`)
+  })
+})
+
+describe('maxPoints edge cases (RFC 0003 §23)', () => {
+  const pts = Array.from({ length: 2000 }, (_, i) => ({ x: i, y: i === 700 ? 500 : i === 1300 ? -400 : Math.round(Math.sin(i / 90) * 100) }))
+  const drawn = (opts) => linePaths(pts, { width: 300, height: 100, pad: 4, ...opts }).line.slice(1).split(' L').map((p) => p.split(' ').map(Number))
+  const every = drawn({ maxPoints: Infinity })
+
+  test('null means the default, as an unset option from a JSON host', () => {
+    assert.equal(linePaths(pts, { width: 300, height: 100, maxPoints: null }).line, linePaths(pts, { width: 300, height: 100 }).line)
+    assert.ok(drawn({ maxPoints: null }).length > 4)
+  })
+
+  test('a cap below four, and a zero width, floor at four points that keep the low and the high', () => {
+    const warn = console.warn
+    console.warn = () => {}
+    try {
+      const ys = every.map(([, y]) => y)
+      for (const maxPoints of [0, 1, 2, 3, -5, -Infinity]) {
+        const d = drawn({ maxPoints })
+        assert.equal(d.length, 4, `maxPoints ${maxPoints}`)
+        assert.deepEqual(d[0], every[0])
+        assert.deepEqual(d[3], every[every.length - 1])
+        assert.equal(Math.min(...d.map(([, y]) => y)), Math.min(...ys))
+        assert.equal(Math.max(...d.map(([, y]) => y)), Math.max(...ys))
+      }
+      assert.equal(linePaths(pts, { width: 0, height: 100 }).line.split(' L').length, 4)
+    } finally {
+      console.warn = warn
+    }
+  })
+
+  test('a cap below four warns once in development; null, NaN, the default and Infinity do not', () => {
+    const warn = console.warn
+    const seen = []
+    console.warn = (m) => seen.push(m)
+    try {
+      resetWarnings()
+      drawn({ maxPoints: null })
+      drawn({ maxPoints: NaN })
+      drawn({ maxPoints: Infinity })
+      drawn({})
+      linePaths(pts, { width: 0, height: 100 })
+      assert.deepEqual(seen, [])
+      drawn({ maxPoints: 2 })
+      drawn({ maxPoints: 0 })
+      assert.equal(seen.length, 1)
+      assert.match(seen[0], /maxPoints is 2.*at least 4/)
+    } finally {
+      console.warn = warn
+      resetWarnings()
+    }
   })
 })

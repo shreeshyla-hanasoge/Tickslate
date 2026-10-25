@@ -1,6 +1,8 @@
 // Performance hygiene in a real engine (RFC 0003 §23): thirty live tiles updating every second stay under the
 // long-task line at 4x CPU throttling, 200 mount/unmount cycles leave no interval behind, and a widget nobody can
-// see does no work. Chromium only: the throttle is a DevTools call, and long-task timing is Chromium's.
+// see does no work. The throttled run is Chromium only (the throttle is a DevTools call, and long-task timing is
+// Chromium's); the leak and gating specs run on every engine. This page keeps the real IntersectionObserver, which
+// widgets.html deliberately removes, so it is where the gating is exercised in WebKit, Firefox and both phones.
 //
 // The update window is short by default so CI stays quick. The full check from the RFC is 60 s:
 //
@@ -9,12 +11,11 @@
 // The fixture is the freshness page, emptied: it imports every widget and defines nothing else we need.
 import { test, expect } from '@playwright/test'
 
-test.skip(({ browserName }) => browserName !== 'chromium', 'CPU throttling and long-task timing are Chromium DevTools features')
-
 const PAGE = '/test/browser/fixtures/freshness.html'
 const SECONDS = Math.max(2, Number(process.env.TICKSLATE_PERF_SECONDS) || 8)
 const LONG_TASK_MS = 50
-const THROTTLE = 4
+// 4x is the RFC's mid-range phone; TICKSLATE_PERF_THROTTLE=1 shows what the machine itself adds.
+const THROTTLE = Number(process.env.TICKSLATE_PERF_THROTTLE) || 4
 
 test.beforeEach(async ({ page }) => {
   await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
@@ -42,7 +43,8 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('thirty live tiles updating every second record no long task under 4x CPU throttling', async ({ page }) => {
+test('thirty live tiles updating every second record no long task under 4x CPU throttling', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CPU throttling and long-task timing are Chromium DevTools features')
   test.setTimeout((SECONDS + 60) * 1000)
   await page.setViewportSize({ width: 1280, height: 900 })
   const cdp = await page.context().newCDPSession(page)
@@ -89,6 +91,15 @@ test('thirty live tiles updating every second record no long task under 4x CPU t
     }
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   })
+  // The page is about 3300 px tall and a tile is drawn while it is within one viewport height of the screen, so a
+  // viewport of half the page puts all thirty in the render zone: what is measured is thirty live tiles, not the
+  // eighteen of a short window. Stated and asserted rather than hoped for.
+  const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight)
+  await page.setViewportSize({ width: 1280, height: Math.ceil(pageHeight / 2) })
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const live = await page.evaluate(() => window.__perf.tiles.filter(({ el }) => el._inView).length)
+  console.log(`perf: ${live} of 30 tiles in the render zone, page ${pageHeight}px, viewport ${Math.ceil(pageHeight / 2)}px`)
+  expect(live).toBe(30)
   // Every tile drew its content, not a skeleton.
   expect(await page.evaluate(() => window.__perf.tiles.every(({ el }) => !el.shadowRoot.querySelector('[part="tile"] [aria-busy="true"]')))).toBe(true)
 
@@ -215,4 +226,170 @@ test('a hidden or distant widget does no work, and draws once when it can be see
   })
   seen = await state()
   expect(seen.far).toBe(1)
+})
+
+test('a tile two screens down draws its first content when data arrives after the observer has spoken', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const seen = await page.evaluate(async () => {
+    const { dataFor } = await import('/test/browser/fixtures/data.js')
+    const stage = document.getElementById('stage')
+    stage.style.cssText = 'display:block;padding:16px'
+    const spacer = document.createElement('div')
+    spacer.style.height = '4000px'
+    stage.append(spacer)
+    const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const el = document.createElement('ts-metric')
+    el.setAttribute('label', 'Far metric')
+    el.style.width = '304px'
+    stage.append(el)
+    // The host connects first and fetches after: the observer has said "out" before the data comes.
+    await frames()
+    await frames()
+    el.data = dataFor('ts-metric')
+    await frames()
+    const tile = el.shadowRoot.querySelector('[part="tile"]')
+    window.__far = el
+    return { value: !!el.shadowRoot.querySelector('[part="value"]'), busy: !!el.shadowRoot.querySelector('[aria-busy="true"]'), label: tile ? tile.getAttribute('aria-label') : null, inView: el._inView }
+  })
+  // Out of the zone, yet drawn: the accessibility tree never holds a skeleton for data that has arrived.
+  expect(seen.inView).toBe(false)
+  expect(seen.value).toBe(true)
+  expect(seen.busy).toBe(false)
+  expect(seen.label).toMatch(/Far metric/)
+  expect(seen.label).toMatch(/\d/)
+  // Later changes while it is out of sight still wait, and are drawn when it is seen.
+  const renders = await page.evaluate(async () => {
+    const { dataFor } = await import('/test/browser/fixtures/data.js')
+    const el = window.__far
+    let n = 0
+    const update = el.update.bind(el)
+    el.update = (...args) => {
+      n++
+      return update(...args)
+    }
+    el.data = dataFor('ts-metric', 3)
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const waiting = n
+    el.scrollIntoView()
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    return { waiting, after: n }
+  })
+  expect(renders).toEqual({ waiting: 0, after: 1 })
+})
+
+test('a printout draws every waiting tile before the beforeprint handlers return', async ({ page, browserName }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
+  await page.evaluate(async () => {
+    const { dataFor } = await import('/test/browser/fixtures/data.js')
+    const stage = document.getElementById('stage')
+    stage.style.cssText = 'display:block;padding:16px'
+    const spacer = document.createElement('div')
+    spacer.style.height = '3000px'
+    stage.append(spacer)
+    const tags = ['ts-today-pnl', 'ts-metric', 'ts-session-clock', 'ts-progress', 'ts-table', 'ts-watchlist', 'ts-chart', 'ts-open-positions', 'ts-edge-stats', 'ts-card']
+    const tiles = []
+    for (let i = 0; i < 30; i++) {
+      const tag = tags[i % tags.length]
+      const el = document.createElement(tag)
+      el.style.cssText = 'width:304px;display:block;margin-bottom:12px'
+      el.setAttribute('size', 'M')
+      if (tag === 'ts-card') el.insertAdjacentHTML('beforeend', '<span slot="value">42</span>')
+      el.data = dataFor(tag)
+      el.renders = 0
+      const update = el.update.bind(el)
+      el.update = (...args) => {
+        el.renders++
+        return update(...args)
+      }
+      stage.append(el)
+      tiles.push({ el, tag })
+    }
+    window.__tiles = tiles
+    window.__dataFor = dataFor
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  })
+  // All thirty are far below the screen and have drawn their first content. New data now has to wait.
+  expect(await page.evaluate(() => window.__tiles.filter(({ el }) => !el._inView).length)).toBe(30)
+  await page.evaluate(() => {
+    for (const { el, tag } of window.__tiles) {
+      el.renders = 0
+      el.data = window.__dataFor(tag, 1.5)
+    }
+  })
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  expect(await page.evaluate(() => window.__tiles.filter(({ el }) => el.renders === 0).length)).toBe(30)
+
+  if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE })
+  try {
+    // No await between the event and the count: a browser takes its snapshot as the handlers return.
+    const drawn = await page.evaluate(() => {
+      window.dispatchEvent(new Event('beforeprint'))
+      return window.__tiles.filter(({ el }) => el.renders === 1).length
+    })
+    expect(drawn).toBe(30)
+  } finally {
+    if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 })
+  }
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')))
+})
+
+test('a host with display: contents is drawn, not left as a skeleton', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  const seen = await page.evaluate(async () => {
+    const { dataFor } = await import('/test/browser/fixtures/data.js')
+    const stage = document.getElementById('stage')
+    stage.style.cssText = 'display:block;padding:16px'
+    const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const el = document.createElement('ts-metric')
+    el.style.display = 'contents'
+    stage.append(el)
+    await frames()
+    el.data = dataFor('ts-metric')
+    await frames()
+    el.data = dataFor('ts-metric', 2)
+    await frames()
+    return { value: el.shadowRoot.querySelector('[part="value"]')?.textContent, busy: !!el.shadowRoot.querySelector('[aria-busy="true"]') }
+  })
+  expect(seen.busy).toBe(false)
+  expect(seen.value).toBeTruthy()
+})
+
+test('a drag asks for the slot again only when the pointer crosses into another cell', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/test/browser/fixtures/grid.html?mode=explicit')
+  await page.waitForFunction(() => window.__ready === true)
+  await page.evaluate(() => { document.getElementById('g').editing = true })
+  const centre = async (selector) => {
+    const box = await page.locator(selector).boundingBox()
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  }
+  const from = await centre('ts-grid .chrome[data-id="tasks"] .handle')
+  const to = await centre('#g > [item="notes"]')
+  await page.evaluate(() => {
+    const g = document.getElementById('g')
+    const track = g._track.bind(g)
+    window.__memos = []
+    g._track = (gesture) => {
+      const out = track(gesture)
+      const memo = gesture.memo
+      window.__memos.push({ memo, col: memo && memo.col, row: memo && memo.row, target: out.target, same: memo && memo.target === out.target })
+      return out
+    }
+  })
+  await page.mouse.move(from.x, from.y)
+  await page.mouse.down()
+  // A hundred one-pixel steps along the path: far more frames than cells crossed.
+  const steps = 100
+  for (let i = 1; i <= steps; i++) await page.mouse.move(from.x + ((to.x - 20 - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps)
+  await page.mouse.up()
+  const calls = await page.evaluate(() => window.__memos.map(({ memo, col, row, same }) => ({ id: memo ? [col, row].join() : null, memo: memo ? 1 : 0, same })))
+  const distinctMemos = await page.evaluate(() => new Set(window.__memos.map((m) => m.memo).filter(Boolean)).size)
+  const cells = new Set(calls.map((c) => c.id).filter(Boolean))
+  expect(calls.length).toBeGreaterThan(cells.size)
+  // A handful of computed answers (a cell crossed, or a reorder that changed the tiles' order), not one per frame, and
+  // every answer returned is the one the memo holds.
+  expect(distinctMemos * 5).toBeLessThan(calls.length)
+  expect(calls.every((c) => c.same)).toBe(true)
 })

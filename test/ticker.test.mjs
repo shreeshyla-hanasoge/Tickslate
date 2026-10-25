@@ -424,6 +424,99 @@ describe('visibility gating (RFC 0003 §23)', () => {
     b.disconnect()
   })
 
+  test('data that arrives after the observer said "out" still draws: the first content is never gated', async () => {
+    const el = make()
+    el.connect()
+    await tick()
+    assert.deepEqual(updates, [], 'no data yet: the loading skeleton, not an update')
+    observer().see(el, false)
+    el.data = { n: 5 }
+    await tick()
+    assert.deepEqual(updates, [5], 'drawn although the tile is two screens down')
+    el.data = { n: 6 }
+    await tick()
+    assert.deepEqual(updates, [5], 'and only the first draw is exempt')
+    observer().see(el, true)
+    await tick()
+    assert.deepEqual(updates, [5, 6])
+    el.disconnect()
+  })
+
+  test('an error or an empty state is content too, and draws out of the zone', async () => {
+    const el = make()
+    el.connect()
+    await tick()
+    observer().see(el, false)
+    el.data = null
+    await tick()
+    assert.equal(el._drawn, true)
+    const failed = make()
+    failed.connect()
+    await tick()
+    observer().see(failed, false)
+    failed.setAttribute('state', 'error')
+    await tick()
+    assert.equal(failed._drawn, true)
+    el.disconnect()
+    failed.disconnect()
+  })
+
+  test('a host with no box (display: contents) is drawn, not left waiting', async () => {
+    globalThis.getComputedStyle = () => ({ display: 'contents' })
+    try {
+      const el = make()
+      el.data = { n: 1 }
+      el.connect()
+      await tick()
+      observer().see(el, false)
+      el.data = { n: 2 }
+      await tick()
+      assert.deepEqual(updates, [1, 2])
+      assert.equal(observer().targets.has(el), false, 'and no longer watched')
+      el.data = { n: 3 }
+      await tick()
+      assert.deepEqual(updates, [1, 2, 3])
+      el.disconnect()
+    } finally {
+      delete globalThis.getComputedStyle
+    }
+  })
+
+  test('beforeprint draws every waiting widget before its handler returns, even past the time slice', async () => {
+    globalThis.requestAnimationFrame = () => 0
+    try {
+      const rows = Array.from({ length: 6 }, () => {
+        const el = make()
+        const log = updates
+        const draw = el.update.bind(el)
+        // Each draw costs more than the 12 ms slice, so a sliced widget would wait for a timer.
+        el.update = (vm, variant) => {
+          const until = performance.now() + 14
+          while (performance.now() < until);
+          draw(vm, variant)
+        }
+        el.data = { n: 1 }
+        el.connect()
+        return { el, log }
+      })
+      for (let i = 0; i < 40 && !rows.every(({ log }) => log.length === 1); i++) await new Promise((resolve) => setTimeout(resolve, 5))
+      assert.ok(rows.every(({ log }) => log.length === 1), 'all drawn once')
+      for (const { el } of rows) observer().see(el, false)
+      for (const { el } of rows) el.data = { n: 2 }
+      await tick()
+      assert.ok(rows.every(({ log }) => log.length === 1), 'waiting')
+      window.dispatchEvent(new Event('beforeprint'))
+      // No await: a browser takes its snapshot as the handlers return.
+      assert.deepEqual(rows.map(({ log }) => log.length), [2, 2, 2, 2, 2, 2])
+      await tick()
+      assert.deepEqual(rows.map(({ log }) => log.length), [2, 2, 2, 2, 2, 2], 'and nothing is drawn twice')
+      window.dispatchEvent(new Event('afterprint'))
+      for (const { el } of rows) el.disconnect()
+    } finally {
+      delete globalThis.requestAnimationFrame
+    }
+  })
+
   test('without an IntersectionObserver a widget is never blank', async () => {
     const saved = globalThis.IntersectionObserver
     delete globalThis.IntersectionObserver

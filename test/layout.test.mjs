@@ -529,6 +529,20 @@ describe('dropIndex', () => {
     assert.equal(dropIndex(items, 't5', { col: 1, row: 2 }, 3, WIDGETS), referenceDrop(items, 't5', { col: 1, row: 2 }, 3, WIDGETS))
   })
 
+  test('a tile removed, swapped or added in the array already passed gets the new layout', () => {
+    const items = tiles(10)
+    const ask = (id, target) => assert.equal(dropIndex(items, id, target, 4, WIDGETS), referenceDrop(items, id, target, 4, WIDGETS), `${items.map((i) => i.id).join(',')} / ${id}`)
+    for (const id of ['t3', 't6']) ask(id, { col: 2, row: 1 })
+    items.splice(1, 1)
+    for (const id of ['t3', 't6']) for (const target of [{ col: 2, row: 1 }, { col: 0, row: 4 }]) ask(id, target)
+    ;[items[2], items[5]] = [items[5], items[2]]
+    for (const id of ['t3', 't6']) for (const target of [{ col: 2, row: 1 }, { col: 0, row: 4 }]) ask(id, target)
+    items.push(s('t99', 'L'))
+    for (const id of ['t3', 't99']) ask(id, { col: 3, row: 5 })
+    items.length = 4
+    ask(items[1].id, { col: 1, row: 1 })
+  })
+
   // Timing is the best of several batches, because load only ever adds time. The sweep takes about 0.1 ms at 100
   // tiles when idle (the old per-slot layout took several milliseconds), so the ceilings below are 10x that.
   const bestBatchMs = (n, calls, batches) => {
