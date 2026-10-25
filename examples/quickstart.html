@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,12 +14,13 @@
 <link rel="stylesheet" href="/src/themes/tokens.css">
 <style>
   /* Page chrome only. */
-  body { margin: 0; padding: 24px; font: 14px system-ui, sans-serif; }
-  .page { max-width: 960px; margin: 0 auto; }
+  body { margin: 0; font: 14px system-ui, sans-serif; background: var(--ts-bg, Canvas); color: var(--ts-ink, CanvasText); }
+  .page { max-width: 960px; margin: 0 auto; padding: 24px; }
 </style>
 </head>
 <body>
-<div class="page">
+<!-- site-header -->
+<main class="page" id="main">
 <h1>Quick start</h1>
 <!-- quickstart -->
 <ts-grid>
@@ -32,6 +33,6 @@
   persistLayout(document.querySelector('ts-grid'), { key: 'ops-dashboard' })
 </script>
 <!-- /quickstart -->
-</div>
+</main>
 </body>
 </html>

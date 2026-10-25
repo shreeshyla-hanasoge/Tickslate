@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickslate: dashboard widgets for any data</title>
+<meta name="description" content="Tickslate is an open-source library of dashboard widgets: a grid your users can rearrange, KPI tiles, charts, tables and cards for any data, with a finance set for trading apps. Plain custom elements with no dependencies.">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Tickslate">
+<meta property="og:title" content="Tickslate: dashboard widgets for any data">
+<meta property="og:description" content="A grid your users can rearrange, KPI tiles, charts, tables and cards, with a finance set built in. Framework-free custom elements, zero dependencies, MIT.">
+<meta property="og:url" content="https://tickslate.ldio.app/">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../src/themes/tokens.css">
+<!-- The presets the hero's switcher puts on its grid. They come after tokens.css so a preset beats an equal-specificity default. -->
+<link rel="stylesheet" href="../src/themes/presets/neutral.css">
+<link rel="stylesheet" href="../src/themes/presets/paper.css">
+<link rel="stylesheet" href="../src/themes/presets/graphite.css">
+<link rel="stylesheet" href="../src/themes/presets/calm.css">
+<link rel="stylesheet" href="../src/themes/presets/signal.css">
+<link rel="stylesheet" href="../src/themes/presets/terminal.css">
+<link rel="stylesheet" href="./site.css">
+<script>try{var t=localStorage.getItem('tickslate-site-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body class="landing">
+<!-- site-header toggle -->
+
+<main id="main" tabindex="-1">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero-copy">
+      <p class="eyebrow">Open source · MIT · zero dependencies</p>
+      <h1 id="hero-title">Dashboards your users can rearrange.</h1>
+      <p class="lede">Tickslate is a library of drop-in dashboard widgets: a grid people can drag and resize, and tiles for figures, charts, tables and cards, for any data. A finance set for trading apps is built in. It is plain HTML elements, so it works with any framework or none.</p>
+      <div class="cta">
+        <a class="btn primary" href="#install">Install</a>
+        <a class="btn" href="/playground.html">Open the playground</a>
+        <a class="btn" href="/docs/index.html">Read the docs</a>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="demo">
+        <div class="demo-bar">
+          <p class="demo-hint" id="demo-hint"><strong>Try editing:</strong> long-press a tile or press Edit layout, then drag a tile to move it or pull its corner to resize. The figures are made up and tick every two seconds.</p>
+          <div class="demo-tools" role="group" aria-label="Demo controls">
+            <button type="button" class="btn small primary" id="edit" aria-describedby="demo-hint">Edit layout</button>
+            <button type="button" class="btn small" id="pause" aria-pressed="false">Pause live data</button>
+            <button type="button" class="btn small" id="reset">Reset</button>
+            <label class="pick">Preset
+              <select id="preset">
+                <option value="">Default</option>
+                <option value="neutral">Neutral</option>
+                <option value="paper">Paper</option>
+                <option value="graphite">Graphite</option>
+                <option value="calm">Calm</option>
+                <option value="signal">Signal</option>
+                <option value="terminal">Terminal</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <ts-grid id="hero-grid" class="demo-grid" aria-label="Live demo dashboard" heading-level="2" locale="en-US" currency="USD">
+          <ts-chart item="requests" label="Requests per minute" size="M"></ts-chart>
+          <ts-metric item="users" label="Users online" size="S"></ts-metric>
+          <ts-metric item="errors" label="Errors" size="S"></ts-metric>
+          <ts-today-pnl item="pnl" label="Today's P&amp;L" size="Wide"></ts-today-pnl>
+          <ts-progress item="budget" label="Cloud budget" size="S"></ts-progress>
+          <ts-metric item="signups" label="Signups" size="S"></ts-metric>
+          <ts-card item="notes" label="Release notes" sizes="S Wide M" size="Wide">
+            <ul class="notes">
+              <li><span class="when">09:40</span> Search moved to the new index</li>
+              <li><span class="when">11:05</span> Checkout retries on a timeout</li>
+              <li><span class="when">13:20</span> Dark mode for the admin pages</li>
+            </ul>
+          </ts-card>
+        </ts-grid>
+        <p class="sr-only" id="demo-status" role="status"></p>
+      </div>
+    </div>
+  </section>
+
+  <nav class="wrap quick" aria-label="For returning developers">
+    <p class="quick-title">Jump to</p>
+    <ul>
+      <li><a href="/playground.html">Playground</a></li>
+      <li><a href="/widgets.html">Widget gallery</a></li>
+      <li><a href="/examples/index.html">Examples</a></li>
+      <li><a href="/docs/index.html">Docs</a></li>
+      <li><a href="/changelog.html">Changelog</a></li>
+      <li><a href="https://www.npmjs.com/package/tickslate">npm</a></li>
+      <li><a href="https://github.com/shreeshyla-hanasoge/Tickslate">GitHub</a></li>
+    </ul>
+    <p class="quick-version">Version <code>__TICKSLATE_VERSION__</code></p>
+  </nav>
+
+  <section class="wrap section" id="what" aria-labelledby="what-title">
+    <h2 id="what-title">What is Tickslate?</h2>
+    <p class="section-lede">A dashboard is a page of small tiles, each showing one thing: a number and how it moved, a trend, a list. Tickslate gives you those tiles ready-made, and a grid to put them in that each user can arrange for themselves. You hand each tile your data; it does the drawing.</p>
+    <ul class="cards three">
+      <li class="card">
+        <h3>A grid people can rearrange</h3>
+        <p>Seven tile sizes on a grid of four columns that becomes three on a tablet and two on a phone. Users long-press to edit, drag to move, pull a corner to resize, and undo a removal. One line saves their layout.</p>
+      </li>
+      <li class="card">
+        <h3>Widgets for any data</h3>
+        <p>A KPI tile with its change, trend and target; line, area and bar charts; a progress gauge; a sortable table; and a card that holds anything else, including a chart from another library.</p>
+      </li>
+      <li class="card">
+        <h3>A finance set built in</h3>
+        <p>Today's profit and loss, an equity curve with drawdown, exchange session clocks, a watchlist, open positions, a P&amp;L calendar, edge stats and capital funding, all speaking the words a trading app uses.</p>
+      </li>
+    </ul>
+    <ul class="traits">
+      <li><strong>Framework-free.</strong> Custom elements with no runtime dependencies. This site is plain HTML and ES modules too.</li>
+      <li><strong>Themeable.</strong> Every colour, radius and font is a <code>--ts-*</code> CSS variable. Six presets ship with it.</li>
+      <li><strong>Accessible.</strong> Keyboard editing, tiles that say what they show, and signs as well as colours on every gain and loss.</li>
+    </ul>
+  </section>
+
+  <section class="wrap section" id="install" aria-labelledby="install-title">
+    <h2 id="install-title">Install</h2>
+    <div class="install">
+      <div class="snippet">
+        <h3>With a bundler</h3>
+        <div class="code">
+          <pre id="code-npm" tabindex="0"><code>npm install tickslate</code></pre>
+          <button type="button" class="copy" data-copy="code-npm" aria-label="Copy the install command">Copy</button>
+        </div>
+        <div class="code">
+          <pre id="code-import" tabindex="0"><code>import 'tickslate/elements'</code></pre>
+          <button type="button" class="copy" data-copy="code-import" aria-label="Copy the import line">Copy</button>
+        </div>
+        <p>That registers <code>&lt;ts-grid&gt;</code> and every widget. Each widget also has its own entry, such as <code>tickslate/elements/metric</code>, so you pay only for what you use.</p>
+      </div>
+      <div class="snippet">
+        <h3>With no build step</h3>
+        <div class="code">
+          <pre id="code-cdn" tabindex="0"><code>&lt;script src="https://cdn.jsdelivr.net/npm/tickslate@__TICKSLATE_VERSION__/cdn/tickslate.iife.js"&gt;&lt;/script&gt;</code></pre>
+          <button type="button" class="copy" data-copy="code-cdn" aria-label="Copy the script tag">Copy</button>
+        </div>
+        <p>One script tag loads every element. The URL pins an exact version, so a new release never changes your page.</p>
+      </div>
+    </div>
+    <div class="snippet wide">
+      <h3>Your first dashboard</h3>
+      <div class="code">
+        <pre id="code-quick" tabindex="0"><code><!-- readme:quickstart --></code></pre>
+        <button type="button" class="copy" data-copy="code-quick" aria-label="Copy the dashboard markup">Copy</button>
+      </div>
+      <p>The markup is the layout: the grid reads its children in order. <a href="/examples/quickstart.html">See this snippet running</a>, or read <a href="/docs/widgets/ts-grid.html">the grid's page</a>.</p>
+    </div>
+    <p class="sr-only" id="copy-status" role="status"></p>
+  </section>
+
+  <section class="wrap section" id="stack" aria-labelledby="stack-title">
+    <h2 id="stack-title">Works with your stack</h2>
+    <p class="section-lede">The widgets are standard custom elements, so one implementation serves every framework. Each guide shows how data and events reach them.</p>
+    <ul class="stack">
+      <li><a href="/docs/guide/frameworks/react.html"><strong>React</strong><span>Props and events, React 18 and 19</span></a></li>
+      <li><a href="/docs/guide/frameworks/vue.html"><strong>Vue</strong><span>Bind <code>data</code> as a property</span></a></li>
+      <li><a href="/docs/guide/frameworks/svelte.html"><strong>Svelte</strong><span>No compiler setting needed</span></a></li>
+      <li><a href="/docs/guide/frameworks/angular.html"><strong>Angular</strong><span>One schema, then the usual bindings</span></a></li>
+      <li><a href="/docs/guide/server-templates.html"><strong>Server templates</strong><span>Blade, Django and Rails, data as JSON</span></a></li>
+      <li><a href="/examples/bare.html"><strong>Plain HTML</strong><span>A script tag and some markup</span></a></li>
+    </ul>
+  </section>
+
+  <section class="wrap section" id="widgets" aria-labelledby="widgets-title">
+    <h2 id="widgets-title">The widgets</h2>
+    <p class="section-lede">Each one renders loading, empty and error states of its own, fits the grid's fixed sizes, and has a page with its data shape and a minimal example. <a href="/widgets.html">See them all at every size</a>.</p>
+    <h3 class="group-title">For any dashboard</h3>
+    <ul class="cards showcase">
+      <li class="card"><a href="/docs/widgets/ts-grid.html"><code>&lt;ts-grid&gt;</code></a><p>The board: lays tiles out, lets users rearrange them, saves the layout.</p><span class="sizes">4, 3 or 2 columns</span></li>
+      <li class="card"><a href="/docs/widgets/ts-metric.html"><code>&lt;ts-metric&gt;</code></a><p>A KPI with its change, a sparkline and a target.</p><span class="sizes">S · Wide · M</span></li>
+      <li class="card"><a href="/docs/widgets/ts-chart.html"><code>&lt;ts-chart&gt;</code></a><p>Line, area and bar trends, from series or table rows.</p><span class="sizes">Wide · M · L · XL</span></li>
+      <li class="card"><a href="/docs/widgets/ts-progress.html"><code>&lt;ts-progress&gt;</code></a><p>A value against a goal or a limit, in words and a bar.</p><span class="sizes">S · Wide</span></li>
+      <li class="card"><a href="/docs/widgets/ts-table.html"><code>&lt;ts-table&gt;</code></a><p>Typed, sortable columns that drop by priority when space runs out.</p><span class="sizes">Tall · M · L · XL</span></li>
+      <li class="card"><a href="/docs/widgets/ts-card.html"><code>&lt;ts-card&gt;</code></a><p>The tile chrome around any content you slot in.</p><span class="sizes">All seven</span></li>
+      <li class="card"><a href="/docs/widgets/ts-widget-picker.html"><code>&lt;ts-widget-picker&gt;</code></a><p>A sheet users add tiles from, with search and categories.</p><span class="sizes">A dialog</span></li>
+      <li class="card"><a href="/docs/widgets/ts-grid-controls.html"><code>&lt;ts-grid-controls&gt;</code></a><p>A layout switcher, and the link from the edit pill to the picker.</p><span class="sizes">A toolbar</span></li>
+    </ul>
+    <h3 class="group-title">The finance set</h3>
+    <ul class="cards showcase">
+      <li class="card"><a href="/docs/widgets/ts-today-pnl.html"><code>&lt;ts-today-pnl&gt;</code></a><p>Today's net, realized and unrealized profit and loss.</p><span class="sizes">S · Wide · M</span></li>
+      <li class="card"><a href="/docs/widgets/ts-equity-curve.html"><code>&lt;ts-equity-curve&gt;</code></a><p>Cumulative P&amp;L with ranges, the peak and the drawdown.</p><span class="sizes">Wide · M · XL</span></li>
+      <li class="card"><a href="/docs/widgets/ts-session-clock.html"><code>&lt;ts-session-clock&gt;</code></a><p>Whether a session is open, and how long until it changes.</p><span class="sizes">S · Banner</span></li>
+      <li class="card"><a href="/docs/widgets/ts-watchlist.html"><code>&lt;ts-watchlist&gt;</code></a><p>Instruments with price, change and where they sit in the day's range.</p><span class="sizes">S · Tall · M</span></li>
+      <li class="card"><a href="/docs/widgets/ts-open-positions.html"><code>&lt;ts-open-positions&gt;</code></a><p>Open positions, their profit or loss, and a stop-to-target bar.</p><span class="sizes">Wide · M · L</span></li>
+      <li class="card"><a href="/docs/widgets/ts-pnl-calendar.html"><code>&lt;ts-pnl-calendar&gt;</code></a><p>A heat map of daily profit and loss, from weeks to a year.</p><span class="sizes">Tall · M · Banner</span></li>
+      <li class="card"><a href="/docs/widgets/ts-edge-stats.html"><code>&lt;ts-edge-stats&gt;</code></a><p>Win rate, profit factor, average win and loss, expectancy.</p><span class="sizes">S · Wide · M</span></li>
+      <li class="card"><a href="/docs/widgets/ts-capital-funding.html"><code>&lt;ts-capital-funding&gt;</code></a><p>Account balances against what each strategy is allocated.</p><span class="sizes">S · Tall · L</span></li>
+    </ul>
+  </section>
+
+  <section class="wrap section" id="trading" aria-labelledby="trading-title">
+    <h2 id="trading-title">Built for trading apps</h2>
+    <p class="section-lede">The finance widgets know what a trading screen needs: a sign and an arrow on every gain and loss, session times in the exchange's own zone, figures that update in place without moving the layout, and a header that says when the data has gone stale. These six run on the same made-up feed as the board above.</p>
+    <ts-grid id="trading-grid" class="demo-grid" aria-label="Trading dashboard demo" locked heading-level="3" locale="en-US" currency="USD">
+      <ts-today-pnl item="pnl" label="Today's P&amp;L" size="S"></ts-today-pnl>
+      <ts-session-clock item="clock" label="Sessions" size="S"></ts-session-clock>
+      <ts-equity-curve item="equity" label="Equity curve" size="M"></ts-equity-curve>
+      <ts-watchlist item="watch" label="Watchlist" size="Tall"></ts-watchlist>
+      <ts-open-positions item="positions" label="Open positions" size="M"></ts-open-positions>
+      <ts-pnl-calendar item="calendar" label="Daily P&amp;L" size="M"></ts-pnl-calendar>
+    </ts-grid>
+    <p class="aside">Want this as a page? The <a href="/playground.html">playground</a> runs a full trading board with a schedule that swaps layouts at the market close, and its Copy HTML button gives you the page.</p>
+  </section>
+
+  <section class="wrap section split" aria-label="Accessibility and theming">
+    <div class="panel" id="accessibility">
+      <h2>Accessible by default</h2>
+      <ul class="ticks">
+        <li><strong>Keyboard editing.</strong> Tab to a tile, Space to pick it up, the arrow keys to move it, Space to drop, and plus or minus to resize.</li>
+        <li><strong>Tiles that say what they show.</strong> A screen reader hears “Users online, 18,420, up 4.1%”, not just “Users online”, and each chart states its result in words.</li>
+        <li><strong>Never colour alone.</strong> Gains carry a plus sign and losses a true minus, each with an arrow, so the meaning survives any palette.</li>
+        <li><strong>Forced colours and reduced motion.</strong> Boundaries, focus rings and chart lines stay visible in high-contrast modes, and nothing wiggles when motion is turned down.</li>
+      </ul>
+      <p><a href="/docs/accessibility.html">The accessibility checklist every widget meets</a></p>
+    </div>
+    <div class="panel" id="theming">
+      <h2>Your theme, a few variables</h2>
+      <p>Tiles read their look from <code>--ts-*</code> CSS variables, so matching your brand is a handful of lines, never a fork. Paper is the light theme and Graphite the dark one; <code>data-theme="auto"</code> follows the system.</p>
+      <div class="code">
+        <pre id="code-theme" tabindex="0"><code>:root {
+  --ts-accent: #0b6bcb;
+  --ts-radius: 6px;
+  --ts-font-ui: 'Inter', system-ui, sans-serif;
+}</code></pre>
+        <button type="button" class="copy" data-copy="code-theme" aria-label="Copy the theme variables">Copy</button>
+      </div>
+      <p>Six presets ship as stylesheets: Neutral, Paper, Graphite, Calm, Signal and Terminal. <a href="#hero-title" id="try-preset">Try one on the board at the top</a>, or read <a href="/docs/theming.html">the theming guide</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-foot">
+  <div class="site-foot-in">
+    <p>Tickslate is MIT licensed. Every figure on this site is made up.</p>
+    <ul>
+      <li><a href="https://github.com/shreeshyla-hanasoge/Tickslate">GitHub</a></li>
+      <li><a href="https://www.npmjs.com/package/tickslate">npm</a></li>
+      <li><a href="/changelog.html">Version __TICKSLATE_VERSION__</a></li>
+      <li><a href="https://github.com/shreeshyla-hanasoge/Tickslate/blob/master/LICENSE">Licence</a></li>
+    </ul>
+  </div>
+</footer>
+
+<script type="module" src="./site.js"></script>
+<script type="module" src="./landing.js"></script>
+</body>
+</html>

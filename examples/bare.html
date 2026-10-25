@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,24 +13,25 @@
     document.documentElement.style.setProperty('--ts-surface', '#EEF')   a host rule wins
     document.head.append(Object.assign(document.createElement('link'),
       { rel: 'stylesheet', href: '/src/themes/tokens.css' }))            a late tokens.css wins too
-    document.documentElement.dataset.theme = 'auto' | 'dark' | 'light'  opt in to dark
+    document.documentElement.dataset.theme = 'dark' | 'light'           pin a theme (the page follows the system)
 -->
 <style>
   /* Page chrome only: the tiles need nothing from here. */
-  body { margin: 0; padding: 24px; font: 14px system-ui, sans-serif; }
-  .page { max-width: 960px; margin: 0 auto; }
+  body { margin: 0; font: 14px system-ui, sans-serif; background: var(--ts-bg, Canvas); color: var(--ts-ink, CanvasText); }
+  .page { max-width: 960px; margin: 0 auto; padding: 24px; }
   ts-today-pnl.alone { max-width: 320px; margin-top: 16px; }
 </style>
 </head>
 <body>
-<div class="page">
+<!-- site-header -->
+<main class="page" id="main">
   <h1>Bare install</h1>
   <ts-grid locale="en-IN" currency="INR">
     <ts-today-pnl item="todayPnl" label="Today's P&amp;L"></ts-today-pnl>
     <ts-equity-curve item="equityCurve" label="Equity curve"></ts-equity-curve>
   </ts-grid>
   <ts-today-pnl class="alone" id="alone" size="S" label="Standalone tile" locale="en-IN" currency="INR"></ts-today-pnl>
-</div>
+</main>
 
 <script type="module">
   import '/src/elements/index.js'
