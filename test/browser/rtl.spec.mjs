@@ -137,6 +137,8 @@ test.describe('edit chrome', () => {
     expect(remove.y).toBeLessThan(mid.y)
     expect(resize.x).toBeLessThan(mid.x)
     expect(resize.y).toBeGreaterThan(mid.y)
+    // The corner is the other diagonal, so the cursor has to be too.
+    expect(await chrome(page, 'notes', 'resize').evaluate((el) => getComputedStyle(el).cursor)).toBe('nesw-resize')
   })
 
   test('left to right keeps them top-left and bottom-right', async ({ page }) => {
@@ -147,6 +149,7 @@ test.describe('edit chrome', () => {
     const resize = await middle(chrome(page, 'notes', 'resize'))
     expect(remove.x).toBeLessThan(tile.x + tile.width / 2)
     expect(resize.x).toBeGreaterThan(tile.x + tile.width / 2)
+    expect(await chrome(page, 'notes', 'resize').evaluate((el) => getComputedStyle(el).cursor)).toBe('nwse-resize')
   })
 })
 
@@ -187,6 +190,39 @@ test.describe('keyboard', () => {
   })
 })
 
+test.describe('a direction flip during a gesture', () => {
+  const flip = async (page, dir) => {
+    await page.evaluate((d) => document.documentElement.setAttribute('dir', d), dir)
+    await settle(page)
+  }
+
+  test('flipping dir while a tile is held cancels the hold', async ({ page }) => {
+    await load(page, { html: 'rtl' })
+    await edit(page)
+    await chrome(page, 'notes', 'handle').focus()
+    await page.keyboard.press('Space')
+    await expect(status(page)).toContainText('picked up')
+    await flip(page, 'ltr')
+    await expect(status(page)).toContainText('Notes, move cancelled.')
+    expect(await order(page)).toEqual(START)
+  })
+
+  test('flipping dir mid-drag ends the drag with a valid layout', async ({ page }) => {
+    await load(page, { html: 'rtl' })
+    const grid = await page.locator('#g').boundingBox()
+    const from = await middle(page.locator('#g > [item="notes"]'))
+    await page.mouse.move(from.x, from.y)
+    await page.mouse.down()
+    await page.waitForTimeout(650)
+    await page.mouse.move(grid.x + grid.width - 40, grid.y + 40, { steps: 8 })
+    await flip(page, 'ltr')
+    await page.mouse.up()
+    await settle(page)
+    expect([...(await order(page))].sort()).toEqual([...START].sort())
+    await expect(page.locator('ts-grid .placeholder.on')).toHaveCount(0)
+  })
+})
+
 test.describe('pointer', () => {
   test('dragging a tile to the right edge puts it first', async ({ page }) => {
     await load(page, { html: 'rtl' })
@@ -212,6 +248,12 @@ test.describe('pointer', () => {
     await page.mouse.down()
     // Firefox under Playwright drops a mouseup released outside the viewport, so the pull stays inside it.
     await page.mouse.move(Math.max(handle.x - before.w * 1.2, 4), handle.y, { steps: 12 })
+    await settle(page)
+    // The right edge is the anchored one under rtl: a placeholder that kept the physical left would slide off it.
+    const grid = await page.locator('#g').boundingBox()
+    const ph = await page.locator('ts-grid .placeholder').boundingBox()
+    expect(Math.abs(ph.x + ph.width - grid.x - before.x - before.w)).toBeLessThan(2)
+    expect(ph.width).toBeGreaterThan(before.w + 10)
     await page.mouse.up()
     await settle(page)
     const after = (await boxes(page)).boxes.notes
