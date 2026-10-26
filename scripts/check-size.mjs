@@ -245,6 +245,11 @@ ADD_BUDGETS['mini-chart'] = stage2Add(20)
 ADD_BUDGETS.breakdown = stage2Add(19)
 ADD_BUDGETS.status = stage2Add(17)
 
+// The feed row alone (trading-polish, 2026-10-27): the header meta's description for a tile under 7rem (widget.js, shared by
+// every entry) took it from 15,291 B to 15,365 B, 5 B over 15 kB; it had 69 B of headroom after the P2 wave's shared-core growth.
+// Measured 15,365 B min+gz, so 16,902 B with 10 %, which rounds up to 17 kB (16.5 kB is 16,896 B, 6 B short). RFC 0003 §25.
+ADD_BUDGETS.feed = { ...ADD_BUDGET, maxKb: 17, target: 're-measured after the hidden-meta description joined widget.js (trading-polish), RFC 0003 §25' }
+
 const problems = []
 const warnings = []
 const notes = []
