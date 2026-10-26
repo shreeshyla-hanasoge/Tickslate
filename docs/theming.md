@@ -300,12 +300,11 @@ font-size setting.
   value set on `:root` or on a wrapper is only inherited, so `density="compact"`
   overrides it: to keep your own `--ts-pad` under compact density, set it on the
   `ts-grid` element.
-- **Density wins over a preset.** A preset's `--ts-pad` yields to compact
-  density, on the same element (`<ts-grid data-ts-theme="paper" density="compact">`)
-  or on an ancestor, so the padding is `12px` whichever preset is loaded. A
-  `data-theme="light"` or `data-theme="dark"` set on the `ts-grid` element itself
-  keeps that theme's padding (18px or 16px); put `data-theme` on a wrapper to get
-  the compact padding.
+- **Density wins over a theme and a preset.** A theme's or preset's `--ts-pad`
+  yields to compact density, on the same element (`<ts-grid data-theme="dark"
+  density="compact">`, `<ts-grid data-ts-theme="paper" density="compact">`) or on
+  an ancestor, so the padding is `12px` whichever theme or preset is loaded. Only
+  a `--ts-pad` of your own on the `ts-grid` element beats it.
 - **A phone keeps its rows.** At 2 columns the grid reads `--ts-row-compact`
   (150px) and `--ts-gap-compact` (10px), so on a phone `density="compact"`
   changes only the padding: a phone's rows are fixed so live numbers never

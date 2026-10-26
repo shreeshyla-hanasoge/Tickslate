@@ -90,7 +90,6 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
       --ts-series-6: #A3E635;
       --ts-focus: var(--ts-accent);
       --ts-radius: 12px;
-      --ts-pad: 16px;
       --ts-shadow: none;
       --ts-fill: 16%;
       --ts-num-weight-small: 600;
@@ -117,7 +116,6 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-series-6: #A3E635;
     --ts-focus: var(--ts-accent);
     --ts-radius: 12px;
-    --ts-pad: 16px;
     --ts-shadow: none;
     --ts-fill: 16%;
     --ts-num-weight-small: 600;
@@ -143,11 +141,21 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-series-6: #6B7A1A;
     --ts-focus: var(--ts-accent);
     --ts-radius: 10px;
-    --ts-pad: 18px;
     --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
     --ts-fill: 12%;
     --ts-num-weight-small: 500;
     --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :where([data-theme="auto"]:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)) {
+      --ts-pad: 16px;
+    }
+  }
+  :where([data-theme="dark"]:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *), .dark:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)) {
+    --ts-pad: 16px;
+  }
+  :where([data-theme="light"]:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)) {
+    --ts-pad: 18px;
   }
   :where([data-ts-density="compact"]) {
     --ts-row: 120px;
