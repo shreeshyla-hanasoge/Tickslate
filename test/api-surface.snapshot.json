@@ -348,6 +348,7 @@
         "attributes": [
           "aria-label",
           "currency",
+          "density",
           "edit-controls",
           "editing",
           "hour-cycle",
@@ -820,6 +821,17 @@
     "--ts-strip-top",
     "--ts-surface",
     "--ts-surface-2",
+    "--ts-text-2xl",
+    "--ts-text-2xs",
+    "--ts-text-3xl",
+    "--ts-text-base",
+    "--ts-text-big",
+    "--ts-text-lg",
+    "--ts-text-md",
+    "--ts-text-sm",
+    "--ts-text-xbig",
+    "--ts-text-xl",
+    "--ts-text-xs",
     "--ts-warn"
   ],
   "entries": [
