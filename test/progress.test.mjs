@@ -208,6 +208,18 @@ describe('float drift and tiny figures', () => {
     assert.equal(model({ value: 3, target: 1e-9 }).text, '—')
   })
 
+  test('a locale that writes its digits in another script still has a target: ar-EG, fa and hi-IN', () => {
+    for (const locale of ['ar-EG', 'fa', 'hi-IN', 'ar-EG-u-nu-arab', 'hi-IN-u-nu-deva']) {
+      const local = { ...ctx, fmt: createFormatter({ locale, currency: 'USD', timeZone: 'UTC' }) }
+      const vm = progressModel({ value: 6186, target: 10000, mode: 'limit' }, 'S', local)
+      assert.equal(vm.state, 'ok', locale)
+      assert.equal(vm.fill, 0.619, locale)
+      assert.notEqual(vm.text, '—', locale)
+      // A target that formats to zero is still no target in those locales.
+      assert.equal(progressModel({ value: 3, target: 1e-9 }, 'S', local).state, 'none', locale)
+    }
+  })
+
   test('a negative duration keeps its sign, and a zero one has none', () => {
     assert.equal(model({ value: -90000, target: 600000, format: 'duration' }).text.startsWith('−'), true)
     assert.doesNotMatch(model({ value: -0.4, target: 600000, format: 'duration' }).text, /^−/)

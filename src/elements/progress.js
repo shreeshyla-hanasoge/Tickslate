@@ -49,8 +49,9 @@ export function progressModel(data, variant, ctx) {
 
   const value = toNumber(d.value)
   const target = toNumber(d.target)
-  // A target that formats to zero (1e-9 as "0") would read "3 of 0", so it is no target.
-  const valid = Number.isFinite(value) && Number.isFinite(target) && target > 0 && /[1-9]/.test(show(target))
+  // A target that formats to zero (1e-9 as "0") would read "3 of 0", so it is no target. It is judged by comparing with how
+  // zero formats, never by looking for a digit in the text: a locale may write its digits in Arabic-Indic, Persian or Devanagari.
+  const valid = Number.isFinite(value) && Number.isFinite(target) && target > 0 && show(target) !== show(0)
   const label = ctx.label
 
   const vm = {
