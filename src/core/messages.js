@@ -285,6 +285,7 @@ export const EN = Object.freeze({
   'chart.scrubTableNumber': 'X',
   'chart.scrubCaption.one': '{label}, last {count} point',
   'chart.scrubCaption.other': '{label}, last {count} points',
+  'chart.scrubMore': '+{count} more',
 
   // <ts-table>
   'table.aria': '{label}, {rows}',

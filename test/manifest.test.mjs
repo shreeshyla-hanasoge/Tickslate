@@ -193,7 +193,7 @@ describe('observed attributes are documented', () => {
   // `item` is read with getAttribute by the grid and by open actions, and `undo-toast` by the grid's
   // toast: both are real attributes that observedAttributes does not list. `data` is observed by the base.
   // The picker reads `for` when it opens, so it never needs to observe it.
-  const READ_WITHOUT_OBSERVING = new Set(['item', 'undo-toast', 'for', 'stale-after', 'flash', 'scrub'])
+  const READ_WITHOUT_OBSERVING = new Set(['item', 'undo-toast', 'for', 'stale-after', 'flash'])
   const src = (f) => readFileSync(new URL(`../src/elements/${f}`, import.meta.url), 'utf8')
   const observed = (file) => {
     // Comments first: widget.js's header shows an example of the same getter.

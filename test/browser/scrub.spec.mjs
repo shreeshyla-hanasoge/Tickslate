@@ -181,6 +181,63 @@ test.describe('a mouse reads a point', () => {
   })
 })
 
+test.describe('a six-series chart keeps its read-out inside the plot', () => {
+  const SIX = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot']
+  for (const size of ['S', 'Wide', 'M']) {
+    test(`at ${size} the read-out lies inside the plot, and the slider still names every series`, async ({ page, hasTouch }) => {
+      test.skip(hasTouch, 'a mouse')
+      await open(page, `chart=chart&size=${size}&series=6`)
+      const b = await plotBox(page)
+      const columns = []
+      for (const f of [0.02, 0.5, 0.98]) {
+        await page.mouse.move(b.x + b.w * f, b.y + b.h / 2)
+        await page.mouse.move(b.x + b.w * f + 1, b.y + b.h / 2 + 1)
+        await frame(page)
+        const o = await overlay(page)
+        expect(o.shown, `${size} at ${f}`).toBe(true)
+        expect(o.readout.t, `${size} at ${f}: top`).toBeGreaterThanOrEqual(o.plot.t - 0.5)
+        expect(o.readout.b, `${size} at ${f}: bottom`).toBeLessThanOrEqual(o.plot.b + 0.5)
+        expect(o.readout.l, `${size} at ${f}: left`).toBeGreaterThanOrEqual(o.plot.l - 0.5)
+        expect(o.readout.r, `${size} at ${f}: right`).toBeLessThanOrEqual(o.plot.r + 0.5)
+        columns.push(await page.evaluate(() => window.__s.el.shadowRoot.querySelector('[data-k="scrubOut"]').hasAttribute('data-two')))
+        // Whatever the read-out shows, an item that is shown is whole and the rest are counted.
+        const more = await page.evaluate(() => {
+          const m = window.__s.el.shadowRoot.querySelector('[data-k="scrubMore"]')
+          return m.hasAttribute('hidden') ? null : m.textContent
+        })
+        if (more) expect(more).toBe(`+${SIX.length - o.items.length} more`)
+        else expect(o.items).toHaveLength(SIX.length)
+      }
+      if (size === 'M') expect(columns, 'a tall plot keeps one column').toEqual([false, false, false])
+      else expect(columns, 'a short plot uses two columns').toEqual([true, true, true])
+      // The keyboard route carries every value whatever the overlay could fit.
+      await page.keyboard.press('Tab')
+      const text = (await slider(page)).text
+      for (const name of SIX) expect(text).toContain(name)
+    })
+  }
+
+  test('a taller tile goes back to one column and every item', async ({ page, hasTouch }) => {
+    test.skip(hasTouch, 'a mouse')
+    await open(page, 'chart=chart&size=Wide&series=6')
+    const b = await plotBox(page)
+    await page.mouse.move(b.x + b.w * 0.5, b.y + b.h / 2)
+    await page.mouse.move(b.x + b.w * 0.5 + 1, b.y + b.h / 2)
+    await frame(page)
+    expect((await overlay(page)).items.length).toBeLessThan(7)
+    await page.evaluate(() => { window.__s.el.style.height = '316px' })
+    await frame(page)
+    const t = await plotBox(page)
+    await page.mouse.move(t.x + t.w * 0.4, t.y + t.h / 2)
+    await page.mouse.move(t.x + t.w * 0.4 + 1, t.y + t.h / 2)
+    await frame(page)
+    const o = await overlay(page)
+    expect(o.items).toHaveLength(6)
+    expect(o.readout.b).toBeLessThanOrEqual(o.plot.b + 0.5)
+    expect(await page.evaluate(() => window.__s.el.shadowRoot.querySelector('[data-k="scrubOut"]').hasAttribute('data-two'))).toBe(false)
+  })
+})
+
 test.describe('a finger drags to read a point', () => {
   // The same events a touch screen sends, for every engine; a real touch is added below for Chromium.
   async function drag(page, from, to, o = {}) {
@@ -450,6 +507,18 @@ test.describe('while the grid edits, and with scrub off', () => {
     await frame(page)
     expect(await page.evaluate(() => [window.__s.el.hasAttribute('scrub'), window.__s.el.scrub])).toEqual([false, null])
     expect((await slider(page)).visible, 'the grid’s off applies again').toBe(false)
+  })
+
+  test('scrub="off" set on the grid at runtime takes the tab stop away at once, and "on" brings it back', async ({ page }) => {
+    await open(page, 'chart=equity&size=M&grid')
+    expect((await slider(page)).visible).toBe(true)
+    await page.evaluate(() => window.__s.grid.setAttribute('scrub', 'off'))
+    await frame(page)
+    expect((await slider(page)).visible, 'off applies without waiting for a new reading').toBe(false)
+    expect((await stops(page)).filter((r) => r === 'slider')).toHaveLength(0)
+    await page.evaluate(() => window.__s.grid.removeAttribute('scrub'))
+    await frame(page)
+    expect((await slider(page)).visible).toBe(true)
   })
 
   test('there is no overlay and no tab stop with fewer than two points', async ({ page }) => {

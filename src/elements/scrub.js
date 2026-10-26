@@ -22,6 +22,8 @@ export const TABLE_ROWS = 12
 const PAGE = 10
 // The gap between the rule and the read-out, in px.
 const GAP = 10
+// The read-out keeps this far from the top and bottom of the plot, in px.
+const EDGE = 4
 // Beyond this a figure is written as a power of ten, so 1e300 is not 300 digits in a screen reader's ear.
 const BIG = 1e15
 const MINUS = '−'
@@ -39,7 +41,7 @@ const upTo = (n) => Array.from({ length: n }, (_, i) => i + 1)
 export function scrubMarkup(dots, items, coloured = false) {
   const dot = upTo(dots).map((i) => `<i class="sc-dot${coloured ? ` c-${i}` : ''}" part="scrub-dot" hidden></i>`).join('')
   const item = '<span class="sc-it" hidden><span class="sc-n ell"></span><span class="sc-v"></span></span>'.repeat(items)
-  return `<div class="sc-box" part="scrub" data-k="scrub" aria-hidden="true" hidden><i class="sc-rule" part="scrub-rule" data-k="scrubRule"></i>${dot}<span class="sc-out" part="scrub-readout" data-k="scrubOut"><span class="sc-lab" data-k="scrubLab"></span>${item}</span></div>`
+  return `<div class="sc-box" part="scrub" data-k="scrub" aria-hidden="true" hidden><i class="sc-rule" part="scrub-rule" data-k="scrubRule"></i>${dot}<span class="sc-out" part="scrub-readout" data-k="scrubOut"><span class="sc-lab" data-k="scrubLab"></span>${item}<span class="sc-more" data-k="scrubMore" hidden></span></span></div>`
     + '<div class="sc-slider" role="slider" tabindex="0" aria-valuemin="0" data-k="scrubSlider" hidden></div>'
     + '<div class="visually-hidden" data-k="scrubTbl" hidden><table><caption data-k="scrubCap"></caption><thead><tr data-k="scrubHead"></tr></thead><tbody data-k="scrubBody"></tbody></table></div>'
 }
@@ -56,6 +58,8 @@ export const SCRUB_CSS = `
 .sc-dot { box-sizing: border-box; inline-size: 10px; block-size: 10px; margin-block-start: -5px; margin-inline-start: -5px; border-radius: 50%; border: 2px solid var(--ts-surface); background: var(--c, var(--ts-ink)); }
 .sc-out { display: flex; flex-direction: column; padding: 4px 6px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line); background: var(--ts-surface-2); color: var(--ts-ink); font-size: 11px; line-height: 1.3; white-space: nowrap; }
 .sc-lab { font-weight: 600; }
+.sc-out[data-two] { display: grid; grid-template-columns: auto auto; column-gap: 12px; }
+.sc-out[data-two] .sc-lab, .sc-out[data-two] .sc-more { grid-column: 1 / -1; }
 .sc-it { display: flex; justify-content: space-between; gap: 10px; }
 .sc-lab, .sc-n { unicode-bidi: plaintext; }
 .sc-v { font-family: var(--ts-font-num); font-variant-numeric: tabular-nums; unicode-bidi: isolate; }
@@ -143,8 +147,15 @@ export function readoutAt(d, i, ctx) {
   }
 }
 
-// The join is the locale's own list separator, not a message (RFC 0003 §8).
-const join = (fmt, parts) => new Intl.ListFormat(fmt.locale, { style: 'long', type: 'conjunction' }).format(parts)
+// The join is the locale's own list separator, not a message (RFC 0003 §8). One formatter per locale: the slider's
+// value text is rebuilt on every update() tick and every key, and an Intl constructor is slow next to format().
+const lists = new Map()
+const join = (fmt, parts) => {
+  const key = fmt.locale || ''
+  let f = lists.get(key)
+  if (!f) lists.set(key, (f = new Intl.ListFormat(fmt.locale, { style: 'long', type: 'conjunction' })))
+  return f.format(parts)
+}
 
 /** "Mon 12 Oct: Equity +₹5,000 and Day −₹120": what the slider's `aria-valuetext` says. */
 export const valueText = (ro, ctx) => ctx.t('chart.scrubValue', { label: ro.label, values: join(ctx.fmt, ro.items.map((it) => `${it.name} ${it.value}`)) })
@@ -171,7 +182,7 @@ export class Scrubber {
     this.w = widget
     this.raf = raf
     this.index = 0
-    this.data = this.at = this.refsFor = this.r = null
+    this.data = this.at = this.refsFor = this.r = this.lay = null
     this.shown = this.touching = this.focused = this.queued = false
     // Each event is the method of its own name.
     for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'pointerleave', 'keydown', 'focusin', 'focusout']) {
@@ -193,7 +204,8 @@ export class Scrubber {
     this.shown = false
     this.touching = false
     // The dots and the read-out's lines are found by their place, so the template needs no name for each.
-    this.r = { box, plot: q('plot'), rule: q('scrubRule'), dots: [...box.querySelectorAll('.sc-dot')], out: q('scrubOut'), lab: q('scrubLab'), items: [...box.querySelectorAll('.sc-it')], slider: q('scrubSlider'), tbl: q('scrubTbl'), cap: q('scrubCap'), head: q('scrubHead'), body: q('scrubBody') }
+    this.lay = null
+    this.r = { box, plot: q('plot'), more: q('scrubMore'), rule: q('scrubRule'), dots: [...box.querySelectorAll('.sc-dot')], out: q('scrubOut'), lab: q('scrubLab'), items: [...box.querySelectorAll('.sc-it')], slider: q('scrubSlider'), tbl: q('scrubTbl'), cap: q('scrubCap'), head: q('scrubHead'), body: q('scrubBody') }
     return this.r
   }
 
@@ -337,10 +349,17 @@ export class Scrubber {
     const i = clamp(index, 0, d.points.length - 1)
     this.index = i
     const ro = readoutAt(d, i, this.ctx())
+    // The plot's height decides how many lines the read-out may have (see fit); it is read before anything is written.
+    const b = r.plot.getBoundingClientRect()
+    const n = ro.items.length
+    const avail = b.height - 2 * EDGE
+    const key = `${avail}|${n}`
+    if (!this.lay || this.lay.key !== key) this.lay = { key, fit: false, keep: n }
+    const lay = this.lay
     setText(r.lab, ro.label)
     r.items.forEach((slot, k) => {
       const it = ro.items[k]
-      slot.toggleAttribute('hidden', !it)
+      slot.toggleAttribute('hidden', !it || k >= lay.keep)
       if (!it) return
       setText(slot.firstChild, it.name)
       // The overlay is aria-hidden as a whole, so the arrow is plain text beside the value.
@@ -350,7 +369,6 @@ export class Scrubber {
     if (this.focused) this.slide(i, ro)
 
     // Pixels per viewBox unit: the drawing is stretched to its box.
-    const b = r.plot.getBoundingClientRect()
     const kx = b.width / d.box.width
     const ky = b.height / d.box.height
     const x = d.points[i].x * kx
@@ -370,14 +388,40 @@ export class Scrubber {
       r.box.removeAttribute('hidden')
       this.shown = true
     }
+    if (!lay.fit) {
+      lay.fit = true
+      this.fit(r, lay, n, avail)
+    }
     // The read-out goes to the side of the rule that has room, and to the half of the plot the dot is not in.
     const w = r.out.offsetWidth || 0
     const h = r.out.offsetHeight || 0
     let left = x + GAP
     if (left + w > b.width) left = x - GAP - w
     left = clamp(left, 0, Math.max(0, b.width - w))
-    const top = Number.isNaN(first) || first * ky >= b.height / 2 ? 4 : Math.max(0, b.height - h - 4)
+    const top = Number.isNaN(first) || first * ky >= b.height / 2 ? EDGE : Math.max(0, b.height - h - EDGE)
     r.out.style.transform = `translate(${left}px, ${top}px)`
+  }
+
+  // A short plot (Wide, S) cannot hold six lines: lay the items out in two columns, and when even that is too tall keep
+  // the ones that fit and count the rest in a "+N" line. The slider's value text still names every series. The height
+  // depends on the line count only, so this is measured once per plot height and series count, not on every move.
+  fit(r, lay, n, avail) {
+    const apply = (two, keep) => {
+      lay.keep = keep
+      r.out.toggleAttribute('data-two', two)
+      r.items.forEach((slot, k) => slot.toggleAttribute('hidden', k >= n || k >= keep))
+      r.more.toggleAttribute('hidden', keep >= n)
+      if (keep < n) setText(r.more, this.w.t('chart.scrubMore', { count: n - keep }))
+    }
+    for (const two of [false, true]) {
+      apply(two, n)
+      if (r.out.offsetHeight <= avail) return
+    }
+    for (let keep = n - 1; keep > 0; keep--) {
+      apply(true, keep)
+      if (r.out.offsetHeight <= avail) return
+    }
+    apply(true, 0)
   }
 
   hide() {
