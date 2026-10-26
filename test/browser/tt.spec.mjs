@@ -68,6 +68,15 @@ const BOOT = async () => {
 async function boot(page) {
   await page.goto(PAGE)
   expect(await page.evaluate(BOOT)).toBe(14)
+  // A burst of first renders is time-sliced over several tasks (RFC 0003 §23), so two frames after the data was set a tile
+  // can still be the empty group it is built as, with no ticks or points. Wait for the condition, as drawn.mjs does for the
+  // widgets page: every tile named, and none still busy.
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('#g > *, #linked, #small')].every((el) => {
+      const tile = el.shadowRoot.querySelector('.tile')
+      return !!tile.getAttribute('aria-label') && !tile.hasAttribute('aria-busy')
+    }),
+  )
 }
 
 // Every tile drew its tile element and the grid its board: markup reached the DOM through the policy.
