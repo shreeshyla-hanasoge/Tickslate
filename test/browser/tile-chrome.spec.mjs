@@ -4,6 +4,7 @@
 // covers what a browser makes of them.
 import { test, expect } from '@playwright/test'
 import { SIZES } from '../../src/core/index.js'
+import { drawn } from './drawn.mjs'
 
 const PAGE = '/test/browser/fixtures/widgets.html'
 
@@ -12,17 +13,6 @@ function guard(page, errors) {
   page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()))
   page.on('pageerror', (error) => errors.push(error.message))
 }
-
-// Every tile has drawn its content. A burst of renders is time-sliced over several tasks (RFC 0003 §23), so right after
-// __ready a tile can still be the empty group it is built as, with no name and no figures. Waiting on frames or a timer
-// would only guess how long that takes under load; the condition is the tile's own: named, and no longer busy.
-const drawn = (page) =>
-  page.waitForFunction(() =>
-    [...window.__fx.tiles.values()].every((el) => {
-      const tile = el.shadowRoot.querySelector('.tile')
-      return !!tile.getAttribute('aria-label') && !tile.hasAttribute('aria-busy')
-    }),
-  )
 
 // The fixture lets a tile shrink to its caption (a size container has no width of its own), so each figure is given
 // the width a 4-column desktop grid would, and the drawings have room to be measured.

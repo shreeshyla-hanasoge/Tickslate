@@ -2,6 +2,7 @@
 // the design promises, no errors, and the same box whatever the data does.
 import { test, expect } from '@playwright/test'
 import { WIDGETS, SIZES } from '../../src/core/index.js'
+import { drawn } from './drawn.mjs'
 
 // Which tags the library defines, found by importing the entry against a
 // stand-in registry. The core lists finance widgets whose elements are not
@@ -27,6 +28,7 @@ function guard(page, errors) {
 async function open(page, theme, query = '') {
   await page.goto(`${PAGE}?theme=${theme}${query}`)
   await page.waitForFunction(() => window.__ready === true)
+  await drawn(page)
   await page.evaluate(() => window.__fx.nextFrame())
 }
 

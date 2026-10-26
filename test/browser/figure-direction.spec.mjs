@@ -2,6 +2,7 @@
 // the page runs right to left, and an Arabic, Hebrew or Persian figure must read the same in either page direction.
 // The probe measures with Range rects, the way the eye sees it, over every text node in every shadow root.
 import { test, expect } from '@playwright/test'
+import { drawn } from './drawn.mjs'
 
 const PAGE = '/test/browser/fixtures/widgets.html'
 
@@ -12,6 +13,7 @@ test.beforeEach(async ({ page }) => {
 async function open(page, locale, dir) {
   await page.goto(PAGE)
   await page.waitForFunction(() => window.__ready === true)
+  await drawn(page)
   await page.evaluate(({ locale, dir }) => {
     document.documentElement.setAttribute('dir', dir)
     const walk = (root) => {

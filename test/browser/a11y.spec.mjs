@@ -2,6 +2,7 @@
 // held. The bar is no serious or critical violation under WCAG 2.2 AA.
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { drawn } from './drawn.mjs'
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']
 const THEMES = ['light', 'dark']
@@ -32,6 +33,7 @@ test.describe('axe', () => {
     test(`widgets in ${theme}: every widget, size and state`, async ({ page }) => {
       await page.goto(`/test/browser/fixtures/widgets.html?theme=${theme}`)
       await page.waitForFunction(() => window.__ready === true)
+      await drawn(page)
       await settle(page)
       await expectClean(page, `widgets, ${theme}, data`)
       // The three views a host sees while data is on its way or broken.

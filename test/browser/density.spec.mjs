@@ -4,6 +4,7 @@
 // Density (data-ts-density on both theme blocks) and Text spacing, which adds the four WCAG 1.4.12 overrides to the
 // document and to every open shadow root. These specs drive those controls, then read what each tile really drew.
 import { test, expect } from '@playwright/test'
+import { drawn } from './drawn.mjs'
 
 const GALLERY = '/widgets.html'
 const FIXTURE = '/test/browser/fixtures/widgets.html'
@@ -223,6 +224,7 @@ test.describe('every built-in widget at compact density', () => {
           await page.setViewportSize({ width: phone ? 390 : 1400, height: 900 })
           await page.goto(`${FIXTURE}?theme=${theme}`)
           await page.waitForFunction(() => window.__ready === true)
+          await drawn(page)
           await page.evaluate(({ phone, spacing, SPACING, applySpacing }) => {
             const COLS = { S: 1, Tall: 1, Wide: 2, M: 2, L: 3, Banner: 4, XL: 4 }
             for (const el of window.__fx.tiles.values()) {
@@ -318,6 +320,7 @@ test.describe('the rem type scale', () => {
   test('the sizes the scale replaces are unchanged at 16px, and a 62.5% root does not shrink a single one (the px floor)', async ({ page }) => {
     await page.goto(FIXTURE)
     await page.waitForFunction(() => window.__ready === true)
+    await drawn(page)
     const sizes = (root) =>
       page.evaluate((root) => {
         document.documentElement.style.fontSize = root
@@ -352,6 +355,7 @@ test.describe('the rem type scale', () => {
   test('a long label or note never widens a column: only a figure can, so the layouts a default dashboard has are unchanged', async ({ page }) => {
     await page.goto(FIXTURE)
     await page.waitForFunction(() => window.__ready === true)
+    await drawn(page)
     const widths = () =>
       page.evaluate(async () => {
         await window.__fx.nextFrame()
@@ -373,6 +377,7 @@ test.describe('the rem type scale', () => {
   test('at a 20px root the tiles keep their size, the text grows, and compact density still shows its headline', async ({ page }) => {
     await page.goto(FIXTURE)
     await page.waitForFunction(() => window.__ready === true)
+    await drawn(page)
     const read = (key) =>
       page.evaluate((key) => {
         const tile = window.__fx.tiles.get(key)

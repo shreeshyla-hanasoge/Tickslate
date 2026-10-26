@@ -8,6 +8,7 @@
 // An intentional look change updates the baselines in the same PR, and the PR
 // says which look changed and why.
 import { test, expect } from '@playwright/test'
+import { drawn } from './drawn.mjs'
 
 // 'default' sets no data-theme, so the bare :root palette of tokens.css (and default-tokens.js) is pinned too.
 const THEMES = ['light', 'dark', 'default']
@@ -49,6 +50,7 @@ test.describe('visual baselines', () => {
         const load = async () => {
           await page.goto(`${PAGE}?theme=${theme}&exact=1`)
           await page.waitForFunction(() => window.__ready === true)
+          await drawn(page)
           return page.evaluate(async () => {
             await document.fonts.ready
             for (let i = 0; i < 6; i++) await window.__fx.nextFrame()
