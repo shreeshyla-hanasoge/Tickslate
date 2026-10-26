@@ -184,6 +184,29 @@ describe('createDashboard', () => {
   })
 })
 
+describe('a second call on one target', () => {
+  test('appends a second grid and warns once; after destroy() it is silent', () => {
+    const a = createDashboard(app, { layout: [] })
+    const b = createDashboard(app, { layout: [] })
+    assert.equal(app.children.filter((c) => c.localName === 'ts-grid').length, 2)
+    assert.equal(warnings.filter((w) => w.includes('already holds')).length, 1)
+    a.destroy()
+    b.destroy()
+    resetWarnings()
+    warnings.length = 0
+    createDashboard(app, { layout: [] })
+    assert.equal(warnings.length, 0)
+  })
+})
+
+describe('missing layout', () => {
+  test('warns in development and builds an empty grid', () => {
+    const dash = createDashboard(app, {})
+    assert.equal(dash.grid.children.length, 0)
+    assert.equal(warnings.filter((w) => w.includes('no layout')).length, 1)
+  })
+})
+
 describe('set and update', () => {
   test('update() sets only the ids named, in key order, and leaves other data alone', () => {
     const a = { v: 1 }
@@ -218,10 +241,57 @@ describe('set and update', () => {
     assert.equal(warnings.filter((w) => w.includes('"b"')).length, 1)
   })
 
+  test('data for an id with no tile yet is kept for a later add request', () => {
+    const dash = createDashboard(app, { layout: [item('metric')] })
+    assert.equal(dash.update({ 'card-2': { text: 'early' } }), undefined)
+    assert.equal(warnings.filter((w) => w.includes('"card-2"')).length, 1)
+    dash.grid.add('card', 'card-2')
+    const child = dash.grid.children.find((c) => c.getAttribute('item') === 'card-2')
+    assert.deepEqual(child.data, { text: 'early' })
+  })
+
   test('inherited names are not ids', () => {
     const dash = createDashboard(app, { layout: [item('metric')] })
     assert.equal(dash.set('toString', 1), false)
     assert.equal(dash.set('__proto__', 1), false)
+  })
+})
+
+describe('before ts-grid is defined', () => {
+  afterEach(() => { delete globalThis.customElements })
+
+  test('layout and tiles wait for the tag, so a bare array and the top strip survive', async () => {
+    let define
+    const defined = new Promise((resolve) => { define = resolve })
+    let ready = false
+    globalThis.customElements = {
+      get: (tag) => (tag === 'ts-grid' && !ready ? undefined : class {}),
+      whenDefined: () => defined,
+    }
+    const dash = createDashboard(app, { layout: { profiles: { market: [item('metric'), item('card')] }, topStrip: ['card'] }, data: { metric: 1 } })
+    assert.equal(dash.grid.parentElement, app)
+    assert.equal(dash.grid.children.length, 0)
+    assert.equal(dash.grid.layout.profiles.market.length, 0)
+    ready = true
+    define()
+    await defined
+    await Promise.resolve()
+    assert.deepEqual(tiles(dash.grid), ['ts-metric#metric', 'ts-card#card'])
+    assert.deepEqual(dash.grid.layout.topStrip, ['card'])
+    assert.equal(dash.grid.children[0].data, 1)
+  })
+
+  test('destroy() before the tag is defined leaves nothing to build', async () => {
+    let define
+    const defined = new Promise((resolve) => { define = resolve })
+    globalThis.customElements = { get: () => undefined, whenDefined: () => defined }
+    const dash = createDashboard(app, { layout: [item('metric')] })
+    dash.destroy()
+    define()
+    await defined
+    await Promise.resolve()
+    assert.equal(dash.grid.children.length, 0)
+    assert.equal(app.children.includes(dash.grid), false)
   })
 })
 

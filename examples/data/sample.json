@@ -2,19 +2,19 @@
   "layout": [
     {
       "id": "metric",
-      "size": "M"
-    },
-    {
-      "id": "chart",
-      "size": "L"
+      "size": "Wide"
     },
     {
       "id": "progress",
       "size": "Wide"
     },
     {
+      "id": "chart",
+      "size": "M"
+    },
+    {
       "id": "table",
-      "size": "L"
+      "size": "M"
     }
   ],
   "data": {

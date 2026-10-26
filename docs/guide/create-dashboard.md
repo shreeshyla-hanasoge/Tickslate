@@ -25,20 +25,39 @@ interval. The library does not fetch; you load the JSON and pass the object.
 
 `target` is the element to put the grid in, or a CSS selector for it. A selector
 that matches nothing throws a `TypeError` naming it. Existing content of the
-target is left alone. Without a DOM (server rendering) it throws
+target is left alone. A selector that matches several elements uses the first.
+Calling `createDashboard` again on the same target appends a second grid and
+leaves the first running, with one development warning; call `destroy()` on the
+old one first. Without a DOM (server rendering) it throws
 `TypeError('createDashboard needs a DOM')`; importing it there is fine.
 
 | Option | Meaning |
 |---|---|
 | `layout` | A [`Layout`](../reference/core.md#layouts) or a bare array of items. The grid reads it like any layout, and repairs are reported on `ts-layout-issues`. |
-| `data` | Data by item id, assigned to each tile's `data` at creation. An id with no item warns in development and is ignored. |
+| `data` | Data by item id, assigned to each tile's `data` at creation. An id with no item yet is kept: a later add request for that id (the picker or `grid.add()`) creates the tile with this data. Without `persist` it warns once in development, since the layout is all there is to match. |
 | `catalog` | The widget catalog. Default `widgetCatalog()`: the built-ins and every `defineWidget` type. Types registered with `defineWidget` are still found after a catalog you pass. |
 | `persist` | The grid's `persist` key. See [saving layouts](saving-layouts.md). Off by default. |
 | `locale`, `currency`, `timeZone` | Set on the grid as `locale`, `currency` and `time-zone`; every tile inherits them. |
 | `label` | The grid's accessible name. Say what the dashboard is ("Service overview"); the default is the grid's own "Dashboard". |
 | `addTypes` | What the picker offers and `ts-add-request` is answered for: a list of types, `'*'` or `null`. Default `'*'`. |
 
-It returns `{ grid, set(id, data), update(dataById), destroy() }`.
+`layout` is required: without it the grid is empty, with one development
+warning. It returns `{ grid, set(id, data), update(dataById), destroy() }`.
+
+### Headings and names
+
+The tiles' headings take their level from the grid's `heading-level`, which is
+3 by default. A page with an `<h1>` and the dashboard directly under it should
+set 2 (RFC 0003 Decision 29), or a screen reader and axe find a skipped level.
+`grid` is the real element, so:
+
+```js
+dashboard.grid.setAttribute('heading-level', '2')
+```
+
+Each tile is named after its catalog entry ("Metric", "Chart"), so two metrics
+share a name. A host can name a tile by setting the `label` attribute on it:
+`dashboard.grid.querySelector('[item="revenue"]').setAttribute('label', 'Revenue')`.
 
 ## Tiles
 
@@ -46,15 +65,17 @@ Every item of **every** profile gets one tile, once per id, so switching profile
 needs no further code. The tag comes from the item's catalog entry. An item whose
 type is not in the catalog is skipped with one development warning. A tag that
 is not defined yet still gets its tile, which upgrades when the tag is defined,
-with a development warning to import the widget.
+with a development warning to import the widget. If `ts-grid` itself is not
+defined yet (you imported `createDashboard` without the grid), the layout and
+tiles wait until it is.
 
 ## Updating
 
 `dashboard.set(id, data)` assigns one tile's data and returns `false` (with a
-development warning) for an id it has no tile for. `dashboard.update(dataById)`
+development warning) for an id it has no tile for; the data is still kept, so a tile added later for that id arrives with it. `dashboard.update(dataById)`
 does that for each key of the object and for nothing else, so a polling loop can
 send only what changed and every other tile keeps the data it has. Each unknown
-id warns once.
+id warns once per page, not once per dashboard.
 
 ## Adding and removing
 

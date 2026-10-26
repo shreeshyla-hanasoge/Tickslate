@@ -45,6 +45,9 @@ function allItems(layout) {
   return items
 }
 
+// The grid each target holds, so a second call on the same target can say so.
+const gridOf = new WeakMap()
+
 /** `target` is the element to put the grid in, or a CSS selector for it. */
 export function createDashboard(target, options = {}) {
   if (typeof document === 'undefined') throw new TypeError('createDashboard needs a DOM')
@@ -58,7 +61,10 @@ export function createDashboard(target, options = {}) {
   const { layout, data, catalog, persist, locale, currency, timeZone, label } = options
   const addTypes = options.addTypes === undefined ? '*' : options.addTypes
 
+  const earlier = gridOf.get(host)
+  if (DEV && earlier && earlier.parentElement === host) warnOnce('dashboard-twice', 'createDashboard was called again on a target that already holds a dashboard, so the page now has two grids. Call destroy() on the first before making another.')
   const grid = document.createElement('ts-grid')
+  gridOf.set(host, grid)
   if (locale) grid.setAttribute('locale', locale)
   if (currency) grid.setAttribute('currency', currency)
   if (timeZone) grid.setAttribute('time-zone', timeZone)
@@ -123,19 +129,32 @@ export function createDashboard(target, options = {}) {
   // A widget defined after the dashboard may be the type of a tile that was skipped.
   const offCatalog = onCatalogChange(onLayout)
 
-  if (catalog) grid.catalog = catalog
-  grid.addTypes = addTypes
-  grid.layout = layout
-  ensureTiles()
-  host.appendChild(grid)
-  // The grid may have restored a saved layout while connecting.
-  ensureTiles()
+  if (DEV && layout === undefined) warnOnce('dashboard-layout', 'createDashboard was given no layout, so the grid is empty. Pass the layout option: a Layout or an array of items.')
 
-  // With persist, a saved layout may hold ids this one does not yet, so they are not yet "unknown".
-  if (DEV && !persist) {
-    for (const id of values.keys()) {
-      if (!tiles.has(id)) warnOnce(`dashboard-data:${id}`, `createDashboard was given data for "${id}", which is no item in any profile of the layout, so it is ignored.`)
+  function start() {
+    if (!alive) return
+    if (catalog) grid.catalog = catalog
+    grid.addTypes = addTypes
+    grid.layout = layout
+    ensureTiles()
+    if (!grid.isConnected) host.appendChild(grid)
+    // The grid may have restored a saved layout while connecting.
+    ensureTiles()
+
+    // With persist, a saved layout may hold ids this one does not yet, so they are not yet "unknown".
+    if (DEV && !persist) {
+      for (const id of values.keys()) {
+        if (!tiles.has(id)) warnOnce(`dashboard-data:${id}`, `createDashboard was given data for "${id}", which is no item in any profile of the layout, so it is ignored.`)
+      }
     }
+  }
+
+  if (typeof customElements === 'undefined' || customElements.get('ts-grid')) start()
+  else {
+    // Properties set on a grid that has not upgraded shadow its accessors and
+    // are lost, so wait for the tag. The grid is in the page meanwhile.
+    host.appendChild(grid)
+    customElements.whenDefined('ts-grid').then(start)
   }
 
   function set(id, value) {
@@ -145,7 +164,9 @@ export function createDashboard(target, options = {}) {
     }
     const el = typeof id === 'string' && tiles.get(id)
     if (!el) {
-      if (DEV) warnOnce(`dashboard-id:${String(id)}`, `dashboard.set() was given "${String(id)}", which is no item of this dashboard, so it was skipped.`)
+      if (DEV) warnOnce(`dashboard-id:${String(id)}`, `dashboard.set() was given "${String(id)}", which is no item of this dashboard yet, so no tile was changed. The data is kept for a tile added later.`)
+      // A poller sends every id each tick; a tile the user adds later should come with its figures.
+      if (typeof id === 'string') values.set(id, value)
       return false
     }
     values.set(id, value)
