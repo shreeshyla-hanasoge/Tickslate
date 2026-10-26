@@ -24,8 +24,8 @@ export interface TsLayoutChangeDetail {
   /** The layout before the edit. */
   previous: Layout
   profile: string
-  reason: 'move' | 'resize' | 'remove' | 'add' | 'undo'
-  /** The item that was moved, resized, removed or added back. Empty for 'undo', which restores a whole profile: compare `previous` and `layout`. */
+  reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' | 'strip'
+  /** The item that was moved, resized, removed or added back. For 'strip', the tile pinned, unpinned or dragged in the strip; empty when `setTopStrip()` made the change. Empty for 'undo', which restores a whole profile: compare `previous` and `layout`. */
   id: string
   /** On 'remove': the item's index in the profile before it went. On 'add': its index after it came back. */
   index?: number
@@ -160,6 +160,13 @@ export declare class TsGrid extends HTMLElement {
   resize(id: string, size: SizeName): boolean
   /** Removes the item, which becomes a hidden child. False for an unknown id. Commits with reason 'remove'. */
   remove(id: string): boolean
+  /**
+   * Pins `ids` (at most 3 the grid shows, in order) to the phone top strip, or unpins by leaving them out. The strip
+   * shows at 2 columns only; the saved list is kept at any width. Ids this profile does not show are kept and take
+   * no slot; a widget with no S size is ignored. Commits with reason 'strip' and records an undo step.
+   * Returns false when nothing changed.
+   */
+  setTopStrip(ids: readonly string[]): boolean
   /** The DOM's own `remove()`, which the grid keeps: it takes the grid off the page. TypeScript needs it declared, because `remove(id)` alone is not assignable to `Element.remove()`. */
   remove(): void
   /** The profile `override()` is showing, or null when the schedule (or the `profile` attribute) decides. */

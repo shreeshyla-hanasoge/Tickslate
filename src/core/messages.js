@@ -102,7 +102,7 @@ export const EN = Object.freeze({
   'grid.addBack': 'Add back ({count})',
   'grid.addBackItem': 'Add back {label}',
   'grid.hiddenHeading': 'Hidden from this layout',
-  'grid.instructions': 'Space or Enter picks the tile up, then the arrow keys move it and Space drops it. Plus and minus resize it. Delete removes it. You can also tap the tile, then tap where it should go.',
+  'grid.instructions': 'Space or Enter picks the tile up, then the arrow keys move it and Space drops it. Plus and minus resize it. Delete removes it. On a phone, P pins it to the top strip or unpins it. You can also tap the tile, then tap where it should go.',
   'grid.handle': '{label}, {size}, position {position} of {total}',
   'grid.remove': 'Remove {label}',
   'grid.resize': 'Resize {label}, now {size}',
@@ -126,6 +126,13 @@ export const EN = Object.freeze({
   'grid.add': 'Add',
   'grid.added': '{label} added.',
   'grid.addFailed': '{label} could not be added.',
+  'grid.strip': 'Pinned to the top',
+  'grid.pin': 'Pin {label} to the top',
+  'grid.unpin': 'Unpin {label}',
+  'grid.pinned': '{label} pinned to the top.',
+  'grid.unpinned': '{label} unpinned.',
+  'grid.stripFull': 'The top strip is full. Unpin a tile first.',
+  'grid.pinUnsupported': 'This widget has no small size.',
 
   // <ts-widget-picker>
   'picker.title': 'Add a widget',

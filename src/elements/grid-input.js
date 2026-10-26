@@ -13,6 +13,7 @@
  *   { type: 'placeAt', id: string, targetId: string } |
  *   { type: 'resizeStep', id: string, dir: 1 | -1 } |
  *   { type: 'remove', id: string } |
+ *   { type: 'togglePin', id: string } |
  *   { type: 'cancel', id: string } |
  *   { type: 'drop', id: string }
  * )} EditAction
@@ -40,6 +41,7 @@ export function keyAction(key, focusedId, state) {
     // The held tile is the subject even if focus has wandered to another handle.
     if (isActivate(key)) return { type: 'drop', id: held }
     if (key === 'Escape') return { type: 'cancel', id: held }
+    if (key === 'p' || key === 'P') return { type: 'togglePin', id: held }
     const arrow = ARROWS[key]
     if (arrow) return { type: 'moveBy', id: held, dCol: arrow[0], dRow: arrow[1] }
     return null
@@ -49,6 +51,7 @@ export function keyAction(key, focusedId, state) {
   if (key === '+' || key === '=') return { type: 'resizeStep', id: focusedId, dir: 1 }
   if (key === '-' || key === '_') return { type: 'resizeStep', id: focusedId, dir: -1 }
   if (key === 'Delete' || key === 'Backspace') return { type: 'remove', id: focusedId }
+  if (key === 'p' || key === 'P') return { type: 'togglePin', id: focusedId }
   return null
 }
 

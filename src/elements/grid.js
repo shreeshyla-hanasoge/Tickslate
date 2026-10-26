@@ -14,15 +14,16 @@
  * so the edit-mode wiggle and the lift turn around the tile's own centre.
  *
  * In edit mode a transparent "chrome" covers each tile: a plain container of
- * three sibling buttons (RFC 0002 §5.9). The handle covers the tile, catches
+ * four sibling buttons (RFC 0002 §5.9, RFC 0003 §19; the fourth, pin, only at 2 columns). The handle covers the tile, catches
  * every pointer, so a drag can never press a button inside a widget, and is
- * the one Tab stop; remove and resize sit beside it, reachable by assistive
+ * the one Tab stop; remove, resize and pin sit beside it, reachable by assistive
  * technology. Nothing interactive is nested inside anything interactive.
  */
 
 import {
   DEFAULT_PROFILE,
   EN,
+  TOP_STRIP_MAX,
   WIDGETS,
   addItem,
   activeProfile,
@@ -39,6 +40,7 @@ import {
   readLayout,
   removeItem,
   resizeItem,
+  setTopStrip,
   sizeForExtent,
   snapSize,
   stepSize,
@@ -53,14 +55,19 @@ import {
   cellAt,
   elementSpec,
   extentOf,
+  hasSmall,
   hostResizes,
   itemsFromChildren,
   keepInPlace,
   mergeOrder,
+  mergeStrip,
   metrics,
   px,
   reconcile,
   specResolver,
+  splitStrip,
+  stripBoxes,
+  stripSlotAt,
   visualOrder,
 } from './grid-geometry.js'
 import { ensureTokens } from './default-tokens.js'
@@ -122,6 +129,14 @@ function registered(item) {
 
 // Built on first use, so importing this module where there is no DOM (Node,
 // server-side rendering) doesn't throw.
+//
+// The phone top strip's CSS (RFC 0003 §19), explained here because a comment inside the template ships to every page:
+// - .strip holds the pinned tiles in one row above the board, stuck below a host's own header. It is opaque, so tiles
+//   scrolling beneath don't show through its gaps.
+// - Focus and scrolling to a tile must not leave it under the strip (WCAG 2.4.11), hence the scroll margin.
+// - The pin button is the fourth chrome button, top-end opposite remove, and shares remove's box. Its arrow is drawn
+//   with ::before, not written, so it is not text the grid owns: up pins, down unpins.
+// - The strip sits at the top of the page when stuck, so a strip tile's buttons are drawn inside its corner.
 let template = null
 const TEMPLATE = `
 <style>
@@ -129,6 +144,8 @@ const TEMPLATE = `
   :host([hidden]) { display: none; }
   :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
+  .strip { position: sticky; inset-block-start: var(--ts-strip-top, 0px); z-index: 7; background: var(--ts-bg); transition: height ${SLIDE}; }
+  .board ::slotted(*), .board .handle { scroll-margin-block-start: var(--_strip-clear, 0px); }
   /* Focus lands here when a removed tile leaves nothing else to take it. */
   .board:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   /* A long press must never start a text selection on a touch screen, but a
@@ -156,30 +173,38 @@ const TEMPLATE = `
     position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: inherit;
     background: none; pointer-events: none; cursor: grab; -webkit-tap-highlight-color: transparent;
   }
-  :host([editing]) .handle, :host([editing]) .remove, :host([editing]) .resize { pointer-events: auto; }
+  :host([editing]) .handle, :host([editing]) .remove, :host([editing]) .resize, :host([editing]) .chrome.pinnable .pin { pointer-events: auto; }
   :host([locked]) .chrome button { pointer-events: none; }
-  .chrome.removing .handle, .chrome.removing .remove, .chrome.removing .resize { pointer-events: none; }
+  .chrome.removing .handle, .chrome.removing .remove, .chrome.removing .resize, .chrome.removing .pin { pointer-events: none; }
   .chrome.removing .remove { display: none; }
   :host([dragging]) .handle { cursor: grabbing; }
   /* An outline, not a shadow, so the ring survives forced colours. */
   .handle:focus-visible, .resize:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .chrome.held .handle { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
-  .remove, .resize { display: none; }
-  :host([editing]) .remove, :host([editing]) .resize { display: flex; }
-  .chrome.lifted .remove, .chrome.lifted .resize, .chrome.fixed .resize { display: none; }
-  .remove {
-    position: absolute; top: -16px; inset-inline-start: -16px; width: 44px; height: 44px; padding: 0; margin: 0;
+  .remove, .resize, .pin { display: none; }
+  :host([editing]) .remove, :host([editing]) .resize, :host([editing]) .chrome.pinnable .pin { display: flex; }
+  .chrome.lifted .remove, .chrome.lifted .resize, .chrome.fixed .resize, :host([editing]) .chrome.lifted .pin { display: none; }
+  .remove, .pin {
+    position: absolute; inset-block-start: -16px; width: 44px; height: 44px; padding: 0; margin: 0;
     border: 0; background: none; align-items: center; justify-content: center; cursor: pointer;
     animation: pop 160ms var(--ts-ease, ease-out);
   }
-  .remove span {
+  .remove { inset-inline-start: -16px; }
+  .pin { inset-inline-end: -16px; }
+  .remove span, .pin span {
     width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
     background: var(--ts-surface-2); color: var(--ts-ink);
     border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow, none);
     font: 600 16px/1 var(--ts-font-ui, system-ui, sans-serif);
   }
-  .remove:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
+  .remove:focus-visible span, .pin:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
+  .pin span { font-size: 13px; }
+  .pin span::before { content: '\\2191'; }
+  .chrome.in-strip .pin span::before { content: '\\2193'; }
+  .chrome.in-strip .remove, .chrome.in-strip .pin { inset-block-start: -10px; }
+  .chrome.in-strip .remove { inset-inline-start: -10px; }
+  .chrome.in-strip .pin { inset-inline-end: -10px; }
   .resize {
     position: absolute; inset-inline-end: -6px; bottom: -6px; width: 44px; height: 44px; margin: 0; padding: 0; border: 0;
     background: none; cursor: nwse-resize; touch-action: none; animation: pop 160ms var(--ts-ease, ease-out);
@@ -196,7 +221,7 @@ const TEMPLATE = `
     /* The wiggle is gone, so this outline alone says "editing". The RFC's 45% mix is
        2.8:1 against Paper's --ts-bg, under the 3:1 it asks for; 50% clears it in both themes. */
     :host([editing]) .chrome { outline: 2px dashed color-mix(in srgb, var(--ts-ink) 50%, transparent); outline-offset: -1px; }
-    .remove, .resize { animation: none; }
+    .remove, .resize, .pin { animation: none; }
   }
   [hidden] { display: none !important; }
   /* The dock holds the pill and, above it, the undo toast, so they never overlap.
@@ -277,6 +302,9 @@ const TEMPLATE = `
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 <button class="edit-btn" type="button" hidden></button>
+<div class="strip" part="strip" role="region" hidden>
+  <div class="chromes"></div>
+</div>
 <div class="board" part="board" role="region">
   <div class="placeholder" part="placeholder"></div>
   <slot></slot>
@@ -321,8 +349,12 @@ export class TsGrid extends Base {
     if (DEV && canAssign && !this._manual) warnOnce('grid-slot-assignment', NAMED_ROOT_WARNING)
     root.appendChild(template.content.cloneNode(true))
     this._board = root.querySelector('.board')
-    this._placeholder = root.querySelector('.placeholder')
-    this._chromeLayer = root.querySelector('.chromes')
+    this._placeholder = root.querySelector('.board .placeholder')
+    this._chromeLayer = root.querySelector('.board .chromes')
+    // The phone top strip (RFC 0003 §19): its own sticky container, with its own placeholder and chrome layer.
+    this._stripEl = root.querySelector('.strip')
+    this._stripPlaceholder = null // made when a strip tile is first lifted, so the board's is the only one until then
+    this._stripLayer = root.querySelector('.strip .chromes')
     // Manual mode only. The default slot keeps what isn't a tile; each visible tile gets a slot of its own.
     this._restSlot = root.querySelector('.board > slot:not([name])')
     this._emptySlot = root.querySelector('slot[name="empty"]')
@@ -362,6 +394,12 @@ export class TsGrid extends Base {
     this._editOrigin = null // the element that started editing, for the focus return
     this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
     this._history = createHistory()
+    this._stripSteps = new WeakSet() // the layouts undo returns to for a step that changed the strip, so other steps leave it alone
+    // Only a tile the grid shows and can draw at S takes a pin slot; any other saved id is kept but never blocks a pin.
+    this._pinSlot = (id) => {
+      const item = this._tiles.has(id) && this._profileItems().find((it) => it.id === id)
+      return !!item && this._canPin(item)
+    }
     this._removing = new Set() // ids fading out, so a second click or Delete does nothing
     this._removedAt = -Infinity // when a remove last began, for the double-click guard
     this._inertWas = new Map() // tile → whether the host had set inert, restored exactly when editing ends
@@ -384,7 +422,9 @@ export class TsGrid extends Base {
     this._setCatalog(WIDGETS)
     this._columns = 0
     this._m = null
-    this._order = [] // the visible items, in the order being shown
+    this._order = [] // the visible board items, in the order being shown; the strip's tiles are in _strip
+    this._strip = [] // the visible items pinned to the top strip, in strip order (always empty outside 2 columns)
+    this._wasStrip = new Set() // who was in the strip at the last render, so a tile changing zone appears in place
     this._tiles = new Map() // id → host element
     this._chromes = new Map() // id → chrome element
     this._boxes = new Map() // id → last pixel box
@@ -463,10 +503,12 @@ export class TsGrid extends Base {
       const button = target.closest('.remove')
       const handle = target.closest('.handle')
       const resize = target.closest('.resize')
-      if (button) this._remove(button.parentElement.dataset.id)
+      const pin = target.closest('.pin')
+      if (pin) this._togglePin(pin.parentElement.dataset.id)
+      else if (button) this._remove(button.parentElement.dataset.id)
       else if (handle) this._tap(handle.parentElement.dataset.id)
       else if (resize) this._resizeClick(resize.parentElement.dataset.id)
-      else if (target === this._board) this._tap(null)
+      else if (target === this._board || target === this._stripEl) this._tap(null)
       else if (target.closest('.undo')) this._undoFromToast()
       else if (target.closest('.edit-btn')) {
         if (this.locked) return
@@ -607,6 +649,7 @@ export class TsGrid extends Base {
     this._pill.querySelector('.done').textContent = t('grid.done')
     this._emptyPanel.querySelector('.note').textContent = t('grid.emptyBoard')
     this._hint.textContent = t('grid.instructions')
+    this._stripEl.setAttribute('aria-label', t('grid.strip'))
     this._nameBoard()
     // The Add back list and each tile's chrome names were built from the old table.
     this._menuSig = ''
@@ -723,6 +766,12 @@ export class TsGrid extends Base {
     for (const id of now) removed.delete(id)
     const previous = this._layout
     this._layout = withProfile(this._layout, profile, items)
+    // The strip is shared by every profile, so only a step that changed it (a pin, an unpin, the removal of a pinned tile)
+    // puts it back; undoing a move in one profile must not undo pins made in another.
+    if (this._stripSteps.has(snapshot)) {
+      if (Array.isArray(snapshot.topStrip)) this._layout = setTopStrip(this._layout, snapshot.topStrip, () => false)
+      else delete this._layout.topStrip
+    }
     this._sync(true)
     this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'undo', id: '' })
     return true
@@ -856,17 +905,18 @@ export class TsGrid extends Base {
     const previous = this._layout
     // Read before the edit: a removed tile has no label afterwards.
     const label = this._label(id)
+    const next = withProfile(previous, profile, items)
     this._cancelGesture()
-    this._history.push(profile, previous)
+    this._record(profile, previous, next)
     this._hideToast(false)
     // Children can't bring a removed tile back; only a restore can.
     if (reason === 'remove') this._removedFor(profile).add(id)
-    this._layout = withProfile(previous, profile, items)
+    this._layout = next
     this._sync(true)
     this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason, id, ...extra })
     // The words a drag or a key would have said, for a listener who can't see the board change.
     const t = this.t
-    if (reason === 'move') this._announce(t('grid.moved', { label, position: this._position(id), total: this._order.length }))
+    if (reason === 'move') this._announce(t('grid.moved', { label, position: this._position(id), total: this._zone(id).length }))
     else if (reason === 'resize') this._announce(t('grid.resized', { label, size: this._item(id) ? this._item(id).size : '' }))
     else if (reason === 'remove') this._announce(t('grid.removedSaid', { label }))
   }
@@ -899,6 +949,91 @@ export class TsGrid extends Base {
     if (index < 0) return false
     this._edit('remove', id, removeItem(items, id), { index, item: items[index] })
     return true
+  }
+
+  /**
+   * Pins `ids` (at most 3 the grid shows, in order) to the phone top strip, or unpins by leaving them out. False
+   * when nothing changed. Ids this grid doesn't show (another profile's) are kept and take no slot, and a widget
+   * with no S size is ignored. The strip is drawn at 2 columns only; the saved list is kept at any width (RFC 0003 §19).
+   */
+  setTopStrip(ids) {
+    const saved = this._layout.topStrip || []
+    const want = (Array.isArray(ids) ? ids : []).filter((id) => {
+      const item = this._tiles.has(id) && this._profileItems().find((it) => it.id === id)
+      const refused = item && !this._canPin(item)
+      if (DEV && refused) warnOnce(`grid-strip-small:${id}`, `<ts-grid>.setTopStrip() ignored '${id}': its widget has no small (S) size, and the strip draws tiles at S.`)
+      return !refused
+    })
+    const next = setTopStrip(this._layout, want.concat(saved.filter((id) => !this._pinSlot(id) && !want.includes(id))), this._pinSlot)
+    if (sameIds(saved, next.topStrip)) return false
+    this._commitStrip(next, '')
+    return true
+  }
+
+  _canPin(item) {
+    const spec = this._resolve(item)
+    return hasSmall(spec && spec.sizes)
+  }
+
+  /** The history step for a change from `previous` to `next`, marked when it changed the strip. */
+  _record(profile, previous, next) {
+    this._history.push(profile, previous)
+    if (!sameIds(previous.topStrip || [], next.topStrip || [])) this._stripSteps.add(previous)
+  }
+
+  /** The commit of a strip change: record the step, redraw (unless a drop already has) and report it with reason 'strip'. */
+  _commitStrip(next, id, dropped) {
+    const previous = this._layout
+    const profile = this.profile
+    if (!dropped) {
+      this._cancelGesture()
+      this._hideToast(false)
+    }
+    this._record(profile, previous, next)
+    this._layout = next
+    if (!dropped) this._sync(true)
+    this._emit('ts-layout-change', { layout: next, items: this._profileItems(), previous, profile, reason: 'strip', id })
+  }
+
+  /** The pin button or the P key: pin the tile to the end of the strip, or unpin it. A fourth pin is refused out loud. */
+  _togglePin(id) {
+    if (!this._editing || (this._gesture && this._heldId() !== id) || !this._placements.has(id) || this._columns !== 2 || !this._manual) return
+    const chrome = this._chromes.get(id)
+    const active = this.shadowRoot.activeElement
+    const had = active && chrome && chrome.contains(active) ? active : null
+    const saved = this._layout.topStrip || []
+    const shown = this._strip.map((item) => item.id)
+    const t = this.t
+    const label = this._label(id)
+    if (this._inStrip(id)) {
+      this._commitStrip(setTopStrip(this._layout, saved.filter((x) => x !== id), this._pinSlot), id)
+      this._announce(t('grid.unpinned', { label }))
+    } else if (!this._canPin(this._item(id))) {
+      this._announce(t('grid.pinUnsupported'))
+      return
+    } else if (shown.length >= TOP_STRIP_MAX) {
+      this._announce(t('grid.stripFull'))
+      return
+    } else {
+      this._commitStrip(setTopStrip(this._layout, [...shown, id, ...saved.filter((x) => x !== id && !shown.includes(x))], this._pinSlot), id)
+      this._announce(t('grid.pinned', { label }))
+    }
+    // The chrome moved between containers, which drops focus where moveBefore is missing.
+    if (had && had.isConnected && this.shadowRoot.activeElement !== had) had.focus({ preventScroll: true })
+  }
+
+  _inStrip(id) {
+    return this._strip.some((item) => item.id === id)
+  }
+
+  /** The tiles `id` is ordered among: the strip's, or the board's. */
+  _zone(id) {
+    return this._inStrip(id) ? this._strip : this._order
+  }
+
+  _setZone(id, items) {
+    if (this._inStrip(id)) this._strip = items
+    else this._order = items
   }
 
   /** The profile an override shows, or null when the schedule (or the `profile` attribute) decides. */
@@ -1298,9 +1433,12 @@ export class TsGrid extends Base {
     if (!this._m) return
     const before = new Set(this._tiles.keys())
     if (!keepTiles) this._matchChildren(true)
-    const items = this._profileItems()
-    this._order = items.filter((item) => this._tiles.has(item.id))
-    const shown = new Set(this._order.map((item) => item.id))
+    const visible = this._profileItems().filter((item) => this._tiles.has(item.id))
+    // The strip needs manual slot assignment, which keeps each pinned tile's slot inside the sticky container.
+    const { strip, board } = this._manual ? splitStrip(visible, this._layout.topStrip, this._columns, (item) => this._canPin(item)) : { strip: [], board: visible }
+    this._order = board
+    this._strip = strip
+    const shown = new Set(visible.map((item) => item.id))
     for (const [id, el] of this._tiles) if (!shown.has(id)) el.style.display = 'none'
     for (const id of this._chromes.keys()) if (!shown.has(id)) this._dropChrome(id)
 
@@ -1385,18 +1523,26 @@ export class TsGrid extends Base {
     const m = this._m
     if (!m) return
     animate = animate && this._motion()
-    const { placements, rows } = place(this._order, this._columns, this._resolve)
+    const { placements: boardPlaced, rows } = place(this._order, this._columns, this._resolve)
+    // Strip tiles sit above row 0, in strip order, each at its S variant.
+    const stripPlaced = this._strip.map((item, i) => {
+      const spec = this._resolve(item)
+      return { id: item.id, col: i, row: -1, cols: 1, rows: 1, variant: footprint('S', 2, spec ? spec.sizes : null, spec ? spec.phoneRows : null).variant }
+    })
+    const stripAt = stripPlaced.length ? stripBoxes(stripPlaced.length, m, { rtl: this._rtl }) : []
+    const placements = stripPlaced.concat(boardPlaced)
     this._placements = new Map(placements.map((p) => [p.id, p]))
     // Slots move before the boxes are written, with a style flush between. WebKit drops a tile's slide when its slot
     // moves, but only if the move comes after the new box: moved first, the tile has a computed "before" style again
     // by the time its box changes, so it slides there like the rest.
     if (animate && this._manual && this._slotTiles(visualOrder(placements), this._editing && this._orderKnown)) void this._board.offsetWidth
     for (const p of placements) {
-      const box = boxOf(p, m, { rtl: this._rtl })
+      const inStrip = p.row < 0
+      const box = inStrip ? stripAt[p.col] : boxOf(p, m, { rtl: this._rtl })
       const el = this._tiles.get(p.id)
       // A tile that wasn't on screen appears in place rather than sliding in
-      // from wherever it last was.
-      const slide = animate && this._boxes.has(p.id) && el.style.display !== 'none'
+      // from wherever it last was, and one changing between strip and board has no common frame to slide in.
+      const slide = animate && this._boxes.has(p.id) && el.style.display !== 'none' && this._wasStrip.has(p.id) === inStrip
       this._boxes.set(p.id, box)
       if (el.getAttribute('size') !== p.variant) el.setAttribute('size', p.variant)
       this._written.set(el, p.variant)
@@ -1408,11 +1554,21 @@ export class TsGrid extends Base {
       if (this._editing && !held && !this._wiggles.has(p.id)) this._wiggle(p.id)
       if (this._editing) this._makeInert(el)
     }
+    if (stripPlaced.length || this._wasStrip.size) this._wasStrip = new Set(stripPlaced.map((p) => p.id))
     this._orderChromes(placements)
     this._assignSlots(placements)
     this._board.style.transition = animate ? '' : 'none'
     // An empty board keeps one row, so its message and Add back have somewhere to sit.
     this._board.style.height = `${boardHeight(rows || 1, m)}px`
+    // One compact row and a gap, which is also the room between the strip and the board.
+    // Nothing to write while there is no strip and there was none, which is every render at 3 or 4 columns.
+    if (stripPlaced.length || !this._stripEl.hidden) {
+      const stripHeight = stripPlaced.length ? m.rowHeight + m.gap : 0
+      this._stripEl.hidden = !stripPlaced.length
+      this._stripEl.style.transition = animate ? '' : 'none'
+      this._stripEl.style.height = `${stripHeight}px`
+      this._board.style.setProperty('--_strip-clear', stripHeight ? `calc(var(--ts-strip-top, 0px) + ${stripHeight}px)` : '0px')
+    }
   }
 
   /**
@@ -1458,8 +1614,10 @@ export class TsGrid extends Base {
       if (!slot) {
         slot = document.createElement('slot')
         this._tileSlots.set(id, slot)
-        board.insertBefore(slot, this._chromeLayer)
       }
+      // A pinned tile's slot lives in the sticky strip, which comes before the board in the flat tree: first in Tab and reading order.
+      const home = this._inStrip(id) ? this._stripEl : board
+      if (slot.parentNode !== home) home.insertBefore(slot, home === board ? this._chromeLayer : this._stripLayer)
       const el = this._tiles.get(id)
       if (this._slotted.get(slot) !== el) {
         slot.assign(el)
@@ -1469,19 +1627,22 @@ export class TsGrid extends Base {
     })
     let moved = false
     if (!frozen) {
-      // Moving a slot reattaches its tile, and some engines (WebKit, Firefox) drop that tile's slide when it is
-      // reattached, so only the slots outside the longest run already in order move: one for "last goes first".
-      const current = [...board.children].filter((child) => this._slotted.has(child))
-      const keep = keepInPlace(current, slots)
       const active = this._deepActive()
-      let next = this._chromeLayer
-      for (let i = slots.length - 1; i >= 0; i--) {
-        if (!keep.has(slots[i])) {
-          if (typeof board.moveBefore === 'function') board.moveBefore(slots[i], next)
-          else board.insertBefore(slots[i], next)
-          moved = true
+      for (const [home, end] of [[this._stripEl, this._stripLayer], [board, this._chromeLayer]]) {
+        const mine = slots.filter((slot) => slot.parentNode === home)
+        // Moving a slot reattaches its tile, and some engines (WebKit, Firefox) drop that tile's slide when it is
+        // reattached, so only the slots outside the longest run already in order move: one for "last goes first".
+        const current = [...home.children].filter((child) => this._slotted.has(child))
+        const keep = keepInPlace(current, mine)
+        let next = end
+        for (let i = mine.length - 1; i >= 0; i--) {
+          if (!keep.has(mine[i])) {
+            if (typeof home.moveBefore === 'function') home.moveBefore(mine[i], next)
+            else home.insertBefore(mine[i], next)
+            moved = true
+          }
+          next = mine[i]
         }
-        next = slots[i]
       }
       // Without moveBefore, a tile whose slot moved may lose focus.
       if (moved && active && active.isConnected && this._deepActive() !== active) active.focus({ preventScroll: true })
@@ -1537,24 +1698,33 @@ export class TsGrid extends Base {
       // keys, remove and resize are named for assistive technology but not Tab stops.
       chrome.innerHTML = '<button class="handle" type="button" aria-describedby="hint" aria-pressed="false"></button>' +
         '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button>' +
-        '<button class="resize" type="button" tabindex="-1"></button>'
-      this._chromeLayer.appendChild(chrome)
+        '<button class="resize" type="button" tabindex="-1"></button>' +
+        '<button class="pin" type="button" tabindex="-1"><span aria-hidden="true"></span></button>'
       this._chromes.set(id, chrome)
     }
+    const stripped = this._inStrip(id)
+    const layer = stripped ? this._stripLayer : this._chromeLayer
+    if (chrome.parentNode !== layer) layer.appendChild(chrome)
     const label = this._label(id)
     const item = this._item(id)
     // The size is read as its token ("M") for now, which keeps what a screen reader says the same as before messages; size.name gives a full name when the picker needs one.
     const size = item ? item.size : ''
     const t = this.t
     const handle = chrome.querySelector('.handle')
-    setAttr(handle, 'aria-label', t('grid.handle', { label, size, position: this._position(id), total: this._order.length }))
+    setAttr(handle, 'aria-label', t('grid.handle', { label, size, position: this._position(id), total: this._zone(id).length }))
     setAttr(chrome.querySelector('.remove'), 'aria-label', t('grid.remove', { label }))
     setAttr(chrome.querySelector('.resize'), 'aria-label', t('grid.resize', { label, size }))
+    // Pin to top / Unpin exists at 2 columns only; elsewhere it is display:none, so it is not in the accessibility tree either.
+    const pin = chrome.querySelector('.pin')
+    setAttr(pin, 'aria-label', t(stripped ? 'grid.unpin' : 'grid.pin', { label }))
+    chrome.classList.toggle('pinnable', this._columns === 2 && this._manual && !!item && this._canPin(item))
+    chrome.classList.toggle('in-strip', stripped)
     handle.tabIndex = this._editing ? 0 : -1
     if (this._editing) chrome.removeAttribute('aria-hidden')
     else chrome.setAttribute('aria-hidden', 'true')
     const spec = this._spec(id)
-    chrome.classList.toggle('fixed', !spec || spec.sizes.length < 2)
+    // A strip tile is always its S variant, so there is nothing to resize.
+    chrome.classList.toggle('fixed', stripped || !spec || spec.sizes.length < 2)
     return chrome
   }
 
@@ -1564,18 +1734,21 @@ export class TsGrid extends Base {
    * moved node loses both, so the focused handle is refocused and the wiggle restarted.
    */
   _orderChromes(placements) {
-    const layer = this._chromeLayer
-    const want = visualOrder(placements).map((id) => this._chromes.get(id))
+    const ids = visualOrder(placements)
     const active = this.shadowRoot.activeElement
     const moved = []
-    for (let i = 0; i < want.length; i++) {
-      const at = layer.children[i]
-      if (at === want[i]) continue
-      if (typeof layer.moveBefore === 'function') layer.moveBefore(want[i], at || null)
-      else layer.insertBefore(want[i], at || null)
-      moved.push(want[i])
+    // The strip's chromes come first, as its tiles do.
+    for (const [layer, mine] of [[this._stripLayer, ids.filter((id) => this._inStrip(id))], [this._chromeLayer, ids.filter((id) => !this._inStrip(id))]]) {
+      const want = mine.map((id) => this._chromes.get(id))
+      for (let i = 0; i < want.length; i++) {
+        const at = layer.children[i]
+        if (at === want[i]) continue
+        if (typeof layer.moveBefore === 'function') layer.moveBefore(want[i], at || null)
+        else layer.insertBefore(want[i], at || null)
+        moved.push(want[i])
+      }
     }
-    if (!moved.length || typeof layer.moveBefore === 'function') return
+    if (!moved.length || typeof this._chromeLayer.moveBefore === 'function') return
     if (active && active.isConnected && this.shadowRoot.activeElement !== active) active.focus({ preventScroll: true })
     if (this._editing) for (const chrome of moved) if (!(this._gesture && this._gesture.id === chrome.dataset.id)) this._wiggle(chrome.dataset.id)
   }
@@ -1600,7 +1773,7 @@ export class TsGrid extends Base {
   }
 
   _item(id) {
-    return this._order.find((item) => item.id === id)
+    return this._order.find((item) => item.id === id) || this._strip.find((item) => item.id === id)
   }
 
   _spec(id) {
@@ -1651,7 +1824,7 @@ export class TsGrid extends Base {
     document.addEventListener('keydown', this._onDocKeyDown)
     document.addEventListener('pointerdown', this._onDocPointerDown, true)
     this._syncControls()
-    this._announce(this.t('grid.editStart', {}, this._order.length))
+    this._announce(this.t('grid.editStart', {}, this._order.length + this._strip.length))
   }
 
   _stopEditing() {
@@ -1738,7 +1911,7 @@ export class TsGrid extends Base {
     this._editBtn.tabIndex = editing ? -1 : 0
     this._pill.hidden = !pillOn
     this._dock.classList.toggle('has-pill', pillOn)
-    const empty = this._rendered && !!this._m && this._order.length === 0
+    const empty = this._rendered && !!this._m && this._order.length + this._strip.length === 0
     this._emptyPanel.hidden = !empty
     const hidden = this.hiddenItems
     // With a picker linked, Add opens it (and it lists the hidden children first), so the Add back list isn't needed.
@@ -1883,10 +2056,11 @@ export class TsGrid extends Base {
       if (node.getRootNode() === root) {
         if (node.classList.contains('remove')) return { kind: 'remove', id: node.parentElement.dataset.id }
         if (node.classList.contains('resize')) return { kind: 'resize', id: node.parentElement.dataset.id }
+        if (node.classList.contains('pin')) return { kind: 'pin', id: node.parentElement.dataset.id }
         if (node.classList.contains('handle')) return { kind: 'chrome', id: node.parentElement.dataset.id }
         // The empty panel sits inside the board, but its Add back button and list are controls: a press on them is not a tap on the bare board, which would end editing on pointerup and drop or move the click that opens the list.
         if (node.classList.contains('anchor')) return { kind: 'none' }
-        if (node === this._board) return { kind: 'board' }
+        if (node === this._board || node === this._stripEl) return { kind: 'board' }
       } else if (node.parentElement === this && node.hasAttribute('item')) {
         const id = node.getAttribute('item')
         return this._placements.has(id) ? { kind: 'tile', id } : { kind: 'none' }
@@ -2006,7 +2180,9 @@ export class TsGrid extends Base {
     const chrome = this._chromes.get(g.id)
     const box = this._boxes.get(g.id)
     if (!el || !chrome || !box) return this._end()
-    const rect = this._board.getBoundingClientRect()
+    // A strip tile is placed in the sticky strip, whose rect moves with the page not at all, so scrolling never shifts it.
+    g.strip = this._inStrip(g.id)
+    const rect = (g.strip ? this._stripEl : this._board).getBoundingClientRect()
     g.kind = 'drag'
     g.scroller = scrollParent(this)
     g.scroll0 = scrollPos(g.scroller)
@@ -2015,10 +2191,11 @@ export class TsGrid extends Base {
     g.offsetX = g.x - (rect.left + box.x)
     g.offsetY = g.y - (rect.top + box.y)
     g.from = this._order.slice()
+    g.fromStrip = this._strip.slice()
     g.pending = -1
     const item = this._item(g.id)
     const spec = this._spec(g.id)
-    g.cols = footprint(item.size, this._columns, spec ? spec.sizes : null, spec ? spec.phoneRows : null).cols
+    g.cols = g.strip ? 1 : footprint(item.size, this._columns, spec ? spec.sizes : null, spec ? spec.phoneRows : null).cols
     this.setAttribute('dragging', '')
     if (g.pointerType !== 'keyboard') {
       try {
@@ -2035,7 +2212,7 @@ export class TsGrid extends Base {
       chrome.querySelector('.handle').setAttribute('aria-pressed', 'true')
       chrome.classList.add('held')
     }
-    this._showPlaceholder(box, false)
+    this._showPlaceholder(box, false, g.id)
     if (navigator.vibrate) navigator.vibrate(8)
     if (g.pointerType !== 'keyboard') g.raf = requestAnimationFrame(this._frame)
   }
@@ -2051,15 +2228,18 @@ export class TsGrid extends Base {
     const dt = Math.min(50, now - (g.lastFrame || now)) / 1000
     g.lastFrame = now
     const step = MAX_SCROLL * dt
-    if (g.y < g.view.top + EDGE) scrollBy(g.scroller, -step * Math.min(1, (g.view.top + EDGE - g.y) / EDGE))
-    else if (g.y > g.view.bottom - EDGE) scrollBy(g.scroller, step * Math.min(1, (g.y - (g.view.bottom - EDGE)) / EDGE))
+    // The strip is stuck to the top of the view, so a drag in it never scrolls the page.
+    if (!g.strip) {
+      if (g.y < g.view.top + EDGE) scrollBy(g.scroller, -step * Math.min(1, (g.view.top + EDGE - g.y) / EDGE))
+      else if (g.y > g.view.bottom - EDGE) scrollBy(g.scroller, step * Math.min(1, (g.y - (g.view.bottom - EDGE)) / EDGE))
+    }
 
     const { x, y, target } = this._track(g)
     const translate = `${x}px ${y}px`
     this._tiles.get(g.id).style.translate = translate
     this._chromes.get(g.id).style.translate = translate
 
-    const current = this._order.findIndex((item) => item.id === g.id)
+    const current = this._zone(g.id).findIndex((item) => item.id === g.id)
     if (target === current) {
       clearTimeout(g.settle)
       g.pending = -1
@@ -2074,9 +2254,10 @@ export class TsGrid extends Base {
   /** Where the lifted tile is, relative to the board, and the slot under it. */
   _track(g) {
     const m = this._m
-    const scroll = scrollPos(g.scroller)
+    const scroll = g.strip ? g.scroll0 : scrollPos(g.scroller)
     const x = g.x - g.offsetX - (g.board0.left - (scroll.x - g.scroll0.x))
     const y = g.y - g.offsetY - (g.board0.top - (scroll.y - g.scroll0.y))
+    if (g.strip) return { x, y, target: stripSlotAt(x, this._strip.length, m, { rtl: this._rtl }) }
     // The slot under the tile depends on the whole cell it is over, the order and the column count, and every frame of
     // a drag asks again whether or not the pointer crossed into another cell. The pointer's cell is rounded to the
     // cell grid, which is where the slots are, and asked again with the same cell the answer is the last one.
@@ -2097,9 +2278,9 @@ export class TsGrid extends Base {
   _reorder(g, index) {
     if (this._gesture !== g || index < 0) return
     g.pending = -1
-    this._order = moveItem(this._order, g.id, index)
+    this._setZone(g.id, moveItem(this._zone(g.id), g.id, index))
     this._render(true, g.kind === 'drag' ? g.id : undefined)
-    this._showPlaceholder(this._boxes.get(g.id), true)
+    this._showPlaceholder(this._boxes.get(g.id), true, g.id)
   }
 
   _drop(g, placed) {
@@ -2107,14 +2288,17 @@ export class TsGrid extends Base {
     // Release decides, even for a flick that ended before the slot settled.
     if (g.pointerType !== 'keyboard') {
       const { target } = this._track(g)
-      if (target !== this._order.findIndex((item) => item.id === g.id)) this._reorder(g, target)
+      if (target !== this._zone(g.id).findIndex((item) => item.id === g.id)) this._reorder(g, target)
     }
     this._settle(g)
-    const moved = !sameOrder(g.from, this._order)
-    if (moved) this._commit('move', g.id)
+    const moved = g.strip ? !sameOrder(g.fromStrip, this._strip) : !sameOrder(g.from, this._order)
+    if (moved) {
+      if (g.strip) this._commitStrip({ ...this._layout, topStrip: mergeStrip(this._layout.topStrip || [], this._strip.map((item) => item.id)) }, g.id, true)
+      else this._commit('move', g.id)
+    }
     const t = this.t
     const label = this._label(g.id)
-    const at = { label, position: this._position(g.id), total: this._order.length }
+    const at = { label, position: this._position(g.id), total: this._zone(g.id).length }
     if (g.pointerType !== 'keyboard') {
       if (moved) this._announce(t('grid.moved', at))
     } else if (placed && moved) {
@@ -2161,6 +2345,7 @@ export class TsGrid extends Base {
     if (g.kind === 'drag' || g.kind === 'resize') {
       clearTimeout(g.settle)
       this._order = g.from
+      if (g.fromStrip) this._strip = g.fromStrip
       this._render(true, g.id)
       this._settle(g)
       if (g.pointerType === 'keyboard') this._announce(this.t('grid.cancelled', { label: this._label(g.id) }))
@@ -2169,14 +2354,24 @@ export class TsGrid extends Base {
     }
   }
 
-  _showPlaceholder(box, animate) {
-    const ph = this._placeholder
+  _showPlaceholder(box, animate, id) {
+    let ph = this._placeholder
+    if (id !== undefined && this._inStrip(id)) {
+      if (!this._stripPlaceholder) {
+        this._stripPlaceholder = document.createElement('div')
+        this._stripPlaceholder.className = 'placeholder'
+        this._stripPlaceholder.setAttribute('part', 'placeholder')
+        this._stripEl.insertBefore(this._stripPlaceholder, this._stripEl.firstChild)
+      }
+      ph = this._stripPlaceholder
+    }
     setBox(ph, box, animate && this._motion())
     ph.classList.add('on')
   }
 
   _hidePlaceholder() {
     this._placeholder.classList.remove('on')
+    if (this._stripPlaceholder) this._stripPlaceholder.classList.remove('on')
   }
 
   // ── Resizing ───────────────────────────────────────────────────────────
@@ -2289,6 +2484,7 @@ export class TsGrid extends Base {
       // Read now, not when the removal began: the user may have moved on during the fade.
       const hadFocus = chrome.contains(this.shadowRoot.activeElement)
       this._order = removeItem(this._order, id)
+      this._strip = removeItem(this._strip, id)
       el.style.display = 'none'
       this._dropChrome(id)
       this._placements.delete(id)
@@ -2297,10 +2493,11 @@ export class TsGrid extends Base {
       const previous = this._layout
       const list = this._profileItems()
       const index = list.findIndex((item) => item.id === id)
-      this._history.push(profile, previous)
+      const next = withProfile(previous, profile, removeItem(list, id))
+      this._record(profile, previous, next)
       // Children can't bring a removed tile back; only a restore can.
       this._removedFor(profile).add(id)
-      this._layout = withProfile(this._layout, profile, removeItem(list, id))
+      this._layout = next
       this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'remove', id, index, item: list[index] })
       this._syncControls()
       if (hadFocus) this._focusAfterRemove(near)
@@ -2474,15 +2671,22 @@ export class TsGrid extends Base {
       if (!g) this._resizeStep(id, a.dir)
     } else if (a.type === 'remove') {
       if (!g) this._remove(id)
+    } else if (a.type === 'togglePin') {
+      this._togglePin(id)
     }
   }
 
   /** Move the held tile to the target's slot and drop it there. */
   _placeAt(g, targetId) {
-    const to = this._order.findIndex((item) => item.id === targetId)
-    if (to < 0) return
-    if (to !== this._order.findIndex((item) => item.id === g.id)) {
-      this._order = moveItem(this._order, g.id, to)
+    const zone = this._zone(g.id)
+    const to = zone.findIndex((item) => item.id === targetId)
+    // The strip and the board are ordered apart: pin and unpin move a tile between them.
+    if (to < 0) {
+      if (this._item(targetId)) this._announce(this.t('grid.blocked'))
+      return
+    }
+    if (to !== zone.findIndex((item) => item.id === g.id)) {
+      this._setZone(g.id, moveItem(zone, g.id, to))
       this._render(true)
     }
     this._drop(g, true)
@@ -2491,7 +2695,7 @@ export class TsGrid extends Base {
 
   /** The resize button's click: a tap on it steps to the next size, wrapping, like the pointer's tap. */
   _resizeClick(id) {
-    if (!this._editing || this._gesture) return
+    if (!this._editing || this._gesture || this._inStrip(id)) return
     const spec = this._spec(id)
     const item = this._item(id)
     if (!spec || !item) return
@@ -2501,6 +2705,7 @@ export class TsGrid extends Base {
   }
 
   _resizeStep(id, dir) {
+    if (this._inStrip(id)) return
     const spec = this._spec(id)
     const item = this._item(id)
     if (!spec || !item) return
@@ -2531,6 +2736,7 @@ export class TsGrid extends Base {
 
   /** Move a held tile one cell, going further if that cell can't hold it. */
   _keyMove(g, dCol, dRow) {
+    if (g.strip) return this._keyMoveStrip(g, dCol, dRow)
     const p = this._placements.get(g.id)
     const current = this._order.findIndex((item) => item.id === g.id)
     const limit = Math.max(this._columns, this._order.length * 2)
@@ -2551,6 +2757,21 @@ export class TsGrid extends Base {
     this._announce(this.t('grid.blocked'))
   }
 
+  /** The strip is one row: left and right step along it, up and down have nowhere to go. */
+  _keyMoveStrip(g, dCol, dRow) {
+    const at = this._strip.findIndex((item) => item.id === g.id)
+    const to = at + dCol
+    if (dRow !== 0 || to < 0 || to >= this._strip.length) {
+      this._announce(this.t('grid.blocked'))
+      return
+    }
+    this._strip = moveItem(this._strip, g.id, to)
+    this._render(true)
+    this._showPlaceholder(this._boxes.get(g.id), true, g.id)
+    this._announce(this.t('grid.moved', { label: this._label(g.id), position: this._position(g.id), total: this._strip.length }))
+    this._reveal(g.id)
+  }
+
   // ── Output ─────────────────────────────────────────────────────────────
 
   _commit(reason, id) {
@@ -2561,8 +2782,10 @@ export class TsGrid extends Base {
     this._emit('ts-layout-change', { layout: this._layout, items, previous, profile: this.profile, reason, id })
   }
 
+  /** 1-based, among the strip's tiles or the board's. */
   _position(id) {
-    const sorted = [...this._placements.values()].sort((a, b) => a.row - b.row || a.col - b.col)
+    if (this._inStrip(id)) return this._strip.findIndex((item) => item.id === id) + 1
+    const sorted = [...this._placements.values()].filter((p) => p.row >= 0).sort((a, b) => a.row - b.row || a.col - b.col)
     return sorted.findIndex((p) => p.id === id) + 1
   }
 

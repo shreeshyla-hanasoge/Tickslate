@@ -45,6 +45,7 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-pad: 18px;
     --ts-row-compact: 150px;
     --ts-gap-compact: 10px;
+    --ts-strip-top: 0px;
     --ts-num-weight: 500;
     --ts-num-weight-small: 500;
     --ts-label-size: 10px;

@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- A dashboard of seven generic tiles with three pinned to the top strip (RFC 0003 §19).
+       ?theme=dark   dark theme        ?dir=rtl   right to left
+       ?top=48px     a fixed 48px header, and --ts-strip-top set to match
+       ?strip=a,b    which items start pinned (default: alpha,beta,gamma; "none" for none)
+       ?closed=1     the closed profile holds alpha to delta and omega, which market does not show
+       ?nosize=1     market also holds a table, a widget with no S size -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strip fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
+  #hdr { position: fixed; inset-block-start: 0; inset-inline: 0; block-size: 48px; z-index: 20; box-sizing: border-box; padding: 12px 16px; background: var(--ts-surface); border-block-end: 1px solid var(--ts-line); }
+  #outside { margin-top: 24px; min-height: 44px; }
+</style>
+<script>
+  window.__events = []
+  document.addEventListener('ts-layout-change', (e) => {
+    const d = e.detail
+    window.__events.push({ reason: d.reason, id: d.id, topStrip: d.layout.topStrip, order: d.items.map((item) => item.id) })
+  })
+</script>
+<script type="module" src="/src/elements/index.js"></script>
+</head>
+<body>
+<main id="main">
+  <h1>Strip fixture</h1>
+  <div id="wrap">
+    <ts-grid id="g" aria-label="Dashboard">
+      <ts-card item="alpha" label="Alpha" size="M"><span slot="value">11</span></ts-card>
+      <ts-card item="beta" label="Beta" size="Wide"><span slot="value">22</span></ts-card>
+      <ts-card item="gamma" label="Gamma" size="S"><span slot="value">33</span></ts-card>
+      <ts-card item="delta" label="Delta" size="M"><span slot="value">44</span></ts-card>
+      <ts-card item="epsilon" label="Epsilon" size="Wide"><span slot="value">55</span></ts-card>
+      <ts-card item="zeta" label="Zeta" size="M"><span slot="value">66</span></ts-card>
+      <ts-card item="eta" label="Eta" size="M"><span slot="value">77</span></ts-card>
+    </ts-grid>
+  </div>
+  <p id="outside-text">Text outside the grid.</p>
+  <button id="outside" type="button">Outside button</button>
+</main>
+<script type="module">
+  const params = new URLSearchParams(location.search)
+  const { setup, dataFor } = await import('./data.js')
+  await customElements.whenDefined('ts-grid')
+  setup()
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  if (params.get('dir') === 'rtl') document.documentElement.setAttribute('dir', 'rtl')
+  const g = document.getElementById('g')
+  if (params.has('top')) {
+    document.getElementById('main').insertAdjacentHTML('beforebegin', '<div id="hdr">Header</div>')
+    document.getElementById('main').style.paddingTop = '64px'
+    document.documentElement.style.setProperty('--ts-strip-top', params.get('top'))
+  }
+  const strip = params.get('strip')
+  const market = ['alpha:M', 'beta:Wide', 'gamma:S', 'delta:M', 'epsilon:Wide', 'zeta:M', 'eta:M'].map((s) => ({ id: s.split(':')[0], type: 'card', size: s.split(':')[1] }))
+  if (params.has('nosize')) {
+    const table = document.createElement('ts-table')
+    table.setAttribute('item', 'table')
+    table.data = dataFor('ts-table')
+    g.append(table)
+    market.push({ id: 'table', size: 'M' })
+  }
+  if (params.has('closed')) {
+    g.insertAdjacentHTML('beforeend', '<ts-card item="omega" label="Omega" size="M"><span slot="value">88</span></ts-card>')
+  }
+  g.layout = {
+    version: 1,
+    device: 'phone',
+    profiles: {
+      market,
+      closed: params.has('closed') ? ['alpha', 'beta', 'gamma', 'delta', 'omega'].map((id) => ({ id, type: 'card', size: 'M' })) : [],
+    },
+    topStrip: strip === 'none' ? [] : (strip ? strip.split(',') : ['alpha', 'beta', 'gamma']),
+  }
+  window.__fx = { grid: g }
+  window.__ready = true
+</script>
+</body>
+</html>

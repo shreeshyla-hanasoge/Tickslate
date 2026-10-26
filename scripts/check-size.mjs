@@ -146,17 +146,25 @@ const newEntry = (maxKb) => ({ ...entry(maxKb), target: 'new entry, RFC 0003 §2
 // rounds up to 25.5 kB.
 // Two new entries (edge-stats-and-funding, 2026-10-16): the edge stats measure 22,349 B bundled with the core, so 24,584 B with 10 %,
 // which rounds up to 24.5 kB; the capital funding measures 23,555 B, so 25,911 B with 10 %, which rounds up to 25.5 kB.
+// The grid row alone (phone-top-strip, 2026-10-25): the strip's rendering, pinning and chrome took the grid from 30,256 B to
+// 32,417 B bundled, so 35,659 B with 10 %, which rounds up to 35 kB. Authorised for this story only (RFC 0003 §25); a later
+// story that grows the grid again measures its own build and re-measures this row from that figure.
+const remeasuredTenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured for the phone top strip (rendering, pinning and chrome), RFC 0003 §25', date: '2026-10-25' })
+// The session-clock row alone (phone-top-strip merged with perf-hygiene, 2026-10-25): the strip's six grid.* messages and
+// perf-hygiene's ticker and gating code, both in the shared base, took the clock to 24,121 B bundled on the combined branch,
+// so 26,533 B with 10 %, which rounds up to 26 kB. Authorised by the coordinator (RFC 0003 §25).
+const remeasuredEleventh = (maxKb) => ({ ...entry(maxKb), target: 're-measured after the strip messages and the ticker and gating code joined the shared base, RFC 0003 §25', date: '2026-10-25' })
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
   'edge-stats': newEntry(24.5),
   'capital-funding': newEntry(25.5),
-  grid: remeasuredSixth(30.5),
+  grid: remeasuredTenth(35),
   card: remeasuredSeventh(21),
   metric: remeasuredEighth(23),
   chart: remeasuredNinth(30),
   'today-pnl': remeasuredNinth(25.5),
   'equity-curve': remeasuredNinth(25.5),
-  'session-clock': remeasuredSeventh(23.5),
+  'session-clock': remeasuredEleventh(26),
   table: remeasuredSeventh(24),
   watchlist: remeasuredEighth(25),
   'open-positions': remeasuredEighth(26),

@@ -64,6 +64,8 @@
   /* At 2 columns (phones). Rows stay fixed so live numbers never resize a tile. */
   --ts-row-compact: 150px;
   --ts-gap-compact: 10px;
+  /* Where the phone top strip sticks: set it to a host's fixed header height. */
+  --ts-strip-top: 0px;
   --ts-num-weight: 500;
   --ts-num-weight-small: 500;
   /* Typography of the tile label and the headline figure; these defaults are the look before they were tokens. */

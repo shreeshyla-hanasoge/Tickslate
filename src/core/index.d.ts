@@ -202,8 +202,11 @@ export declare function dropIndex(
 
 /** A layout with one profile replaced; top strip ids no profile holds any more are dropped. */
 export declare function withProfile(layout: Layout, profile: string, items: LayoutItem[]): Layout
-/** Sets the top strip to at most 3 distinct ids that are in the layout. */
-export declare function setTopStrip(layout: Layout, ids: readonly string[]): Layout
+/**
+ * Sets the top strip to the distinct ids that are in the layout. Only ids `counts` accepts (every id, when it is
+ * omitted) count toward the limit of 3; the others are kept without taking a slot.
+ */
+export declare function setTopStrip(layout: Layout, ids: readonly string[], counts?: (id: string) => boolean): Layout
 
 // ── Formatting ─────────────────────────────────────────────────────────
 
@@ -364,6 +367,13 @@ export interface Messages {
   'grid.add': string
   'grid.added': string
   'grid.addFailed': string
+  'grid.strip': string
+  'grid.pin': string
+  'grid.unpin': string
+  'grid.pinned': string
+  'grid.unpinned': string
+  'grid.stripFull': string
+  'grid.pinUnsupported': string
   'picker.title': string
   'picker.search': string
   'picker.close': string
