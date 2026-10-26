@@ -158,7 +158,8 @@ test.describe('compact density and text spacing in the gallery', () => {
     const before = await measure()
     // The label already tracks at .12em, so word spacing and line height tell the overrides apart.
     expect(before.inner[2]).toBe('0px')
-    expect(before.inner[0]).toBe('normal')
+    // The label's own line height (1.2), not the font's 'normal'.
+    expect(parseFloat(before.inner[0])).toBeCloseTo(before.font * 1.2, 1)
     await page.getByRole('checkbox', { name: /WCAG 1.4.12/ }).check()
     expect(page.url()).toContain('spacing=on')
     const on = await measure()
@@ -403,9 +404,29 @@ test.describe('<ts-grid density>', () => {
     page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
     await page.goto(GRID)
     await page.waitForFunction(() => window.__ready === true)
+    await settle(page)
   })
 
-  const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+  // The grid measures on a ResizeObserver callback that waits for the next frame, so a read taken right after load or an
+  // attribute change can see the layout from before that measure. Wait on the real condition: every tile's box unchanged
+  // over four consecutive frames.
+  const settle = (page) =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const boxes = () => [...document.querySelectorAll('#g > *')].map((el) => { const r = el.getBoundingClientRect(); return `${r.left},${r.top},${r.width},${r.height}` }).join('|')
+          let last = boxes()
+          let same = 0
+          const step = () => {
+            const now = boxes()
+            same = now === last ? same + 1 : 0
+            last = now
+            if (same >= 4) resolve()
+            else requestAnimationFrame(step)
+          }
+          requestAnimationFrame(step)
+        }),
+    )
   const read = (page) =>
     page.evaluate(() => {
       const grid = document.getElementById('g')
@@ -479,4 +500,67 @@ test.describe('<ts-grid density>', () => {
     // The rows of a phone are --ts-row-compact (150px) whatever the density, so live numbers never resize a tile.
     expect(phone.notes[1]).toBe(150)
   })
+})
+
+// ── a preset never defeats compact density ──────────────────────────────────
+// A preset sets --ts-pad on the element that names it, and a rule in a page's CSS outranks the grid's :host rule, so the
+// presets yield their padding to density (src/themes/presets/*.css). Same element, an ancestor, either spelling.
+
+test.describe('compact density wins over a preset', () => {
+  const GRID = '/test/browser/fixtures/grid.html?mode=explicit&w=1240'
+  const PRESETS = { calm: '18px', graphite: '16px', neutral: '16px', paper: '18px', signal: '16px', terminal: '12px' }
+
+  async function open(page, name) {
+    await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+    await page.goto(GRID)
+    await page.waitForFunction(() => window.__ready === true)
+    await page.addStyleTag({ url: `/src/themes/presets/${name}.css` })
+  }
+  // What the tile really draws: the padding of the tile inside the first card's shadow root, and the tokens on the grid.
+  const read = (page) =>
+    page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const g = document.getElementById('g')
+      const style = getComputedStyle(g)
+      const tile = document.querySelector('#g > [item="notes"]').shadowRoot.querySelector('.tile')
+      return { pad: style.getPropertyValue('--ts-pad').trim(), row: style.getPropertyValue('--ts-row').trim(), gap: style.getPropertyValue('--ts-gap').trim(), drawn: getComputedStyle(tile).paddingLeft }
+    })
+
+  for (const [name, own] of Object.entries(PRESETS)) {
+    test(`${name}: <ts-grid data-ts-theme density="compact"> has compact padding, rows and gap; comfortable keeps the preset's`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => document.getElementById('g').setAttribute('data-ts-theme', n), name)
+      expect(await read(page), 'comfortable').toMatchObject({ pad: own, drawn: own, row: '150px' })
+      await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+      expect(await read(page), 'compact').toEqual({ pad: '12px', drawn: '12px', row: '120px', gap: '10px' })
+      await page.evaluate(() => document.getElementById('g').removeAttribute('density'))
+      expect(await read(page), 'back to comfortable').toMatchObject({ pad: own, drawn: own })
+    })
+
+    test(`${name}: the preset on an ancestor of a compact grid, and data-ts-density on the same element`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => {
+        document.getElementById('wrap').setAttribute('data-ts-theme', n)
+        document.getElementById('g').setAttribute('density', 'compact')
+      }, name)
+      expect(await read(page), 'preset on the wrapper, compact on the grid').toMatchObject({ pad: '12px', drawn: '12px', row: '120px' })
+      await page.evaluate((n) => {
+        document.getElementById('wrap').removeAttribute('data-ts-theme')
+        const g = document.getElementById('g')
+        g.removeAttribute('density')
+        g.setAttribute('data-ts-theme', n)
+        g.setAttribute('data-ts-density', 'compact')
+      }, name)
+      expect(await read(page), 'data-ts-density and the preset on the grid').toMatchObject({ pad: '12px', drawn: '12px' })
+    })
+
+    test(`${name}: a compact ancestor beats the preset on a descendant`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => {
+        document.getElementById('wrap').setAttribute('data-ts-density', 'compact')
+        document.getElementById('g').setAttribute('data-ts-theme', n)
+      }, name)
+      expect(await read(page)).toMatchObject({ pad: '12px', drawn: '12px' })
+    })
+  }
 })

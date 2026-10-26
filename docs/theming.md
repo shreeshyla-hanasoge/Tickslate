@@ -300,6 +300,12 @@ font-size setting.
   value set on `:root` or on a wrapper is only inherited, so `density="compact"`
   overrides it: to keep your own `--ts-pad` under compact density, set it on the
   `ts-grid` element.
+- **Density wins over a preset.** A preset's `--ts-pad` yields to compact
+  density, on the same element (`<ts-grid data-ts-theme="paper" density="compact">`)
+  or on an ancestor, so the padding is `12px` whichever preset is loaded. A
+  `data-theme="light"` or `data-theme="dark"` set on the `ts-grid` element itself
+  keeps that theme's padding (18px or 16px); put `data-theme` on a wrapper to get
+  the compact padding.
 - **A phone keeps its rows.** At 2 columns the grid reads `--ts-row-compact`
   (150px) and `--ts-gap-compact` (10px), so on a phone `density="compact"`
   changes only the padding: a phone's rows are fixed so live numbers never
@@ -343,7 +349,9 @@ To mark a row of your own widget for the tiers, give it the shared `sec` class
 Font sizes are tokens in rem, so a larger default text size reaches the tiles.
 Each has a px floor, `max(<px>, <rem>)`: the rem value equals the px size at a
 16px root and grows with a larger root, but a smaller root (the `html { font-size: 62.5% }`
-habit) never takes text below the size it was designed at.
+habit) never takes text below the size it was designed at. The height tiers above are in rem too, so a 62.5% page matches a 16px one at
+comfortable density only: at compact density the 94px content box of an S tile is
+9.4rem at a 10px root, not 5.875rem, so it is not snug and keeps its secondary rows.
 
 | Token | At a 16px root | Used for |
 |---|---|---|

@@ -104,10 +104,12 @@ describe('the compact density tokens', () => {
     assert.ok(at(':where([data-ts-density="compact"]) {') > at(':where([data-theme="dark"], .dark) {'))
   })
 
-  test('are not a preset\'s to set: the presets leave rows, padding\'s density and the scale alone', () => {
+  test('are not a preset\'s to set: the presets yield their padding to density and leave rows, gap and the scale alone', () => {
     for (const preset of ['calm', 'graphite', 'neutral', 'paper', 'signal', 'terminal']) {
-      const css = read(`src/themes/presets/${preset}.css`)
-      assert.ok(!css.includes('data-ts-density'), preset)
+      const css = stripComments(read(`src/themes/presets/${preset}.css`))
+      // Density is named once, in the block that yields the preset's padding to it (test/presets.test.mjs); no preset sets a density token.
+      assert.equal((css.match(/data-ts-density/g) || []).length, 2, preset)
+      for (const name of ['--ts-row', '--ts-gap']) assert.ok(!css.includes(name + ':'), `${preset} sets ${name}`)
       for (const name of Object.keys(SCALE)) assert.ok(!css.includes(name), `${preset} sets ${name}`)
     }
   })

@@ -39,7 +39,6 @@
   --ts-fill: 12%;
   --ts-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --ts-font-num: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --ts-pad: 16px;
   --ts-num-weight: 600;
   --ts-num-weight-small: 500;
   --ts-label-size: 11px;
@@ -62,6 +61,15 @@
   --ts-series-5: #BE185D;
   --ts-series-6: #4D7C0F;
   --ts-focus: var(--ts-accent);
+}
+
+/*
+ * Owned by density: skipped on a compact element, on one inside a compact element, and on a
+ * <ts-grid density="compact">, so compact padding (RFC 0004 §2.1) beats the preset's on the
+ * same element or an ancestor. A rule in the grid's shadow root cannot outrank this one.
+ */
+:where([data-ts-theme='neutral']:not([data-ts-density='compact'], [density='compact'], [data-ts-density='compact'] *, [density='compact'] *)) {
+  --ts-pad: 16px;
 }
 
 /*
