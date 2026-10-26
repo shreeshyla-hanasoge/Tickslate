@@ -167,8 +167,8 @@ export declare class TsGrid extends HTMLElement {
   /** Set by `<ts-grid-controls>` while a picker is linked: the edit pill then shows Add, which calls this. */
   openPicker: (() => void) | null
   /**
-   * The visible tiles' ids in visual order: row by row, left to right by each
-   * tile's top-left cell. Where the browser has manual slot assignment (Safari
+   * The visible tiles' ids in visual order: row by row, in the page's inline
+   * direction (right to left under dir=rtl), by each tile's top-left cell. Where the browser has manual slot assignment (Safari
    * 16.4, Chrome 86, Firefox 92), the grid slots its tiles in this order, so
    * reading and Tab order follow the layout outside edit mode while the host's
    * DOM order stays as it is; elsewhere they follow the DOM order. While

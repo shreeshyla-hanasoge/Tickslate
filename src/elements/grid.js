@@ -168,7 +168,7 @@ const TEMPLATE = `
   :host([editing]) .remove, :host([editing]) .resize { display: flex; }
   .chrome.lifted .remove, .chrome.lifted .resize, .chrome.fixed .resize { display: none; }
   .remove {
-    position: absolute; top: -16px; left: -16px; width: 44px; height: 44px; padding: 0; margin: 0;
+    position: absolute; top: -16px; inset-inline-start: -16px; width: 44px; height: 44px; padding: 0; margin: 0;
     border: 0; background: none; align-items: center; justify-content: center; cursor: pointer;
     animation: pop 160ms var(--ts-ease, ease-out);
   }
@@ -181,14 +181,16 @@ const TEMPLATE = `
   }
   .remove:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .resize {
-    position: absolute; right: -6px; bottom: -6px; width: 44px; height: 44px; margin: 0; padding: 0; border: 0;
+    position: absolute; inset-inline-end: -6px; bottom: -6px; width: 44px; height: 44px; margin: 0; padding: 0; border: 0;
     background: none; cursor: nwse-resize; touch-action: none; animation: pop 160ms var(--ts-ease, ease-out);
   }
   .resize::after {
-    content: ''; position: absolute; right: 12px; bottom: 12px; width: 12px; height: 12px;
-    border-right: 3px solid var(--ts-muted); border-bottom: 3px solid var(--ts-muted);
-    border-bottom-right-radius: 6px;
+    content: ''; position: absolute; inset-inline-end: 12px; bottom: 12px; width: 12px; height: 12px;
+    border-inline-end: 3px solid var(--ts-muted); border-bottom: 3px solid var(--ts-muted);
+    border-end-end-radius: 6px;
   }
+  /* The handle sits bottom-left under dir=rtl, so the drag cursor mirrors with it. */
+  .board.rtl .resize { cursor: nesw-resize; }
   @keyframes pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
   @media (prefers-reduced-motion: reduce) {
     /* The wiggle is gone, so this outline alone says "editing". The RFC's 45% mix is
@@ -207,7 +209,7 @@ const TEMPLATE = `
     gap: 10px; pointer-events: none;
   }
   .toast {
-    position: relative; display: inline-flex; align-items: center; gap: 0; padding: 4px 4px 4px 20px;
+    position: relative; display: inline-flex; align-items: center; gap: 0; padding-block: 4px; padding-inline: 20px 4px;
     border-radius: 999px; box-sizing: border-box; max-width: calc(100% - 32px); white-space: nowrap;
     background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
     font: 500 13px var(--ts-font-ui); pointer-events: auto;
@@ -217,7 +219,7 @@ const TEMPLATE = `
   .toast .msg { overflow: hidden; text-overflow: ellipsis; }
   .toast .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .toast .undo {
-    min-width: 44px; min-height: 44px; margin: 0 0 0 16px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
+    min-width: 44px; min-height: 44px; margin: 0; margin-inline-start: 16px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
     background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
   }
   .toast .undo:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
@@ -253,7 +255,7 @@ const TEMPLATE = `
   .mi .plus { color: var(--ts-accent); font-size: 16px; }
   /* Visually hidden until a keyboard user reaches it, so it is the first Tab stop without crowding the dashboard. */
   .edit-btn {
-    position: absolute; top: 12px; left: 12px; z-index: 8; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    position: absolute; top: 12px; inset-inline-start: 12px; z-index: 8; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
   .edit-btn:focus-visible {
@@ -269,7 +271,8 @@ const TEMPLATE = `
   }
   .empty .note { margin: 0; }
   .empty .anchor { position: relative; }
-  .empty .menu { bottom: auto; top: calc(100% + 8px); inset-inline-start: 50%; transform: translateX(-50%); }
+  /* Centring is symmetric, so a physical left is right in both directions; an inline start of 50% would hang the menu off-centre in RTL. */
+  .empty .menu { bottom: auto; top: calc(100% + 8px); left: 50%; right: auto; translate: -50% 0; }
   .hint { display: none; }
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
@@ -1013,6 +1016,10 @@ export class TsGrid extends Base {
       this._measureFrame = requestAnimationFrame(() => this._measure(false))
     })
     this._resizeObserver.observe(this)
+    // A dir attribute flipped on the grid or an ancestor changes no size, so the observer above never hears of it.
+    this._dirObserver = new MutationObserver(() => this._measure(false))
+    // Through a slot to the shadow tree the grid is slotted into: that wrapper's dir is what the grid inherits.
+    for (let node = this; node; node = node.assignedSlot || node.parentNode || node.host) this._dirObserver.observe(node, { attributes: true, attributeFilter: ['dir'] })
     this._mutationObserver = new MutationObserver((records) => {
       if (!records.some((r) => this._concerns(r))) return
       this._cancelGesture()
@@ -1044,6 +1051,7 @@ export class TsGrid extends Base {
     for (const pending of this._pendingAdds.values()) clearTimeout(pending.timer)
     this._pendingAdds.clear()
     this._resizeObserver.disconnect()
+    this._dirObserver.disconnect()
     cancelAnimationFrame(this._measureFrame)
     this._mutationObserver.disconnect()
     this._cancelGesture()
@@ -1186,11 +1194,16 @@ export class TsGrid extends Base {
     if (!this.isConnected) return
     const width = this.clientWidth
     // The board's own height changes fire the observer too; only width matters.
-    if (!force && width === this._width) return
+    const rtl = getComputedStyle(this).direction === 'rtl'
+    // A change of direction re-measures even at the same width, because every box mirrors.
+    if (!force && width === this._width && rtl === this._rtl) return
     this._width = width
+    const flipped = rtl !== this._rtl
+    this._rtl = rtl
+    this._board.classList.toggle('rtl', rtl)
     const columns = columnsFor(width, this._breakpoints)
     const changed = columns !== this._columns
-    if (changed && this._gesture) this._cancelGesture()
+    if ((changed || flipped) && this._gesture) this._cancelGesture()
     const style = getComputedStyle(this)
     const compact = columns === 2
     const row = px(style.getPropertyValue(compact ? '--ts-row-compact' : '--ts-row'), 0) || px(style.getPropertyValue('--ts-row'), 150)
@@ -1363,7 +1376,7 @@ export class TsGrid extends Base {
     // by the time its box changes, so it slides there like the rest.
     if (animate && this._manual && this._slotTiles(visualOrder(placements), this._editing && this._orderKnown)) void this._board.offsetWidth
     for (const p of placements) {
-      const box = boxOf(p, m)
+      const box = boxOf(p, m, { rtl: this._rtl })
       const el = this._tiles.get(p.id)
       // A tile that wasn't on screen appears in place rather than sliding in
       // from wherever it last was.
@@ -1493,7 +1506,7 @@ export class TsGrid extends Base {
     if (changed && !first && !quiet) this._emit('ts-reading-order-change', { order: [...order] })
   }
 
-  /** The visible tiles' ids in visual order, row by row and left to right by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
+  /** The visible tiles' ids in visual order, row by row, in the page's inline direction (so right to left under dir=rtl), by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
   get readingOrder() {
     return this._readingOrder
   }
@@ -2048,7 +2061,7 @@ export class TsGrid extends Base {
     const scroll = scrollPos(g.scroller)
     const x = g.x - g.offsetX - (g.board0.left - (scroll.x - g.scroll0.x))
     const y = g.y - g.offsetY - (g.board0.top - (scroll.y - g.scroll0.y))
-    const target = dropIndex(this._order, g.id, cellAt(x, y, g.cols, m), this._columns, this._resolve, m.pitchX / m.pitchY)
+    const target = dropIndex(this._order, g.id, cellAt(x, y, g.cols, m, { rtl: this._rtl }), this._columns, this._resolve, m.pitchX / m.pitchY)
     return { x, y, target }
   }
 
@@ -2182,11 +2195,12 @@ export class TsGrid extends Base {
     }
     const spec = this._spec(g.id)
     if (!spec) return
-    const w = Math.max(this._m.colWidth, g.box0.w + dx)
+    // The handle is bottom-left under rtl, so dragging left widens and the box's far edge stays put.
+    const w = Math.max(this._m.colWidth, g.box0.w + (this._rtl ? -dx : dx))
     const h = Math.max(this._m.rowHeight, g.box0.h + dy)
     // The outline stretches with the pointer; the tile snaps between sizes.
-    this._showPlaceholder({ x: g.box0.x, y: g.box0.y, w, h }, false)
-    const extent = extentOf(w, h, this._m)
+    this._showPlaceholder({ x: this._rtl ? g.box0.x + g.box0.w - w : g.box0.x, y: g.box0.y, w, h }, false)
+    const extent = extentOf(w, h, this._m, { rtl: this._rtl })
     const item = this._item(g.id)
     const size = sizeForExtent(spec, extent.cols, extent.rows, this._columns, item.size)
     if (size !== item.size) {
@@ -2394,7 +2408,9 @@ export class TsGrid extends Base {
     const held = this._heldId()
     // A pointer drag owns the tiles until it ends.
     if (this._gesture && !held) return
-    const action = keyAction(e.key, handle.parentElement.dataset.id, { held })
+    // The cells run right to left under rtl, so the arrows swap to keep ArrowRight moving a tile visually right.
+    const key = this._rtl ? { ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft' }[e.key] || e.key : e.key
+    const action = keyAction(key, handle.parentElement.dataset.id, { held })
     if (!action) return
     e.preventDefault()
     this._perform(action)

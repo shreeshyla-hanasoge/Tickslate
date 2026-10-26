@@ -204,3 +204,38 @@ test('keepInPlace reaches the wanted order for any shuffle, moving at most all b
     assert.ok(moves <= Math.max(0, current.length - 1))
   }
 })
+
+test('with rtl a box mirrors across the board and keeps its size', () => {
+  // x = (columns − col − cols) × pitchX: column 0 sits at the right edge.
+  assert.deepEqual(boxOf({ col: 0, row: 0, cols: 1, rows: 1 }, desktop, { rtl: true }), { x: 960, y: 0, w: 304, h: 150 })
+  assert.deepEqual(boxOf({ col: 1, row: 2, cols: 2, rows: 2 }, desktop, { rtl: true }), { x: 320, y: 332, w: 624, h: 316 })
+  assert.equal(boxOf({ col: 0, row: 0, cols: 4, rows: 1 }, desktop, { rtl: true }).x, 0)
+  // Without the option, or with rtl false, nothing changes.
+  assert.deepEqual(boxOf({ col: 1, row: 2, cols: 2, rows: 2 }, desktop, { rtl: false }), boxOf({ col: 1, row: 2, cols: 2, rows: 2 }, desktop))
+})
+
+test('a mirrored box ends where the grid ends when it starts at column 0', () => {
+  for (const cols of [1, 2, 3, 4]) {
+    const box = boxOf({ col: 0, row: 0, cols, rows: 1 }, desktop, { rtl: true })
+    assert.equal(box.x + box.w, 1264)
+  }
+})
+
+test('with rtl cellAt is the inverse of boxOf, clamped', () => {
+  for (const p of [{ col: 0, cols: 1 }, { col: 2, cols: 2 }, { col: 1, cols: 3 }, { col: 3, cols: 1 }]) {
+    const box = boxOf({ ...p, row: 1, rows: 1 }, desktop, { rtl: true })
+    const cell = cellAt(box.x, box.y, p.cols, desktop, { rtl: true })
+    assert.equal(cell.col, p.col)
+    assert.equal(cell.row, 1)
+  }
+  // Dragged past either edge it stays on the board.
+  assert.equal(cellAt(-500, 0, 2, desktop, { rtl: true }).col, 2)
+  assert.equal(cellAt(5000, 0, 2, desktop, { rtl: true }).col, 0)
+  // Halfway between two columns the fraction is mirrored too.
+  assert.equal(cellAt(160, 0, 1, desktop, { rtl: true }).col, 2.5)
+  assert.equal(cellAt(160, 0, 1, desktop).col, 0.5)
+})
+
+test('extentOf takes the option and ignores it', () => {
+  assert.deepEqual(extentOf(624, 316, desktop, { rtl: true }), extentOf(624, 316, desktop))
+})
