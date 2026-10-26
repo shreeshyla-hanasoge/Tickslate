@@ -10,6 +10,7 @@
 // the markup check fails either way. It finds, it does not fix: a payload that runs fails the test naming the
 // widget and the field.
 import { test, expect } from '@playwright/test'
+import { gridDrawn } from './drawn.mjs'
 
 const PAGE = '/test/browser/fixtures/xss.html'
 const STRICT = "default-src 'self'; style-src 'self'; script-src 'self'; require-trusted-types-for 'script'; trusted-types tickslate"
@@ -214,6 +215,9 @@ const settle = (page) => page.evaluate(() => new Promise((resolve) => requestAni
 
 // Everything that can go wrong after the payload is in the page.
 async function check(page, label) {
+  // First renders are time-sliced over several tasks (RFC 0003 §23), so on a slower machine the last tiles of the page
+  // are still empty groups after two frames. The scan below asks each one for its label, so wait until each has drawn.
+  await gridDrawn(page)
   await settle(page)
   const result = await page.evaluate(SCAN, TEXT)
   expect.soft(result.xss, `${label}: a payload ran`).toBeNull()
