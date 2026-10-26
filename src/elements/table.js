@@ -317,6 +317,8 @@ export class TsTable extends TsWidget {
     this._width = 0
     this._slots = 0
     this._extra = 0
+    // True from the moment _fit asks for a new draw until that draw has been measured.
+    this._fitAsked = false
     this._fitData = undefined
     this._active = undefined
     this._userSort = null
@@ -568,6 +570,8 @@ export class TsTable extends TsWidget {
         this._resize.observe(scroll)
       }
     }
+    // This draw is the one _fit was waiting for (or the first), so what it reads is current.
+    this._fitAsked = false
     this._fit()
   }
 
@@ -576,6 +580,10 @@ export class TsTable extends TsWidget {
    * still overflow once drawn are dropped too, by the same priority, one at a
    * time, until the table fits or one is left. Text columns shrink instead of
    * overflowing. A new width starts again from what it allows.
+   *
+   * One overflow is counted once. The draw that follows is not always in the same microtask (a burst of renders is
+   * time-sliced, RFC 0003 §23), so the resize observer can call this again while the table on screen is still the one
+   * that overflowed; counting it again would drop a column that fits. Only a draw that has been measured can add one.
    */
   _fit() {
     const scroll = this._scrollEl
@@ -585,9 +593,11 @@ export class TsTable extends TsWidget {
     if (slots !== this._slots) {
       this._slots = slots
       this._extra = 0
+      this._fitAsked = true
       this.requestRender()
-    } else if (width > 0 && scroll.scrollWidth > width + 1 && this._cols.length > 1) {
+    } else if (!this._fitAsked && width > 0 && scroll.scrollWidth > width + 1 && this._cols.length > 1) {
       this._extra++
+      this._fitAsked = true
       this.requestRender()
     }
   }

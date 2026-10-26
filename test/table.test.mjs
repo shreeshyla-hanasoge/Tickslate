@@ -521,6 +521,31 @@ describe('columns that still overflow', () => {
     assert.equal(el._extra, 1)
   })
 
+  test('an overflow is counted once, however often it is seen before the draw it asked for', () => {
+    const { el, view, node, renders } = build()
+    const scroll = node('scroll')
+    scroll.clientWidth = 400
+    scroll.scrollWidth = 400
+    view(data())
+    const base = renders()
+    scroll.scrollWidth = 480
+    view(data())
+    assert.equal(el._extra, 1)
+    // The draw is time-sliced to a later task, so the resize observer speaks first, still seeing the old table.
+    el._fit()
+    el._fit()
+    assert.equal(el._extra, 1)
+    assert.equal(renders(), base + 1)
+    // The new draw fits: nothing more is dropped. One that still overflows once measured does drop another.
+    scroll.scrollWidth = 400
+    view(data(), 344)
+    assert.equal(el._extra, 1)
+    scroll.scrollWidth = 420
+    el._fit()
+    assert.equal(el._extra, 2)
+    assert.equal(renders(), base + 2)
+  })
+
   test('a new width starts again from what it allows, and one column is never dropped for overflow', () => {
     const { el, view, node } = build()
     const scroll = node('scroll')
