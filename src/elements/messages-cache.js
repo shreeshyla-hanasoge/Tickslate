@@ -30,22 +30,39 @@ function merge(layers) {
 // A custom widget's English defaults (RFC 0004 §10.2), recorded by defineWidget under the class that
 // registered them. Held here, not in registry.js, so widget.js can read them without importing the catalog.
 const classDefaults = new WeakMap()
+// Every registered table in one, for the readers that have no element of the widget's class: the grid,
+// the picker and the layout list name a widget by type. Keys carry the type's prefix, so the tables do
+// not clash; the first registration keeps a key anyone else claims. A new object per registration, so
+// translators built on the old one are simply no longer asked for.
+let allDefaults = Object.freeze({})
 
+/** `table` may be null: a class registered without messages still knows its type, so a host's keys for it apply. */
 export function setClassDefaults(Ctor, type, table) {
   classDefaults.set(Ctor, { type, table })
+  if (table) {
+    const merged = { ...allDefaults }
+    for (const key of Object.keys(table)) if (!Object.prototype.hasOwnProperty.call(merged, key)) merged[key] = table[key]
+    allDefaults = Object.freeze(merged)
+  }
 }
 
-/** `{ type, table }` for a class registered with messages, else null. */
+/** `{ type, table }` for the class or the nearest registered class it extends, else null. */
 export function classDefaultsOf(Ctor) {
-  return classDefaults.get(Ctor) || null
+  for (let c = Ctor; typeof c === 'function' && c !== Function.prototype; c = Object.getPrototypeOf(c)) {
+    const found = classDefaults.get(c)
+    if (found) return found
+  }
+  return null
 }
 
 /**
  * The Translate for configure()'s table, the grid's, the element's and a locale.
  * `defaults` is a custom widget's own English table: it answers only what none of
  * the three layers did, and before EN (RFC 0004 §10.2), so a host's text always wins.
+ * Left out it is every registered widget's table, which is what the grid, the picker and
+ * the layout list need to name a widget by type; an element passes its class's own (or null).
  */
-export function translator(config, grid, own, locale, defaults) {
+export function translator(config, grid, own, locale, defaults = allDefaults) {
   const layers = [config, grid, own]
   let level = tree
   for (const layer of [...layers, defaults]) {

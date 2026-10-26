@@ -49,10 +49,12 @@ function recordedSpec(tag, Ctor, type, messages) {
   if (!sizes.length) {
     throw new TypeError(`defineWidget('${tag}', …, { type: '${type}' }): the class's static spec needs at least one valid size, such as { label: 'MRR', sizes: ['S', 'Wide'] }.`)
   }
-  // The author's English answers a label or description the class left out, so a grid shows them
-  // (it reads the catalog, not the class). The element itself asks t() for the same key.
-  const said = (name) => (messages && typeof messages[`widget.${type}.${name}`] === 'string' ? messages[`widget.${type}.${name}`] : undefined)
-  const label = typeof raw.label === 'string' && raw.label ? raw.label : said('label') || ''
+  // A label or description message is left to t(), not copied here: the grid, the picker and the layout
+  // list ask t('widget.<type>.label') when the spec's is empty, so a host's translation reaches them (RFC 0004
+  // §10.2: the host always wins). The message wins over a static label too, so the tile and the catalog
+  // name a widget alike; a static label is the name when the author wrote no message for it.
+  const has = (name) => !!messages && own(messages, `widget.${type}.${name}`)
+  const label = has('label') ? '' : typeof raw.label === 'string' ? raw.label : ''
   const spec = { tag, label, sizes: Object.freeze([...new Set(sizes)]) }
   if (raw.phoneRows && typeof raw.phoneRows === 'object') {
     const rows = {}
@@ -61,8 +63,7 @@ function recordedSpec(tag, Ctor, type, messages) {
     }
     if (Object.keys(rows).length) spec.phoneRows = Object.freeze(rows)
   }
-  const description = typeof raw.description === 'string' ? raw.description : said('description')
-  if (description !== undefined) spec.description = description
+  if (typeof raw.description === 'string' && !has('description')) spec.description = raw.description
   if (typeof raw.category === 'string') spec.category = raw.category
   return Object.freeze(spec)
 }
@@ -149,7 +150,7 @@ export function defineWidget(tag, Ctor, options) {
   // Before recording, so a tag the browser refuses (no hyphen, say) leaves the catalog as it was.
   define(tag, Ctor)
   registered.set(type, { Ctor, spec, messages })
-  if (messages) setClassDefaults(Ctor, type, messages)
+  setClassDefaults(Ctor, type, messages)
   merged = null
   // A copy, so a listener that unsubscribes itself doesn't skip the next one; and one that
   // another listener stopped during this dispatch is skipped, not run once more.

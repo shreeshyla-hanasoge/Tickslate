@@ -137,6 +137,7 @@ const { AcmeMrr, mrrModel, MESSAGES } = await import('./mrr.js')
 const { createFormatter, configure } = await import('../../src/core/index.js')
 const { translator } = await import('../../src/elements/messages-cache.js')
 const { defineWidget, widgetCatalog, escapeHtml, scale, linePaths } = await import('../../src/elements/index.js')
+const { pickerItems } = await import('../../src/elements/picker-model.js')
 
 const fmt = createFormatter({ locale: 'en-US', currency: 'USD' })
 // What an element's `t` is: the host's table (if any) first, then the widget's defaults handed to defineWidget.
@@ -270,17 +271,33 @@ describe('mrrModel, the pure view model', () => {
   })
 })
 
+  // What the picker and the layout list build their translator from: configure()'s table only, no element.
+  const entry = (host) => {
+    const t = translator(host || null, null, null, 'en-US')
+    return pickerItems({ catalog: widgetCatalog(), addTypes: ['acme-mrr'], t, locale: 'en-US' })[0].items[0]
+  }
+
 describe('registration', () => {
   test('defineWidget defined the tag and recorded the spec under its type', () => {
     assert.equal(registry.get('acme-mrr'), AcmeMrr)
     const spec = widgetCatalog()['acme-mrr']
     assert.equal(spec.tag, 'acme-mrr')
-    // The class gives no label: the registered 'widget.acme-mrr.label' does.
-    assert.equal(spec.label, 'MRR')
+    // The class gives no label and the catalog copies none: the grid and the picker ask t('widget.acme-mrr.label'),
+    // so a host's translation of it reaches them. The author's 'MRR' answers when the host says nothing.
+    assert.equal(spec.label, '')
     assert.deepEqual([...spec.sizes], ['S', 'Wide', 'M'])
     assert.equal(spec.category, 'Revenue')
     // Built-in types are still there, untouched.
     assert.equal(widgetCatalog().todayPnl.tag, 'ts-today-pnl')
+  })
+
+  test('the picker shows the author\'s label and description, and a host\'s override of either wins', () => {
+    const plain = entry()
+    assert.equal(plain.label, 'MRR')
+    assert.equal(plain.description, 'Monthly recurring revenue and its change on last month.')
+    const host = entry({ 'widget.acme-mrr.label': 'MRR (monatlich)', 'widget.acme-mrr.description': 'Monatlicher Umsatz.' })
+    assert.equal(host.label, 'MRR (monatlich)')
+    assert.equal(host.description, 'Monatlicher Umsatz.')
   })
 
   test('evaluating the module again makes a new class; the guard keeps the first instead of throwing', async () => {
@@ -340,6 +357,34 @@ describe('the element', () => {
     }
   })
 
+  test('a host\'s label override shows on the tile and in the picker alike', async () => {
+    configure({ messages: { 'widget.acme-mrr.label': 'MRR (monatlich)' } })
+    try {
+      const el = await make()
+      el.data = DATA
+      await tick()
+      assert.equal(el.label, 'MRR (monatlich)')
+      assert.equal(text(el, 'label'), 'MRR (monatlich)')
+      assert.equal(entry({ 'widget.acme-mrr.label': 'MRR (monatlich)' }).label, el.label)
+    } finally {
+      configure({ messages: null })
+    }
+  })
+
+  test('a subclass of the registered widget keeps the defaults', async () => {
+    class Sub extends AcmeMrr {}
+    registry.define('acme-mrr-sub', Sub)
+    const el = new Sub()
+    el.localName = 'acme-mrr-sub-1'
+    el.setAttribute('currency', 'USD')
+    el.setAttribute('locale', 'en-US')
+    el.connect()
+    el.data = DATA
+    await tick()
+    assert.equal(text(el, 'label'), 'MRR')
+    assert.equal(el.label, 'MRR')
+  })
+
   test('new numbers change in place: the markup is written once, only the text moves', async () => {
     const el = await make({ size: 'Wide' })
     el.data = DATA
@@ -380,6 +425,23 @@ describe('the element', () => {
     el.data = null
     await tick()
     assert.equal(text(el, 'empty'), 'No revenue data yet')
+  })
+
+  test('the empty text is a message too: the host\'s override wins over the author\'s', async () => {
+    const el = await make()
+    el.data = null
+    await tick()
+    el.messages = { 'widget.acme-mrr.empty': 'Noch keine Umsatzdaten' }
+    await tick()
+    assert.equal(text(el, 'empty'), 'Noch keine Umsatzdaten')
+    el.messages = null
+    configure({ messages: { 'widget.acme-mrr.empty': 'Pas encore de données' } })
+    try {
+      await tick()
+      assert.equal(text(el, 'empty'), 'Pas encore de données')
+    } finally {
+      configure({ messages: null })
+    }
   })
 
   test('an unsupported size snaps to one the spec lists', async () => {

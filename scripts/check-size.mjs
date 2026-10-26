@@ -209,6 +209,7 @@ const ADD_BUDGETS = Object.fromEntries(
 
 const problems = []
 const warnings = []
+const notes = []
 
 const entries = elementEntries()
 
@@ -307,6 +308,10 @@ for (const e of entries) {
   // The difference, not a bundle: its raw and min are the same subtraction so the row's columns agree.
   const delta = { rel: addLabel(e.name), label: addLabel(e.name), raw: pair.raw - gridAlone.raw, min: pair.min - gridAlone.min, gz: pair.gz - gridAlone.gz }
   judge(delta, ADD_BUDGETS[e.name] || ADD_BUDGET)
+  // A warn-only row that now fits should be enforced: say so, never fail on it.
+  if (OVER_15.includes(e.name) && delta.gz <= ADD_BUDGET.maxKb * KB) {
+    notes.push(`${addLabel(e.name)} is ${kb(delta.gz)} min+gz, under ${ADD_BUDGET.maxKb} kB: remove '${e.name}' from OVER_15 so the row is enforced`)
+  }
   rows.push(delta)
 }
 
@@ -347,6 +352,11 @@ for (const r of table) console.log(line(r))
 if (warnings.length) {
   console.warn(`\n${warnings.length} budget warning${warnings.length > 1 ? 's' : ''} (mode 'warn', so this run still passes):`)
   for (const w of warnings) console.warn(`  - ${w}`)
+}
+
+if (notes.length) {
+  console.log(`\n${notes.length} note${notes.length > 1 ? 's' : ''} (not a failure):`)
+  for (const n of notes) console.log(`  - ${n}`)
 }
 
 if (problems.length) {

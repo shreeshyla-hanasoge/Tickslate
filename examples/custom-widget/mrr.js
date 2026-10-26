@@ -28,6 +28,8 @@ const COUNT_CHARS = 6
 // translates or rewords any of them under the same keys. The prefix is the widget's type.
 export const MESSAGES = Object.freeze({
   'widget.acme-mrr.label': 'MRR',
+  'widget.acme-mrr.description': 'Monthly recurring revenue and its change on last month.',
+  'widget.acme-mrr.empty': 'No revenue data yet',
   'acme-mrr.up': 'up {delta} on last month',
   'acme-mrr.down': 'down {delta} on last month',
   'acme-mrr.flat': 'no change on last month',
@@ -122,10 +124,8 @@ export class AcmeMrr extends TsWidget {
   // What a grid, a picker and widgetCatalog() know about this widget.
   static spec = {
     sizes: ['S', 'Wide', 'M'],
-    description: 'Monthly recurring revenue and its change on last month.',
     category: 'Revenue',
   }
-  static emptyText = 'No revenue data yet'
   // Development only: data of the wrong shape warns once, naming the path.
   static dataShape = {
     mrr: 'numeric',

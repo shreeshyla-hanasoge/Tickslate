@@ -867,7 +867,8 @@ export class TsWidget extends Base {
       const text = this.t(id)
       if (text !== id) return text
     }
-    // A custom widget that registered its own English (defineWidget's messages) answers to the same key.
+    // A registered custom widget answers to the same key, from the host or from its author's messages
+    // (defineWidget), whether or not it has any: the message wins over a static label, as in the catalog.
     const registered = classDefaultsOf(this.constructor)
     if (registered && !key) {
       const id = `widget.${registered.type}.label`
@@ -990,7 +991,7 @@ export class TsWidget extends Base {
   _translatorFor(config, grid) {
     const locale = resolveFormatOptions(this, grid).locale || config.locale
     const defaults = classDefaultsOf(this.constructor)
-    return translator(config.messages, grid && grid.messages, this._messages, locale, defaults && defaults.table)
+    return translator(config.messages, grid && grid.messages, this._messages, locale, defaults ? defaults.table : null)
   }
 
   /**
@@ -1145,8 +1146,24 @@ export class TsWidget extends Base {
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
     watchView(this)
-    if (DEV) this._watchForData()
+    if (DEV) {
+      this._watchForData()
+      this._checkNumWidth()
+    }
     this.requestRender()
+  }
+
+  // --ts-num-width multiplies a count of characters in a calc(), so a unit (".62em") makes the whole
+  // font-size invalid and the figures fall back to the browser default. CSS cannot strip a unit, so say so once.
+  _checkNumWidth() {
+    if (DEV) {
+      const style = typeof getComputedStyle === 'function' ? getComputedStyle(this) : null
+      if (!style || typeof style.getPropertyValue !== 'function') return
+      const raw = String(style.getPropertyValue('--ts-num-width')).trim()
+      if (raw && !/^[0-9]*\.?[0-9]+$/.test(raw)) {
+        warnOnce('num-width', `--ts-num-width is "${raw}"; it must be a bare number of ems per figure, such as .62, with no unit, or figure sizes fall back to the browser default.`)
+      }
+    }
   }
 
   disconnectedCallback() {
@@ -1632,7 +1649,7 @@ export class TsWidget extends Base {
 
   /**
    * The empty view's words: the host's `widget.<catalogKey>.empty` message
-   * first, then the class's own `emptyText` (a widget author's choice, which
+   * first (or `widget.<type>.empty` for a registered custom widget), then the class's own `emptyText` (a widget author's choice, which
    * for a built-in is the EN value), then `widget.empty`.
    */
   _emptyText() {
@@ -1643,6 +1660,13 @@ export class TsWidget extends Base {
       const id = `widget.${key}.empty`
       const text = t(id)
       if (text !== id && (text !== EN[id] || own === EN[id])) return text
+    }
+    // A registered custom widget has no catalogKey; its type names the key (defineWidget's messages, or a host's).
+    const registered = !key && classDefaultsOf(this.constructor)
+    if (registered) {
+      const id = `widget.${registered.type}.empty`
+      const text = t(id)
+      if (text !== id) return text
     }
     return own === EN['widget.empty'] ? t('widget.empty') : own
   }
