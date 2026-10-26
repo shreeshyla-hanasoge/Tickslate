@@ -493,6 +493,10 @@ export interface Messages {
   'session.legend': string
   'session.legendNext': string
   'session.nextClose': string
+  'session.break': string
+  'session.resumes': string
+  'session.toBreak': string
+  'session.ariaBreak': string
   'metric.target': string
   'metric.up': string
   'metric.down': string
@@ -670,17 +674,35 @@ export interface SessionSpec {
    */
   close: string | { default: string; ranges: ReadonlyArray<{ from: string; to: string; close: string }> }
   /** Extra sessions keyed by the date they open on, e.g. a weekend session. They beat weekdays and holidays, and may cross midnight too. */
-  specialSessions?: Record<string, { open: string; close: string }>
+  specialSessions?: Record<string, { open: string; close: string; breaks?: ReadonlyArray<{ from: string; to: string }> }>
+  /**
+   * Gaps inside each window, such as a lunch break: 'HH:MM' local, sorted, apart, strictly
+   * inside the window (an overnight window's earlier times are the next morning's), at most
+   * four. The session is closed during one. A holiday removes the window with its breaks, and
+   * a special session has only its own breaks.
+   */
+  breaks?: ReadonlyArray<{ from: string; to: string }>
 }
 
 export interface CalendarInput {
   sessions: readonly SessionSpec[]
   /** Session id → 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
+  /** The instant holiday coverage is judged against. Default: Date.now(), read once when the calendar is created. Pass it in tests and in servers that render at a fixed time. */
+  now?: number
+}
+
+export interface CalendarIssue {
+  session: string
+  code: 'holiday-coverage'
+  /** e.g. 'The holiday list for "nyse" ends on 2026-12-31, 67 days from now.' */
+  message: string
 }
 
 export interface SessionState {
   open: boolean
+  /** True while the session is inside a break. `open` is false then, and `opensAt` is the break's end. */
+  onBreak: boolean
   /** Next open, when closed; null if none within a month. */
   opensAt: number | null
   /** When open: the end of the run of touching windows. Null while open means no close within a month. */
@@ -689,14 +711,16 @@ export interface SessionState {
   startedAt: number | null
   /** 0..1 through the run, when open. Null when `closesAt` or `startedAt` is. */
   progress: number | null
+  /** When open: what happens at `closesAt`. 'break' when the run ends at a break, 'close' when it ends for the day, null while closed or with no end. */
+  ends: 'close' | 'break' | null
 }
 
 export interface Calendar {
   readonly sessions: readonly string[]
   session(id: string): SessionSpec
   isTradingDay(id: string, date: string): boolean
-  /** The window that opens on a date as instants (its close is on the next day for an overnight session), or null if it doesn't open. */
-  hours(id: string, date: string): { open: number; close: number } | null
+  /** The window that opens on a date as instants (its close is on the next day for an overnight session), or null if it doesn't open. It has `breaks` (instants) only when the window has any. */
+  hours(id: string, date: string): { open: number; close: number; breaks?: Array<{ from: number; to: number }> } | null
   /** Windows that touch are one: a session open Sunday evening to Friday evening is open all week. */
   state(id: string, now: number): SessionState
   /** The next open or close, or null when there is none within a month, which includes an open session with no close. */
@@ -704,13 +728,17 @@ export interface Calendar {
   /** The next candle close, aligned to the session open (to the day's window when the session has no known start); null while closed. */
   candleClose(id: string, now: number, timeframeMinutes: number): number | null
   /** Every session window overlapping [from, to), touching windows merged. A run still going a month past `to`, or a month before `from`, is cut there. */
-  windows(id: string, from: number, to: number): Array<{ open: number; close: number }>
+  windows(id: string, from: number, to: number, options?: { throughBreaks?: boolean }): Array<{ open: number; close: number }>
+  /** The last date any holiday list covers for this session: the latest of `holidays['*']` and `holidays[id]`, or null with neither. Throws RangeError for an unknown id. */
+  holidaysThrough(id: string): string | null
+  /** Problems found when the calendar was created (a holiday list that ends within 30 days of `now`). Frozen; [] when there are none. */
+  readonly issues: readonly CalendarIssue[]
 }
 
 /** Throws TypeError on a malformed session or holiday list. The specs and holidays are copied (frozen) here and read once: changing the host's objects later has no effect. */
 export declare function createCalendar(input: CalendarInput): Calendar
 
-/** Ready-made sessions, checked against exchange circulars on 13 Oct 2026. */
+/** Ready-made sessions, each checked against its exchange's own page (the source and date are in the comment above it in calendar.js and in docs/guide/sessions.md). Regular hours only; early closes are the host's `specialSessions`, and no holidays are bundled. */
 export declare const presets: {
   /** 'equity' → id 'nse', 09:15–15:30. 'derivatives' → id 'nse-fo', 09:15–15:40 (15:30 before 3 Aug 2026). */
   nse(options?: { segment?: 'equity' | 'derivatives' }): SessionSpec
@@ -720,13 +748,29 @@ export declare const presets: {
    * 'cotton' → 'mcx-cotton', 09:00–21:00. 'agri' → 'mcx-agri', 09:00–17:00.
    */
   mcx(options?: { segment?: 'international' | 'cotton' | 'agri'; years?: number[] }): SessionSpec
+  /** NYSE, New York time. 'regular' (the default) → id 'nyse'; 'pre' → 'nyse-pre'; 'post' → 'nyse-post'; 'extended' → 'nyse-ext', pre-market through post-market as one window. */
+  nyse(options?: { segment?: 'regular' | 'pre' | 'post' | 'extended' }): SessionSpec
+  /** Nasdaq, same segments, ids 'nasdaq', 'nasdaq-pre', 'nasdaq-post', 'nasdaq-ext'. */
+  nasdaq(options?: { segment?: 'regular' | 'pre' | 'post' | 'extended' }): SessionSpec
+  /** London Stock Exchange, id 'lse'. */
+  lse(): SessionSpec
+  /** The spot FX week, id 'fx': Sunday evening to Friday evening, New York time. */
+  fx(): SessionSpec
+  /** Tokyo Stock Exchange, id 'tse', with its lunch break. */
+  tse(): SessionSpec
 }
 
 /** The dates New York is on daylight saving in a year. */
 export declare function usDaylightSaving(year: number): { from: string; to: string }
 
 export interface ProfileSchedule {
-  market: { sessions: string[]; leadMinutes?: number; lagMinutes?: number }
+  market: {
+    sessions: string[]
+    leadMinutes?: number
+    lagMinutes?: number
+    /** 'market' (the default) keeps the market profile through a break; 'closed' switches during it. */
+    duringBreaks?: 'market' | 'closed'
+  }
 }
 
 /** 'market' while any listed session is open (widened by lead and lag), else 'closed'. */

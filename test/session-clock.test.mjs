@@ -1,7 +1,9 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsSessionClock, sessionClockModel, visibleTicks } from '../src/elements/session-clock.js'
+import { spawnSync } from 'node:child_process'
 import { createCalendar, createFormatter, createMessages, presets, zonedTime } from '../src/core/index.js'
+import { resetWarnings } from '../src/elements/dev.js'
 
 // This file is loaded with no DOM: the import above must not throw.
 
@@ -679,4 +681,201 @@ describe('an open session with a close but no known start', () => {
 
 test('a wall clock has no flash: nothing in either template is a flash target', () => {
   assert.doesNotMatch(TsSessionClock.template('S') + TsSessionClock.template('Banner'), /data-flash/)
+})
+
+// ── Breaks and holiday coverage (RFC 0004 §5.2, §5.4) ───────────────────────
+
+describe('a session with a lunch break', () => {
+  const TOKYO = 'Asia/Tokyo'
+  const tk = (date, hhmm, seconds = 0) => zonedTime(date, hhmm, TOKYO) + seconds * 1000
+  const tokyo = createCalendar({ sessions: [presets.tse()], now: tk('2026-10-26', '00:00') })
+  const tfmt = createFormatter({ locale: 'en-US', currency: 'JPY' })
+  const tmodel = (d, variant, now) => sessionClockModel(d, variant, { fmt: tfmt, t, now, label: 'Session clock' })
+  const tdata = { calendar: tokyo, sessions: ['tse'], timeframes: [15, 60] }
+  const MON = '2026-10-26'
+
+  test('S reads Break and when it resumes, with the whole clock named after it', () => {
+    const m = tmodel(tdata, 'S', tk(MON, '12:00'))
+    assert.equal(m.live, false)
+    assert.deepEqual([m.title, m.titleShort], ['Break', 'Break'])
+    assert.equal(m.middle, 'resumes 12:30')
+    assert.equal(m.middleShort, 'resumes 12:30')
+    assert.equal(m.ariaLabel, 'Session clock: TSE on break, opens 12:30')
+    assert.deepEqual([m.from, m.to], ['09:00', '15:30'])
+    // 3h of the 6h30m window have gone, the break included.
+    assert.equal(m.progress, 46.15)
+    assert.deepEqual(m.gaps, [{ l: 38.462, w: 15.385 }])
+  })
+
+  test('S counts to the break before it, and to the close after it', () => {
+    const before = tmodel(tdata, 'S', tk(MON, '10:30'))
+    assert.equal(before.title, 'Market open')
+    assert.equal(before.middle, '1h to break')
+    assert.equal(before.ariaLabel, 'Session clock: TSE open, closes 15:30')
+    assert.equal(tmodel(tdata, 'S', tk(MON, '13:30')).middle, '2h to close')
+    assert.equal(tmodel(tdata, 'S', tk(MON, '13:30')).progress, 69.23)
+  })
+
+  test('S before the open and after the close is closed, with the gap still known', () => {
+    const early = tmodel(tdata, 'S', tk(MON, '08:00'))
+    assert.equal(early.title, 'Market closed')
+    assert.equal(early.progress, 0)
+    assert.equal(early.middle, 'opens in 1h')
+    const late = tmodel(tdata, 'S', tk(MON, '16:00'))
+    assert.equal(late.title, 'Market closed')
+    assert.equal(late.progress, 0)
+  })
+
+  test('Banner: the lane reads Break with its resume time under it, and draws the gap', () => {
+    const m = tmodel(tdata, 'Banner', tk(MON, '12:00'))
+    const [lane] = m.lanes
+    assert.deepEqual([lane.right, lane.sub, lane.open], ['Break', 'resumes 12:30', false])
+    assert.equal(lane.hours, '09:00–15:30')
+    assert.deepEqual(lane.gaps, [{ l: 38.462, w: 15.385 }])
+    assert.equal(m.live, false)
+    assert.equal(lane.next, null)
+    assert.equal(m.nextClose, '')
+  })
+
+  test('Banner: the countdown says to break, then left, and the lane has no resume line', () => {
+    const [before] = tmodel(tdata, 'Banner', tk(MON, '10:30')).lanes
+    assert.deepEqual([before.right, before.sub], ['1h to break', ''])
+    const [after] = tmodel(tdata, 'Banner', tk(MON, '13:30')).lanes
+    assert.deepEqual([after.right, after.sub], ['2h left', ''])
+  })
+
+  test('ticks are counted from the open and again from the break\'s end, and none sit in the gap', () => {
+    const [lane] = tmodel(tdata, 'Banner', tk(MON, '12:31')).lanes
+    const thick = lane.ticks.items.filter((x) => x.k === 1)
+    const hours = thick.map((x) => new Date(x.at + 9 * 3600000).toISOString().slice(11, 16))
+    assert.deepEqual(hours, ['10:00', '11:00', '13:30', '14:30'])
+    const quarters = lane.ticks.items.filter((x) => x.k === 0).map((x) => new Date(x.at + 9 * 3600000).toISOString().slice(11, 16))
+    assert.ok(!quarters.some((q) => q > '11:30' && q < '12:30'), 'no tick inside the break')
+    assert.ok(quarters.includes('12:45') && quarters.includes('09:15'))
+    // The marker is the next candle close, 12:45, as a share of the whole rail.
+    assert.equal(lane.next, 57.69)
+  })
+
+  test('a session without breaks has no gaps and the same ticks as before', () => {
+    const [lane] = model(data, 'Banner', at('2026-10-12', '11:42')).lanes
+    assert.deepEqual(lane.gaps, [])
+    assert.equal(lane.sub, '')
+  })
+
+  test('update() draws the gap in the track and the resume line, once, and clears them after', () => {
+    const w = fakeWidget()
+    w.update(tmodel(tdata, 'S', tk(MON, '12:00')), 'S')
+    const gps = w.$('.gps')
+    assert.match(gps.html, /<i class="gp" style="inset-inline-start:38\.462%;width:15\.385%"><\/i>/)
+    assert.equal(gps.writes, 1)
+    w.update(tmodel(tdata, 'S', tk(MON, '12:01')), 'S')
+    assert.equal(gps.writes, 1, 'the gap is not rebuilt every second')
+    assert.equal(w.$('.dot').hidden, true)
+    assert.equal(w.$('.mf').textContent, 'resumes 12:30')
+
+    const b = fakeWidget()
+    b.update(tmodel(tdata, 'Banner', tk(MON, '12:00')), 'Banner')
+    const lane = b.$('.lanes').lanes[0]
+    assert.equal(lane.querySelector('.lr').textContent, 'Break')
+    assert.equal(lane.querySelector('.lr2').hidden, false)
+    assert.equal(lane.querySelector('.lr2').textContent, 'resumes 12:30')
+    b.update(tmodel(tdata, 'Banner', tk(MON, '13:30')), 'Banner')
+    assert.equal(lane.querySelector('.lr2').hidden, true)
+    assert.equal(lane.querySelector('.lr').textContent, '2h left')
+  })
+
+  test('the styles paint the gap in the surface, and keep it edged in forced colours', () => {
+    assert.match(TsSessionClock.styles, /\.gp \{[^}]*background: var\(--ts-surface\)/)
+    assert.match(TsSessionClock.styles, /forced-colors: active\) \{[\s\S]*\.gp \{[^}]*border-inline: 1px solid CanvasText/)
+    assert.match(TsSessionClock.template('S'), /class="gps"/)
+  })
+})
+
+describe('a session that never closes', () => {
+  test('S and Banner read Open 24/7 with no gap and no countdown', () => {
+    const all = createCalendar({ sessions: [{ id: 'always', label: 'Always', timeZone: 'UTC', days: [1, 2, 3, 4, 5, 6, 7], open: '00:00', close: '00:00' }] })
+    const now = Date.UTC(2026, 9, 14, 12)
+    const s = sessionClockModel({ calendar: all, sessions: ['always'] }, 'S', { fmt: createFormatter({ locale: 'en-US', currency: 'USD' }), t, now, label: '' })
+    assert.deepEqual([s.middle, s.progress, s.gaps], ['Open 24/7', 100, []])
+    const b = sessionClockModel({ calendar: all, sessions: ['always'] }, 'Banner', { fmt: createFormatter({ locale: 'en-US', currency: 'USD' }), t, now, label: '' })
+    assert.deepEqual([b.lanes[0].right, b.lanes[0].sub, b.lanes[0].gaps], ['Open 24/7', '', []])
+  })
+})
+
+describe('the holiday coverage warning', () => {
+  const NOW = Date.UTC(2026, 9, 26, 12)
+  const spec = { id: 'nyse', label: 'NYSE', timeZone: 'America/New_York', days: [1, 2, 3, 4, 5], open: '09:30', close: '16:00' }
+  const short = createCalendar({ sessions: [spec], holidays: { nyse: ['2026-11-10'] }, now: NOW })
+  const long = createCalendar({ sessions: [spec], holidays: { nyse: ['2027-12-31'] }, now: NOW })
+
+  const withWarnings = (run) => {
+    const seen = []
+    const warn = console.warn
+    console.warn = (m) => seen.push(m)
+    resetWarnings()
+    try {
+      run()
+    } finally {
+      console.warn = warn
+      resetWarnings()
+    }
+    return seen
+  }
+  const draw = (calendar, times = 1) => {
+    const w = fakeWidget()
+    w._data = { calendar, sessions: ['nyse'] }
+    for (let i = 0; i < times; i++) w.update(model({ calendar, sessions: ['nyse'] }, 'S', NOW), 'S')
+  }
+
+  test('warns once per calendar for a short list, with the pointer to the guide', () => {
+    const seen = withWarnings(() => draw(short, 5))
+    assert.deepEqual(seen, ['tickslate: The holiday list for "nyse" ends on 2026-11-10, 15 days from now. See docs/guide/sessions.md'])
+  })
+
+  test('does not warn for a list that reaches past 30 days, or for no list', () => {
+    assert.deepEqual(withWarnings(() => draw(long)), [])
+    assert.deepEqual(withWarnings(() => draw(createCalendar({ sessions: [spec], now: NOW }))), [])
+    assert.deepEqual(withWarnings(() => draw(undefined)), [])
+  })
+
+  test('warns for each calendar once, even if a second one has the same text', () => {
+    const again = createCalendar({ sessions: [spec], holidays: { nyse: ['2026-11-10'] }, now: NOW })
+    const seen = withWarnings(() => {
+      draw(short, 2)
+      draw(again, 2)
+    })
+    assert.equal(seen.length, 1, 'the dev warning is also de-duplicated by text, like the others')
+  })
+})
+
+describe('the production switch for the coverage warning', () => {
+  test('with __TS_DEV__ false a short holiday list warns nothing', () => {
+    // A child process, because dev.js reads the switch once, when first loaded.
+    const code = `
+      import { FakeElement, FakeDocument } from ${JSON.stringify(new URL('./fake-dom.mjs', import.meta.url).href)}
+      globalThis.__TS_DEV__ = false
+      globalThis.HTMLElement = FakeElement
+      globalThis.document = new FakeDocument()
+      const { DEV } = await import(${JSON.stringify(new URL('../src/elements/dev.js', import.meta.url).href)})
+      const { TsSessionClock } = await import(${JSON.stringify(new URL('../src/elements/session-clock.js', import.meta.url).href)})
+      const { createCalendar, createFormatter, createMessages } = await import(${JSON.stringify(new URL('../src/core/index.js', import.meta.url).href)})
+      const calls = []
+      console.warn = (m) => calls.push(m)
+      const now = Date.UTC(2026, 9, 26, 12)
+      const spec = { id: 'nyse', label: 'NYSE', timeZone: 'America/New_York', days: [1, 2, 3, 4, 5], open: '09:30', close: '16:00' }
+      const calendar = createCalendar({ sessions: [spec], holidays: { nyse: ['2026-11-10'] }, now })
+      const vm = TsSessionClock.viewModel({ calendar, sessions: ['nyse'] }, 'S', { fmt: createFormatter({ locale: 'en-US', currency: 'USD' }), t: createMessages(), now, label: '' })
+      const w = Object.create(TsSessionClock.prototype)
+      w._data = { calendar, sessions: ['nyse'] }
+      const node = () => ({ hidden: false, style: {}, textContent: '', setAttribute() {}, removeAttribute() {} })
+      const nodes = new Map()
+      w.$ = (sel) => nodes.get(sel) || (nodes.set(sel, node()), nodes.get(sel))
+      w.update(vm, 'S')
+      console.log(JSON.stringify({ DEV, issues: calendar.issues.length, calls }))
+    `
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8' })
+    assert.equal(run.status, 0, run.stderr)
+    const out = JSON.parse(run.stdout)
+    assert.deepEqual(out, { DEV: false, issues: 1, calls: [] })
+  })
 })

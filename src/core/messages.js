@@ -261,6 +261,10 @@ export const EN = Object.freeze({
   'session.legend': '{tf} close',
   'session.legendNext': '{tf} close, next hour',
   'session.nextClose': 'next close in {time}',
+  'session.break': 'Break',
+  'session.resumes': 'resumes {time}',
+  'session.toBreak': '{time} to break',
+  'session.ariaBreak': '{session} on break, {opens}',
 
   // <ts-metric>
   'metric.target': 'Target',
