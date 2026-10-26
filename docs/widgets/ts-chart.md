@@ -156,6 +156,7 @@ chart.data = {
 | `label` | attribute and property | The heading and the tile's name. Defaults to "Chart" |
 | `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `stale-after` | attribute | How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default `120000`. Falls back to the nearest `<ts-grid>`'s `stale-after`; an unreadable value falls back to the default with one development warning |
+| `scrub` | attribute and property | `off` turns scrubbing off: no hover or drag read-out and no keyboard slider. `on` turns it on where the nearest `<ts-grid>` says `off`. Falls back to the nearest `<ts-grid>`'s `scrub`, then on |
 | `flash` | attribute | `off` stops the brief tint on a headline figure that changed. The nearest `<ts-grid>`'s `flash` applies too |
 | `size` | attribute and property | `Wide`, `M`, `L` or `XL`; others snap. A grid sets it |
 | `data` | property, or a JSON attribute | `ChartData` |
@@ -167,6 +168,38 @@ chart.data = {
 
 The base members are listed in [Your own widget](../guide/your-own-widget.md).
 `TsChart.chartModel(data, variant, ctx)` is the pure view model.
+
+## Scrubbing and the data table
+
+Hover a mouse over the plot, or drag a finger along it, and a rule, a dot and a small label show the point
+nearest the pointer: its x as the axis shows it (a time, a date, a number or a category), and one `name value` pair for each series. A vertical swipe still scrolls the page; only a horizontal drag
+scrubs. The label stays inside the plot at both edges, and inside its height: on a short plot (`S`, `Wide`) it lays its
+series out in two columns, and when even that is too tall it shows the series that fit and a count of the rest ("+2 more").
+The slider's value text always names every series. Scrubbing only changes what the tile shows, so it fires no event.
+
+For the keyboard the plot has one tab stop, a `role="slider"` named "Revenue, read point by point". Left and
+Right move one point earlier or later (time runs left to right in every language, so the arrows never swap), Page Up
+and Page Down move ten, Home and End jump to the first and last point, and Escape hides the label and keeps focus.
+Focus starts on the newest point. The slider's `aria-valuetext` is the label's text, so a screen reader speaks each
+point as the keys move, and nothing in the tile is `aria-live`.
+
+The plot has a visually hidden table of its last 12 drawn points, newest last, with a caption, column headers and
+row headers. It is the screen-reader route to the data, and it is not announced. Rows are updated in place, so a
+tick adds a row and drops the oldest rather than rebuilding the table. A chart with bars also keeps its visually hidden
+list of bar sentences, which names every bar and not only the last 12 points, so a screen reader may read the newest
+values both there and in the table's last row. That is a deliberate deviation from the table replacing the list
+(RFC 0004 §1.6).
+
+With several series the pointer snaps to the x of the series with the most points, and every other series shows its
+own nearest point there. A bar series shows a value only at a category it has a bar for, and reads `—` elsewhere. The
+label reads the drawn points: a very long series is thinned for drawing (twice the plot's width in points, keeping
+the low, the high and the last value), and the read-out names only points the line passes through.
+
+Choosing a point with `select` is separate. The slider is its own tab stop, before the list of points, and fires no
+event; the arrow keys on a point and on the slider never share a key.
+
+Set `scrub="off"` on a tile, or on the `<ts-grid>`, to turn it off; a change on the grid applies to its tiles at once. The table stays. Scrubbing is also off while
+the grid is in edit mode.
 
 ## Freshness and change flashes
 
@@ -196,6 +229,10 @@ each way; on a crowded axis a click goes to the nearest bar. See
 | `header` | The header row: the live dot, the label and the right-hand text (at `Wide`, the first series' name) |
 | `label` | The label, a `role="heading"` whose level comes from `heading-level` |
 | `chart` | The plot box: the svg, without its axis labels |
+| `scrub` | The overlay over the plot while a point is read (hidden otherwise) |
+| `scrub-rule` | The vertical rule at the point |
+| `scrub-dot` | A dot on the point for each series, in the series' colour |
+| `scrub-readout` | The label with the point's x and each series' value |
 | `empty` | The empty view's container |
 | `error` | The error view's container (only while the error view shows) |
 | `skeleton` | The loading view's container, around the skeleton blocks |
@@ -220,6 +257,9 @@ square, so they differ from lines without colour.
   the summary is spoken once.
 - Series are told apart by position, legend name and (for areas and bars) swatch
   shape, not only by colour. Series colours meet 3:1 on the surface.
+- The plot has one tab stop, a `role="slider"` with a value text such as
+  "Sep 1: Revenue 120 and Cost 60", and a visually hidden table of the last 12 points, one column per series.
+  Nothing is `aria-live`.
 - The axis labels are `aria-hidden`; the last values are in the svg's label and
   in the legend text.
 - Bars carry their values as text: with `select` on, every bar is a button named

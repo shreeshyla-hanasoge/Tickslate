@@ -158,6 +158,7 @@ export type TsCommonAction = { action: 'retry' } | TsOpenAction
  * @attr {boolean} activatable - Makes the label a button that fires `ts-action` with action 'open'.
  * @attr {string} stale-after - How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default 120000; falls back to the grid's.
  * @attr {'off'} flash - 'off' stops the brief tint on a headline figure that changed; the grid's `flash` applies too.
+ * @attr {'on' | 'off'} scrub - 'off' turns off scrubbing on a chart: hover, touch drag and the keyboard slider. The widget's own, then the grid's, then on. Only the charts act on it.
  * @attr {string} item - The id the grid matches this tile to, and the `id` of an 'open' action.
  * @csspart tile - The tile: a role="group" box named by the widget's result.
  * @csspart header - The row holding the live dot, the label and the meta.
@@ -325,6 +326,10 @@ export interface ChartModel {
  * @element ts-chart
  * @fires {CustomEvent<TsChartAction>} ts-action - Retry, 'open', and 'select' for a point when `actions` includes 'select'.
  * @csspart chart - The drawing box.
+ * @csspart scrub - The overlay laid over the plot while a point is read; hidden otherwise.
+ * @csspart scrub-rule - The vertical rule at the point.
+ * @csspart scrub-dot - A dot on the point, in its series' colour.
+ * @csspart scrub-readout - The label naming the point and its values.
  */
 export declare class TsChart extends TsWidget<ChartData> {
   addEventListener(type: 'ts-action', listener: (this: TsChart, ev: CustomEvent<TsChartAction>) => any, options?: boolean | AddEventListenerOptions): void
@@ -858,6 +863,10 @@ export interface TodayPnlData extends WidgetFreshness {
  * @element ts-today-pnl
  * @fires {CustomEvent<TsTodayPnlAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
  * @csspart chart - The intraday curve's box.
+ * @csspart scrub - The overlay laid over the plot while a point is read; hidden otherwise.
+ * @csspart scrub-rule - The vertical rule at the point.
+ * @csspart scrub-dot - A dot on the point, in its series' colour.
+ * @csspart scrub-readout - The label naming the point and its values.
  */
 export declare class TsTodayPnl extends TsWidget<TodayPnlData> {
   addEventListener(type: 'ts-action', listener: (this: TsTodayPnl, ev: CustomEvent<TsTodayPnlAction>) => any, options?: boolean | AddEventListenerOptions): void
@@ -883,6 +892,10 @@ export interface EquityCurveData extends WidgetFreshness {
  * @attr {'1W' | '1M' | '3M' | 'YTD' | 'All'} range - The range shown. Reflects `range`; an unknown value reads as 'All'.
  * @fires {CustomEvent<TsEquityCurveAction>} ts-action - Retry, 'open', and 'range' when a range button is pressed.
  * @csspart chart - The curve's box.
+ * @csspart scrub - The overlay laid over the plot while a point is read; hidden otherwise.
+ * @csspart scrub-rule - The vertical rule at the point.
+ * @csspart scrub-dot - A dot on the point, in its series' colour.
+ * @csspart scrub-readout - The label naming the point and its values.
  */
 export declare class TsEquityCurve extends TsWidget<EquityCurveData> {
   addEventListener(type: 'ts-action', listener: (this: TsEquityCurve, ev: CustomEvent<TsEquityCurveAction>) => any, options?: boolean | AddEventListenerOptions): void
@@ -1153,6 +1166,7 @@ export type TsFeedAction = TsCommonAction
  * @attr {'off'} undo-toast - 'off' suppresses the undo toast after a remove.
  * @attr {string} stale-after - The `stale-after` its tiles use unless they set their own.
  * @attr {'off'} flash - 'off' stops every tile's change flash.
+ * @attr {'on' | 'off'} scrub - 'off' turns off scrubbing on every chart in the grid, unless a chart sets its own `scrub`.
  * @attr {string} locale - BCP 47 tag for the grid's strings and its tiles' formatting.
  * @attr {string} currency - ISO 4217 code its tiles format money with.
  * @attr {string} time-zone - IANA zone its tiles format times with.
@@ -1234,6 +1248,7 @@ export interface TsWidgetAttributes {
   activatable?: boolean | undefined
   'stale-after'?: number | string | undefined
   flash?: 'off' | undefined
+  scrub?: 'on' | 'off' | undefined
   item?: string | undefined
 }
 
@@ -1263,6 +1278,7 @@ export interface TsElementAttributes {
     persist?: string | undefined
     'stale-after'?: number | string | undefined
     flash?: 'off' | undefined
+    scrub?: 'on' | 'off' | undefined
     'aria-label'?: string | undefined
   }
 }

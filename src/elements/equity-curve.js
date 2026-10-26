@@ -14,6 +14,7 @@
 
 import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { linePath, linePaths, bandPath } from './chart.js'
+import { Scrubber, SCRUB_CSS, lineScrub, scrubMarkup } from './scrub.js'
 import { EN, equitySeries, equityStats, toDay, toNumber } from '../core/index.js'
 
 export const RANGES = ['1W', '1M', '3M', 'YTD', 'All']
@@ -170,6 +171,24 @@ export function equityCurveModel(data, variant, ctx) {
 
   const points = series.map((s, i) => ({ x: i, y: s.equity }))
   const geo = linePaths(points, { width, height })
+  // What the scrubber reads (RFC 0004 §1.2): the drawn points as numbers. x is the trading-day index, so a day's own
+  // result is its equity less the day before's, whichever points the drawing thinned out.
+  let scrub = null
+  if (n > 1) {
+    const labels = geo.drawn.map((p) => series[p.x].date)
+    scrub = lineScrub(
+      'day',
+      { width, height, pad: 4 },
+      geo.drawn,
+      geo.x,
+      geo.y,
+      [
+        { name: t('chart.scrubEquity'), ys: (p) => p.y, mark: true },
+        { name: t('chart.scrubDay'), ys: (p) => p.y - (p.x > 0 ? series[p.x - 1].equity : 0) },
+      ],
+      { labels },
+    )
+  }
   let peakLine = ''
   let band = ''
   if (v === 'XL' && n > 1) {
@@ -205,6 +224,8 @@ export function equityCurveModel(data, variant, ctx) {
     // The short word fits Wide's 170px column; a host's own label is used as given.
     label: v === 'Wide' ? t('equity.wide', { label: label === t('widget.equityCurve.label') ? t('equity.short') : label, days: dayWord }) : label,
     headline,
+    // The full figure, for the pointer, when fit() made the headline compact (RFC 0004 §1.5).
+    headlineTitle: headline !== net ? net : '',
     // ▲ or ▼ beside each coloured figure, read from the sign the reader sees (RFC 0003 §5.5).
     headlineArrow: arrowFor(headline),
     net,
@@ -226,6 +247,7 @@ export function equityCurveModel(data, variant, ctx) {
     axis,
     chart: { width, height, line: geo.line, area: geo.area, zeroY: geo.zeroY, peakLine, band },
     chartLabel,
+    scrub,
     netNum: stats.net,
     ariaLabel: empty ? t('equity.ariaEmpty', { label }) : t('equity.aria', { label, net, days: tradingDays }),
   }
@@ -238,7 +260,7 @@ const k = (name) => `[data-k="${name}"]`
 function chartMarkup(v) {
   const [w, h] = DIMS[v]
   const xl = v === 'XL'
-  return `<div class="plot" part="chart">
+  return `<div class="plot sc" part="chart" data-k="plot">
 <svg data-k="svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="">
 <defs><clipPath id="cu"><rect data-k="clipUp" x="0" y="0" width="${w}" height="0"></rect></clipPath><clipPath id="cd"><rect data-k="clipDn" x="0" y="0" width="${w}" height="0"></rect></clipPath></defs>
 ${xl ? '<path class="dd" data-k="band" d=""></path>' : ''}
@@ -247,6 +269,7 @@ ${xl ? '<path class="lz" data-k="peakLine" fill="none" d=""></path>' : '<path cl
 <path class="lp" data-k="lineUp" d="" clip-path="url(#cu)"></path><path class="ln" data-k="lineDn" d="" clip-path="url(#cd)"></path>
 </svg>
 <div class="empty" part="empty" data-k="empty" hidden></div>
+${scrubMarkup(1, 2)}
 </div>`
 }
 
@@ -278,7 +301,7 @@ export class TsEquityCurve extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `${FIGURE_CSS}
+  static styles = `${FIGURE_CSS}${SCRUB_CSS}
 [hidden] { display: none !important; }
 .rowl { flex: 1; min-height: 0; display: flex; flex-direction: row; align-items: stretch; gap: 20px; }
 .rowl.xl { gap: 24px; }
@@ -365,6 +388,7 @@ ${chartMarkup('M')}
 
   constructor() {
     super()
+    this._scrubber = new Scrubber(this)
     // One listener on the tile: the buttons are rebuilt when the variant changes.
     this._section.addEventListener('click', (e) => {
       const button = e.target && e.target.closest ? e.target.closest('button[data-range]') : null
@@ -405,6 +429,8 @@ ${chartMarkup('M')}
     }
     text('label', vm.label)
     fig('net', 'big', vm.headline, vm.headlineArrow, vm.netClass)
+    // The title goes on the headline value (part="value"), so the tooltip is over the number alone (RFC 0004 §1.5).
+    this._setAttr(this.$(k('net')), 'title', vm.headlineTitle || null)
     this.flash('net', vm.netNum)
     text('empty', t('equity.noDays'))
 
@@ -463,5 +489,6 @@ ${chartMarkup('M')}
       attr('areaUp', 'd', c.area)
       attr('areaDn', 'd', c.area)
     }
+    this._scrubber?.sync(vm.scrub, vm.ariaLabel)
   }
 }

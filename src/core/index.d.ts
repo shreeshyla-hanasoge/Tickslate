@@ -517,6 +517,19 @@ export interface Messages {
   'chart.series': string
   'chart.last': string
   'chart.noData': string
+  'chart.scrubSlider': string
+  'chart.scrubValue': string
+  'chart.scrubNone': string
+  'chart.scrubNet': string
+  'chart.scrubEquity': string
+  'chart.scrubDay': string
+  'chart.scrubTableX': string
+  'chart.scrubTableDate': string
+  'chart.scrubTableCategory': string
+  'chart.scrubTableNumber': string
+  'chart.scrubCaption.one': string
+  'chart.scrubCaption.other': string
+  'chart.scrubMore': string
   'table.aria': string
   'table.rows.one': string
   'table.rows.other': string

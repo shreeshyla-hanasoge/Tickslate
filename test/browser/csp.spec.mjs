@@ -92,6 +92,49 @@ const STYLED = () => {
   }
 }
 
+// Scrubbing (RFC 0004 §1) under the same policy: hover each chart so the overlay moves and reads, press a key on its
+// slider, and read the hidden table. The overlay writes transforms and text only, so no violation may follow.
+async function scrubEverything(page) {
+  const frame = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const seen = {}
+  for (const tag of ['ts-chart', 'ts-today-pnl', 'ts-equity-curve']) {
+    // The same events a mouse sends, for every engine; the tile may be below the fold, so they carry its own coordinates.
+    const hovered = await page.evaluate((tag) => {
+      const el = document.querySelector(`#g > ${tag}`)
+      const root = el.shadowRoot
+      const plot = root.querySelector('[data-k="plot"]')
+      const b = plot.getBoundingClientRect()
+      for (const f of [0.3, 0.32]) {
+        plot.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'mouse', clientX: b.left + b.width * f, clientY: b.top + b.height / 2, bubbles: true, composed: true }))
+      }
+      return true
+    }, tag)
+    expect(hovered).toBe(true)
+    await frame()
+    seen[tag] = await page.evaluate((tag) => {
+      const root = document.querySelector(`#g > ${tag}`).shadowRoot
+      const box = root.querySelector('[data-k="scrub"]')
+      return { overlay: !box.hasAttribute('hidden'), label: root.querySelector('[data-k="scrubLab"]').textContent }
+    }, tag)
+    expect(seen[tag].overlay, `${tag} shows a read-out under the policy`).toBe(true)
+    expect(seen[tag].label, tag).not.toBe('')
+    await page.evaluate((tag) => {
+      document.querySelector(`#g > ${tag}`).shadowRoot.querySelector('[data-k="scrubSlider"]').focus()
+    }, tag)
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('Home')
+    await frame()
+    const read = await page.evaluate((tag) => {
+      const root = document.querySelector(`#g > ${tag}`).shadowRoot
+      const s = root.querySelector('[data-k="scrubSlider"]')
+      return { now: s.getAttribute('aria-valuenow'), text: s.getAttribute('aria-valuetext'), rows: root.querySelectorAll('[data-k="scrubBody"] tr').length }
+    }, tag)
+    expect(read.now, `${tag}: Home reads the first point`).toBe('0')
+    expect(read.text, tag).toBeTruthy()
+    expect(read.rows, `${tag}: the table lists the recent points`).toBeGreaterThan(1)
+  }
+}
+
 // The whole edit path, driven the way a person does: keyboard move, pointer drag, remove, Undo, Add back from the
 // picker's list and an add the host answers. Every step runs under the page's policy, and afterEach fails on a violation.
 async function editEverything(page) {
@@ -243,6 +286,12 @@ test.describe('under default-src, style-src and script-src self', () => {
     await boot(page)
     const reasons = await editEverything(page)
     for (const reason of ['move', 'remove', 'undo', 'add']) expect(reasons).toContain(reason)
+  })
+
+  test('the charts scrub, and their tables read, under the strict policy', async ({ page }) => {
+    await serve(page, STRICT)
+    await boot(page)
+    await scrubEverything(page)
   })
 
   test('the grid edits: chrome appears, the picker opens, a tile is removed and every state draws', async ({ page }) => {

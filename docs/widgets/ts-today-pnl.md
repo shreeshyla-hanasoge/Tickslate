@@ -47,7 +47,9 @@ recomputed from the parts, so the tile cannot disagree with your books. Amounts
 are in major units (rupees, dollars), not minor.
 
 The headline goes compact ("1.2M") when it would not fit its size (10
-characters at `S`, 11 at `Wide`, 14 at `M`) so the tile never resizes.
+characters at `S`, 11 at `Wide`, 14 at `M`) so the tile never resizes. The full
+figure is then the `title` of the headline, so hovering the number shows
+"+₹12,34,567.89"; the tile's accessible name always has the full figure.
 
 At `M` the curve is drawn above its zero line in `--ts-profit` and below it in
 `--ts-loss`. A mark's `kind` other than `'exit'` reads as an entry. With fewer
@@ -94,6 +96,7 @@ tile.data = {
 | `label` | attribute and property | The tile's name and the heading at `Wide` and `M`. `S` always says "Today". Defaults to "Today's P&L" |
 | `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `stale-after` | attribute | How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default `120000`. Falls back to the nearest `<ts-grid>`'s `stale-after`; an unreadable value falls back to the default with one development warning |
+| `scrub` | attribute and property | `off` turns scrubbing off: no hover or drag read-out and no keyboard slider. `on` turns it on where the nearest `<ts-grid>` says `off`. Falls back to the nearest `<ts-grid>`'s `scrub`, then on |
 | `flash` | attribute | `off` stops the brief tint on a headline figure that changed. The nearest `<ts-grid>`'s `flash` applies too |
 | `size` | attribute and property | `S`, `Wide` or `M`; others snap. A grid sets it |
 | `data` | property, or a JSON attribute | `TodayPnlData` |
@@ -104,6 +107,27 @@ tile.data = {
 | `item` | attribute | The id a grid matches this child by |
 
 The base members are listed in [Your own widget](../guide/your-own-widget.md).
+
+## Scrubbing and the data table
+
+Hover a mouse over the plot, or drag a finger along it, and a rule, a dot and a small label show the point
+nearest the pointer: its time, and the net P&L at that time (`Net`, signed). A vertical swipe still scrolls the page; only a horizontal drag
+scrubs. The label stays inside the plot at both edges. Scrubbing only changes what the tile shows, so it fires no event.
+
+For the keyboard the plot has one tab stop, a `role="slider"` named "Today's P&L, read point by point". Left and
+Right move one point earlier or later (time runs left to right in every language, so the arrows never swap), Page Up
+and Page Down move ten, Home and End jump to the first and last point, and Escape hides the label and keeps focus.
+Focus starts on the newest point. The slider's `aria-valuetext` is the label's text, so a screen reader speaks each
+point as the keys move, and nothing in the tile is `aria-live`.
+
+The plot has a visually hidden table of its last 12 drawn points, newest last, with a caption, column headers and
+row headers. It is the screen-reader route to the data, and it is not announced. Rows are updated in place, so a
+tick adds a row and drops the oldest rather than rebuilding the table.
+
+Only `M` has a plot, so only `M` scrubs and has the table.
+
+Set `scrub="off"` on a tile, or on the `<ts-grid>`, to turn it off. The table stays. Scrubbing is also off while
+the grid is in edit mode.
 
 ## Freshness and change flashes
 
@@ -127,6 +151,10 @@ When the net figure changes, it is tinted for 700 ms: `--ts-profit` when it rose
 | `label` | The label, a `role="heading"` whose level comes from `heading-level` |
 | `value` | The headline figure, with its ▲ or ▼ |
 | `chart` | At `M`, the box around the intraday curve and its marks |
+| `scrub` | At `M`, the overlay over the curve while a point is read (hidden otherwise) |
+| `scrub-rule` | The vertical rule at the point |
+| `scrub-dot` | The dot on the curve at the point |
+| `scrub-readout` | The label with the point's time and its net |
 | `empty` | The empty view's container, and the "No intraday data yet" message inside the `M` chart |
 | `error` | The error view's container (only while the error view shows) |
 | `skeleton` | The loading view's container, around the skeleton blocks |
@@ -151,5 +179,7 @@ When the net figure changes, it is tinted for 700 ms: `--ts-profit` when it rose
 - The `M` curve is a `role="img"` svg labelled with the result, for example
   "Intraday P&L: low −₹640, now +₹2,185.65". Each mark is a labelled image with its
   name and time, an entry a circle and an exit a diamond, and the day's low and high are written beside the headline.
+- The curve has one tab stop, a `role="slider"` with a value text such as
+  "10:15: Net −₹640.00", and a visually hidden table of the last 12 readings. Nothing is `aria-live`.
 - Figures use tabular numbers and clip rather than run into their neighbour.
 - The live pulse and the loading shimmer stop under `prefers-reduced-motion`.

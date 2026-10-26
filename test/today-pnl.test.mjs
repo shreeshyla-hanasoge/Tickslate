@@ -372,3 +372,37 @@ test('the view model carries the net as a number for the flash, whatever the tex
   assert.equal(model({ ...day, net: '-12.5' }, 'M').netNum, -12.5)
   assert.ok(Number.isNaN(model({ ...day, net: 'n/a' }, 'S').netNum))
 })
+
+describe('the full headline as a title (RFC 0004 §1.5)', () => {
+  const de = createFormatter({ locale: 'de-DE', currency: 'EUR', timeZone: 'Europe/Berlin' })
+  const big = { ...day, net: 12345678.9 }
+
+  test('is empty for a figure that fits, at every size', () => {
+    for (const v of ['S', 'Wide', 'M']) assert.equal(model(day, v).netTitle, '', v)
+  })
+
+  test('is the full figure, with its sign, where fit() made the headline compact', () => {
+    const vm = model(big, 'S')
+    assert.notEqual(vm.net, '+₹1,23,45,678.90')
+    assert.equal(vm.netTitle, '+₹1,23,45,678.90')
+    assert.equal(model({ ...big, net: -12345678.9 }, 'S').netTitle, '−₹1,23,45,678.90')
+  })
+
+  test('follows the locale', () => {
+    const vm = todayPnlModel(big, 'M', { ...ctx, fmt: de })
+    assert.match(vm.netTitle, /^\+12\.345\.678,90\s€$/)
+    assert.notEqual(vm.net, vm.netTitle)
+  })
+
+  test('the accessible name already has the full figure, so the compact text is never all a listener gets', () => {
+    for (const v of ['S', 'Wide', 'M']) {
+      const vm = model(big, v)
+      if (vm.netTitle) assert.ok(vm.ariaLabel.endsWith(vm.netTitle), `${v}: ${vm.ariaLabel}`)
+    }
+  })
+
+  test('a figure that cannot be read has no title', () => {
+    assert.equal(model({ ...day, net: 'abc' }, 'S').netTitle, '')
+    assert.equal(model({}, 'M').netTitle, '')
+  })
+})

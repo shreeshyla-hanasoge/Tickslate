@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { todayPnlModel, CHART_BOX } from '../src/elements/today-pnl.js'
 import { createFormatter, createMessages } from '../src/core/index.js'
 import { resetWarnings } from '../src/elements/dev.js'
-import { downsample, scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths } from '../src/elements/chart.js'
+import { downsample, scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths, nearestPoint, plotFraction } from '../src/elements/chart.js'
 
 describe('scale', () => {
   test('maps linearly, including to a reversed range', () => {
@@ -481,5 +481,140 @@ describe('maxPoints edge cases (RFC 0003 §23)', () => {
       console.warn = warn
       resetWarnings()
     }
+  })
+})
+
+describe('nearestPoint (RFC 0004 §1.1)', () => {
+  const pts = [{ x: 0, y: 5 }, { x: 10, y: 6 }, { x: 40, y: 7 }, { x: 100, y: 8 }]
+
+  test('the first and the last point sit at the two ends of the domain', () => {
+    assert.deepEqual(nearestPoint(pts, 0), { index: 0, x: 0, y: 5 })
+    assert.deepEqual(nearestPoint(pts, 1), { index: 3, x: 100, y: 8 })
+  })
+
+  test('a position between two points takes the nearer one', () => {
+    assert.equal(nearestPoint(pts, 0.1).index, 1)
+    assert.equal(nearestPoint(pts, 0.24).index, 1)
+    assert.equal(nearestPoint(pts, 0.26).index, 2)
+    assert.equal(nearestPoint(pts, 0.8).index, 3)
+  })
+
+  test('a tie goes to the earlier point', () => {
+    assert.equal(nearestPoint([{ x: 0, y: 0 }, { x: 10, y: 0 }], 0.5).index, 0)
+    assert.equal(nearestPoint(pts, 0.25).index, 1, '25 is as far from 10 as from 40')
+  })
+
+  test('a position outside 0..1 is clamped', () => {
+    assert.equal(nearestPoint(pts, -3).index, 0)
+    assert.equal(nearestPoint(pts, 7).index, 3)
+    assert.equal(nearestPoint(pts, Infinity).index, 3)
+    assert.equal(nearestPoint(pts, -Infinity).index, 0)
+  })
+
+  test('one point is every position, and no points or a position that is not a number is null', () => {
+    for (const f of [0, 0.5, 1]) assert.deepEqual(nearestPoint([{ x: 7, y: 1 }], f), { index: 0, x: 7, y: 1 })
+    assert.equal(nearestPoint([], 0.5), null)
+    assert.equal(nearestPoint(null, 0.5), null)
+    assert.equal(nearestPoint(pts, NaN), null)
+    assert.equal(nearestPoint(pts, undefined), null)
+    assert.equal(nearestPoint(pts, '0.5'), null)
+  })
+
+  test('input that is not sorted never loops, and still names one of the points', () => {
+    const mess = [{ x: 50, y: 1 }, { x: 0, y: 2 }, { x: 90, y: 3 }, { x: 10, y: 4 }, { x: 30, y: 5 }]
+    for (const f of [0, 0.2, 0.5, 0.9, 1]) {
+      const hit = nearestPoint(mess, f)
+      assert.ok(hit && mess[hit.index].x === hit.x)
+    }
+  })
+
+  test('a window domain makes the right edge the end of the window, not the last reading', () => {
+    const early = [{ x: 0, y: 1 }, { x: 10, y: 2 }, { x: 20, y: 3 }]
+    assert.equal(nearestPoint(early, 1).index, 2)
+    assert.equal(nearestPoint(early, 0.1, { domain: [0, 100] }).index, 1, 'x = 10')
+    assert.equal(nearestPoint(early, 0.9, { domain: [0, 100] }).index, 2, 'past the last reading, the last one')
+    assert.equal(nearestPoint(early, 0, { domain: [-50, 50] }).index, 0, 'before the first reading, the first one')
+  })
+
+  test('a flat or reversed domain still answers', () => {
+    assert.equal(nearestPoint(pts, 0.5, { domain: [40, 40] }).index, 2)
+    assert.ok(nearestPoint(pts, 0.5, { domain: [100, 0] }))
+  })
+
+  test('a category axis is read at the bands\' centres, so each pointer position names one category', () => {
+    const bands = bandScale(['Jan', 'Feb', 'Mar', 'Apr'], 0, 400)
+    const centres = [0, 1, 2, 3].map((i) => ({ x: bands.centre(i), y: 0 }))
+    const domain = [0, 400]
+    assert.equal(nearestPoint(centres, 0.12, { domain }).index, 0)
+    assert.equal(nearestPoint(centres, 0.3, { domain }).index, 1)
+    assert.equal(nearestPoint(centres, 0.62, { domain }).index, 2)
+    assert.equal(nearestPoint(centres, 0.99, { domain }).index, 3)
+  })
+
+  test('a downsampled set answers with a point the line was drawn through, spikes included', () => {
+    const raw = Array.from({ length: 5000 }, (_, i) => ({ x: i, y: i === 2500 ? 900 : Math.sin(i / 50) }))
+    const drawn = downsample(raw, 100)
+    assert.ok(drawn.length <= 100 && drawn.length < raw.length)
+    for (const f of [0, 0.13, 0.5, 0.77, 1]) {
+      const hit = nearestPoint(drawn, f)
+      assert.ok(drawn.includes(drawn[hit.index]) && drawn[hit.index].x === hit.x)
+    }
+    const spike = nearestPoint(drawn, 2500 / 4999)
+    assert.ok(Math.abs(spike.x - 2500) < 100)
+    assert.equal(nearestPoint(drawn, 0).x, 0)
+    assert.equal(nearestPoint(drawn, 1).x, 4999)
+  })
+
+  test('is a binary search: a thousand lookups in 100,000 points take under 5 ms', () => {
+    const big = Array.from({ length: 100000 }, (_, i) => ({ x: i * 3, y: i }))
+    nearestPoint(big, 0.5)
+    const t0 = performance.now()
+    let sum = 0
+    for (let i = 0; i < 1000; i++) sum += nearestPoint(big, i / 999).index
+    const ms = performance.now() - t0
+    assert.ok(sum > 0)
+    assert.ok(ms < 5, `${ms.toFixed(2)} ms`)
+  })
+})
+
+describe('plotFraction (RFC 0004 §1.1)', () => {
+  test('undoes the inset the drawing keeps inside its viewBox', () => {
+    assert.equal(plotFraction(0.5, { width: 400, pad: 4 }), 0.5)
+    assert.equal(plotFraction(0, { width: 400, pad: 4 }), -4 / 392)
+    assert.ok(plotFraction(1, { width: 400, pad: 4 }) > 1)
+    // The pointer at the first point's own place gives the domain's start, and at the last point's the end.
+    assert.ok(Math.abs(plotFraction(4 / 400, { width: 400, pad: 4 })) < 1e-12)
+    assert.ok(Math.abs(plotFraction(396 / 400, { width: 400, pad: 4 }) - 1) < 1e-12)
+  })
+
+  test('with no pad, or no room inside it, the box fraction is the answer', () => {
+    assert.equal(plotFraction(0.3, { width: 100, pad: 0 }), 0.3)
+    assert.equal(plotFraction(0.3, { width: 8, pad: 4 }), 0.3)
+    assert.equal(plotFraction(0.3, { width: 0, pad: 4 }), 0.3)
+    assert.ok(Number.isNaN(plotFraction(NaN, { width: 100, pad: 4 })))
+  })
+
+  test('hands nearestPoint the point under the pointer, end to end', () => {
+    const drawn = linePaths([{ x: 0, y: 1 }, { x: 10, y: 5 }, { x: 20, y: 2 }], { width: 200, height: 50, pad: 10 }).drawn
+    assert.equal(drawn.length, 3)
+    const x = scale(0, 20, 10, 190)
+    const points = drawn.map((p) => ({ x: x(p.x), y: 0 }))
+    for (const [px, want] of [[10, 0], [100, 1], [190, 2], [54, 0], [146, 2]]) {
+      const hit = nearestPoint(points, plotFraction(px / 200, { width: 200, pad: 10 }), { domain: [10, 190] })
+      assert.equal(hit.index, want, `${px}px`)
+    }
+  })
+})
+
+describe('linePaths drawn', () => {
+  test('lists the points the line runs through, and all of them when nothing is thinned', () => {
+    const pts = [{ x: 0, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 3 }]
+    assert.deepEqual(linePaths(pts, { width: 100, height: 50 }).drawn, pts)
+    assert.deepEqual(linePaths([], { width: 100, height: 50 }).drawn, [])
+    const many = Array.from({ length: 1000 }, (_, i) => ({ x: i, y: i % 7 }))
+    const drawn = linePaths(many, { width: 50, height: 50, maxPoints: 40 }).drawn
+    assert.ok(drawn.length <= 40)
+    assert.equal(drawn[0], many[0])
+    assert.equal(drawn[drawn.length - 1], many[999])
   })
 })
