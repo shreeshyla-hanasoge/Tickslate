@@ -88,13 +88,18 @@ function expectedRules(name, oneMode) {
     { kind: 'base', guarded: false, media: null, selector: `:where(${el})` },
     { kind: 'base', guarded: true, media: null, selector: `:where(${el}${GUARD})` },
   ]
-  if (oneMode) return rules
+  const MORE = '@media (prefers-contrast: more)'
+  if (oneMode) return [...rules, { kind: 'hc', guarded: false, media: MORE, selector: `:where(${el})` }]
   const dark = modeAlternatives(DARK_ANCESTOR, ":is([data-theme='dark'], .dark)")
   const auto = modeAlternatives(AUTO_ANCESTOR, "[data-theme='auto']")
   for (const guarded of [false, true]) rules.push({ kind: 'dark', guarded, media: null, selector: where(dark, guarded ? GUARD : '') })
   for (const guarded of [false, true]) {
     rules.push({ kind: 'auto', guarded, media: '@media (prefers-color-scheme: dark)', selector: where(auto, guarded ? GUARD : '') })
   }
+  // The high contrast preference (RFC 0003 §13.3), last so it beats the preset's own line and muted.
+  rules.push({ kind: 'hc', guarded: false, media: MORE, selector: `:where(${el})` })
+  rules.push({ kind: 'hc-dark', guarded: false, media: MORE, selector: where(dark, '') })
+  rules.push({ kind: 'hc-auto', guarded: false, media: `${MORE} and (prefers-color-scheme: dark)`, selector: where(auto, '') })
   return rules
 }
 
@@ -115,7 +120,10 @@ function load(name) {
   const darkOnly = tagged.filter((r) => r.kind === 'dark')
   const darkAuto = tagged.filter((r) => r.kind === 'auto')
   const light = { ...merge(plain), ...merge(guarded) }
-  return { rules: tagged, plain, guarded, darkRules: [...darkOnly, ...darkAuto], darkOnly, darkAuto, light, dark: { ...light, ...merge(darkOnly) }, darkVars: merge(darkOnly), autoVars: merge(darkAuto) }
+  const hc = merge(tagged.filter((r) => r.kind === 'hc'))
+  const hcDark = merge(tagged.filter((r) => r.kind === 'hc-dark'))
+  const hcAuto = merge(tagged.filter((r) => r.kind === 'hc-auto'))
+  return { hc, hcDark, hcAuto, rules: tagged, plain, guarded, darkRules: [...darkOnly, ...darkAuto], darkOnly, darkAuto, light, dark: { ...light, ...merge(darkOnly) }, darkVars: merge(darkOnly), autoVars: merge(darkAuto) }
 }
 
 // ------------------------------------------------------------- the contrast helper, copied from tokens.test.mjs
@@ -248,7 +256,7 @@ for (const name of NAMES) {
     if (oneMode) {
       test('is one-mode: it has no dark rules and never reads data-theme', () => {
         assert.equal(p.darkRules.length, 0)
-        assert.ok(!p.rules.some((r) => r.media || r.selector.includes('data-theme') || r.selector.includes('.dark')))
+        assert.ok(!p.rules.some((r) => r.kind !== 'hc' && (r.media || r.selector.includes('data-theme') || r.selector.includes('.dark'))))
       })
     } else {
       test('has a dark mode: the expected dark and data-theme="auto" blocks, the latter only in prefers-color-scheme: dark', () => {
@@ -267,6 +275,24 @@ for (const name of NAMES) {
         assert.ok(luminance(p.dark['--ts-bg']) < luminance(p.light['--ts-bg']), 'the dark page is darker than the light one')
       })
     }
+
+    test('restates line and muted under prefers-contrast: more, after every other block, and only those', () => {
+      const last = p.rules.slice(-(oneMode ? 1 : 3))
+      assert.ok(last.every((r) => r.kind.startsWith('hc')), 'the high contrast blocks come last')
+      for (const r of last) assert.deepEqual([...r.props].sort(), ['--ts-line', '--ts-muted'])
+      if (!oneMode) assert.deepEqual(p.hcAuto, p.hcDark)
+    })
+
+    test('the raised line and muted meet the high contrast floors in each mode (3:1 and 7:1 on the surface and the page)', () => {
+      const cases = oneMode ? [[p.light, p.hc]] : [[p.light, p.hc], [p.dark, p.hcDark]]
+      for (const [base, hc] of cases) {
+        for (const against of ['--ts-surface', '--ts-bg']) {
+          assert.ok(contrast(hc['--ts-line'], base[against]) >= 3, `line on ${against}`)
+          assert.ok(contrast(hc['--ts-muted'], base[against]) >= 7, `muted on ${against}`)
+        }
+        assert.ok(contrast(hc['--ts-line'], base['--ts-surface']) > contrast(base['--ts-line'], base['--ts-surface']), 'line is stronger than without the preference')
+      }
+    })
 
     test('defines every themed token in its base mode, so it does not inherit a host\'s mode', () => {
       for (const prop of Object.keys(defaultLight)) {
