@@ -64,10 +64,14 @@ jobs:
           node-version: '20'
           cache: npm
           registry-url: 'https://registry.npmjs.org'
+      # Node 20 ships npm 10, and npm trusted publishing needs npm 11.5.1 or later. Installed after the build
+      # tool chain is set up and before anything is published, and the version is printed in the log.
+      - run: npm install -g npm@11 && npm --version
       - run: npm ci
       # Rebuilt here, so what is published is what this job built.
       - run: npm run release
       - run: npm publish ./dist-lib --provenance --access public
         env:
-          # A token the maintainer adds as a secret of the npm-release environment, until npm trusted publishing is set up.
+          # A token the maintainer adds as a secret of the npm-release environment. For npm trusted publishing,
+          # delete this env block (docs/RELEASING.md).
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

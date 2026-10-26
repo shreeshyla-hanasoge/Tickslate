@@ -208,3 +208,52 @@ test('options: maxItems and maxProfiles change a direct read, and a bad value is
   assert.equal(Object.keys(readLayout(many, { maxProfiles: 5 }).layout.profiles).length, 5)
   assert.equal(Object.keys(readLayout(many, { maxProfiles: 'x' }).layout.profiles).length, 20)
 })
+
+test('topStrip: a million entries cost one comparison and a short read, with one issue', () => {
+  const base = { version: 1, device: 'desktop', profiles: { market: [{ id: 'a', size: 'S', type: 'metric' }], closed: [] } }
+  const big = Array.from({ length: 1e6 }, () => 'a')
+  const start = performance.now()
+  const result = readLayout({ ...base, topStrip: big })
+  assert.ok(performance.now() - start < 50, 'a million-entry strip took too long')
+  assert.deepEqual(result.layout.topStrip, ['a'])
+  const capped = result.issues.filter((i) => i.code === 'too-many-items')
+  assert.deepEqual(capped.map((i) => [i.path, i.fixed]), [['topStrip', 'dropped']])
+  assert.ok(result.issues.length <= 34, `${result.issues.length} issues`)
+  // At the limit nothing is capped.
+  assert.equal(readLayout({ ...base, topStrip: big.slice(0, 32) }).issues.filter((i) => i.code === 'too-many-items').length, 0)
+})
+
+test('input that is not JSON: cycles, deep nesting, throwing getters, Proxies and null options never throw', () => {
+  const cyclic = { version: 1, device: 'desktop', profiles: { market: [], closed: [] } }
+  cyclic.profiles.market.push(cyclic, { id: 'a', size: 'S', type: 'metric', self: cyclic })
+  cyclic.self = cyclic
+  assert.deepEqual(readLayout(cyclic).layout.profiles.market, [{ id: 'a', size: 'S', type: 'metric' }])
+  let deep = {}
+  for (let i = 0; i < 200000; i++) deep = { deeper: deep }
+  assert.equal(readLayout(deep).layout.version, 1)
+  assert.equal(readLayout({ version: 1, device: 'desktop', profiles: { market: [], closed: [] } }, null).layout.version, 1)
+
+  const thrower = () => {
+    throw new Error('boom')
+  }
+  const getters = [
+    { version: 1, device: 'desktop', get profiles() { return thrower() } },
+    { version: 1, device: 'desktop', profiles: { market: [{ get id() { return thrower() }, size: 'S' }], closed: [] } },
+    { version: 1, device: 'desktop', profiles: { market: [], closed: [] }, get topStrip() { return thrower() } },
+    new Proxy({}, { get: thrower, ownKeys: thrower, getPrototypeOf: thrower }),
+    new Proxy([], { get: thrower }),
+    { version: 1, device: { toString: thrower, toJSON: thrower }, profiles: {} },
+  ]
+  for (const input of getters) {
+    for (const options of [undefined, null, { unknown: 'keep', device: 'phone' }]) {
+      const { layout, issues } = readLayout(input, options)
+      assertValid({ layout, issues })
+      assert.ok(issues.some((i) => i.code === 'bad-shape'))
+    }
+  }
+  // The device option is still honoured on the replacement layout.
+  assert.equal(readLayout(getters[0], { device: 'phone' }).layout.device, 'phone')
+  // A catalog or option that throws is caught too.
+  const bad = { get catalog() { return thrower() } }
+  assert.deepEqual(readLayout({ version: 1, device: 'desktop', profiles: {} }, bad).layout.profiles, { market: [], closed: [] })
+})

@@ -135,7 +135,9 @@ export declare function emptyLayout(device?: Device): Layout
 
 /**
  * Reads saved layout JSON. Never throws: it repairs what it can, drops what it
- * can't, and reports each change in `issues`. The result is a fresh copy.
+ * can't, and reports each change in `issues`. The result is a fresh copy, with
+ * the profiles in the input's order. For a value that is not plain data (an
+ * accessor that throws) it returns an empty layout and one `bad-shape` issue.
  */
 export declare function readLayout(
   input: Layout | LayoutItem[] | unknown,

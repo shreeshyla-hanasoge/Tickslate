@@ -83,7 +83,7 @@ matched to an item by its `item` attribute.
 
 A saved layout is user data, so it is read with limits: 100 items per profile,
 20 profiles (`market` and `closed` always among them) and 128 characters per
-id. What is over a limit is dropped and reported as `too-many-items`,
+id, and 32 entries read from `topStrip`. What is over a limit is dropped and reported as `too-many-items`,
 `too-many-profiles` or `bad-shape` in `ts-layout-issues`. The grid and
 `persistLayout` always apply them; only a direct `readLayout` call can change
 them, with `maxItems` and `maxProfiles`.

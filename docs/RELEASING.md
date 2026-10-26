@@ -87,7 +87,14 @@ do step 5, and it never does steps 6 and 7.
   a public repository, and a way to authenticate to npm. Until that is set up
   the publish job fails at `npm publish`, and nothing is published: either add an
   npm automation token as the environment secret `NPM_TOKEN`, or configure npm
-  trusted publishing for this repository and workflow and drop the token.
+  trusted publishing for this repository and workflow and delete the
+  `env: NODE_AUTH_TOKEN` block from the publish step. Trusted publishing needs
+  npm 11.5.1 or later; Node 20 ships npm 10, so the publish job runs
+  `npm install -g npm@11` first and prints the version. The token route works
+  with either.
+- **The dry run has not been run.** Nothing can show that the `verify` job's
+  `npm publish --dry-run` passes without dispatching the workflow, which only you
+  do. Watch the first dry run before you turn `dry-run` off.
 - **It publishes and nothing else.** It does not tag or create a GitHub
   release: do steps 6 and 7 yourself, after the job succeeds and after you
   have prepared the release (changelog, version, README URL) as above.

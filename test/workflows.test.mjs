@@ -41,3 +41,20 @@ test('dependabot watches npm and github-actions weekly', () => {
   const text = readFileSync(new URL('../.github/dependabot.yml', import.meta.url), 'utf8')
   for (const eco of ['npm', 'github-actions']) assert.match(text, new RegExp(`package-ecosystem: ${eco}\\n\\s+directory: /\\n\\s+schedule:\\n\\s+interval: weekly`))
 })
+
+test('the publish job installs npm 11 (trusted publishing needs 11.5.1 or later) before it publishes', () => {
+  const text = readFileSync(new URL('release.yml', dir), 'utf8')
+  const publish = text.slice(text.indexOf('  publish:'))
+  assert.match(publish, /npm install -g npm@11/)
+  assert.ok(publish.indexOf('npm install -g npm@11') < publish.indexOf('npm publish'))
+})
+
+test('pages.yml grants pages: write and id-token: write to the deploy job only', () => {
+  const text = readFileSync(new URL('pages.yml', dir), 'utf8')
+  const top = text.slice(text.search(/^permissions:/m), text.search(/^concurrency:/m))
+  assert.doesNotMatch(top, /pages: write|id-token: write/)
+  const deploy = text.slice(text.indexOf('  deploy:'))
+  assert.match(deploy, /pages: write/)
+  assert.match(deploy, /id-token: write/)
+  assert.doesNotMatch(text.slice(text.indexOf('  build:'), text.indexOf('  deploy:')), /write/)
+})

@@ -187,9 +187,11 @@ readLayout(
 ): { layout: Layout; issues: LayoutIssue[] }
 ```
 
-Reads saved layout JSON. It **never throws**: it repairs what it can, drops
-what it cannot, and reports each change in `issues`. The result is a fresh
-copy. A bare array of items is the shorthand for a layout with only the
+Reads saved layout JSON. It **never throws**: for any JSON value it repairs what it can, drops
+what it cannot, and reports each change in `issues`. A value that is not plain data (an
+accessor or a Proxy that throws) is replaced by an empty layout with one
+`bad-shape` issue at the path `''`. The result is a fresh copy, with the
+profiles in the order the input had them. A bare array of items is the shorthand for a layout with only the
 `'market'` profile. `catalog` defaults to `WIDGETS`; `device` is used when the
 input has none; `unknown: 'keep'` keeps items whose widget is not in the catalog
 (reported, but kept) instead of dropping them, which a saved layout wants when a
@@ -215,7 +217,7 @@ Each issue is `{ path, code, message, fixed }`:
 | `bad-shape` | Something is not the shape it should be | `dropped` or `replaced` |
 | `top-strip-too-long` | More than 3 ids in `topStrip` | `dropped` |
 | `top-strip-unknown-id` | A `topStrip` id is in no profile | `dropped` |
-| `too-many-items` | A profile held more than `maxItems` (100) entries; the path is `profiles.<name>` | `dropped` |
+| `too-many-items` | A profile held more than `maxItems` (100) entries (the path is `profiles.<name>`), or `topStrip` held more than 32 entries (the path is `topStrip`) | `dropped` |
 | `too-many-profiles` | More than `maxProfiles` (20) profiles; the path is `profiles` | `dropped` |
 
 An item or top-strip id longer than 128 characters is reported as `bad-shape` and dropped.
