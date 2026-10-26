@@ -305,6 +305,9 @@ test.describe('under require-trusted-types-for and trusted-types tickslate', () 
       const open = document.getElementById('p').shadowRoot.querySelector('dialog').open
       g.editing = false
       const m = document.getElementById('linked')
+      // Later renders wait while a tile is far off-screen (perf-hygiene), as on a phone, so bring it into view first.
+      m.scrollIntoView()
+      await frame()
       const views = []
       m.data = undefined
       m.state = 'loading'
@@ -343,6 +346,10 @@ test.describe('under require-trusted-types-for and trusted-types tickslate', () 
     await boot(page)
     const probe = await page.evaluate(async () => {
       const m = document.getElementById('linked')
+      const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      // Later renders wait while a tile is far off-screen (perf-hygiene), as on a phone, so bring it into view first.
+      m.scrollIntoView()
+      await frame()
       m.setAttribute('label', '<img src=x onerror=alert(1)>')
       m.error = '<svg onload=alert(1)>'
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))

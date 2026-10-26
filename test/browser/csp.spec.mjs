@@ -266,6 +266,9 @@ test.describe('under default-src, style-src and script-src self', () => {
 
       // The loading, empty and error views are constant markup too.
       const m = document.getElementById('linked')
+      // Later renders wait while a tile is far off-screen (perf-hygiene), as on a phone, so bring it into view first.
+      m.scrollIntoView()
+      await frame()
       const views = []
       m.data = undefined
       m.state = 'loading'
@@ -304,6 +307,10 @@ test.describe('under default-src, style-src and script-src self', () => {
     await boot(page)
     const text = await page.evaluate(async () => {
       const m = document.getElementById('linked')
+      const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      // Later renders wait while a tile is far off-screen (perf-hygiene), as on a phone, so bring it into view first.
+      m.scrollIntoView()
+      await frame()
       m.setAttribute('label', '<img src=x onerror=alert(1)>')
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const a = m.shadowRoot.querySelector('[part~="link"]')
