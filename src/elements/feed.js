@@ -99,23 +99,23 @@ const STYLES = `
 .fl li:last-child { border-block-end: 0; }
 .tm { min-inline-size: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ts-muted); }
 .tx { min-inline-size: 0; overflow-wrap: anywhere; color: var(--ts-ink); unicode-bidi: isolate; }
-.dt { min-inline-size: 0; overflow-wrap: anywhere; font-size: 11px; color: var(--ts-muted); unicode-bidi: isolate; }
+.dt { min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--ts-text-sm, max(11px, .6875rem)); color: var(--ts-muted); unicode-bidi: isolate; }
 .dt:empty { display: none; }
 /* The tag's colour is a hint: its words are always shown. */
-.tg { justify-self: start; max-inline-size: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 6px; border: 1px solid currentColor; border-radius: var(--ts-radius-sm); font-size: 10px; font-weight: 600; line-height: 16px; }
+.tg { justify-self: start; max-inline-size: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 6px; border: 1px solid currentColor; border-radius: var(--ts-radius-sm); font-size: var(--ts-text-xs, max(10px, .625rem)); font-weight: 600; line-height: 16px; }
 .tg.mut { color: var(--ts-muted); }
 .tg.pos { color: var(--ts-profit); }
 .tg.neg { color: var(--ts-loss); }
 .tg.warn { color: var(--ts-warn); }
 /* Tall: the time (small) and the tag share a line, the event under them. */
 .tall li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "tm tg" "tx tx"; row-gap: 2px; }
-.tall .tm { grid-area: tm; font-size: 10px; }
+.tall .tm { grid-area: tm; font-size: var(--ts-text-xs, max(10px, .625rem)); }
 .tall .tg { grid-area: tg; }
-.tall .tx { grid-area: tx; font-size: 13px; }
+.tall .tx { grid-area: tx; font-size: var(--ts-text-base, max(13px, .8125rem)); }
 .tall .dt { display: none; }
 /* M and L: a time column, a tag column and the event with its detail under it. */
-.wide li { grid-template-columns: 7.5em 5em minmax(0, 1fr); grid-template-areas: "tm tg tx" ". . dt"; row-gap: 2px; font-size: 13px; }
-.wide .tm { grid-area: tm; font-size: 12px; }
+.wide li { grid-template-columns: 7.5em 5em minmax(0, 1fr); grid-template-areas: "tm tg tx" ". . dt"; row-gap: 2px; font-size: var(--ts-text-base, max(13px, .8125rem)); }
+.wide .tm { grid-area: tm; font-size: var(--ts-text-md, max(12px, .75rem)); }
 .wide .tg { grid-area: tg; }
 .wide .tx { grid-area: tx; }
 .wide .dt { grid-area: dt; }

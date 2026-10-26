@@ -264,6 +264,10 @@ describe('the scan of every element file and preset', () => {
       // Not in the RFC's list of twelve: the layout list and the scrub read-out drew px too, so the widened scan covers them.
       'layout-list.js': ['--ts-text-base', '--ts-text-lg'],
       'scrub.js': ['--ts-text-sm'],
+      // Added by more-generic-widgets, which merged after the widened scan was written; the one 15px (breakdown's share) snaps to 16px like capital funding's.
+      'breakdown.js': ['--ts-text-base', '--ts-text-md', '--ts-text-xl'],
+      'status.js': ['--ts-text-3xl', '--ts-text-base', '--ts-text-sm', '--ts-text-xs'],
+      'feed.js': ['--ts-text-base', '--ts-text-md', '--ts-text-sm', '--ts-text-xs'],
     }
     for (const [name, tokensRead] of Object.entries(INVENTORY)) assert.deepEqual([...used(`src/elements/${name}`)].sort(), tokensRead, name)
     // A file that is not in the table draws no text size of its own: it reads no token.

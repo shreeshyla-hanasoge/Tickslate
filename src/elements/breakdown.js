@@ -259,7 +259,7 @@ const STYLES = `
 .c4 { --c: var(--ts-series-4); }
 .c5 { --c: var(--ts-series-5); }
 .c6 { --c: var(--ts-series-6); }
-.shr { font-size: 15px; font-weight: 600; line-height: 1.25; color: var(--ts-ink); unicode-bidi: isolate; overflow-wrap: anywhere; }
+.shr { font-size: var(--ts-text-xl, max(16px, 1rem)); font-weight: 600; line-height: 1.25; color: var(--ts-ink); unicode-bidi: isolate; overflow-wrap: anywhere; }
 /* S has room for two lines of each; a longer label ends in an ellipsis rather than growing the tile. */
 .shr, .foot { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; min-block-size: 0; }
 .track { block-size: 10px; flex: none; border-radius: 5px; background: var(--ts-surface-2); overflow: hidden; }
@@ -275,9 +275,9 @@ const STYLES = `
 .sw { display: inline-block; flex: none; inline-size: 10px; block-size: 10px; border-radius: 2px; background: var(--c); }
 .round .sw { border-radius: 50%; }
 .flow { display: flex; flex-wrap: wrap; gap: 3px 12px; }
-.flow li { display: flex; align-items: center; gap: 6px; max-inline-size: 100%; font-size: 12px; }
+.flow li { display: flex; align-items: center; gap: 6px; max-inline-size: 100%; font-size: var(--ts-text-md, max(12px, .75rem)); }
 .flow .sub { display: none; }
-.stack li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; padding-block: 3px; border-block-end: 1px solid var(--ts-line); font-size: 13px; }
+.stack li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; padding-block: 3px; border-block-end: 1px solid var(--ts-line); font-size: var(--ts-text-base, max(13px, .8125rem)); }
 .stack li:last-child { border-block-end: 0; }
 .stack .sub { grid-column: 2 / -1; display: flex; gap: 8px; min-inline-size: 0; }
 .stack .nt { min-inline-size: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

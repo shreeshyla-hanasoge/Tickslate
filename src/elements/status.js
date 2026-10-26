@@ -112,8 +112,8 @@ const STYLES = `
 .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .scroll:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
 .ov { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px; min-height: 0; }
-.sum { font-size: min(26px, 15cqi); font-weight: var(--ts-headline-weight, 500); font-family: var(--ts-font-num); font-variant-numeric: tabular-nums; color: var(--ts-ink); unicode-bidi: isolate; }
-.stt { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ts-ink); }
+.sum { font-size: min(var(--ts-text-3xl, max(26px, 1.625rem)), 15cqi); font-weight: var(--ts-headline-weight, 500); font-family: var(--ts-font-num); font-variant-numeric: tabular-nums; color: var(--ts-ink); unicode-bidi: isolate; }
+.stt { display: flex; align-items: center; gap: 8px; font-size: var(--ts-text-base, max(13px, .8125rem)); font-weight: 600; color: var(--ts-ink); }
 .ov .mk { inline-size: 14px; block-size: 14px; }
 /* Four shapes, so the state survives without colour: a circle, a triangle, a square and a ring. */
 .mk { display: inline-block; flex: none; inline-size: 10px; block-size: 10px; box-sizing: border-box; }
@@ -121,19 +121,19 @@ const STYLES = `
 .mk.degraded { background: var(--ts-warn); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .mk.down { background: var(--ts-loss); }
 .mk.unknown { border-radius: 50%; border: 2px solid var(--ts-muted); }
-table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--ts-text-base, max(13px, .8125rem)); }
 th, td { box-sizing: border-box; padding: 7px 0; text-align: start; vertical-align: top; font-weight: inherit; border-block-end: 1px solid var(--ts-line); }
 tbody tr:last-child > * { border-block-end: 0; }
 /* Tall: the header cells take no room, and their words are visually hidden: still in the accessibility tree. */
 .c2 thead th { padding: 0; border: 0; block-size: 0; line-height: 0; overflow: hidden; }
-.c3 thead th { padding-block: 0 5px; font-size: 10px; font-weight: 600; color: var(--ts-muted); }
+.c3 thead th { padding-block: 0 5px; font-size: var(--ts-text-xs, max(10px, .625rem)); font-weight: 600; color: var(--ts-muted); }
 .nm { max-inline-size: 0; inline-size: 100%; overflow: hidden; }
 .t { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ts-ink); font-weight: 600; unicode-bidi: isolate; }
-.dt { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; color: var(--ts-muted); unicode-bidi: isolate; }
+.dt { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ts-text-sm, max(11px, .6875rem)); color: var(--ts-muted); unicode-bidi: isolate; }
 .dt:empty { display: none; }
 .stc { inline-size: 1%; padding-inline-start: 10px; white-space: nowrap; color: var(--ts-ink); }
 .stc .mk { margin-inline-end: 8px; vertical-align: -1px; }
-.sn { inline-size: 1%; padding-inline-start: 10px; white-space: nowrap; font-size: 11px; color: var(--ts-muted); }
+.sn { inline-size: 1%; padding-inline-start: 10px; white-space: nowrap; font-size: var(--ts-text-sm, max(11px, .6875rem)); color: var(--ts-muted); }
 .skrow { display: flex; justify-content: space-between; gap: 10px; }
 .none { padding-block: 16px; text-align: center; }
 /* Backgrounds are dropped in forced colours: the shapes stay, in the user's text colour. */
