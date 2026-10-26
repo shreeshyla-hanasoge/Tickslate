@@ -45,7 +45,8 @@
   }
   if (params.has('rtl')) document.documentElement.dir = 'rtl'
 
-  const kind = ['status', 'feed'].includes(params.get('kind')) ? params.get('kind') : 'breakdown'
+  const asked = params.get('kind')
+  const kind = asked === 'status' ? 'status' : asked === 'feed' ? 'feed' : 'breakdown'
   const el = document.createElement(`ts-${kind}`)
   const size = params.get('size') || (kind === 'feed' ? 'M' : kind === 'status' ? 'Tall' : 'M')
   el.setAttribute('size', size)

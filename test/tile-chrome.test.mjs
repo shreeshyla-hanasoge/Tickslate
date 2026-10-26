@@ -701,7 +701,7 @@ describe('logical properties only', () => {
   })
 
   test('the arrow has a gap after it so it reads as a marker apart from the sign', () => {
-    const rule = (sel) => W.SHARED_CSS.match(new RegExp(`${sel.replace(/[.]/g, '\\.')} \\{([^}]*)\\}`))[1]
+    const rule = (sel) => W.SHARED_CSS.match(new RegExp(`${sel.replace(/[\\.]/g, '\\$&')} \\{([^}]*)\\}`))[1]
     assert.match(rule('.big .ar, .xbig .ar'), /margin-inline-end: \.375em/)
     assert.match(rule('.n .ar'), /margin-inline-end: \.22em/)
   })

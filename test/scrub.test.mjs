@@ -181,7 +181,7 @@ describe('the markup', () => {
     assert.match(markup, /class="visually-hidden"/)
     assert.match(markup, /<caption/)
     // Between tags there is no text at all: every string is written by update().
-    assert.equal(markup.replace(/<[^>]*>/g, ''), '')
+    assert.equal(markup.split(/<[^>]*>/).join(''), '')
   })
 
   test('is in every plot template, and no widget markup anywhere has aria-live', () => {

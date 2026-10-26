@@ -258,7 +258,7 @@ for (const [mode, csp] of [['plain', null], ['strict CSP and Trusted Types', STR
           if (box) for (const f of [0.3, 0.5, 0.7]) await page.mouse.move(box.x + box.width * f, box.y + box.height * 0.5)
           // A tile whose href is the javascript: payload is not a link, and a click on it goes nowhere. (The other
           // payloads are valid relative URLs, so a click would be a real navigation away from the page.)
-          if (payload.startsWith('javascript:')) {
+          if (/^\s*javascript:/i.test(payload)) {
             const metric = page.locator('ts-metric').first()
             await metric.scrollIntoViewIfNeeded()
             await metric.click({ position: { x: 20, y: 20 } })
