@@ -160,6 +160,8 @@ export function dataFor(tag, scale = 1) {
       return equityCurve(scale)
     case 'ts-session-clock':
       return { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
+    case 'ts-mini-chart':
+      return miniChart(scale)
     default:
       return null
   }
@@ -181,6 +183,51 @@ export function fillCard(el, size) {
 
 /** A tag's label for the tiles that don't set one, so every tile has a name. */
 export const LABELS = { 'ts-card': 'Notes' }
+
+// ── The mini chart ────────────────────────────────────────────────────────
+/** `n` five-minute bars of a random walk ending at the frozen morning, so the last one is still forming. */
+export function miniBars({ seed = 11, n = 30, base = 128, scale = 1 } = {}) {
+  const rng = seeded(seed)
+  const start = zonedTime(TODAY, '09:15', TZ)
+  let close = base
+  return Array.from({ length: n }, (_, i) => {
+    const open = close
+    close = open + (rng() - 0.48) * 1.1
+    const high = Math.max(open, close) + rng() * 0.5
+    const low = Math.min(open, close) - rng() * 0.5
+    return { time: start + i * 300000, open: open * scale, high: high * scale, low: low * scale, close: close * scale, volume: Math.round(900 + rng() * 2600) }
+  })
+}
+
+/** A profile the host would compute from finer data: a bell of volume over the day's range, in Emberwick's contract. */
+export function miniProfile(bars) {
+  const lo = Math.floor(Math.min(...bars.map((b) => b.low)))
+  const hi = Math.ceil(Math.max(...bars.map((b) => b.high)))
+  const step = 0.5
+  const bins = Array.from({ length: Math.round((hi - lo) / step) }, (_, i) => {
+    const mid = (bars.at(-1).close - lo) / step
+    return Math.round(400 * Math.exp(-((i - mid) ** 2) / 40))
+  })
+  return { version: 1, source: 'tick data', step, sessions: [{ start: bars[0].time, end: bars.at(-1).time, lo, bins }] }
+}
+
+function miniChart(scale = 1) {
+  const a = miniBars({ seed: 11, base: 128, scale })
+  const b = miniBars({ seed: 23, base: 412, scale })
+  return {
+    asOf: FROZEN,
+    countdown: true,
+    charts: [
+      {
+        id: 'abc', instrument: 'ABC Corp', timeframe: '5m', timeframes: ['1m', '5m', '15m'], bars: a, changePct: 0.012, note: '2 strategies · 1 in position',
+        marks: [{ t: a[8].time, kind: 'entry', label: 'Long' }, { t: a[19].time, kind: 'exit' }, { t: a[24].time, kind: 'entry' }],
+      },
+      { id: 'xyz', instrument: 'XYZ Ltd', timeframe: '5m', bars: b, changePct: -0.007, note: '1 strategy', marks: [{ t: b[12].time, kind: 'entry' }] },
+    ],
+    // The churn tests scale prices to 1e12, which would make millions of bins.
+    volumeProfile: scale === 1 ? miniProfile(a) : null,
+  }
+}
 
 // ── The two trading lists ─────────────────────────────────────────────────
 // `step` moves the live figures the way a feed would: only some instruments tick at a step, so a test can count the

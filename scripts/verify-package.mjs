@@ -36,6 +36,10 @@ const manifest = JSON.parse(await readFile(resolve(out, 'package.json'), 'utf8')
 // and pack-lib read, so a widget added there is checked here with no edit.
 const entries = elementEntries().map(describeEntry)
 const allTags = entries.flatMap((e) => e.tags)
+// The entries that draw with the optional peer Emberwick (RFC 0004 §6.1). The all-in entry and the CDN files do not
+// gather them, so a host that never imports one never loads, installs or pays for Emberwick.
+const PEER_ENTRIES = ['mini-chart']
+const allInTags = entries.filter((e) => !PEER_ENTRIES.includes(e.name)).flatMap((e) => e.tags)
 
 // ------------------------------------------------------------ manifest targets
 //
@@ -376,9 +380,9 @@ if (iifeText !== null) {
     else if (missing.length) fail(`window.Tickslate lacks ${missing.join(', ')}, which tickslate or tickslate/elements exports`)
     else ok(`window.Tickslate has all ${wanted.length} exports of tickslate and tickslate/elements`)
     const defined = [...registry.keys()].sort()
-    if (defined.join() !== [...allTags].sort().join()) {
-      fail(`cdn/tickslate.iife.js registered ${defined.join(', ') || 'nothing'}, but the define modules register ${[...allTags].sort().join(', ')}`)
-    } else ok(`cdn/tickslate.iife.js registers all ${defined.length} elements`)
+    if (defined.join() !== [...allInTags].sort().join()) {
+      fail(`cdn/tickslate.iife.js registered ${defined.join(', ') || 'nothing'}, but the define modules the all-in entry gathers register ${[...allInTags].sort().join(', ')}`)
+    } else ok(`cdn/tickslate.iife.js registers all ${defined.length} elements (not the ${PEER_ENTRIES.join(', ')} entry, which needs its optional peer)`)
   } catch (e) {
     fail(`cdn/tickslate.iife.js does not run as a plain script: ${e && e.message}`)
   }
@@ -403,6 +407,94 @@ if (iifeText !== null) {
     if (differ.length) fail(`cdn/tickslate.js and the packages' exports differ on ${differ.join(', ')}`)
     else ok('cdn/tickslate.js exports the same names as tickslate and tickslate/elements together')
   }
+}
+
+// ------------------------------------------------ the optional peer (RFC 0004 §6.7)
+//
+// <ts-mini-chart> draws with Emberwick, which a host may not have installed. The widget has its own entry and
+// everything else must be unable to reach it: importing tickslate/elements (or the core, or a CDN file) must never
+// import `emberwick`, no shared chunk may carry any of it, and the entry itself must import it only as an external,
+// lazily, never inlined.
+
+{
+  const EMBERWICK = /emberwick/i
+  const specifiersOf = (text) => [...text.matchAll(/(?:\bfrom|\bimport)\s*\(?\s*(['"])([^'"]+)\1/g)].map((m) => m[2])
+  // Everything a file reaches by a relative import, itself included.
+  const closure = async (rel) => {
+    const seen = new Set()
+    const queue = [rel]
+    while (queue.length) {
+      const next = queue.pop()
+      if (seen.has(next)) continue
+      seen.add(next)
+      const text = await read(next)
+      if (text === null) continue
+      for (const spec of specifiersOf(text)) if (spec.startsWith('.')) queue.push(relative(out, resolve(dirname(resolve(out, next)), spec)).split(sep).join('/'))
+    }
+    return [...seen]
+  }
+
+  // (1) What a host that does not use the widget imports.
+  const roots = ['index.js', 'elements.js', 'dev/elements.js', 'cdn/tickslate.js', 'cdn/tickslate.iife.js']
+  let clean = true
+  for (const root of roots) {
+    for (const rel of await closure(root)) {
+      const text = await read(rel)
+      if (text === null) continue
+      if (specifiersOf(text).some((s) => EMBERWICK.test(s))) {
+        clean = false
+        fail(`importing ${root} reaches ${rel}, which imports emberwick; only tickslate/elements/mini-chart may`)
+      } else if (EMBERWICK.test(text)) {
+        clean = false
+        fail(`importing ${root} reaches ${rel}, which names emberwick`)
+      }
+    }
+  }
+  for (const rel of [...(await listJs('chunks')), ...(await listJs('dev/chunks'))]) {
+    const text = await read(rel)
+    if (text !== null && EMBERWICK.test(text)) {
+      clean = false
+      fail(`${rel} names emberwick, but a shared chunk is imported by entries that do not use it`)
+    }
+  }
+  if (clean) ok('tickslate, tickslate/elements and the CDN files, with every chunk, never import or name emberwick')
+
+  // (2) The entries that do use it import it as an external, lazily.
+  const sources = new Map(entries.map((e) => [e.name, e]))
+  for (const name of PEER_ENTRIES) {
+    if (!sources.has(name)) fail(`PEER_ENTRIES names ${name}, which has no define module`)
+    for (const rel of [`elements/${name}.js`, `dev/elements/${name}.js`]) {
+      const text = await read(rel)
+      if (text === null) continue
+      const staticImport = /(?:^|\n)\s*(?:import|export)\b[^'"\n;]*?(?:\bfrom\s*)?(['"])emberwick(?:\/[\w-]+)?\1/.test(text)
+      const lazy = [...text.matchAll(/\bimport\(\s*(['"])(emberwick(?:\/[\w-]+)?)\1\s*\)/g)].map((m) => m[2])
+      if (staticImport) fail(`${rel} imports emberwick statically, so the whole entry fails to load without the peer (Decision 56)`)
+      else if (!lazy.includes('emberwick')) fail(`${rel} has no import('emberwick'), so it never draws`)
+      else ok(`${rel} imports emberwick only lazily (${[...new Set(lazy)].join(', ')})`)
+      if (/\bclass\s+Chart\b/.test(text)) fail(`${rel} contains a Chart class, so Emberwick looks inlined`)
+    }
+  }
+  // No output may carry Emberwick's code: a source map would list its files.
+  let inlined = false
+  for (const dir of ['', 'elements', 'chunks', 'dev', 'dev/elements', 'dev/chunks']) {
+    for (const n of (await readdir(resolve(out, dir)).catch(() => [])).filter((n) => n.endsWith('.js.map'))) {
+      const map = JSON.parse((await read(`${dir ? dir + '/' : ''}${n}`)) || '{}')
+      const hit = (map.sources || []).find((s) => /node_modules\/emberwick\b/.test(s) || /\/emberwick\/src\//.test(s))
+      if (hit) {
+        inlined = true
+        fail(`${dir ? dir + '/' : ''}${n} lists ${hit}, so Emberwick was bundled instead of left external`)
+      }
+    }
+  }
+  if (!inlined) ok('no source map lists a file of emberwick: it is external to every build')
+
+  // (3) The manifest.
+  const peerRange = manifest.peerDependencies && manifest.peerDependencies.emberwick
+  const meta = manifest.peerDependenciesMeta && manifest.peerDependenciesMeta.emberwick
+  if (peerRange !== '>=0.14.0') fail(`dist-lib/package.json peerDependencies.emberwick is ${JSON.stringify(peerRange)}, not ">=0.14.0"`)
+  else if (!meta || meta.optional !== true) fail('dist-lib/package.json peerDependenciesMeta.emberwick is not { "optional": true }')
+  else if ((manifest.dependencies && manifest.dependencies.emberwick) || (manifest.optionalDependencies && manifest.optionalDependencies.emberwick)) fail('emberwick is also a dependency; it must only be an optional peer')
+  else ok('emberwick is an optional peer at >=0.14.0, and not a dependency')
 }
 
 // ------------------------------------------------ resolution and tree-shaking
@@ -439,6 +531,27 @@ try {
     }
   })
   if (resolved) ok(`all ${subpaths.length} elements entries resolve to their production file by default and to their dev/ twin under --conditions=development`)
+
+  // A host that has not installed Emberwick still bundles tickslate/elements: nothing it imports names the peer, so
+  // there is no `external` here and no node_modules/emberwick in the scratch consumer (RFC 0004 §6.7).
+  for (const conditions of [[], ['development']]) {
+    const label = conditions.length ? 'development' : 'production'
+    try {
+      const result = await build({
+        stdin: { contents: `import '${manifest.name}/elements'\nimport '${manifest.name}'`, resolveDir: scratch, loader: 'js' },
+        bundle: true,
+        write: false,
+        format: 'esm',
+        target: 'es2019',
+        logLevel: 'silent',
+        conditions,
+      })
+      if (/emberwick/i.test(result.outputFiles[0].text)) fail(`a ${label} esbuild bundle of ${manifest.name}/elements names emberwick`)
+      else ok(`a ${label} esbuild bundle of ${manifest.name}/elements succeeds with emberwick not installed, and never names it`)
+    } catch (e) {
+      fail(`bundling ${manifest.name}/elements without emberwick installed (${label}) failed: ${(e && e.message) || e}`)
+    }
+  }
 
   // `import 'tickslate/elements/<name>'` bundled with esbuild registers exactly
   // that entry's tags and carries no other widget (RFC 0003 §2.4). The tag

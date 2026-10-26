@@ -34,6 +34,8 @@
 <script type="module">
   import { WIDGETS, SIZES, SIZE_NAMES } from '/src/core/index.js'
   import '/src/elements/index.js'
+  // The one widget the all-in entry leaves out: it draws with the optional peer Emberwick, which is a dev dependency here.
+  import '/src/elements/define/mini-chart.js'
   import { setup, dataFor, frozenClock, fillCard } from './data.js'
 
   setup()

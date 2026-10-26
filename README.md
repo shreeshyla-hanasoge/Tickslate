@@ -291,6 +291,7 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 | `<ts-pnl-calendar>` | Tall, M, Banner | Heat map of daily profit and loss |
 | `<ts-edge-stats>` | S, Wide, M | Win rate, profit factor, average win and loss, expectancy |
 | `<ts-capital-funding>` | S, Tall, L | Account balances against their allocations |
+| `<ts-mini-chart>` | M, L, XL | A small candlestick chart with marks and a countdown; import `tickslate/elements/mini-chart`, with the optional peer `emberwick` |
 
 ## Development
 

@@ -161,6 +161,8 @@ const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
 // min+gz plus 10 %, rounded up to the next 0.5 kB. Every entry now carries the strict-CSP base's html.js and adopted stylesheets,
 // perf-hygiene's ticker and gating, and the strip's and the layout list's message keys. Authorised by the orchestrator (RFC 0003 §25).
 const remeasuredTwelfth = (maxKb) => ({ ...entry(maxKb), target: 're-measured on the integrated 0.3.0 base (strict-CSP html.js and adopted stylesheets, ticker and gating, strip and layout list messages), RFC 0003 §25', date: '2026-10-26' })
+// A new entry (mini-chart, 2026-10-26): the mini chart measures 26,800 B bundled with the core, so 29,480 B with 10 %, which
+// rounds up to 29 kB. Emberwick, its optional peer, is external and not counted.
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
   'edge-stats': remeasuredTwelfth(28.5),
@@ -178,6 +180,7 @@ const ENTRY_BUDGETS = {
   progress: remeasuredTwelfth(26),
   'pnl-calendar': remeasuredTwelfth(30),
   'layout-list': remeasuredTwelfth(15),
+  'mini-chart': { ...newEntry(29), date: '2026-10-26' },
 }
 
 /**

@@ -332,7 +332,10 @@ describe('the trading dashboard example and guide', () => {
   // emittedActions() only sees this.emit('literal'); most actions go through
   // ACTION_* constants, so the page test reads both. The list is also kept by hand:
   // a new action fails the first test until it is added here and handled in the page.
-  const ACTIONS = ['add-instrument', 'exit-all', 'exit-position', 'open', 'range', 'rebalance', 'retry', 'select', 'sort']
+  const ACTIONS = ['add-instrument', 'exit-all', 'exit-position', 'open', 'range', 'rebalance', 'retry', 'select', 'sort', 'timeframe']
+  // <ts-mini-chart> draws with the optional peer Emberwick and has its own entry, so the example (which imports the all-in
+  // entry) has no such tile and nothing to handle (RFC 0004 §6.1).
+  const NOT_IN_THE_EXAMPLE = ['timeframe']
   const widgetActions = () => {
     const names = new Set(emittedActions())
     for (const file of elementFiles()) {
@@ -347,7 +350,7 @@ describe('the trading dashboard example and guide', () => {
     const events = read('docs/reference/events.md')
     for (const action of ACTIONS.filter((a) => a !== 'open')) assert.match(events, new RegExp(`\\| \`${action}\` \\|`), `docs/reference/events.md should list ${action}`)
   })
-  for (const action of ACTIONS) {
+  for (const action of ACTIONS.filter((a) => !NOT_IN_THE_EXAMPLE.includes(a))) {
     test(`the page handles the ${action} action`, () => {
       const page = stripComments(read('examples/trading.html'))
       assert.ok(new RegExp(`action === '${action}'`).test(page), `examples/trading.html should handle the ${action} action in its ts-action listener`)

@@ -41,6 +41,19 @@ const typeEntries = typeFiles.map((n) => n.slice(0, -'.d.ts'.length)).filter((n)
 // widget never means editing a list here or there.
 const base = JSON.parse(await readFile(resolve(root, 'package.lib.json'), 'utf8'))
 
+// Emberwick is an optional peer of tickslate/elements/mini-chart (RFC 0004 §6.1). It must stay a peer, at 0.14.0 or
+// later (the first release with both the countdown and emberwick/profiles), and stay optional, or every host would be
+// told to install a charting library it never imports. It must never become a dependency.
+{
+  const peer = base.peerDependencies && base.peerDependencies.emberwick
+  const optional = base.peerDependenciesMeta && base.peerDependenciesMeta.emberwick && base.peerDependenciesMeta.emberwick.optional
+  const direct = ['dependencies', 'optionalDependencies'].find((f) => base[f] && base[f].emberwick)
+  if (peer !== '>=0.14.0' || optional !== true || direct) {
+    console.error(`package.lib.json must list emberwick as an optional peer at ">=0.14.0" (peerDependencies and peerDependenciesMeta.emberwick.optional), and nowhere else; it has ${JSON.stringify({ peer, optional, direct })}.`)
+    process.exit(1)
+  }
+}
+
 // Every elements entry has all four conditions, in this order: a bundler or
 // Node takes the first that matches, so `development` must come before `import`.
 const conditions = (types, file) => ({

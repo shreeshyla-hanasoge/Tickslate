@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- <ts-mini-chart> at M, L and XL, drawn by the real Emberwick (a dev dependency). No inline script, style or style
+     attribute, so test/browser/mini-chart.spec.mjs can also serve it under a strict CSP and Trusted Types. ?theme=dark
+     puts the dark tokens on the page. The spec drives it through window.__mc. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini chart fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<link rel="stylesheet" href="./mini-chart.css">
+<script type="module" src="./mini-chart.js"></script>
+</head>
+<body>
+<main id="stage">
+  <ts-mini-chart id="m" size="M" label="Watch"></ts-mini-chart>
+  <ts-mini-chart id="l" size="L" label="Watch"></ts-mini-chart>
+  <ts-mini-chart id="xl" size="XL" label="Watch"></ts-mini-chart>
+</main>
+</body>
+</html>
