@@ -125,3 +125,54 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - run: npx playwright install --with-deps chromium
       - run: npm run test:consumers
+
+  # Screenshots of every widget, size and theme at a desktop and a phone width
+  # (test/browser/visual.spec.mjs). Text renders differently per OS, so this runs
+  # in the pinned Playwright image, whose tag must equal the exact
+  # @playwright/test version in package.json (test/visual-pin.test.mjs checks it).
+  # Baselines live in test/browser/visual.spec.mjs-snapshots/. A run on Linux that
+  # finds none writes them: the job fails, and the linux set is uploaded as the
+  # visual-baselines artifact for the maintainer to commit.
+  visual:
+    name: visual (chromium, pinned container)
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v7
+      - run: npm ci
+      - run: npm run test:visual
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: visual-baselines
+          path: test/browser/visual.spec.mjs-snapshots/*-linux.png
+          if-no-files-found: ignore
+          retention-days: 14
+      # expected, actual and diff images of a failure.
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: visual-diff
+          path: node_modules/.playwright/results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Line coverage of the unit suite under Node's own coverage, no install. The
+  # flags need Node 20.17 or newer, so this sets Node 22 rather than the test
+  # job's 20 floor. The thresholds are 90 % for src/core and 80 % for the view
+  # models. The view models measure below 80 % today (html.js, layout-list.js,
+  # pnl-calendar.js and progress.js are under-covered), so this job reports
+  # only (continue-on-error) until they pass; then delete that line and the job
+  # fails the build.
+  coverage:
+    name: coverage (node 22, report only for now)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm run coverage
