@@ -62,7 +62,7 @@ export function currentConfig() {
 
 function pick(o) {
   const out = {}
-  for (const key of ['locale', 'currency', 'timeZone', 'hourCycle']) if (o[key] !== undefined) out[key] = o[key] || undefined
+  for (const key of ['locale', 'currency', 'timeZone', 'hourCycle', 'styleNonce']) if (o[key] !== undefined) out[key] = o[key] || undefined
   return out
 }
 

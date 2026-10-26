@@ -260,6 +260,7 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
   [Svelte](docs/guide/frameworks/svelte.md),
   [Angular](docs/guide/frameworks/angular.md)
 - [Saving layouts](docs/guide/saving-layouts.md)
+- [Strict CSP and Trusted Types](docs/guide/security.md)
 - [Your own widget](docs/guide/your-own-widget.md)
 - Reference: [widgets](docs/widgets/), [core](docs/reference/core.md),
   [events](docs/reference/events.md), [theming](docs/theming.md)

@@ -11,10 +11,11 @@
  * unused, which is what lets new data never need new markup.
  */
 
-import { TsWidget, sk, describeElement, syncedParts, header, escapeHtml } from './widget.js'
+import { TsWidget, sk, describeElement, syncedParts, header } from './widget.js'
 import { areaPaths, bandGeometry, barPaths, scale, seriesDomain } from './chart.js'
 import { DEV, warnOnce } from './dev.js'
 import { EN, toNumber, toTime } from '../core/index.js'
+import { setNodes } from './html.js'
 
 export const MAX_SERIES = 6
 
@@ -727,23 +728,27 @@ export class TsChart extends TsWidget {
       if (selectable) {
         // Arrow keys move the tab stop in place, so the markup is only rewritten when the points change, never to follow focus.
         const active = Math.min(this._active || 0, vm.points.length - 1)
-        let html = ''
-        let key = ''
-        vm.points.forEach((pt, i) => {
+        // Built with the DOM, positions through element.style: the points are data, so never markup (RFC 0003 §14).
+        const specs = vm.points.map((pt, i) => {
           const b = pt.bar
-          const pos = b ? `inset-inline-start: ${b.x}%; inset-block-start: ${b.y}%; inline-size: ${b.w}%; block-size: ${b.h}%;` : `inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;`
-          const item = (tab) => `<li${b ? ' class="pb"' : ''} style="${pos}"><button type="button" class="pt${b ? ' bar' : ''}" tabindex="${tab}" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
-          html += item(i === active ? 0 : -1)
-          key += item(-1)
+          return {
+            tag: 'li',
+            attrs: b ? { class: 'pb' } : {},
+            css: b
+              ? { 'inset-inline-start': `${b.x}%`, 'inset-block-start': `${b.y}%`, 'inline-size': `${b.w}%`, 'block-size': `${b.h}%` }
+              : { 'inset-inline-start': `${pt.xPct}%`, 'inset-block-start': `${pt.yPct}%` },
+            kids: [{ tag: 'button', attrs: { type: 'button', class: b ? 'pt bar' : 'pt', tabindex: i === active ? '0' : '-1', 'aria-label': pt.label, 'data-series': pt.series, 'data-index': String(pt.index) } }],
+          }
         })
+        const key = JSON.stringify(vm.points.map((pt) => [pt.xPct, pt.yPct, pt.label, pt.series, pt.index, pt.bar || null]))
         if (this._ptsKey !== key) {
           this._ptsKey = key
           this._active = active
-          ptsEl.innerHTML = html
+          setNodes(ptsEl, specs)
         }
       } else if (ptsEl.innerHTML) {
         this._ptsKey = ''
-        ptsEl.innerHTML = ''
+        setNodes(ptsEl, [])
       }
     }
 

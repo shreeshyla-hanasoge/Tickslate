@@ -12,10 +12,9 @@
 
 import { activeProfile, createFormatter, currentConfig, localDate, nextProfileChange } from '../core/index.js'
 import { ensureTokens } from './default-tokens.js'
+import { inertWhenBlocked, mountShadow } from './html.js'
 
-let template = null
-const TEMPLATE = `
-<style>
+const CSS = `
   :host { display: block; }
   :host([hidden]), [hidden] { display: none !important; }
   .switcher {
@@ -34,7 +33,9 @@ const TEMPLATE = `
     .switcher { border-color: CanvasText; }
     .opt[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   }
-</style>
+`
+
+const TEMPLATE = `
 <div class="wrap" hidden>
   <div class="switcher" part="switcher" role="group">
     <button class="opt" part="option" type="button" tabindex="0" data-profile="" aria-pressed="false"></button>
@@ -50,12 +51,12 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 export class TsGridControls extends Base {
   constructor() {
     super()
-    if (!template) {
-      template = document.createElement('template')
-      template.innerHTML = TEMPLATE
-    }
     const root = this.attachShadow({ mode: 'open' })
-    root.appendChild(template.content.cloneNode(true))
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._wrap = root.querySelector('.wrap')
     this._switcher = root.querySelector('.switcher')
     this._options = [...root.querySelectorAll('.opt')]
@@ -250,3 +251,4 @@ export class TsGridControls extends Base {
     return t('controls.next', { profile: t(`controls.${to}`), time })
   }
 }
+inertWhenBlocked(TsGridControls)

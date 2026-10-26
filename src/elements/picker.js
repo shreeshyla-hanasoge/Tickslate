@@ -13,13 +13,12 @@
 import { currentConfig } from '../core/index.js'
 import { sizeName } from '../core/messages.js'
 import { ensureTokens } from './default-tokens.js'
+import { inertWhenBlocked, mountShadow } from './html.js'
 import { translator } from './messages-cache.js'
 import { pickerItems } from './picker-model.js'
 import { widgetCatalog } from './registry.js'
 
-let template = null
-const TEMPLATE = `
-<style>
+const CSS = `
   /* The dialog sits in the top layer, so the host itself takes no room. */
   :host { display: contents; }
   [hidden] { display: none !important; }
@@ -83,7 +82,9 @@ const TEMPLATE = `
     dialog { border-color: CanvasText; }
     .close, .chip, .search { border-color: ButtonText; }
   }
-</style>
+`
+
+const TEMPLATE = `
 <dialog part="sheet" aria-labelledby="title">
   <div class="body">
     <div class="head">
@@ -111,12 +112,12 @@ function deepActive() {
 export class TsWidgetPicker extends Base {
   constructor() {
     super()
-    if (!template) {
-      template = document.createElement('template')
-      template.innerHTML = TEMPLATE
-    }
     const root = this.attachShadow({ mode: 'open' })
-    root.appendChild(template.content.cloneNode(true))
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._dialog = root.querySelector('dialog')
     this._title = root.querySelector('.title')
     this._close = root.querySelector('.close')
@@ -371,3 +372,4 @@ export class TsWidgetPicker extends Base {
     this.close()
   }
 }
+inertWhenBlocked(TsWidgetPicker)
