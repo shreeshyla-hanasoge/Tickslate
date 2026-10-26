@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- An empty stage for the XSS spec (RFC 0004 §8.3). The spec builds every tile in the page, so each string a host
+     can supply carries one hostile payload. Like csp.html this page has no inline <script> and no inline <style>, so
+     the spec can serve it under the strict CSP and Trusted Types policies of RFC 0003 §14 as well as plain. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XSS fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<script type="module" src="/src/elements/index.js"></script>
+</head>
+<body>
+<main id="stage">
+  <ts-grid id="g" aria-label="Dashboard"></ts-grid>
+  <ts-grid-controls id="c" for="g"></ts-grid-controls>
+  <ts-widget-picker id="p" for="g"></ts-widget-picker>
+  <ts-layout-list id="l" for="g"></ts-layout-list>
+</main>
+</body>
+</html>

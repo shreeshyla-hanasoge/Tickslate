@@ -117,6 +117,8 @@ export interface LayoutIssue {
     | 'bad-shape'
     | 'top-strip-too-long'
     | 'top-strip-unknown-id'
+    | 'too-many-items'
+    | 'too-many-profiles'
   message: string
   fixed: 'dropped' | 'replaced' | 'migrated' | 'kept'
 }
@@ -137,7 +139,15 @@ export declare function emptyLayout(device?: Device): Layout
  */
 export declare function readLayout(
   input: Layout | LayoutItem[] | unknown,
-  options?: { catalog?: Catalog; device?: Device; unknown?: 'drop' | 'keep' },
+  options?: {
+    catalog?: Catalog
+    device?: Device
+    unknown?: 'drop' | 'keep'
+    /** Items read per profile. A positive integer or Infinity; default 100. */
+    maxItems?: number
+    /** Profiles read, the built-in two included. A positive integer or Infinity; default 20. */
+    maxProfiles?: number
+  },
 ): { layout: Layout; issues: LayoutIssue[] }
 
 // ── Placement ──────────────────────────────────────────────────────────

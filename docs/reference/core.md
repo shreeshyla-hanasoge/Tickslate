@@ -183,7 +183,7 @@ profiles. Device defaults to `'desktop'`.
 ```ts
 readLayout(
   input: Layout | LayoutItem[] | unknown,
-  options?: { catalog?: Catalog; device?: Device; unknown?: 'drop' | 'keep' },
+  options?: { catalog?: Catalog; device?: Device; unknown?: 'drop' | 'keep'; maxItems?: number; maxProfiles?: number },
 ): { layout: Layout; issues: LayoutIssue[] }
 ```
 
@@ -194,6 +194,15 @@ copy. A bare array of items is the shorthand for a layout with only the
 input has none; `unknown: 'keep'` keeps items whose widget is not in the catalog
 (reported, but kept) instead of dropping them, which a saved layout wants when a
 tag is not defined yet.
+
+A layout is bounded, because it is user data: at most **100 items per profile**,
+**20 profiles** (the built-in `market` and `closed` count, and are read first, so
+they are never the ones dropped) and **128 characters per id**. Only the first 100
+entries of a longer list are read, valid or not, and the length is checked before
+any entry is, so a list of a million costs one comparison. `maxItems` and
+`maxProfiles` change the limits for your own direct read: a positive integer or
+`Infinity`, and any other value is ignored. `<ts-grid>` and `persistLayout` pass
+neither, so a layout from storage or the network is always capped.
 
 Each issue is `{ path, code, message, fixed }`:
 
@@ -206,6 +215,10 @@ Each issue is `{ path, code, message, fixed }`:
 | `bad-shape` | Something is not the shape it should be | `dropped` or `replaced` |
 | `top-strip-too-long` | More than 3 ids in `topStrip` | `dropped` |
 | `top-strip-unknown-id` | A `topStrip` id is in no profile | `dropped` |
+| `too-many-items` | A profile held more than `maxItems` (100) entries; the path is `profiles.<name>` | `dropped` |
+| `too-many-profiles` | More than `maxProfiles` (20) profiles; the path is `profiles` | `dropped` |
+
+An item or top-strip id longer than 128 characters is reported as `bad-shape` and dropped.
 
 ```js
 const raw = localStorage.getItem('layout')

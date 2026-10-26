@@ -66,6 +66,36 @@ files (including `elements/<name>.d.ts`), `README.md`, `LICENSE`,
 two `cdn/` files, and nothing else (`verify:package` enforces the allowlist);
 and the sizes match the `npm run size` table.
 
+## Publish from CI (optional)
+
+`.github/workflows/release.yml` publishes the same package with an npm
+provenance attestation, which links the tarball to the commit and workflow
+that built it. The by-hand steps above stay valid; this is the other way to
+do step 5, and it never does steps 6 and 7.
+
+- **Only the maintainer starts it.** It has one trigger, `workflow_dispatch`
+  (Actions, Release, Run workflow), and it runs only from `master`. No push,
+  pull request, tag, release or schedule starts it, and no agent dispatches it.
+- **`dry-run` is on by default.** A dry run installs, runs `npm run release`
+  and `npm publish ./dist-lib --dry-run`, and stops: the same checks as step 1
+  and step 3. Turn `dry-run` off to publish.
+- **Publishing waits for you.** The publish job declares the `npm-release`
+  environment. Create it once under Settings, Environments, with yourself as
+  the required reviewer; the job cannot start until you approve it. Nothing in
+  the repository can create the environment.
+- **Provenance** needs the job's `id-token: write` permission (the file sets it),
+  a public repository, and a way to authenticate to npm. Until that is set up
+  the publish job fails at `npm publish`, and nothing is published: either add an
+  npm automation token as the environment secret `NPM_TOKEN`, or configure npm
+  trusted publishing for this repository and workflow and drop the token.
+- **It publishes and nothing else.** It does not tag or create a GitHub
+  release: do steps 6 and 7 yourself, after the job succeeds and after you
+  have prepared the release (changelog, version, README URL) as above.
+
+Every `uses:` in every workflow is pinned to a full commit SHA with the tag in a
+comment, and Dependabot (weekly) proposes the updates; read each pull request
+before you merge it.
+
 ## After publishing
 
 1. Check the package page on npmjs.com: README renders, relative links

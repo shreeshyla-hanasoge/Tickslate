@@ -79,6 +79,15 @@ Coming out, `event.detail.items` is the same array shape. Setting `layout`
 switches the grid from implicit to explicit mode for good: each child is then
 matched to an item by its `item` attribute.
 
+## Limits
+
+A saved layout is user data, so it is read with limits: 100 items per profile,
+20 profiles (`market` and `closed` always among them) and 128 characters per
+id. What is over a limit is dropped and reported as `too-many-items`,
+`too-many-profiles` or `bad-shape` in `ts-layout-issues`. The grid and
+`persistLayout` always apply them; only a direct `readLayout` call can change
+them, with `maxItems` and `maxProfiles`.
+
 ## Per-device layouts
 
 Desktop and phone are stored apart, because a 4-column arrangement means
