@@ -157,23 +157,27 @@ const remeasuredEleventh = (maxKb) => ({ ...entry(maxKb), target: 're-measured a
 // A new entry (layout-list-editor, 2026-10-25): the layout list measures 11,196 B bundled with the core, so 12,316 B with
 // 10 %, which rounds up to 12.5 kB.
 const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
+// Twelve rows (integrate/0.3.0, 2026-10-26), each re-measured on the integrated branch after the drag-memo fix and set to its
+// min+gz plus 10 %, rounded up to the next 0.5 kB. Every entry now carries the strict-CSP base's html.js and adopted stylesheets,
+// perf-hygiene's ticker and gating, and the strip's and the layout list's message keys. Authorised by the orchestrator (RFC 0003 §25).
+const remeasuredTwelfth = (maxKb) => ({ ...entry(maxKb), target: 're-measured on the integrated 0.3.0 base (strict-CSP html.js and adopted stylesheets, ticker and gating, strip and layout list messages), RFC 0003 §25', date: '2026-10-26' })
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
-  'edge-stats': newEntry(24.5),
-  'capital-funding': newEntry(25.5),
+  'edge-stats': remeasuredTwelfth(28.5),
+  'capital-funding': remeasuredTwelfth(29.5),
   grid: remeasuredTenth(35),
-  card: remeasuredSeventh(21),
-  metric: remeasuredEighth(23),
+  card: remeasuredTwelfth(25.5),
+  metric: remeasuredTwelfth(27.5),
   chart: remeasuredNinth(30),
-  'today-pnl': remeasuredNinth(25.5),
-  'equity-curve': remeasuredNinth(25.5),
+  'today-pnl': remeasuredTwelfth(29.5),
+  'equity-curve': remeasuredTwelfth(29.5),
   'session-clock': remeasuredEleventh(26),
-  table: remeasuredSeventh(24),
-  watchlist: remeasuredEighth(25),
-  'open-positions': remeasuredEighth(26),
-  progress: newEntry(22),
-  'pnl-calendar': newEntry(25.5),
-  'layout-list': layoutListEntry(12.5),
+  table: remeasuredTwelfth(29),
+  watchlist: remeasuredTwelfth(29.5),
+  'open-positions': remeasuredTwelfth(30.5),
+  progress: remeasuredTwelfth(26),
+  'pnl-calendar': remeasuredTwelfth(30),
+  'layout-list': remeasuredTwelfth(15),
 }
 
 /**
