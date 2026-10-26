@@ -49,6 +49,20 @@ These are not, and a normal issue is the right place for them:
 - a vulnerability in a host app, a browser, or a development-only dependency
   that does not ship in the published package
 
+## How releases are protected
+
+- Layouts read from storage or the network are capped (100 items per profile,
+  20 profiles, 128-character ids) and `readLayout` never throws, so a hostile
+  or broken value is dropped and reported, not run.
+- Every string a host can pass in is tested as an XSS payload in real browsers,
+  and `npm run lint` fails the build on a non-constant `innerHTML`,
+  `eval` or `new Function` in the source.
+- Dependabot and CodeQL run weekly, and every GitHub Action is pinned to a
+  commit.
+- A release is published only by the maintainer, from a protected environment,
+  with an npm provenance attestation that links the package to its source
+  commit (docs/RELEASING.md).
+
 ## What to expect
 
 This is a small open-source project run by one maintainer, so these are

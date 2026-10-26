@@ -112,6 +112,7 @@ interface LayoutIssue {
   code:
     | 'unknown-version' | 'unknown-widget' | 'unsupported-size' | 'duplicate-id'
     | 'bad-shape' | 'top-strip-too-long' | 'top-strip-unknown-id'
+    | 'too-many-items' | 'too-many-profiles'
   message: string
   fixed: 'dropped' | 'replaced' | 'migrated' | 'kept'
 }

@@ -1,0 +1,77 @@
+name: Release
+
+# The maintainer-only release (RFC 0004 §8.6, docs/RELEASING.md). It is started by
+# hand from the Actions tab and by no event: no push, pull request, tag, release or
+# schedule trigger. It publishes the package to npm with provenance and does
+# nothing else: version tags and GitHub releases stay the maintainer's.
+#
+# dry-run is true by default. A dry run runs every check, packs the package and
+# asks npm what it would publish, and stops. Publishing needs dry-run turned off
+# AND the maintainer's approval of the npm-release environment, which only the
+# maintainer can create (Settings > Environments, with themselves as the required
+# reviewer). Agents never dispatch this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Run every check and pack, but do not publish'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Two releases at once would race for the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify and pack
+    # Only the merged branch can be released.
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '20'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      # Test, build everything, check the package and the size budgets.
+      - run: npm run release
+      # Nothing is published: the file list a real publish would send.
+      - run: npm publish ./dist-lib --dry-run --access public
+
+  publish:
+    name: publish to npm
+    needs: verify
+    if: github.ref == 'refs/heads/master' && inputs.dry-run == false
+    runs-on: ubuntu-latest
+    # The job waits here until the maintainer approves it.
+    environment: npm-release
+    permissions:
+      contents: read
+      # The signed attestation that links the package to this commit and workflow.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '20'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+      # Node 20 ships npm 10, and npm trusted publishing needs npm 11.5.1 or later. Installed after the build
+      # tool chain is set up and before anything is published, and the version is printed in the log.
+      - run: npm install -g npm@11 && npm --version
+      - run: npm ci
+      # Rebuilt here, so what is published is what this job built.
+      - run: npm run release
+      - run: npm publish ./dist-lib --provenance --access public
+        env:
+          # A token the maintainer adds as a secret of the npm-release environment. For npm trusted publishing,
+          # delete this env block (docs/RELEASING.md).
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
