@@ -1189,11 +1189,13 @@ export type TsFeedAction = TsCommonAction
  * @attr {string} hour-cycle - The hour cycle its tiles use.
  * @attr {string} persist - A key that saves the layout to localStorage per device.
  * @attr {'comfortable' | 'compact'} density - 'compact' sets --ts-row to 120px, --ts-pad to 12px and --ts-gap to 10px. Default 'comfortable'.
+ * @attr {boolean} hint - A coach mark points at the first tile until it is dismissed or edit mode starts; the host remembers `ts-hint-dismiss`.
  * @attr {string} aria-label - The name of the grid's region.
  * @fires {CustomEvent<TsLayoutChangeDetail>} ts-layout-change - A move, resize, remove, add or undo; save `detail.layout`.
  * @fires {CustomEvent<{ issues: LayoutIssue[] }>} ts-layout-issues - A layout was repaired when read.
  * @fires {CustomEvent<{ editing: boolean }>} ts-edit-change - Edit mode started or ended.
  * @fires {CustomEvent<TsReadingOrderChangeDetail>} ts-reading-order-change - The order of the visible tiles changed.
+ * @fires {CustomEvent<TsHintDismissDetail>} ts-hint-dismiss - The hint was dismissed ('dismiss') or edit mode started ('edit').
  * @fires {CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone'; initial: boolean }>} ts-columns-change - The grid's column count changed.
  * @fires {CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>} ts-profile-change - The shown profile changed.
  * @csspart board - The box the tiles sit in.
@@ -1201,6 +1203,9 @@ export type TsFeedAction = TsCommonAction
  * @csspart toast - The undo toast.
  * @csspart edit-pill - The floating Done and Add back controls.
  * @csspart empty - The panel shown when no tile is visible.
+ * @csspart badge - The size badge in a tile's edit chrome while it is resized.
+ * @csspart hint - The first-run coach mark.
+ * @csspart hint-dismiss - The coach mark's Got it button.
  * @slot - The tiles.
  * @slot empty - Content that replaces the empty board's text.
  */
@@ -1297,6 +1302,7 @@ export interface TsElementAttributes {
     'stale-after'?: number | string | undefined
     flash?: 'off' | undefined
     scrub?: 'on' | 'off' | undefined
+    hint?: boolean | undefined
     'aria-label'?: string | undefined
   }
 }

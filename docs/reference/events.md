@@ -1,6 +1,6 @@
 # Events
 
-Tickslate fires eight events, all named `ts-*`. Every one is a `CustomEvent`
+Tickslate fires nine events, all named `ts-*`. Every one is a `CustomEvent`
 that **bubbles and is composed**, so one listener on the grid, a wrapper or the
 document hears it, even from inside a shadow root. Only `ts-action` and
 `ts-add-request` are cancelable: `preventDefault()` on `ts-action` stops the
@@ -17,6 +17,7 @@ widget's built-in follow-up (an equity curve keeps its old `range`), and on
 | [`ts-columns-change`](#ts-columns-change) | `<ts-grid>` | `{ columns, device, initial }` | yes | yes |
 | [`ts-profile-change`](#ts-profile-change) | `<ts-grid>` | `{ profile, reason }` | yes | yes |
 | [`ts-add-request`](#ts-add-request) | `<ts-grid>` | `{ type, id, size }` | yes | yes |
+| [`ts-hint-dismiss`](#ts-hint-dismiss) | `<ts-grid>` | `{ reason }` | yes | yes |
 
 The types are in the package's `.d.ts` files, so
 `grid.addEventListener('ts-layout-change', (e) => ...)` is typed.
@@ -192,7 +193,10 @@ connected; read `grid.columns` too.
 The profile on show changed because of the schedule or `override()`. Not
 fired when you change the `profile` attribute yourself. It does fire when a
 schedule set at load puts the grid straight into another profile (the
-announcement is skipped then, the event is not).
+announcement is skipped then, the event is not). It fires once the new layout
+is on the board, so a handler reading `grid.readingOrder` sees the layout it
+was told about; for a scheduled switch that is half-way through the crossfade,
+about 110 ms after the profile changed.
 
 ```ts
 // detail
@@ -241,3 +245,23 @@ grid.addEventListener('ts-add-request', (e) => {
 - A hidden child with the same `id` is restored instead, and no event fires.
 - `grid.addTypes` is only for the picker, which offers catalog types it knows
   you answer. A host that calls `add()` from its own button has already decided.
+
+## `ts-hint-dismiss`
+
+The first-run hint (the `hint` attribute on `<ts-grid>`) ended because the user
+dismissed it or started editing. The library stores nothing, so this event is
+how you remember it: keep it in a cookie, a user preference or a server row, and
+stop setting `hint` next time. Removing the attribute yourself fires nothing.
+
+```ts
+// detail
+{
+  /** 'dismiss': the user pressed Got it (or Escape on it). 'edit': edit mode started, by long press, Edit layout or editing = true. */
+  reason: 'dismiss' | 'edit'
+}
+```
+
+```js
+if (!localStorage.getItem('seen-grid-hint')) grid.hint = true
+grid.addEventListener('ts-hint-dismiss', () => localStorage.setItem('seen-grid-hint', '1'))
+```

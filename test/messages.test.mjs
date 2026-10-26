@@ -696,7 +696,7 @@ describe('every widget and the grid, in the pseudo-locale', () => {
       const calls = [...source.matchAll(/_(?:announce|showToast)\((.*)\)/g)].map((m) => m[1])
       assert.ok(calls.length >= 12, `found ${calls.length}`)
       for (const arg of calls) {
-        if (arg === 'text' || arg === 'message' || arg === 'said') continue // the methods' own parameters
+        if (arg === 'text' || arg === 'text, action' || arg === 'message' || arg === 'said') continue // the methods' own parameters
         assert.match(arg, /^(this\.)?t\(/, arg)
       }
     })

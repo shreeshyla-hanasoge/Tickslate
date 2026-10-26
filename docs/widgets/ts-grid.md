@@ -147,6 +147,29 @@ A switch fires `ts-profile-change` and is announced. A switch that falls due
 while the user is editing or dragging waits until they finish. Undo history is
 kept per profile.
 
+#### A calm switch
+
+When the schedule changes the profile on its own, the tiles do not swap in one
+frame. The board fades out, takes the new layout while it is clear, and fades
+back in, each way half of `--ts-motion` (220 ms by default, so 110 ms), through
+the Web Animations API. Nothing animates under `prefers-reduced-motion: reduce`.
+It runs for `reason: 'schedule'` and for `'override-ended'` (a kept profile
+lapsing at the next change); your own `override()` (including `override(null)`), the `profile` attribute, the
+first render and every edit apply at once. A switch that waited for the user to
+finish editing fades when it finally applies.
+
+A scheduled switch also shows the toast (`part="toast"`): "Switched to After
+close" with a button **Keep Market hours**, for 6 seconds, paused while hovered or
+focused. Pressing it calls `override(previous)`, so the previous profile stays
+until the schedule next changes and then the schedule takes over again; it fires
+`ts-profile-change` with `reason: 'override'` and the status region says
+"Keeping Market hours until the next change." `undo-toast="off"` suppresses this
+toast too; the crossfade and the announcement stay. A lapsing override crossfades
+but offers nothing to keep, since the user already chose. The toast for a
+switch is a labelled group (`role="group"`), not a live region: the grid's
+status region says "Showing the After close layout." once, and the toast would
+only say it twice.
+
 ### Per-item spec resolution
 
 What sizes and label a tile has is looked up for each item, lazily, in this
@@ -177,7 +200,8 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `locked` | Read-only dashboard: no long press, no edit mode, no edit controls |
 | `edit-controls="off"` | Hides the Edit layout button, the edit pill and the empty board's Add back button, for hosts with their own controls. Long press, Escape and the `editing` attribute still work |
 | `density` | `comfortable` (the default) or `compact`. Compact sets `--ts-row` to `120px`, `--ts-pad` to `12px` and `--ts-gap` to `10px` on the grid, so more fits on screen; a rule on the `ts-grid` element in your CSS still wins. A phone (2 columns) keeps its rows and changes only the padding. Reflects the `density` property; any other value is `comfortable`, with one development warning. See [Theming](../theming.md#density-and-text-size) |
-| `undo-toast="off"` | Suppresses the undo toast; the removal is announced instead |
+| `undo-toast="off"` | Suppresses the undo toast, and the toast that offers to keep the previous profile after a scheduled switch; the removal and the switch are announced instead |
+| `hint` | Shows a coach mark pointing at the first tile until it is dismissed or edit mode starts (see below). Reflects the `hint` property |
 | `locale`, `currency`, `time-zone`, `hour-cycle` | Formatting for every tile that has none of its own: the widget's attribute, then these, then `configure()` |
 | `stale-after` | The `stale-after` every tile uses that has none of its own (milliseconds or a duration such as `'90s'`, `'2m'`, `'1h'`; default `120000`) |
 | `flash="off"` | Stops the change flash on every tile |
@@ -193,6 +217,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `catalog` | `Catalog` | Your tiles' specs. Defaults to `WIDGETS` |
 | `profile` | `string` | The profile shown. Defaults to `'market'` |
 | `editing` | `boolean` | Edit mode |
+| `hint` | `boolean` | Shows the first-run coach mark. Reflects the `hint` attribute |
 | `density` | `'comfortable' \| 'compact'` | The row height, padding and gap. Setting it re-measures; a saved layout is unchanged |
 | `locked` | `boolean` | Read-only. While set, `editing = true` is ignored with one development warning; setting it while editing ends edit mode |
 | `breakpoints` | `{ tablet?: number, desktop?: number }` | Grid widths in px where columns change. Defaults to `{ tablet: 700, desktop: 1200 }`; setting it re-measures |
@@ -271,6 +296,42 @@ interactive nests inside anything interactive:
 The label in those names is the tile's `label` attribute, else its `aria-label`,
 else its spec's label, else its id. Tab order follows the visual order.
 
+While a tile is resized, by dragging the handle, tapping it or the `+` and `-`
+keys, a badge (`part="badge"`) in its chrome reads the size it will have: its
+name and footprint, "Medium · 2×2". It follows the snapped size under the
+pointer, stays a second after the last pointer-up or key press, then fades
+(under `prefers-reduced-motion` it just goes). It names the size the layout
+will save, so on a phone a Large tile reads "Large · 3×2" while it is drawn two
+columns wide. It sits on the side away from the handle, mirrors under
+`dir="rtl"`, and is decorative: it is `aria-hidden` and not a live region, since a
+keyboard resize is already announced by the status region.
+
+### The first-run hint
+
+```html
+<ts-grid hint>…</ts-grid>
+```
+
+With `hint` set, a small card (`part="hint"`, a note, not a live region) points
+at the first tile in visual order: "Touch and hold a tile to rearrange your
+dashboard" on a touch screen, "Press and hold a tile, or choose Edit layout, to
+rearrange your dashboard" otherwise, with a **Got it** button (`part="hint-dismiss"`, 44 px).
+It ends when the user presses Got it or Escape on it, or when edit mode starts by
+any route, and both fire `ts-hint-dismiss` with `reason` `'dismiss'` or `'edit'`.
+
+The library stores nothing. Listen for the event, remember it however you like
+(a cookie, a user preference, a server row) and stop setting `hint` next time. If
+you leave the attribute on, the card stays hidden for the rest of that element's
+life; removing and setting `hint` again shows it again. It does not appear on a
+locked or empty grid, while editing or while the page is hidden, and it follows
+the first tile when the layout or the width changes. It takes no focus and
+blocks nothing; it comes after the tiles in Tab order.
+
+```js
+if (!localStorage.getItem('grid-hint-seen')) grid.hint = true
+grid.addEventListener('ts-hint-dismiss', () => localStorage.setItem('grid-hint-seen', '1'))
+```
+
 ### Undo, the toast and restore
 
 - Before every commit (move, resize, remove, add) the active profile's layout
@@ -313,6 +374,7 @@ All bubble and are composed. Details and types are in
 | `ts-columns-change` | The column count changed, and once after the first measure |
 | `ts-profile-change` | The shown profile changed by schedule or `override()` |
 | `ts-add-request` | `add()` or the picker asks for a new tile. Cancelable: `preventDefault()` and render a child with `item=id` |
+| `ts-hint-dismiss` | The first-run hint was dismissed (`reason: 'dismiss'`) or edit mode started (`'edit'`). The library stores nothing: you remember it |
 
 ## The phone top strip
 
@@ -356,7 +418,10 @@ host with a fixed header sets that token to the header's height.
 | `board` | The area the tiles sit in |
 | `placeholder` | The slot a lifted tile will land in |
 | `strip` | The phone top strip: the sticky row of pinned tiles above the board |
-| `toast` | The undo toast |
+| `toast` | The undo toast, and the toast that offers to keep the previous profile |
+| `badge` | The size badge in a tile's chrome while it is resized ("Medium · 2×2") |
+| `hint` | The first-run coach mark |
+| `hint-dismiss` | The coach mark's Got it button |
 | `edit-pill` | The Done and Add back pill |
 | `empty` | The empty board panel |
 
@@ -379,6 +444,13 @@ that loads its script late does not jump. See [Theming](../theming.md).
   not a landmark of its own. The grid writes nothing to its own host: no role
   and no `aria-label`. When focus has nowhere else to go, for example after the
   last tile is removed, it goes to the board.
+- Feedback is quiet. The resize badge is `aria-hidden` and the first-run hint is
+  a `role="note"` with a 44 px **Got it**, neither a live region. A scheduled
+  profile switch is announced once by the status region, and its toast is a
+  labelled group with a 44 px **Keep** button, so it is not spoken twice. The
+  crossfade, the hint's fade and nudge and the badge's fade stop under
+  `prefers-reduced-motion`, and the badge and hint use logical insets, so they
+  mirror under `dir="rtl"`.
 - Reading order and Tab order follow the layout, not your markup (WCAG 1.3.2
   and 2.4.3). After tiles are rearranged, a screen reader and the Tab key meet
   them in the order they sit on screen: row by row, left to right by each
@@ -402,7 +474,7 @@ that loads its script late does not jump. See [Theming](../theming.md).
   a tile, Space to pick it up.", "Signups, picked up. Use the arrow keys to move
   it, Space to drop, Escape to cancel.", "Signups, moved to position 2 of 6.",
   "Can't move further.", "Signups, size Wide.", "Signups added back.",
-  "Undone.", "Showing the closed layout.", "Done editing layout."
+  "Undone.", "Showing the After close layout.", "Done editing layout."
 - Focus rings use `--ts-focus` as an outline, which survives forced colours.
   Under `prefers-reduced-motion` the wiggle is replaced by a steady outline of
   at least 3:1 contrast.

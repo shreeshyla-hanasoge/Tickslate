@@ -74,6 +74,7 @@ import { ensureTokens } from './default-tokens.js'
 import { inertWhenBlocked, mountShadow, setHTML } from './html.js'
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
+import { BADGE_FADE_MS, DEFAULT_MOTION_MS, badgeText, createBadgeLife, createHintState, hintKey, parseMs, planSwitch, profileName } from './grid-feedback.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
 import { keyAction, tapAction } from './grid-input.js'
 import { translator } from './messages-cache.js'
@@ -226,6 +227,28 @@ const CSS = `
     :host([editing]) .chrome { outline: 2px dashed color-mix(in srgb, var(--ts-ink) 50%, transparent); outline-offset: -1px; }
     .remove, .resize, .pin { animation: none; }
   }
+  /* The size badge: decorative, on the side away from the handle, so it never sits under a finger on it and mirrors under rtl. */
+  .badge {
+    position: absolute; inset-block-end: 8px; inset-inline-start: 8px; max-inline-size: calc(100% - 16px); box-sizing: border-box;
+    padding: 3px 8px; border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm, 6px);
+    background: var(--ts-surface-2); color: var(--ts-ink); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font: 600 var(--ts-text-base, max(13px, .8125rem))/1.3 var(--ts-font-ui, system-ui, sans-serif); font-variant-numeric: tabular-nums;
+  }
+  /* The first-run coach mark; its position is written with element.style. */
+  .coach {
+    position: absolute; z-index: 8; box-sizing: border-box; display: flex; align-items: center; gap: 4px;
+    inline-size: max-content; max-inline-size: min(320px, 100%); padding-block: 4px; padding-inline: 16px 4px;
+    border: 1px solid transparent; border-radius: var(--ts-radius, 10px); background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
+    font: 500 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui);
+  }
+  .coach .coach-text { margin: 0; flex: 1 1 auto; padding-block: 8px; }
+  .coach .arrow { position: absolute; inset-block-start: -5px; inset-inline-start: 24px; inline-size: 12px; block-size: 12px; border-start-start-radius: 2px; background: inherit; rotate: 45deg; }
+  .coach.over .arrow { display: none; }
+  .coach-ok {
+    flex: none; min-inline-size: 44px; min-block-size: 44px; margin: 0; padding: 0 16px; border: 1px solid transparent; border-radius: 999px; cursor: pointer;
+    background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
+  }
+  .coach-ok:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
   [hidden] { display: none !important; }
   /* The dock holds the pill and, above it, the undo toast, so they never overlap.
      It has no height of its own until the pill shows, then it reserves the pill's
@@ -336,11 +359,15 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 const CHROME_HTML = '<button class="handle" type="button" aria-describedby="hint" aria-pressed="false"></button>' +
   '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button>' +
   '<button class="resize" type="button" tabindex="-1"></button>' +
-  '<button class="pin" type="button" tabindex="-1"><span aria-hidden="true"></span></button>'
+  '<button class="pin" type="button" tabindex="-1"><span aria-hidden="true"></span></button>' +
+  '<span class="badge" part="badge" aria-hidden="true" hidden></span>'
+
+// The coach mark's markup, a constant like every template (RFC 0003 §14); its words and position are written after.
+const COACH_HTML = '<span class="arrow" aria-hidden="true"></span><p class="coach-text"></p><button class="coach-ok" part="hint-dismiss" type="button"></button>'
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'scrub', 'aria-label']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'scrub', 'hint', 'aria-label']
   }
 
   constructor() {
@@ -403,6 +430,20 @@ export class TsGrid extends Base {
     this._menuSig = ''
     this._editOrigin = null // the element that started editing, for the focus return
     this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
+    this._toastRun = null // what the toast's button does until the toast is gone; null is Undo
+    this._toastWords = null // for a profile toast: its words from a translate function, so a locale change can redo them
+    this._keeping = null // the profile name a Keep press is switching to, so the status region says it in the words of the toast
+    this._fade = null // { run, anims, applied } while a scheduled switch is crossfading
+    // The resize badge (RFC 0004 §3.1): up while a tile is resized, gone a second after the last release.
+    this._badgeAnims = new WeakMap()
+    this._badge = createBadgeLife({
+      show: (id, text) => this._badgeShow(id, text),
+      fade: (id) => this._badgeFade(id),
+      hide: (id) => this._badgeHide(id),
+    })
+    // The first-run hint (§3.2): its card is built the first time the attribute is set. Nothing is stored.
+    this._hintState = createHintState()
+    this._coach = null
     this._history = createHistory()
     this._stripSteps = new WeakSet() // the layouts undo returns to for a step that changed the strip, so other steps leave it alone
     // Only a tile the grid shows and can draw at S takes a pin slot; any other saved id is kept but never blocks a pin.
@@ -455,6 +496,7 @@ export class TsGrid extends Base {
     this._profileTimer = 0
     this._clock = () => Date.now()
     this._onVisibility = () => {
+      this._syncHint()
       if (document.visibilityState === 'visible') this._reschedule(true)
     }
 
@@ -519,7 +561,7 @@ export class TsGrid extends Base {
       else if (handle) this._tap(handle.parentElement.dataset.id)
       else if (resize) this._resizeClick(resize.parentElement.dataset.id)
       else if (target === this._board || target === this._stripEl) this._tap(null)
-      else if (target.closest('.undo')) this._undoFromToast()
+      else if (target.closest('.undo')) this._toastPress()
       else if (target.closest('.edit-btn')) {
         if (this.locked) return
         this._editOrigin = this._editBtn
@@ -653,7 +695,12 @@ export class TsGrid extends Base {
     const t = this.t
     if (t === this._tText) return
     this._tText = t
-    this._toastUndo.textContent = t('grid.undo')
+    if (this._toastState && this._toastState.profile && this._toastWords) {
+      const w = this._toastWords(t)
+      this._toastUndo.textContent = w.label
+      this._toastText.textContent = w.text
+      this._toast.setAttribute('aria-label', w.text)
+    } else this._toastUndo.textContent = t('grid.undo')
     this._editBtn.textContent = t('grid.editLayout')
     this._pill.setAttribute('aria-label', t('grid.editingGroup'))
     this._pill.querySelector('.done').textContent = t('grid.done')
@@ -715,6 +762,15 @@ export class TsGrid extends Base {
 
   set editing(value) {
     this.toggleAttribute('editing', !!value)
+  }
+
+  /** A coach mark points at the first tile until it is dismissed or edit mode starts (RFC 0004 §3.2). */
+  get hint() {
+    return this.hasAttribute('hint')
+  }
+
+  set hint(value) {
+    this.toggleAttribute('hint', !!value)
   }
 
   /** Read-only dashboard: no long press, no edit mode, no chromes. */
@@ -1119,7 +1175,8 @@ export class TsGrid extends Base {
       const before = this.profile
       this._override = null
       this._reschedule(false)
-      this._profileChanged(before, 'override-ended')
+      // A user clearing their own override applies at once; only the scheduler's lapse is calm (RFC 0004 §3.3).
+      this._profileChanged(before, 'override-ended', false, true)
       this._stateChanged()
       return
     }
@@ -1234,6 +1291,8 @@ export class TsGrid extends Base {
     this._cancelGesture()
     this._stopEditing()
     this._hideToast(false)
+    this._endFade()
+    this._badge.clear()
     document.removeEventListener('visibilitychange', this._onVisibility)
     clearTimeout(this._profileTimer)
     for (const timer of this._watching) clearTimeout(timer)
@@ -1282,7 +1341,7 @@ export class TsGrid extends Base {
     } else if (name === 'profile') {
       this._cancelGesture()
       this._sync(false)
-      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: this.profile }))
+      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: profileName(this.t, this.profile) }))
     } else if (['locale', 'currency', 'time-zone', 'hour-cycle'].includes(name)) {
       this._refreshText()
       this._invalidateWidgets()
@@ -1290,6 +1349,9 @@ export class TsGrid extends Base {
       if (DEV && value !== null && value !== 'comfortable' && value !== 'compact') warnOnce('grid-density', DENSITY_WARNING)
       // The rows and gaps are read from the tokens, so a change re-measures; a layout is cells, so nothing else moves.
       if (this.isConnected && this._m && !this._blocked) this._measure(true)
+    } else if (name === 'hint') {
+      this._hintState.attribute(this.hasAttribute('hint'))
+      this._syncHint()
     } else if (name === 'scrub') {
       // A tile reads the grid's value when it renders, so it draws again to drop or restore its tab stop at once.
       this._invalidateWidgets()
@@ -1357,14 +1419,235 @@ export class TsGrid extends Base {
     this._stateChanged()
   }
 
-  _profileChanged(before, reason, quiet = false) {
+  _profileChanged(before, reason, quiet = false, instant = false) {
     const profile = this.profile
     if (profile === before) return
     this._cancelGesture()
-    this._sync(false)
-    // Not on load, when nothing has changed from the user's point of view.
-    if (!quiet) this._announce(this.t('grid.profile', { profile }))
-    this._emit('ts-profile-change', { profile, reason })
+    this._endFade()
+    const t = this.t
+    const plan = planSwitch({ reason, quiet, rendered: this._rendered })
+    // A Keep offered for an earlier switch no longer says what it did.
+    if (!plan.toast && this._toastState && this._toastState.profile) this._hideToast(false)
+    // The event rides the apply step, so a handler reading readingOrder sees the layout it was told about, not the one fading out.
+    const apply = () => {
+      this._sync(false)
+      this._emit('ts-profile-change', { profile, reason })
+    }
+    if (plan.crossfade && !instant) this._crossfade(apply)
+    else apply()
+    // Not on load, when nothing has changed from the user's point of view. A scheduled switch is spoken here, once;
+    // the toast is a labelled group, not a live region (docs/ACCESSIBILITY.md item 18).
+    if (!quiet) {
+      const said = this._keeping ? t('grid.keptProfile', { profile: this._keeping }) : t('grid.profile', { profile: profileName(t, profile) })
+      this._announce(said)
+    }
+    if (plan.toast) {
+      this._showToast(t('grid.profileSwitched', { profile: profileName(t, profile) }), {
+        label: t('grid.keepProfile', { previous: profileName(t, before) }),
+        run: () => this._keepPrevious(before),
+        // A locale change inside the toast's six seconds rewords it too.
+        words: (tt) => ({ text: tt('grid.profileSwitched', { profile: profileName(tt, profile) }), label: tt('grid.keepProfile', { previous: profileName(tt, before) }) }),
+        profile: true,
+      })
+    }
+  }
+
+  // ── The calm profile switch (RFC 0004 §3.3) ────────────────────────────
+
+  /**
+   * Fade the tiles out, apply while the board is clear, fade them in: half of --ts-motion each way, through the Web
+   * Animations API, so no transition and no style string is involved. Without animate, or under reduced motion, it just applies.
+   */
+  _crossfade(apply) {
+    this._endFade()
+    const board = this._board
+    const half = parseMs(getComputedStyle(this).getPropertyValue('--ts-motion'), DEFAULT_MOTION_MS) / 2
+    if (!this._motion() || typeof board.animate !== 'function' || !(half > 0)) return apply()
+    // The pinned strip is the board's twin on a phone, so it fades with it.
+    const targets = this._stripEl.hidden ? [board] : [board, this._stripEl]
+    const fade = { applied: false, anims: [], run: () => {
+      if (fade.applied) return
+      fade.applied = true
+      apply()
+    } }
+    const play = (from, to, fill) => targets.map((el) => el.animate([{ opacity: from }, { opacity: to }], { duration: half, easing: 'ease-in-out', fill }))
+    this._fade = fade
+    const out = play(1, 0, 'forwards')
+    fade.anims = out
+    out[0].finished.then(() => {
+      if (this._fade !== fade) return
+      fade.run()
+      const back = play(0, 1, 'none')
+      fade.anims = back
+      // The back fade now owns opacity; the held fill of the first can go.
+      for (const a of out) a.cancel()
+      const end = () => {
+        if (this._fade === fade) this._fade = null
+      }
+      back[0].finished.then(end, end)
+    }, () => {
+      // Cancelled by _endFade, which applies.
+    })
+  }
+
+  /** A crossfade in flight is cancelled and what it was waiting to apply is applied now. */
+  _endFade() {
+    const fade = this._fade
+    if (!fade) return
+    this._fade = null
+    for (const a of fade.anims) a.cancel()
+    fade.run()
+  }
+
+  /** The toast's Keep: the previous profile stays until the schedule next changes (Decision 47), said in the toast's own words. */
+  _keepPrevious(previous) {
+    const had = this.shadowRoot.activeElement === this._toastUndo
+    this._hideToast(false)
+    this._keeping = profileName(this.t, previous)
+    try {
+      this.override(previous)
+    } finally {
+      this._keeping = null
+    }
+    // The button went with the toast, and focus with it.
+    if (had) this._focusAfterNote()
+  }
+
+  /** Where focus goes when the button it was on is gone: the Edit layout button if there is one, else the grid. */
+  _focusAfterNote() {
+    if (!this._editBtn.hidden && !this._editing) this._editBtn.focus()
+    else this._focus(this)
+  }
+
+  // ── The first-run hint (RFC 0004 §3.2) ─────────────────────────────────
+
+  /** Show, move or hide the coach mark to match the attribute, the dismissal and what the grid is doing. */
+  _syncHint() {
+    const state = this._hintState
+    const populated = this._rendered && !!this._m && this._order.length + this._strip.length > 0
+    state.eligible(this.isConnected && populated && !this.locked && !this._editing && document.visibilityState !== 'hidden')
+    if (state.visible) this._placeHint()
+    else this._hideHint()
+  }
+
+  _makeCoach() {
+    const el = document.createElement('div')
+    el.className = 'coach'
+    el.setAttribute('part', 'hint')
+    // A note, not a live region: speaking at page load would interrupt, and Edit layout is already the first Tab stop.
+    el.setAttribute('role', 'note')
+    el.hidden = true
+    setHTML(el, COACH_HTML)
+    // After the board and the dock, so it follows the tiles in Tab order and moves none of them.
+    this.shadowRoot.insertBefore(el, this._status)
+    el.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('.coach-ok')) this._dismissHint()
+    })
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      this._dismissHint()
+    })
+    this._coach = { el, text: el.querySelector('.coach-text'), ok: el.querySelector('.coach-ok'), arrow: el.querySelector('.arrow') }
+    return this._coach
+  }
+
+  _placeHint() {
+    const id = visualOrder([...this._placements.values()])[0]
+    const box = id !== undefined && this._boxes.get(id)
+    if (!box) return this._hideHint()
+    const coach = this._coach || this._makeCoach()
+    const t = this.t
+    const text = t(hintKey(typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches))
+    if (coach.text.textContent !== text) coach.text.textContent = text
+    const ok = t('grid.hintDismiss')
+    if (coach.ok.textContent !== ok) coach.ok.textContent = ok
+    const appearing = coach.el.hidden
+    coach.el.hidden = false
+    // Written with element.style, which a strict style-src leaves alone; logical insets so it mirrors under rtl.
+    const home = this._inStrip(id) ? this._stripEl : this._board
+    const width = this._board.clientWidth
+    const wide = coach.el.offsetWidth
+    const high = coach.el.offsetHeight
+    const start = this._rtl ? width - (box.x + box.w) : box.x
+    const inline = Math.min(Math.max(0, start), Math.max(0, width - wide))
+    let block = home.offsetTop + box.y + box.h + 10
+    // With no room below the first tile it sits over the tile's lower part instead, and the arrow goes.
+    const over = block + high > this.offsetHeight
+    if (over) block = home.offsetTop + box.y + Math.max(0, box.h - high - 8)
+    coach.el.classList.toggle('over', over)
+    coach.el.style.insetInlineStart = `${inline}px`
+    coach.el.style.insetBlockStart = `${block}px`
+    coach.arrow.style.insetInlineStart = `${Math.max(12, Math.min(wide - 24, start + Math.min(box.w / 2, 36) - inline))}px`
+    if (appearing && this._motion() && coach.el.animate) {
+      coach.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' })
+      coach.arrow.animate([{ translate: '0 5px' }, { translate: '0 0' }], { duration: 480, easing: 'ease-out' })
+    }
+  }
+
+  _hideHint() {
+    if (this._coach && !this._coach.el.hidden) this._coach.el.hidden = true
+  }
+
+  /** The user pressed Got it or Escape. */
+  _dismissHint() {
+    const coach = this._coach
+    const focused = !!coach && this.shadowRoot.activeElement && coach.el.contains(this.shadowRoot.activeElement)
+    if (!this._hintEnd('dismiss')) return
+    this._syncHint()
+    if (focused) this._focusAfterNote()
+  }
+
+  /** End the hint for `reason` and tell the host, once. Removing the attribute is the host's own and fires nothing. */
+  _hintEnd(reason) {
+    const said = reason === 'edit' ? this._hintState.edit() : this._hintState.dismiss()
+    if (said) this._emit('ts-hint-dismiss', { reason: said })
+    return said
+  }
+
+  // ── The resize badge (RFC 0004 §3.1) ───────────────────────────────────
+
+  _badgeEl(id) {
+    const chrome = this._chromes.get(id)
+    return chrome ? chrome.querySelector('.badge') : null
+  }
+
+  _badgeStop(el) {
+    const running = this._badgeAnims.get(el)
+    if (!running) return
+    this._badgeAnims.delete(el)
+    running.cancel()
+  }
+
+  _badgeShow(id, text) {
+    const el = this._badgeEl(id)
+    if (!el) return
+    this._badgeStop(el)
+    if (el.textContent !== text) el.textContent = text
+    el.hidden = false
+  }
+
+  _badgeHide(id) {
+    const el = this._badgeEl(id)
+    if (!el) return
+    this._badgeStop(el)
+    el.hidden = true
+    el.textContent = ''
+  }
+
+  /** A second after release: it fades and leaves layout, or under reduced motion simply goes. */
+  _badgeFade(id) {
+    const el = this._badgeEl(id)
+    if (!el || el.hidden) return
+    if (!this._motion() || typeof el.animate !== 'function') return this._badgeHide(id)
+    const running = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: BADGE_FADE_MS, easing: 'ease-in', fill: 'forwards' })
+    this._badgeAnims.set(el, running)
+    const end = () => {
+      if (this._badgeAnims.get(el) !== running) return
+      this._badgeHide(id)
+    }
+    running.finished.then(end, () => {})
   }
 
   /** Apply a scheduled change that fell due while the user was editing or dragging. */
@@ -1796,6 +2079,7 @@ export class TsGrid extends Base {
   }
 
   _dropChrome(id) {
+    if (this._badge.tile === id) this._badge.clear()
     this._unwiggle(id)
     const chrome = this._chromes.get(id)
     if (chrome) chrome.remove()
@@ -1841,6 +2125,13 @@ export class TsGrid extends Base {
 
   _startEditing() {
     if (!this.isConnected) return
+    // Tiles are about to be handled: a crossfade in flight lands first, so nothing is left half-faded.
+    this._endFade()
+    // Read before the hint ends: hiding the card would drop focus to the body.
+    const onHint = !!this._coach && !!this.shadowRoot.activeElement && this._coach.el.contains(this.shadowRoot.activeElement)
+    // Edit mode ends the hint by whatever route it began, and the profile toast's Keep would change the board under a hand.
+    this._hintEnd('edit')
+    if (this._toastState && this._toastState.profile) this._hideToast(false)
     // Focus inside a tile would be dropped by inert; its handle is the same place in edit mode.
     const inside = document.activeElement && document.activeElement !== this && this.contains(document.activeElement) ? document.activeElement : null
     const focusId = inside && [...this._tiles].find(([, el]) => el.contains(inside))
@@ -1851,6 +2142,11 @@ export class TsGrid extends Base {
       this._wiggle(id)
     }
     if (focusId && this._chromes.has(focusId[0])) this._chromes.get(focusId[0]).querySelector('.handle').focus({ preventScroll: true })
+    else if (onHint) {
+      // Got it is about to be hidden; its tile's handle is where focus goes, never the body.
+      const first = this._chromes.get(visualOrder([...this._placements.values()])[0])
+      if (first) first.querySelector('.handle').focus({ preventScroll: true })
+    }
     document.addEventListener('keydown', this._onDocKeyDown)
     document.addEventListener('pointerdown', this._onDocPointerDown, true)
     this._syncControls()
@@ -1859,6 +2155,7 @@ export class TsGrid extends Base {
 
   _stopEditing() {
     if (this._gesture) this._cancelGesture()
+    this._badge.clear()
     // Tiles can take focus again before it is returned, or the origin tile would refuse it.
     this._restoreInert()
     // The order the user made is the one read from here on.
@@ -1988,6 +2285,7 @@ export class TsGrid extends Base {
         }
       }
     }
+    this._syncHint()
   }
 
   /** Open the linked picker, which returns focus to `opener` when it closes. */
@@ -2374,6 +2672,7 @@ export class TsGrid extends Base {
     if (!g) return
     if (g.kind === 'drag' || g.kind === 'resize') {
       clearTimeout(g.settle)
+      if (g.kind === 'resize') this._badge.clear()
       this._order = g.from
       if (g.fromStrip) this._strip = g.fromStrip
       this._render(true, g.id)
@@ -2456,6 +2755,10 @@ export class TsGrid extends Base {
     const extent = extentOf(w, h, this._m, { rtl: this._rtl })
     const item = this._item(g.id)
     const size = sizeForExtent(spec, extent.cols, extent.rows, this._columns, item.size)
+    if (g.badged !== size) {
+      g.badged = size
+      this._badge.show(g.id, badgeText(this.t, size))
+    }
     if (size !== item.size) {
       this._order = resizeItem(this._order, g.id, size, this._resolve)
       this._render(true)
@@ -2487,6 +2790,11 @@ export class TsGrid extends Base {
       if (this._editing && this._placements.has(g.id)) this._wiggle(g.id)
     }, this._motion() ? 240 : 0)
     const size = this._item(g.id).size
+    // The last pointer-up starts the badge's second; a tap that stepped the size shows it too.
+    if (g.moved || size !== g.size0) {
+      this._badge.show(g.id, badgeText(this.t, size))
+      this._badge.release()
+    }
     if (size !== g.size0) {
       this._commit('resize', g.id)
       this._announce(this.t('grid.resized', { label: this._label(g.id), size }))
@@ -2560,13 +2868,25 @@ export class TsGrid extends Base {
 
   // ── The undo toast ─────────────────────────────────────────────────────
 
-  /** Show the toast; false when the host turned it off, so the caller announces instead. */
-  _showToast(text) {
+  /**
+   * Show the toast; false when the host turned it off, so the caller announces instead. `action` is the button's
+   * `label` and `run`; without it the button is Undo. `profile: true` is a scheduled switch: a labelled group, not a
+   * live region, because the status region has already said it.
+   */
+  _showToast(text, action) {
     if (this.getAttribute('undo-toast') === 'off') return false
     const toast = this._toast
     const wasOn = !!this._toastState
     if (this._toastState) clearTimeout(this._toastState.timer)
-    this._toastState = { remaining: TOAST_MS, started: 0, timer: 0, hover: false, focus: false }
+    const group = !!(action && action.profile)
+    this._toastState = { remaining: TOAST_MS, started: 0, timer: 0, hover: false, focus: false, profile: group }
+    this._toastRun = action ? action.run : null
+    this._toastWords = group ? action.words : null
+    this._toastUndo.textContent = action ? action.label : this.t('grid.undo')
+    // The role before the text, so the words are never put into a live region that is about to stop being one.
+    toast.setAttribute('role', group ? 'group' : 'status')
+    if (group) toast.setAttribute('aria-label', text)
+    else toast.removeAttribute('aria-label')
     this._toastText.textContent = text
     this._toastUndo.tabIndex = 0
     toast.classList.add('on')
@@ -2601,11 +2921,23 @@ export class TsGrid extends Base {
       toast.classList.remove('on')
       this._toastText.textContent = ''
       this._toastUndo.tabIndex = -1
+      // Back to what it is when idle: the status region the next removal's words are put into.
+      toast.setAttribute('role', 'status')
+      toast.removeAttribute('aria-label')
+      this._toastRun = null
+      this._toastUndo.textContent = this.t('grid.undo')
     }
     // Focus on the button would be lost with it; hand it back to the grid.
     if (this.shadowRoot.activeElement === this._toastUndo) this._toastUndo.blur()
     if (animate && this._motion() && toast.animate) toast.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: 'ease-in' }).finished.then(off, off)
     else off()
+  }
+
+  /** The toast's button: Keep for a profile switch, Undo otherwise. */
+  _toastPress() {
+    const run = this._toastRun
+    if (run) run()
+    else this._undoFromToast()
   }
 
   _undoFromToast() {
@@ -2744,7 +3076,11 @@ export class TsGrid extends Base {
 
   _applyResize(id, size) {
     const item = this._item(id)
-    if (!item || size === item.size) return
+    if (!item) return
+    // Also at the end of the range, where the key changes nothing but the badge still says where the tile stands.
+    this._badge.show(id, badgeText(this.t, size))
+    this._badge.release()
+    if (size === item.size) return
     this._order = resizeItem(this._order, id, size, this._resolve)
     this._render(true)
     this._commit('resize', id)
