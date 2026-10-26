@@ -163,14 +163,22 @@ const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
 const remeasuredTwelfth = (maxKb) => ({ ...entry(maxKb), target: 're-measured on the integrated 0.3.0 base (strict-CSP html.js and adopted stylesheets, ticker and gating, strip and layout list messages), RFC 0003 §25', date: '2026-10-26' })
 // A new entry (mini-chart, 2026-10-26): the mini chart measures 26,800 B bundled with the core, so 29,480 B with 10 %, which
 // rounds up to 29 kB. Emberwick, its optional peer, is external and not counted.
+// Three new entries (more-generic-widgets, 2026-10-26): the breakdown measures 26,374 B bundled with the core, so 29,011 B
+// with 10 %, which rounds up to 28.5 kB; the status 24,719 B, so 27,191 B, which rounds up to 27 kB; the feed 24,339 B, so
+// 26,773 B, which rounds up to 26.5 kB.
+const genericEntry = (maxKb) => ({ ...newEntry(maxKb), target: 'new entry, RFC 0004 §4.5, per-entry, measured + 10 %', date: '2026-10-26' })
+// The chart and controls rows alone (more-generic-widgets, 2026-10-26): this story's breakdown.*, status.* and feed.* message
+// keys joined the shared core, which took the chart to 30,761 B bundled and the controls to 17,501 B. Each is reset to measured
+// + 10 %, rounded up to the next 0.5 kB: 33,837 B gives 33.5 kB and 19,251 B gives 19 kB. Authorised by the orchestrator (RFC 0003 §25).
+const remeasuredThirteenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured after the breakdown.*, status.* and feed.* messages joined the shared core, RFC 0003 §25', date: '2026-10-26' })
 const ENTRY_BUDGETS = {
-  controls: remeasuredNinth(17),
+  controls: remeasuredThirteenth(19),
   'edge-stats': remeasuredTwelfth(28.5),
   'capital-funding': remeasuredTwelfth(29.5),
   grid: remeasuredTenth(35),
   card: remeasuredTwelfth(25.5),
   metric: remeasuredTwelfth(27.5),
-  chart: remeasuredNinth(30),
+  chart: remeasuredThirteenth(33.5),
   'today-pnl': remeasuredTwelfth(29.5),
   'equity-curve': remeasuredTwelfth(29.5),
   'session-clock': remeasuredEleventh(26),
@@ -181,6 +189,9 @@ const ENTRY_BUDGETS = {
   'pnl-calendar': remeasuredTwelfth(30),
   'layout-list': remeasuredTwelfth(15),
   'mini-chart': { ...newEntry(29), date: '2026-10-26' },
+  breakdown: genericEntry(28.5),
+  status: genericEntry(27),
+  feed: genericEntry(26.5),
 }
 
 /**

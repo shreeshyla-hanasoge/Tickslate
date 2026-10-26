@@ -21,7 +21,7 @@ describe('the built-in catalog', () => {
 
   test('the categories are the four of RFC 0003 §18.1', () => {
     const by = (category) => Object.entries(WIDGETS).filter(([, s]) => s.category === category).map(([k]) => k).sort()
-    assert.deepEqual(by('General'), ['card', 'chart', 'metric', 'progress', 'table'])
+    assert.deepEqual(by('General'), ['breakdown', 'card', 'chart', 'feed', 'metric', 'progress', 'status', 'table'])
     assert.deepEqual(by('Performance'), ['edgeStats', 'equityCurve', 'pnlCalendar', 'todayPnl'])
     assert.deepEqual(by('Accounts'), ['capitalFunding', 'openPositions'])
     assert.deepEqual(by('Markets'), ['miniChart', 'sessionClock', 'watchlist'])

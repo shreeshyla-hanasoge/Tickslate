@@ -162,6 +162,12 @@ export function dataFor(tag, scale = 1) {
       return { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
     case 'ts-mini-chart':
       return miniChart(scale)
+    case 'ts-breakdown':
+      return breakdownData({ scale })
+    case 'ts-status':
+      return statusData({ scale })
+    case 'ts-feed':
+      return feedData({ scale })
     default:
       return null
   }
@@ -344,4 +350,57 @@ export function fundingData(scale = 1) {
     asOf: FROZEN,
     live: true,
   }
+}
+
+// ── Breakdown, status and feed ────────────────────────────────────────────
+const PARTS = ['Equities', 'Bonds', 'Cash', 'Gold', 'Property', 'Commodities', 'Private credit', 'Crypto']
+
+/** An allocation of `n` parts. A negative scale keeps the parts positive: the magnitude is in the first label, so S still shows the data changing. */
+export function breakdownData({ n = 7, scale = 1, negative = false, note = true } = {}) {
+  const k = Math.abs(scale)
+  const m = magnitude(scale)
+  const rng = seeded(31)
+  const slices = Array.from({ length: n }, (_, i) => ({
+    id: `p${i}`,
+    label: i === 0 ? `${PARTS[0]} ${m}` : PARTS[i % PARTS.length],
+    value: Math.round((900 - i * 95 + rng() * 60) * 100) * k,
+    ...(note && i < 4 ? { note: ['Large and mid caps', 'Government and corporate', 'Money market', 'Bullion and funds'][i] } : {}),
+  }))
+  if (negative) slices.push({ id: 'neg', label: 'Short', value: -4000 * k })
+  return { slices, format: 'money', decimals: 0, asOf: FROZEN, live: true }
+}
+
+const SERVICES = ['Orders API', 'Price feed', 'Ledger', 'Email', 'Reports', 'Search', 'Auth', 'Storage']
+
+/** Services in the four states. The count and the number that are OK follow the magnitude, so S (the summary alone) changes with the data. */
+export function statusData({ scale = 1, step = 0 } = {}) {
+  const m = magnitude(scale)
+  const total = 3 + (m % 6)
+  const ok = m % (total + 1)
+  const bad = ['degraded', 'down', 'unknown']
+  const details = { degraded: 'Elevated latency', down: 'Connection refused', unknown: 'No heartbeat' }
+  const rows = Array.from({ length: total }, (_, i) => {
+    const state = i < ok ? 'ok' : bad[(i - ok + step) % 3]
+    return { id: `s${i}`, name: SERVICES[i % SERVICES.length], state, ...(state === 'ok' ? {} : { detail: details[state], since: FROZEN - (7 + i * 13) * 60000 }) }
+  })
+  return { rows, asOf: FROZEN, live: true }
+}
+
+const EVENTS = [['Order filled', 'Fill', 'pos', '50 at 128.00'], ['Latency above limit', 'Alert', 'warn', 'Price feed, 480 ms'], ['Stop hit', 'Exit', 'neg', 'Gap fade, 25 at 94.10'], ['Session opened', '', undefined, ''], ['Margin call cleared', 'Risk', 'pos', 'Account A'], ['Order rejected', 'Reject', 'neg', 'Insufficient funds']]
+
+/** `n` events, newest first. `step` puts that many newer events at the front, with ids that continue the count, so a tick prepends. */
+export function feedData({ n = 14, step = 0, scale = 1 } = {}) {
+  const m = magnitude(scale)
+  const items = Array.from({ length: n + step }, (_, i) => {
+    const id = n + step - i
+    const [text, tag, tone, detail] = EVENTS[id % EVENTS.length]
+    return {
+      id,
+      text: i === 0 ? `${text} ${m}` : text,
+      time: FROZEN - (i * 7 + 1) * 60000 * (i > 9 ? 120 : 1),
+      ...(tag ? { tag, tone } : {}),
+      ...(detail ? { detail } : {}),
+    }
+  })
+  return { items, asOf: FROZEN + step * 1000, live: true }
 }
