@@ -44,25 +44,15 @@ test.describe('visual baselines', () => {
         test.setTimeout(120000)
         await page.emulateMedia({ colorScheme: 'light' })
         await page.setViewportSize(size)
-        // A table decides how many columns it keeps from what it measures around its first draw, and on about one
-        // load in ten that lands one column short whatever the settling time. Load until two loads in a row show the
-        // same columns, so a baseline is never one of the stray states.
-        const load = async () => {
-          await page.goto(`${PAGE}?theme=${theme}&exact=1`)
-          await page.waitForFunction(() => window.__ready === true)
-          await drawn(page)
-          return page.evaluate(async () => {
-            await document.fonts.ready
-            for (let i = 0; i < 6; i++) await window.__fx.nextFrame()
-            return [...document.querySelectorAll('ts-table')].map((el) => el.shadowRoot.querySelectorAll('thead th').length).join(',')
-          })
-        }
-        let seen = await load()
-        for (let tries = 0; tries < 6; tries++) {
-          const again = await load()
-          if (again === seen) break
-          seen = again
-        }
+        // A table keeps one dropped column per measured draw (RFC 0003 §23), so every load shows the same columns:
+        // ten loads on each of webkit, firefox and chromium agree, and one load is enough for a baseline.
+        await page.goto(`${PAGE}?theme=${theme}&exact=1`)
+        await page.waitForFunction(() => window.__ready === true)
+        await drawn(page)
+        await page.evaluate(async () => {
+          await document.fonts.ready
+          for (let i = 0; i < 6; i++) await window.__fx.nextFrame()
+        })
         // On the phone, a tile that fits at its nominal width looks the same as on the desktop, so only the tiles the viewport narrows get a phone shot.
         const entries = await page.evaluate((phone) => window.__fx.entries.map((e) => ({
           ...e,

@@ -13,6 +13,7 @@
 import { TsWidget, sk, syncedParts, header, arrowFor } from './widget.js'
 import { EN, toNumber, toTime } from '../core/index.js'
 import { createRows, setText } from './rows.js'
+import { DEV, warnOnce } from './dev.js'
 
 /** No column is narrower than this, so the budget keeps at most width / 56 of them. */
 export const MIN_COLUMN = 56
@@ -41,6 +42,21 @@ function collatorFor(locale) {
   return c
 }
 
+/** No fixed column is narrower than this, in CSS pixels (RFC 0004 §11.1). */
+export const MIN_FIXED = 40
+
+/**
+ * 'content', 'fill', a number of 40 or more, or 'shared' (unset: today's equal share). Anything else is
+ * unset too, with one development warning, so a typo never hides a column.
+ */
+function readWidth(key, width) {
+  if (width === undefined) return 'shared'
+  if (width === 'content' || width === 'fill') return width
+  if (typeof width === 'number' && Number.isFinite(width) && width >= MIN_FIXED) return width
+  if (DEV) warnOnce(`table-width:${key}`, `<ts-table> column "${key}" has width ${JSON.stringify(width)}; use 'content', 'fill' or a number of ${MIN_FIXED} or more. It is treated as unset.`)
+  return 'shared'
+}
+
 /** The columns that can be drawn: an object with a key, the first of each key. */
 function readColumns(columns) {
   const out = []
@@ -60,6 +76,7 @@ function readColumns(columns) {
       priority: Number.isFinite(c.priority) ? c.priority : out.length,
       sortable: c.sortable !== false,
       numeric: NUMERIC.includes(format),
+      width: readWidth(c.key, c.width),
     })
   }
   return out
@@ -159,6 +176,8 @@ export function tableModel(data, variant, ctx, o = {}) {
   const all = readColumns(d.columns)
   const kept = budget(all, o.width)
   const { out, dropped } = readRows(d.rows)
+  // A table of content columns only lets the last one fill, or the browser would stretch them all.
+  const widths = kept.map((c, i) => (c.width === 'content' && i === kept.length - 1 && kept.every((k) => k.width === 'content') ? 'fill' : c.width))
 
   const want = isObj(d.sort) ? d.sort : null
   const sortCol = want ? all.find((c) => c.key === want.key) : null
@@ -174,13 +193,14 @@ export function tableModel(data, variant, ctx, o = {}) {
 
   return {
     ariaLabel: summary,
-    columns: kept.map((c) => ({
+    columns: kept.map((c, i) => ({
       key: c.key,
       label: c.label,
       align: c.align,
       sortable: c.sortable,
       sort: sort && sort.key === c.key ? (dir === 'desc' ? 'descending' : 'ascending') : 'none',
       numeric: c.numeric,
+      width: widths[i],
     })),
     rows: ordered.map((row) => ({
       id: row.id,
@@ -208,6 +228,7 @@ ${header({ dot: true, meta: true })}
 <div class="scroll" data-k="scroll" role="group" tabindex="0">
 <table part="table" data-k="table">
 <caption class="visually-hidden" data-k="caption"></caption>
+<colgroup data-k="cols"></colgroup>
 <thead><tr data-k="head"></tr></thead>
 <tbody data-k="body"></tbody>
 </table>
@@ -224,6 +245,10 @@ table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-si
 th, td { box-sizing: border-box; min-inline-size: ${MIN_COLUMN}px; padding: 7px 8px; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A text column gives way to the figures beside it, down to the 56px floor, and ends in an ellipsis; a figure is never cut. */
 .t { max-inline-size: 0; inline-size: 100%; }
+/* A content column takes its widest text and no more, up to half the table; the browser's own table layout does the sums.
+   A fixed column keeps the width its <col> was given and does not take part in the share. Both come after .t to win. */
+th.wc, td.wc { inline-size: 1%; max-inline-size: 50%; }
+th.wf, td.wf { inline-size: auto; max-inline-size: 0; }
 th:first-child, td:first-child { padding-inline-start: 0; }
 th:last-child, td:last-child { padding-inline-end: 0; }
 .start { text-align: start; }
@@ -263,6 +288,9 @@ th.end .sort { flex-direction: row-reverse; }
 
 // The glyph beside a sorted header: decoration, the state is in aria-sort.
 const SORT_GLYPH = { ascending: '↑', descending: '↓', none: '' }
+
+// content: wc; a number: wf; fill and shared: none (they share what is left, as today).
+const widthClass = (w) => (w === 'content' ? ' wc' : typeof w === 'number' ? ' wf' : '')
 
 const setAttr = (el, name, value) => {
   if (el.getAttribute(name) !== value) el.setAttribute(name, value)
@@ -319,6 +347,8 @@ export class TsTable extends TsWidget {
     this._extra = 0
     // True from the moment _fit asks for a new draw until that draw has been measured.
     this._fitAsked = false
+    // False until a measured draw needs nothing more: until then each draw _fit asks for is owed even out of view.
+    this._fitted = false
     this._fitData = undefined
     this._active = undefined
     this._userSort = null
@@ -439,6 +469,7 @@ export class TsTable extends TsWidget {
     this._selectable = this.actionEnabled(ACTION_SELECT)
     if (this._selectable && !vm.rows.some((r) => r.id === this._active)) this._active = vm.rows.length ? vm.rows[0].id : undefined
     this._bind()
+    this._writeCols(vm.columns)
     this._heads.sync(vm.columns.map((c) => ({ ...c, id: c.key })))
     this._rows.sync(vm.rows)
     this._measure(scroll)
@@ -478,8 +509,25 @@ export class TsTable extends TsWidget {
     }
   }
 
+  /** One <col> per drawn column; a fixed width goes in through the CSSOM, never markup (RFC 0004 §11.1). */
+  _writeCols(columns) {
+    const group = this.$('[data-k="cols"]')
+    if (!group) return
+    const doc = this.ownerDocument
+    while (group.children.length > columns.length) group.removeChild(group.lastChild)
+    columns.forEach((c, i) => {
+      let col = group.children[i]
+      if (!col) {
+        col = doc.createElement('col')
+        group.appendChild(col)
+      }
+      const want = typeof c.width === 'number' ? `${c.width}px` : ''
+      if (col.style && col.style.inlineSize !== want) col.style.inlineSize = want
+    })
+  }
+
   _writeHead(th, col, doc) {
-    setAttr(th, 'class', `${col.align}${col.numeric ? '' : ' t'}`)
+    setAttr(th, 'class', `${col.align}${col.numeric ? '' : ' t'}${widthClass(col.width)}`)
     setAttr(th, 'aria-sort', col.sort)
     // A column that stops being sortable (or starts) swaps the button for plain text, never the cell.
     const want = col.sortable ? 'button' : 'span'
@@ -521,7 +569,7 @@ export class TsTable extends TsWidget {
         td.appendChild(doc.createElement('span'))
         tr.appendChild(td)
       }
-      const cls = `${col.align}${col.numeric ? ' n' : ' t'}${cell.tone === 'mut' ? '' : ` ${cell.tone}`}`
+      const cls = `${col.align}${col.numeric ? ' n' : ' t'}${widthClass(col.width)}${cell.tone === 'mut' ? '' : ` ${cell.tone}`}`
       setAttr(td, 'class', cls)
       // The arrow and the value are the last two children; the row button, when there is one, is first.
       setText(td.children[td.children.length - 2], cell.arrow)
@@ -593,12 +641,24 @@ export class TsTable extends TsWidget {
     if (slots !== this._slots) {
       this._slots = slots
       this._extra = 0
-      this._fitAsked = true
-      this.requestRender()
+      this._ask()
     } else if (!this._fitAsked && width > 0 && scroll.scrollWidth > width + 1 && this._cols.length > 1) {
       this._extra++
-      this._fitAsked = true
-      this.requestRender()
+      this._ask()
+    } else if (!this._fitAsked && width > 0) {
+      this._fitted = true
+      this._drawOwed = false
     }
+  }
+
+  /**
+   * Asks for the draw that follows a change in what fits. The first fit is owed even to a table further than a screen
+   * from the viewport, which would otherwise keep the columns it measured to be too many until someone scrolled to it
+   * (a full-page screenshot, or a find in the page, reads such a table as it stands).
+   */
+  _ask() {
+    this._fitAsked = true
+    if (!this._fitted) this._drawOwed = true
+    this.requestRender()
   }
 }

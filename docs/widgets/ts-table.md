@@ -41,6 +41,13 @@ interface TableColumn {
   priority?: number
   /** Default true. */
   sortable?: boolean
+  /**
+   * 'content': as wide as its widest text (the header or any cell), up to half the table.
+   * 'fill': shares what is left with the other 'fill' and unset columns.
+   * A number: that many CSS pixels, at least 40.
+   * Unset (the default): an equal share with the other unset columns.
+   */
+  width?: 'content' | 'fill' | number
 }
 
 interface TableData {
@@ -55,6 +62,30 @@ interface TableData {
   live?: boolean
 }
 ```
+
+**Column widths.** By default every column gets a share of the table and a text
+column takes what the figures leave. Set `width: 'content'` on a column that
+should take only its text, such as an instrument symbol: it is as wide as its
+widest cell (or its header), never more than half the table, and a text cell cut
+at that limit ends in an ellipsis with its full text as its `title`. The other
+columns share the rest. A number is a fixed width in CSS pixels, at least 40; a
+number below 40, a number that is not finite and any other value are treated as
+unset, with one development warning. A table whose columns set no `width` renders as
+it always did, and a table with only `'content'` columns lets the last one fill.
+
+```js
+columns: [
+  { key: 'sym', label: 'Instrument', width: 'content' },
+  { key: 'qty', label: 'Qty', format: 'number' },
+  { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign' },
+]
+```
+
+`width` does not change which columns are kept. The budget still keeps
+`floor(width / 56)` columns and hides the highest `priority` number first, whatever
+the widths: a fixed column counts as one slot too. A table that still overflows once
+drawn drops one more column at a time, by the same priority, so a wide content
+column on a phone gives up a low-priority figure rather than clipping one.
 
 Every row needs an `id`, a string or a number, and it must be unique: that is how
 a live update finds the row to change. A row with none, a repeated one, or one that

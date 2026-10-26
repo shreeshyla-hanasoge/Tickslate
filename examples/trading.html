@@ -161,7 +161,7 @@
 </dialog>
 
 <script type="module">
-  import { createCalendar, createFormatter, presets, edgeStats, histogram, funding, localDate, zonedTime } from 'tickslate'
+  import { configure, createCalendar, createFormatter, presets, edgeStats, histogram, funding, localDate, zonedTime } from 'tickslate'
   import { persistLayout } from 'tickslate/elements'
 
   const TZ = 'Asia/Kolkata'
@@ -180,7 +180,9 @@
 
   let offset = 0
   const now = () => Date.now() + offset
-  grid.clock = now
+  // One clock for the page: every grid and tile without a clock of its own reads it. Calling configure() again
+  // after the offset moves is what makes them read it again.
+  configure({ clock: now })
   const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: TZ })
 
   // ── The layouts: one arrangement while the market is open, another after the close ──
@@ -598,10 +600,10 @@
   bind('capitalFunding', () => ({ accounts, ...stamp() }))
 
   const FILL_COLUMNS = [
-    // The table gives its spare width to the first column today, so the text column goes first.
-    { key: 'sym', label: 'Instrument', priority: 0 },
-    { key: 'time', label: 'Time', format: 'time', priority: 1 },
-    { key: 'side', label: 'Side', priority: 4 },
+    // The instrument takes what its longest name needs; the other columns share the rest.
+    { key: 'sym', label: 'Instrument', priority: 0, width: 'content' },
+    { key: 'time', label: 'Time', format: 'time', priority: 1, width: 'content' },
+    { key: 'side', label: 'Side', priority: 4, width: 'content' },
     { key: 'qty', label: 'Qty', format: 'number', decimals: 0, priority: 3 },
     { key: 'price', label: 'Price', format: 'number', decimals: 2, priority: 5 },
     { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', priority: 2 },
@@ -625,7 +627,6 @@
     fills: ['select', 'retry'],
   }
   function setUpTile(el) {
-    el.clock = now
     el.actions = ACTIONS[el.getAttribute('item')] || ['retry']
   }
   for (const el of grid.children) if ('actions' in el) setUpTile(el)
@@ -909,14 +910,14 @@
     const [date, clockTime] = pretend.value.split('T')
     const [h, m, s = '00'] = clockTime.split(':')
     offset = zonedTime(date, `${h}:${m}`, TZ) + Number(s) * 1000 - Date.now()
-    grid.clock = now
+    configure({ clock: now })
     tick()
     reload('Clock moved: the day was loaded again')
   })
   document.getElementById('live').addEventListener('click', () => {
     offset = 0
     pretend.value = ''
-    grid.clock = now
+    configure({ clock: now })
     tick()
     reload('Back on the real clock')
   })

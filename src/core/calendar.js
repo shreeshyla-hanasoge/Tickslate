@@ -13,6 +13,7 @@
  * window whole.
  */
 
+import { pageNow } from './format.js'
 import { DATE_RE, TIME_RE, addDays, isDaylightSaving, localDate, weekday, zonedTime } from './zone.js'
 
 const MINUTE = 60000
@@ -34,7 +35,7 @@ export function createCalendar(input) {
   }
   if (input.now !== undefined && !Number.isFinite(input.now)) throw new TypeError('createCalendar: now must be a number of milliseconds')
   // Read once (Decision 53): the one place the core asks the clock, and `now` makes it deterministic.
-  const createdAt = input.now === undefined ? Date.now() : input.now
+  const createdAt = input.now === undefined ? pageNow() : input.now
   const given = input.holidays || {}
   for (const key of Object.keys(given)) {
     if (!Array.isArray(given[key]) || !given[key].every((d) => DATE_RE.test(d))) {
