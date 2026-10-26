@@ -157,6 +157,10 @@ const remeasuredEleventh = (maxKb) => ({ ...entry(maxKb), target: 're-measured a
 // A new entry (layout-list-editor, 2026-10-25): the layout list measures 11,196 B bundled with the core, so 12,316 B with
 // 10 %, which rounds up to 12.5 kB.
 const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
+// Three new entries (more-generic-widgets, 2026-10-26): the breakdown measures 26,374 B bundled with the core, so 29,011 B
+// with 10 %, which rounds up to 28.5 kB; the status 24,719 B, so 27,191 B, which rounds up to 27 kB; the feed 24,339 B, so
+// 26,773 B, which rounds up to 26.5 kB.
+const genericEntry = (maxKb) => ({ ...newEntry(maxKb), target: 'new entry, RFC 0004 §4.5, per-entry, measured + 10 %', date: '2026-10-26' })
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
   'edge-stats': newEntry(24.5),
@@ -174,6 +178,9 @@ const ENTRY_BUDGETS = {
   progress: newEntry(22),
   'pnl-calendar': newEntry(25.5),
   'layout-list': layoutListEntry(12.5),
+  breakdown: genericEntry(28.5),
+  status: genericEntry(27),
+  feed: genericEntry(26.5),
 }
 
 /**

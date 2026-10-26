@@ -1160,7 +1160,7 @@ describe('a grid tells the widgets under it', () => {
 
 describe('the source', () => {
   const files = readdirSync(new URL('../src/elements/', import.meta.url)).filter((f) => f.endsWith('.js'))
-  const FAMILY = /^(widget|action|size|time|grid|pnl|equity|session|metric|chart|table|progress|funding|calendar|edge|watchlist|positions|picker|controls|list|category)\./
+  const FAMILY = /^(widget|action|size|time|grid|pnl|equity|session|metric|chart|table|progress|funding|calendar|edge|watchlist|positions|picker|controls|list|category|breakdown|status|feed)\./
 
   // Every string literal in the elements' source that is shaped like a key of one of the families, in single or double quotes or backticks.
   // A template literal with a ${…} in it is not a literal key; those are covered below, from the lists they are built from.

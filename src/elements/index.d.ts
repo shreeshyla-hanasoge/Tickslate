@@ -874,6 +874,209 @@ export declare class TsSessionClock extends TsWidget<SessionClockData> {
   addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
 }
 
+export interface BreakdownSlice {
+  /** A stable key for the legend row. Defaults to the label. */
+  id?: string | number
+  label: string
+  /** A non-negative amount. A negative value is left out and reported; one that is not a number is dropped. */
+  value: Numeric
+  /** M and Tall: a short second line. */
+  note?: string
+}
+
+export interface BreakdownData extends WidgetFreshness {
+  slices: BreakdownSlice[]
+  /** How a slice's value is shown. Default 'number'. */
+  format?: 'number' | 'money' | 'percent' | 'duration'
+  decimals?: number
+  /** Formatted with fmt.unit: '182 ms'. */
+  unit?: string
+}
+
+export interface BreakdownModel {
+  /** 'Allocation: 5 parts, largest Equities 41.2%', or 'Allocation: nothing to break down'. */
+  ariaLabel: string
+  /** S draws a share bar, Wide and Tall a stacked bar, M a donut. */
+  kind: 'share' | 'stacked' | 'donut'
+  /** The sum of the kept values, formatted; '' with nothing to show. */
+  total: string
+  /** 'Total 1,00,000', the text in the donut's middle; '' with nothing to show. */
+  totalText: string
+  /** Largest first. More than six parts are the largest five and one folded 'Other'. */
+  slices: Array<{
+    key: string
+    label: string
+    value: string
+    /** One decimal; the percentages of all slices sum to 100.0. */
+    pct: string
+    /** 0..1, the true share, for drawing. */
+    fraction: number
+    /** 1 to 6 picks --ts-series-<n>; 0 is the folded 'Other' (--ts-axis). */
+    index: number
+    other: boolean
+    note: string
+  }>
+  /** Donut only: one ring segment for each slice with a positive share. */
+  arcs: Array<{ key: string; d: string; index: number }>
+  /** Negative values left out. */
+  excluded: number
+  /** '1 negative value left out', or ''. */
+  note: string
+  /** Slices that could not be read: not an object, or a value that is not a number. */
+  dropped: number
+  /** Whether there is anything to draw. */
+  drawn: boolean
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-breakdown>, sizes S · Wide · Tall · M. Parts of a whole, as a share bar, a stacked bar or a donut, each part with its label and percentage in text.
+ *
+ * @element ts-breakdown
+ * @fires {CustomEvent<TsBreakdownAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart bar - The share bar or the stacked bar.
+ * @csspart chart - The donut.
+ * @csspart legend - The list of parts.
+ * @csspart item - One part of the legend.
+ */
+export declare class TsBreakdown extends TsWidget<BreakdownData> {
+  addEventListener(type: 'ts-action', listener: (this: TsBreakdown, ev: CustomEvent<TsBreakdownAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsBreakdown, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: shares that sum to 100.0%, the folded Other, the arcs and the accessible name. */
+  static breakdownModel(data: BreakdownData, variant: SizeName, ctx: ViewModelContext): BreakdownModel
+}
+
+export type StatusState = 'ok' | 'degraded' | 'down' | 'unknown'
+
+export interface StatusRow {
+  /** Matched by `id`, so a change of state writes that row's cells and nothing else. */
+  id: string | number
+  name: string
+  state: StatusState
+  /** M: a short sentence, 'Elevated latency'. */
+  detail?: string
+  /** M: when it entered this state. */
+  since?: Time
+}
+
+export interface StatusData extends WidgetFreshness {
+  /** Shown in the host's order; the widget does not sort. */
+  rows: StatusRow[]
+}
+
+export interface StatusModel {
+  /** 'Services, 3 of 4 OK, Degraded'; the state is left off when everything is OK. */
+  ariaLabel: string
+  /** The worst state present: down, then degraded, then unknown, then ok. 'unknown' with no rows. */
+  overall: StatusState
+  /** The overall state in words, or '' with no rows. */
+  overallText: string
+  /** '3 of 4 OK'. */
+  summary: string
+  counts: { ok: number; degraded: number; down: number; unknown: number }
+  rows: Array<{
+    id: string | number
+    name: string
+    state: StatusState
+    /** 'OK', 'Degraded', 'Down' or 'Unknown'. */
+    stateText: string
+    detail: string
+    /** The age, '12 min ago', or ''. */
+    since: string
+    /** 'since 12 min ago', or ''. */
+    sinceText: string
+    /** 'Price feed, Degraded', the row's name. */
+    aria: string
+  }>
+  /** Rows that can be read. */
+  total: number
+  /** Rows that could not be read: no id, no name, a repeated id or a state that is not one of the four. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-status>, sizes S · Tall · M. Whether each service is working: a dot whose shape differs by state, and the state in words.
+ *
+ * @element ts-status
+ * @fires {CustomEvent<TsStatusAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart table - The table of services.
+ * @csspart row - One service.
+ * @csspart cell - A cell of a service's row.
+ * @csspart dot - The state's mark.
+ */
+export declare class TsStatus extends TsWidget<StatusData> {
+  addEventListener(type: 'ts-action', listener: (this: TsStatus, ev: CustomEvent<TsStatusAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsStatus, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: the states in words, the overall state and the accessible name. */
+  static statusModel(data: StatusData, variant: SizeName, ctx: ViewModelContext): StatusModel
+}
+
+export interface FeedItem {
+  /** Matched by `id`, so a new item inserts one row and the rest are untouched. */
+  id: string | number
+  /** The event, in the host's words. */
+  text: string
+  time?: Time
+  /** A short word beside it: 'Fill', 'Alert'. */
+  tag?: string
+  /** Colours the tag; the tag's own text carries the meaning. Ignored without a tag. */
+  tone?: 'pos' | 'neg' | 'warn'
+  /** M and L: a second line. */
+  detail?: string
+}
+
+export interface FeedData extends WidgetFreshness {
+  /** Newest first, as the host keeps them. */
+  items: FeedItem[]
+  /** How many to show. Default 50, at least 1. */
+  max?: number
+}
+
+export interface FeedModel {
+  /** 'Activity, 12 events, latest: Order filled'. */
+  ariaLabel: string
+  items: Array<{
+    id: string | number
+    text: string
+    /** The clock for today, else the day and the clock; '' without a time. */
+    time: string
+    tag: string
+    tone: 'pos' | 'neg' | 'warn' | 'mut'
+    detail: string
+    /** '11:40, Fill: Order filled'; '' without a time. */
+    aria: string
+  }>
+  /** Items beyond `max`, not shown. */
+  hidden: number
+  /** '12 older events not shown', or ''. */
+  more: string
+  /** Items that could not be read: no id, no text or a repeated id. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-feed>, sizes Tall · M · L. The latest events, newest first. It never announces an arrival.
+ *
+ * @element ts-feed
+ * @fires {CustomEvent<TsFeedAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart list - The list of events.
+ * @csspart item - One event.
+ */
+export declare class TsFeed extends TsWidget<FeedData> {
+  addEventListener(type: 'ts-action', listener: (this: TsFeed, ev: CustomEvent<TsFeedAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsFeed, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: the items shown, those beyond `max`, and the accessible name. */
+  static feedModel(data: FeedData, variant: SizeName, ctx: ViewModelContext): FeedModel
+}
+
 export type TsCardAction = TsCommonAction
 export type TsMetricAction = TsCommonAction
 export type TsProgressAction = TsCommonAction
@@ -892,6 +1095,9 @@ export type TsCapitalFundingAction = TsCommonAction | { action: 'rebalance'; id:
 export type TsTodayPnlAction = TsCommonAction
 export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
 export type TsSessionClockAction = TsCommonAction
+export type TsBreakdownAction = TsCommonAction
+export type TsStatusAction = TsCommonAction
+export type TsFeedAction = TsCommonAction
 
 /**
  * The markup of <ts-grid>, for the manifest. Its class, with the prose above its members, is in
@@ -1034,5 +1240,8 @@ declare global {
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock
+    'ts-breakdown': TsBreakdown
+    'ts-status': TsStatus
+    'ts-feed': TsFeed
   }
 }

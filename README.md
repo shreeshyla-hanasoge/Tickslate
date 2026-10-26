@@ -13,7 +13,7 @@ fetches anything.
   move, drag the corner to resize, and Undo or Add back after a removal.
 - **Generic widgets.** `<ts-metric>` (a KPI tile with change, sparkline and
   target), `<ts-chart>` (line, area and bar trends), `<ts-progress>` (a value
-  against a goal or limit) and `<ts-card>` (a themed tile
+  against a goal or limit), `<ts-breakdown>` (parts of a whole), `<ts-status>` (service health), `<ts-feed>` (the latest events) and `<ts-card>` (a themed tile
   for any content, such as your own Chart.js or ECharts chart).
 - **A finance set.** Today's P&L, an equity curve, an exchange session clock,
   a watchlist and open positions, a P&L calendar, edge stats and capital
@@ -51,7 +51,7 @@ import 'tickslate/elements/metric'
 ```
 
 The entries are `grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`,
-`session-clock`, `table`, `progress`, `watchlist`, `open-positions`,
+`session-clock`, `table`, `progress`, `breakdown`, `status`, `feed`, `watchlist`, `open-positions`,
 `pnl-calendar`, `edge-stats`, `capital-funding`, `controls`
 (`<ts-widget-picker>` and `<ts-grid-controls>`) and `layout-list`. The development builds, with
 their warnings, load through the `development` export condition.
@@ -286,6 +286,9 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 | `<ts-session-clock>` | S, Banner | Exchange session status |
 | `<ts-table>` | Tall, M, L, XL | Typed, sortable columns |
 | `<ts-progress>` | S, Wide | A value against a goal or a limit |
+| `<ts-breakdown>` | S, Wide, Tall, M | Parts of a whole as a share bar, stacked bar or donut |
+| `<ts-status>` | S, Tall, M | Whether each service is working, in words and a dot |
+| `<ts-feed>` | Tall, M, L | The latest events, newest first |
 | `<ts-watchlist>` | S, Tall, M | Instruments with price, change and day range |
 | `<ts-open-positions>` | Wide, M, L | Open positions, profit or loss and stop-to-target bar |
 | `<ts-pnl-calendar>` | Tall, M, Banner | Heat map of daily profit and loss |

@@ -10,7 +10,7 @@ export const card: Props<'ts-card'> = { sizes: 'S Wide', live: true }
 export const grid: Props<'ts-grid'> = {
   editing: true,
   onTsLayoutChange: (e) => {
-    const reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' | 'strip' = e.detail.reason
+    const reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' = e.detail.reason
     void reason
   },
 }

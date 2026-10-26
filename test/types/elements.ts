@@ -56,7 +56,7 @@ export const sameAction: MetricActionFromEntry = open
 // The grid's own events keep their details.
 const grid: TsGrid = document.createElement('ts-grid')
 grid.addEventListener('ts-layout-change', (e) => {
-  const reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' | 'strip' = e.detail.reason
+  const reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' = e.detail.reason
   void reason
 })
 
@@ -102,4 +102,36 @@ positions.addEventListener('ts-action', (e) => {
   }
   // @ts-expect-error a list of positions never sends 'sort'
   if (a.action === 'sort') void 0
+})
+
+// <ts-breakdown>, <ts-status> and <ts-feed>: typed data, and the common action union only.
+import type { TsBreakdownAction, TsStatusAction, TsFeedAction, StatusState } from 'tickslate/elements'
+
+const breakdown = document.createElement('ts-breakdown')
+breakdown.data = { slices: [{ id: 'eq', label: 'Equities', value: '41200.5', note: 'Large caps' }, { label: 'Bonds', value: 23800 }], format: 'money', decimals: 0 }
+// @ts-expect-error `amount` is not a key of a slice
+breakdown.data = { slices: [{ label: 'a', amount: 1 }] }
+breakdown.addEventListener('ts-action', (e) => {
+  const a: TsBreakdownAction = e.detail
+  // @ts-expect-error nothing in a breakdown opts in to an action
+  if (a.action === 'select') void 0
+})
+
+const status = document.createElement('ts-status')
+const state: StatusState = 'degraded'
+status.data = { rows: [{ id: 'api', name: 'Orders API', state, detail: 'Elevated latency', since: 1 }] }
+// @ts-expect-error a state is ok, degraded, down or unknown
+status.data = { rows: [{ id: 'api', name: 'Orders API', state: 'fine' }] }
+status.addEventListener('ts-action', (e) => {
+  const a: TsStatusAction = e.detail
+  if (a.action === 'retry') void a
+})
+
+const feed = document.createElement('ts-feed')
+feed.data = { items: [{ id: 1, text: 'Order filled', tag: 'Fill', tone: 'pos', time: 1, detail: '50 at 128.00' }], max: 20 }
+// @ts-expect-error a tone is pos, neg or warn
+feed.data = { items: [{ id: 1, text: 'x', tone: 'loud' }] }
+feed.addEventListener('ts-action', (e) => {
+  const a: TsFeedAction = e.detail
+  if (a.action === 'open') void a
 })

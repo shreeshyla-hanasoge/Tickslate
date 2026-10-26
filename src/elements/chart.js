@@ -286,3 +286,43 @@ export function barPaths(groups, { width, height, pad = 4, categories = 0, yDoma
   })
   return { paths, zeroY, centres, rects }
 }
+
+/**
+ * Ring segments for shares that sum to 1 (a donut): one closed path per share,
+ * 'M … A … L … A … Z', in a viewBox of `size` centred on the middle. The first
+ * segment starts at twelve o'clock and they run clockwise. `gapDeg` is trimmed
+ * between neighbours so adjacent slices are told apart by more than colour; a
+ * segment keeps at least half its own width, so a thin slice never vanishes.
+ * A zero share gives '' (nothing to draw); a share of 1 is a whole ring drawn as
+ * two half arcs, since one arc cannot close on its own start point.
+ */
+export function arcPaths(fractions, { size, radius, inner, gapDeg = 1 } = {}) {
+  const c = size / 2
+  const at = (rad, deg) => `${round(c + rad * Math.cos(deg * RAD))} ${round(c + rad * Math.sin(deg * RAD))}`
+  const out = []
+  let start = -90
+  for (const f of fractions || []) {
+    if (!(f > 0)) {
+      out.push('')
+      continue
+    }
+    if (f >= 1 - 1e-9) {
+      out.push(
+        `M${at(radius, -90)} A${radius} ${radius} 0 1 1 ${at(radius, 90)} A${radius} ${radius} 0 1 1 ${at(radius, 270)} ` +
+          `L${at(inner, 270)} A${inner} ${inner} 0 1 0 ${at(inner, 90)} A${inner} ${inner} 0 1 0 ${at(inner, -90)} Z`,
+      )
+      start += 360
+      continue
+    }
+    const span = f * 360
+    const gap = Math.min(gapDeg, span / 2)
+    const a0 = start + gap / 2
+    const a1 = start + span - gap / 2
+    const large = a1 - a0 > 180 ? 1 : 0
+    out.push(`M${at(radius, a0)} A${radius} ${radius} 0 ${large} 1 ${at(radius, a1)} L${at(inner, a1)} A${inner} ${inner} 0 ${large} 0 ${at(inner, a0)} Z`)
+    start += span
+  }
+  return out
+}
+
+const RAD = Math.PI / 180

@@ -38,6 +38,9 @@ export const EN = Object.freeze({
   'widget.chart.label': 'Chart',
   'widget.table.label': 'Table',
   'widget.progress.label': 'Progress',
+  'widget.breakdown.label': 'Breakdown',
+  'widget.status.label': 'Status',
+  'widget.feed.label': 'Feed',
   // The picker's sentence for each catalog entry
   'widget.todayPnl.description': "Today's profit or loss, with an intraday line.",
   'widget.equityCurve.description': 'Account value over time, with peak and drawdown.',
@@ -53,6 +56,9 @@ export const EN = Object.freeze({
   'widget.chart.description': 'A line, area or bar chart of any series.',
   'widget.table.description': 'A sortable table of rows with typed columns.',
   'widget.progress.description': 'Progress toward a goal, or use of a limit, with warning and danger states.',
+  'widget.breakdown.description': 'Parts of a whole, as a share bar, stacked bar or donut.',
+  'widget.status.description': 'Whether each service or system is working.',
+  'widget.feed.description': 'The latest events, newest first.',
   // The picker's groups. A host's own category name is shown as it is unless it adds category.<name>.
   'category.General': 'General',
   'category.Performance': 'Performance',
@@ -70,6 +76,9 @@ export const EN = Object.freeze({
   'widget.watchlist.empty': 'No instruments yet',
   'widget.openPositions.empty': 'No open positions',
   'widget.pnlCalendar.empty': 'No trading days yet',
+  'widget.breakdown.empty': 'Nothing to break down',
+  'widget.status.empty': 'No services to show',
+  'widget.feed.empty': 'Nothing yet',
 
   // Sizes: a size reads "Medium, 2 by 2"
   'size.S': 'Small',
@@ -402,6 +411,42 @@ export const EN = Object.freeze({
   'calendar.chartNote': '{summary}. {note}',
   'calendar.weekend.one': '{count} weekend entry not shown',
   'calendar.weekend.other': '{count} weekend entries not shown',
+
+  // <ts-breakdown>
+  'breakdown.other': 'Other',
+  'breakdown.total': 'Total {value}',
+  'breakdown.item': '{label}, {pct}',
+  'breakdown.share': '{label} {pct}',
+  'breakdown.excluded.one': '{count} negative value left out',
+  'breakdown.excluded.other': '{count} negative values left out',
+  'breakdown.chartLabel.one': '{label}: {count} part, largest {name} {pct}',
+  'breakdown.chartLabel.other': '{label}: {count} parts, largest {name} {pct}',
+  'breakdown.chartEmpty': '{label}: nothing to break down',
+
+  // <ts-status>
+  'status.ok': 'OK',
+  'status.degraded': 'Degraded',
+  'status.down': 'Down',
+  'status.unknown': 'Unknown',
+  // The same words for every total, so a language can inflect "service"; `count` is the total.
+  'status.summary.one': '{ok} of {total} OK',
+  'status.summary.other': '{ok} of {total} OK',
+  'status.since': 'since {when}',
+  'status.rowAria': '{name}, {state}',
+  'status.aria': '{label}, {summary}',
+  'status.ariaWorst': '{label}, {summary}, {state}',
+  'status.colName': 'Name',
+  'status.colState': 'Status',
+  'status.colSince': 'Since',
+
+  // <ts-feed>
+  'feed.more.one': '{count} older event not shown',
+  'feed.more.other': '{count} older events not shown',
+  'feed.itemAria': '{time}, {tag}: {text}',
+  'feed.itemAriaPlain': '{time}, {text}',
+  'feed.aria.one': '{label}, {count} event, latest: {text}',
+  'feed.aria.other': '{label}, {count} events, latest: {text}',
+  'feed.ariaEmpty': '{label}, no events',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

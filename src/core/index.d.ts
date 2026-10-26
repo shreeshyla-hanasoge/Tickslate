@@ -79,6 +79,9 @@ export declare const WIDGETS: Readonly<{
   chart: WidgetSpec
   table: WidgetSpec
   progress: WidgetSpec
+  breakdown: WidgetSpec
+  status: WidgetSpec
+  feed: WidgetSpec
 }>
 
 /** The profile a layout uses when none is named. */
@@ -295,6 +298,9 @@ export interface Messages {
   'widget.chart.label': string
   'widget.table.label': string
   'widget.progress.label': string
+  'widget.breakdown.label': string
+  'widget.status.label': string
+  'widget.feed.label': string
   'widget.todayPnl.description': string
   'widget.equityCurve.description': string
   'widget.pnlCalendar.description': string
@@ -309,6 +315,9 @@ export interface Messages {
   'widget.chart.description': string
   'widget.table.description': string
   'widget.progress.description': string
+  'widget.breakdown.description': string
+  'widget.status.description': string
+  'widget.feed.description': string
   'category.General': string
   'category.Performance': string
   'category.Accounts': string
@@ -325,6 +334,9 @@ export interface Messages {
   'widget.watchlist.empty': string
   'widget.openPositions.empty': string
   'widget.pnlCalendar.empty': string
+  'widget.breakdown.empty': string
+  'widget.status.empty': string
+  'widget.feed.empty': string
   'size.S': string
   'size.Wide': string
   'size.Tall': string
@@ -617,6 +629,35 @@ export interface Messages {
   'calendar.chartNote': string
   'calendar.weekend.one': string
   'calendar.weekend.other': string
+  'breakdown.other': string
+  'breakdown.total': string
+  'breakdown.item': string
+  'breakdown.share': string
+  'breakdown.excluded.one': string
+  'breakdown.excluded.other': string
+  'breakdown.chartLabel.one': string
+  'breakdown.chartLabel.other': string
+  'breakdown.chartEmpty': string
+  'status.ok': string
+  'status.degraded': string
+  'status.down': string
+  'status.unknown': string
+  'status.summary.one': string
+  'status.summary.other': string
+  'status.since': string
+  'status.rowAria': string
+  'status.aria': string
+  'status.ariaWorst': string
+  'status.colName': string
+  'status.colState': string
+  'status.colSince': string
+  'feed.more.one': string
+  'feed.more.other': string
+  'feed.itemAria': string
+  'feed.itemAriaPlain': string
+  'feed.aria.one': string
+  'feed.aria.other': string
+  'feed.ariaEmpty': string
 }
 
 export type MessageKey = keyof Messages
