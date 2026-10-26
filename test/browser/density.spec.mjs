@@ -4,7 +4,7 @@
 // Density (data-ts-density on both theme blocks) and Text spacing, which adds the four WCAG 1.4.12 overrides to the
 // document and to every open shadow root. These specs drive those controls, then read what each tile really drew.
 import { test, expect } from '@playwright/test'
-import { drawn } from './drawn.mjs'
+import { drawn, gridDrawn } from './drawn.mjs'
 
 const GALLERY = '/widgets.html'
 const FIXTURE = '/test/browser/fixtures/widgets.html'
@@ -115,8 +115,10 @@ function findClips({ fixture = false, phone = false, grid = false, place = null 
 async function open(page, query) {
   await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
   await page.goto(`${GALLERY}${query}`)
-  // The widgets draw on the next frames; wait until the last tile has its label.
-  await page.waitForFunction(() => [...document.querySelectorAll('figure > [size]')].every((el) => el.shadowRoot && el.shadowRoot.querySelector('.lb, .tile')))
+  // The widgets draw on the next frames, time-sliced over several tasks (RFC 0003 §23): a tile can hold its skeleton, which
+  // has a .tile but no footer or figures, long after the first has drawn. Wait until every tile that has data is named and
+  // no longer busy (the States row is a skeleton by design, so it is left out).
+  await gridDrawn(page, 'figure > [size]:not([state])')
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
