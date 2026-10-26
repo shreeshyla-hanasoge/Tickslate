@@ -483,7 +483,7 @@ describe('text alternatives', () => {
 
 describe('typography tokens', () => {
   const TOKENS = {
-    '--ts-label-size': '10px',
+    '--ts-label-size': 'max(11px, .6875rem)',
     '--ts-label-case': 'uppercase',
     '--ts-label-tracking': '.12em',
     '--ts-label-weight': '600',
@@ -494,7 +494,7 @@ describe('typography tokens', () => {
     return Object.fromEntries([...body.matchAll(/(--ts-[\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]))
   }
 
-  test('exist in both token files, with the values the labels and figures had before', async () => {
+  test('exist in both token files, with the values the labels and figures have', async () => {
     const css = declared(read('src/themes/tokens.css'))
     const js = declared((await import('../src/elements/default-tokens.js')).TOKENS_CSS)
     for (const [token, value] of Object.entries(TOKENS)) {
@@ -506,7 +506,7 @@ describe('typography tokens', () => {
   test('.lb, .big and .xbig read them, with fallbacks that are the same values', () => {
     const css = W.SHARED_CSS
     const lb = css.match(/\.lb \{([^}]*)\}/)[1]
-    assert.match(lb, /font-size: var\(--ts-label-size, 10px\)/)
+    assert.match(lb, /font-size: var\(--ts-label-size, max\(11px, \.6875rem\)\)/)
     assert.match(lb, /text-transform: var\(--ts-label-case, uppercase\)/)
     assert.match(lb, /letter-spacing: var\(--ts-label-tracking, \.12em\)/)
     assert.match(lb, /font-weight: var\(--ts-label-weight, 600\)/)
@@ -679,7 +679,7 @@ describe('logical properties only', () => {
     assert.match(html, /^<span class="n md" data-k="peak"><span class="fg"><span class="ar" aria-hidden="true" data-k="peakAr"><\/span><span data-k="peakV"><\/span><\/span><\/span>$/)
     assert.match(W.FIGURE_CSS, /\.fg \{ white-space: nowrap; \}/)
     assert.match(W.FIGURE_CSS, /\.cell \{ container-type: inline-size; \}/)
-    assert.match(W.FIGURE_CSS, /\.cell \.md \{ font-size: min\(17px, calc\(100cqi \/ \(var\(--fc, 10\) \* \.62 \+ \.65\)\)\); \}/)
+    assert.match(W.FIGURE_CSS, /\.cell \.md \{ font-size: min\(var\(--ts-text-2xl, max\(17px, 1\.0625rem\)\), calc\(100cqi \/ \(var\(--fc, 10\) \* \.62 \+ \.65\)\)\); \}/)
   })
 
   test('the arrow has a gap after it so it reads as a marker apart from the sign', () => {
@@ -691,8 +691,8 @@ describe('logical properties only', () => {
   test('the Wide equity headline keeps its 34px on a roomy tile, in a wider column that holds its arrow', () => {
     const css = stripComments(C.equity.TsEquityCurve.styles)
     // A narrow tile keeps the 170px column and sizes the figure to it; a roomy one widens the column and keeps 34px.
-    assert.match(css, /\.side \.big \{ font-size: 26px; \}/)
-    assert.match(css, /@container \(min-width: 420px\) \{ \.side \{ width: 220px; \} \.side \.big \{ font-size: 34px; \} \}/)
+    assert.match(css, /\.side \.big \{ font-size: var\(--ts-text-3xl, max\(26px, 1\.625rem\)\); \}/)
+    assert.match(css, /@container \(min-width: 420px\) \{ \.side \{ min-width: 220px; \} \.side \.big \{ font-size: var\(--ts-text-big, max\(34px, 2\.125rem\)\); \} \}/)
   })
 })
 
@@ -838,6 +838,6 @@ describe('the dashboard region', () => {
     // The one place that names it, and nothing else writes the host's role or label.
     assert.equal((source.match(/_board\.setAttribute\('aria-label'/g) || []).length, 1)
     assert.doesNotMatch(source, /this\.setAttribute\('(?:role|aria-label)'/)
-    assert.match(source, /return \['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'aria-label'\]/)
+    assert.match(source, /return \['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'aria-label'\]/)
   })
 })

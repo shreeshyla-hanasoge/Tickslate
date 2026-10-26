@@ -77,6 +77,18 @@ describe('default tokens', () => {
     assert.ok(selectors.some((s) => s.includes('ts-grid:not(:defined)')))
   })
 
+  test('carry the density block and the type scale, equal to tokens.css (RFC 0004 §2)', () => {
+    const density = ':where([data-ts-density="compact"])'
+    for (const blocks of [canonical, defaults]) {
+      const compact = blocks.find((b) => b.selector === density)
+      assert.ok(compact, `a ${density} block`)
+      assert.deepEqual([...compact.decls], [['--ts-row', '120px'], ['--ts-pad', '12px'], ['--ts-gap', '10px']])
+      const root = blocks.find((b) => b.selector === ':where(:root)').decls
+      assert.equal(root.get('--ts-label-size'), 'max(11px, .6875rem)')
+      for (const name of ['2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', 'big', 'xbig']) assert.match(root.get(`--ts-text-${name}`), /^max\(\d+px, [\d.]+rem\)$/, name)
+    }
+  })
+
   test('the OS dark rule applies only under data-theme="auto" and the light island comes last of the themes', () => {
     const media = canonical.filter((b) => b.at.includes('prefers-color-scheme: dark') && !b.selector.includes('data-ts-palette') && !b.at.includes('prefers-contrast'))
     assert.deepEqual(media.map((b) => b.selector), [':where([data-theme="auto"])'])

@@ -49,11 +49,22 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-strip-top: 0px;
     --ts-num-weight: 500;
     --ts-num-weight-small: 500;
-    --ts-label-size: 10px;
+    --ts-label-size: max(11px, .6875rem);
     --ts-label-case: uppercase;
     --ts-label-tracking: .12em;
     --ts-label-weight: 600;
     --ts-headline-weight: var(--ts-num-weight);
+    --ts-text-2xs: max(9px, .5625rem);
+    --ts-text-xs: max(10px, .625rem);
+    --ts-text-sm: max(11px, .6875rem);
+    --ts-text-md: max(12px, .75rem);
+    --ts-text-base: max(13px, .8125rem);
+    --ts-text-lg: max(14px, .875rem);
+    --ts-text-xl: max(16px, 1rem);
+    --ts-text-2xl: max(17px, 1.0625rem);
+    --ts-text-3xl: max(26px, 1.625rem);
+    --ts-text-big: max(34px, 2.125rem);
+    --ts-text-xbig: max(48px, 3rem);
     --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
     --ts-motion: 220ms;
     --ts-ease: cubic-bezier(.2, .8, .2, 1);
@@ -137,6 +148,11 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-fill: 12%;
     --ts-num-weight-small: 500;
     --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
+  }
+  :where([data-ts-density="compact"]) {
+    --ts-row: 120px;
+    --ts-pad: 12px;
+    --ts-gap: 10px;
   }
   :where([data-ts-palette="cvd"], [data-ts-palette="cvd"] [data-theme="light"]:not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
     --ts-profit: #1D4ED8;

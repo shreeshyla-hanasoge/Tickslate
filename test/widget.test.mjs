@@ -32,10 +32,11 @@ describe('without a DOM', () => {
   })
 
   test('the tile is a size container and headline figures scale with it, capped at the design size', () => {
-    assert.match(SHARED_CSS, /\.tile \{[^}]*container-type: inline-size;/)
-    assert.match(SHARED_CSS, /\.big \{ font-size: min\(34px, \d+(\.\d+)?cqi\);/)
-    assert.match(SHARED_CSS, /\.xbig \{ font-size: min\(48px, \d+(\.\d+)?cqi\);/)
-    assert.match(SHARED_CSS, /\.md \{ font-size: min\(17px, \d+(\.\d+)?cqi\); \}/)
+    // Named, and sized in both axes, so a widget answers the tile's height as well as its width (RFC 0004 §2.2).
+    assert.match(SHARED_CSS, /\.tile \{[^}]*container: ts-tile \/ size;/)
+    assert.match(SHARED_CSS, /\.big \{ font-size: min\(var\(--ts-text-big, max\(34px, 2\.125rem\)\), \d+(\.\d+)?cqi\);/)
+    assert.match(SHARED_CSS, /\.xbig \{ font-size: min\(var\(--ts-text-xbig, max\(48px, 3rem\)\), \d+(\.\d+)?cqi\);/)
+    assert.match(SHARED_CSS, /\.md \{ font-size: min\(var\(--ts-text-2xl, max\(17px, 1\.0625rem\)\), \d+(\.\d+)?cqi\); \}/)
   })
 
   test('format options come from the nearest source that sets them', () => {

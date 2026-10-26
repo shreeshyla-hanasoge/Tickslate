@@ -41,7 +41,7 @@
   --ts-pad: 12px;
   --ts-num-weight: 500;
   --ts-num-weight-small: 500;
-  --ts-label-size: 10px;
+  --ts-label-size: max(11px, .6875rem);
   --ts-label-case: uppercase;
   --ts-label-tracking: .1em;
   --ts-label-weight: 500;

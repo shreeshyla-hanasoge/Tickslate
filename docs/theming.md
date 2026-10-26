@@ -241,11 +241,22 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-strip-top` | How far below the top of the page the phone top strip sticks | `0px` | same | `<ts-grid>` at 2 columns, when tiles are pinned. Set it to the height of your own fixed header |
 | `--ts-num-weight` | Weight of figures | `500` | same | Every figure; the headline figures take `--ts-headline-weight`, which follows it |
 | `--ts-num-weight-small` | Weight of small figures | `500` | `600` | Secondary figures; Graphite is heavier because light-on-dark text reads thinner |
-| `--ts-label-size` | Size of a tile's label | `10px` | same | The label in every header, and the small labels beside figures |
+| `--ts-label-size` | Size of a tile's label | `max(11px, .6875rem)` | same | The label in every header, and the small labels beside figures. 10px before 0.3.0; the px floor keeps it at 11px or more at any root font size |
 | `--ts-label-case` | Case of a tile's label (`text-transform`) | `uppercase` | same | The same labels; `none` gives sentence case |
 | `--ts-label-tracking` | Letter spacing of a tile's label | `.12em` | same | The same labels |
 | `--ts-label-weight` | Weight of a tile's label | `600` | same | The same labels |
 | `--ts-headline-weight` | Weight of headline figures | `var(--ts-num-weight)` | same | `.big` and `.xbig` figures; follows `--ts-num-weight` until you set it |
+| `--ts-text-2xs` | Type scale step (9px at a 16px root) | `max(9px, .5625rem)` | same | Day numbers in the calendar, histogram labels |
+| `--ts-text-xs` | Type scale step (10px at a 16px root) | `max(10px, .625rem)` | same | Secondary rows and the `.xs` text of a widget |
+| `--ts-text-sm` | Type scale step (11px at a 16px root) | `max(11px, .6875rem)` | same | The `.sm` text: captions, footers, the "synced" meta; small buttons |
+| `--ts-text-md` | Type scale step (12px at a 16px root) | `max(12px, .75rem)` | same | Error messages, empty-chart text |
+| `--ts-text-base` | Type scale step (13px at a 16px root) | `max(13px, .8125rem)` | same | A tile's base text, and the grid's own controls |
+| `--ts-text-lg` | Type scale step (14px at a 16px root) | `max(14px, .875rem)` | same | The grid's empty-board text |
+| `--ts-text-xl` | Type scale step (16px at a 16px root) | `max(16px, 1rem)` | same | The grid's Remove glyph and Add back plus sign |
+| `--ts-text-2xl` | Type scale step (17px at a 16px root) | `max(17px, 1.0625rem)` | same | `.md` figures and the cap of a figure in a cell |
+| `--ts-text-3xl` | Type scale step (26px at a 16px root) | `max(26px, 1.625rem)` | same | The narrow equity-curve headline |
+| `--ts-text-big` | Type scale step (34px at a 16px root) | `max(34px, 2.125rem)` | same | The cap of `.big` headline figures |
+| `--ts-text-xbig` | Type scale step (48px at a 16px root) | `max(48px, 3rem)` | same | The cap of `.xbig` headline figures |
 | `--ts-shadow-lift` | Shadow of a tile picked up while editing | `0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45)` | `0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7)` | The lifted tile and the grid's floating pill and toast |
 | `--ts-motion` | Duration of the grid's slide animations | `220ms` | same | Tiles sliding into place |
 | `--ts-ease` | Easing of the grid's slide animations | `cubic-bezier(.2, .8, .2, 1)` | same | Tiles sliding into place |
@@ -263,6 +274,112 @@ replace colours, keep them:
 | `--ts-axis`, `--ts-focus` and `--ts-series-*` on `--ts-surface` | 3:1 |
 
 No coloured or muted text is drawn on `--ts-surface-2`, so it needs only ink.
+
+## Density and text size
+
+Two settings change how much fits on a screen without changing a layout: the
+density of the grid, and the text size, which follows the reader's own
+font-size setting.
+
+### Density
+
+```html
+<ts-grid density="compact">...</ts-grid>
+```
+
+`density="compact"` on a `<ts-grid>` sets three tokens on the grid:
+
+| Token | `comfortable` (the default) | `compact` |
+|---|---|---|
+| `--ts-row` | `150px` | `120px` |
+| `--ts-pad` | `18px` (`16px` under Graphite) | `12px` |
+| `--ts-gap` | `16px` | `10px` |
+
+- **A rule on the grid still wins.** The compact values sit on the grid's own
+  `:host`, so `ts-grid { --ts-row: 140px }` in your stylesheet beats them. A
+  value set on `:root` or on a wrapper is only inherited, so `density="compact"`
+  overrides it: to keep your own `--ts-pad` under compact density, set it on the
+  `ts-grid` element.
+- **A phone keeps its rows.** At 2 columns the grid reads `--ts-row-compact`
+  (150px) and `--ts-gap-compact` (10px), so on a phone `density="compact"`
+  changes only the padding: a phone's rows are fixed so live numbers never
+  resize a tile.
+- **The layout is cells, not pixels.** Placement, drag targets and a saved
+  layout are the same at either density. Changing the attribute (or the
+  `density` property) re-measures. Any value other than `compact` is
+  `comfortable`, with one development warning.
+- **Outside a grid** (a widget in your own CSS grid) put `data-ts-density="compact"`
+  on any ancestor to get the same three tokens, the way `data-ts-theme` works.
+
+### Tiles answer their height
+
+A tile is a size container (`container: ts-tile / size`), so a widget answers its
+height as well as its width. That needs a definite height: a grid sets one, and a
+standalone widget gets `rows × --ts-row` plus the gaps. A host that overrides a
+widget's `height` to `auto` loses the container's height, and the tile collapses.
+
+A height query measures the tile's **content box**: its height less the padding and
+the border. Two tiers use it, and a widget gives up its secondary rows at each,
+so nothing clips:
+
+| Tier | Condition | What goes |
+|---|---|---|
+| snug | content box up to `6.5rem` | The secondary line under the headline (a footer, a note), and the flexible spacer that pushed it to the bottom, so the rows above it keep their room |
+| tight | content box up to `5rem` | Also chart axis labels and the tertiary rows of a list |
+
+At a 16px root a comfortable one-row tile has a content box of 7rem (7.25rem
+under Graphite), so a default dashboard hides nothing; a compact one has 5.875rem,
+so it is snug but not tight. The label, the headline figure with its sign and
+arrow, the state of the data and every control stay at every height, and a hidden
+row's content is still in the tile's accessible name. At a larger root font size
+the same tile is shorter in rem, so it goes snug first: the text grew and the tile
+didn't, and the widget gives up its secondary rows before anything clips.
+
+To mark a row of your own widget for the tiers, give it the shared `sec` class
+(hidden when snug) or `ter` class (hidden when tight).
+
+### The type scale
+
+Font sizes are tokens in rem, so a larger default text size reaches the tiles.
+Each has a px floor, `max(<px>, <rem>)`: the rem value equals the px size at a
+16px root and grows with a larger root, but a smaller root (the `html { font-size: 62.5% }`
+habit) never takes text below the size it was designed at.
+
+| Token | At a 16px root | Used for |
+|---|---|---|
+| `--ts-text-2xs` | 9px | Day numbers, histogram labels |
+| `--ts-text-xs` | 10px | Secondary rows |
+| `--ts-text-sm` | 11px | `.sm` text, small buttons |
+| `--ts-text-md` | 12px | Messages |
+| `--ts-text-base` | 13px | A tile's base text |
+| `--ts-text-lg` | 14px | The grid's empty-board text |
+| `--ts-text-xl` | 16px | The grid's glyphs |
+| `--ts-text-2xl` | 17px | `.md` figures |
+| `--ts-text-3xl` | 26px | The narrow equity-curve headline |
+| `--ts-text-big` | 34px | The `.big` cap |
+| `--ts-text-xbig` | 48px | The `.xbig` cap |
+| `--ts-label-size` | 11px | The tile label |
+
+- **Only the label changed size**: from 10px to 11px, so a label is at least 11px
+  at any root size. The three presets that set it to 10px (`terminal`, `graphite`,
+  `paper`) now use the same value.
+- **Figures keep their shape.** A headline is still `min(<cap token>, <share of the tile's width>)`,
+  so it shrinks with the tile first.
+- **Row heights stay in px**, because a layout must not move when a reader changes
+  a font. A host that wants tiles to grow with the text sets `--ts-row` in rem
+  itself, for example `ts-grid { --ts-row: 9.375rem }`.
+- **Not every widget follows yet.** `<ts-today-pnl>`, `<ts-equity-curve>`, the
+  shared tile text and the grid's own controls use the scale. The rest of the
+  built-in widgets still draw their small text in px until one follow-up
+  converts them, so at a larger root font size their small text does not grow.
+
+### Checking text spacing
+
+WCAG 1.4.12 asks that text still fits when a reader sets line height to 1.5,
+paragraph spacing to 2, letter spacing to .12em and word spacing to .16em. The
+widget gallery (`widgets.html`) has a Text spacing switch that applies those four
+overrides to the page and to every widget's shadow root, and a Density control, so
+you can see both together. The library ships no such sheet.
 
 ## Fonts
 

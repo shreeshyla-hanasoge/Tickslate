@@ -73,7 +73,7 @@ export interface TsReadingOrderChangeDetail {
  * editing, and the grid's polite status region announces each step. A
  * scheduled profile change that falls due while editing applies after Done.
  *
- * Attributes: `editing`, `profile`, `locked`, `undo-toast="off"`,
+ * Attributes: `editing`, `profile`, `locked`, `density="compact"`, `undo-toast="off"`,
  * `edit-controls="off"`, `locale` (for plural forms in its messages),
  * `persist="my-dash"` (saves the layout to `localStorage` per device, with no script).
  * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
@@ -128,6 +128,14 @@ export declare class TsGrid extends HTMLElement {
    * the `persist` attribute.
    */
   persist: string | null
+  /**
+   * `'comfortable'` (the default) or `'compact'`. Compact sets `--ts-row` to 120px, `--ts-pad` to 12px and `--ts-gap`
+   * to 10px on the grid, so tiles are shorter and tighter and more fit on screen; a rule on the `ts-grid` element in
+   * your own CSS, such as `ts-grid { --ts-row: 140px }`, still wins. At 2 columns (phones) the rows stay at
+   * `--ts-row-compact`, so only the padding changes. Anything else is `'comfortable'`, with one development warning.
+   * Setting it re-measures; a saved layout is cells, so it is unchanged. Reflects the `density` attribute.
+   */
+  density: 'comfortable' | 'compact'
   /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
   readonly hiddenItems: ReadonlyArray<{ id: string; type: string; label: string }>
   /**

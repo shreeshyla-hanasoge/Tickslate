@@ -176,6 +176,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `profile` | The profile to show. Reflects the `profile` property; a set attribute beats the schedule and `override()` |
 | `locked` | Read-only dashboard: no long press, no edit mode, no edit controls |
 | `edit-controls="off"` | Hides the Edit layout button, the edit pill and the empty board's Add back button, for hosts with their own controls. Long press, Escape and the `editing` attribute still work |
+| `density` | `comfortable` (the default) or `compact`. Compact sets `--ts-row` to `120px`, `--ts-pad` to `12px` and `--ts-gap` to `10px` on the grid, so more fits on screen; a rule on the `ts-grid` element in your CSS still wins. A phone (2 columns) keeps its rows and changes only the padding. Reflects the `density` property; any other value is `comfortable`, with one development warning. See [Theming](../theming.md#density-and-text-size) |
 | `undo-toast="off"` | Suppresses the undo toast; the removal is announced instead |
 | `locale`, `currency`, `time-zone`, `hour-cycle` | Formatting for every tile that has none of its own: the widget's attribute, then these, then `configure()` |
 | `stale-after` | The `stale-after` every tile uses that has none of its own (milliseconds or a duration such as `'90s'`, `'2m'`, `'1h'`; default `120000`) |
@@ -192,6 +193,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `catalog` | `Catalog` | Your tiles' specs. Defaults to `WIDGETS` |
 | `profile` | `string` | The profile shown. Defaults to `'market'` |
 | `editing` | `boolean` | Edit mode |
+| `density` | `'comfortable' \| 'compact'` | The row height, padding and gap. Setting it re-measures; a saved layout is unchanged |
 | `locked` | `boolean` | Read-only. While set, `editing = true` is ignored with one development warning; setting it while editing ends edit mode |
 | `breakpoints` | `{ tablet?: number, desktop?: number }` | Grid widths in px where columns change. Defaults to `{ tablet: 700, desktop: 1200 }`; setting it re-measures |
 | `columns` | `2 \| 3 \| 4` (readonly) | From the grid's width. `0` before the first measure |
