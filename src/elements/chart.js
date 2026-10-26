@@ -110,11 +110,13 @@ export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, in
   const y = scale(y0, y1, height - pad, pad)
   const zeroY = round(clamp(y(0), pad, height - pad))
 
-  if (!pts.length) return { line: '', area: '', zeroY, x, y }
+  if (!pts.length) return { line: '', area: '', zeroY, x, y, drawn: pts }
 
   let line
   let firstX
   let lastX
+  // The points the line runs through, for a scrubber: its readout never names a point the line skips.
+  let drawn = pts
   if (pts.length === 1) {
     // One reading has no direction; a level line across the chart shows where
     // it sits without implying a trend.
@@ -130,12 +132,13 @@ export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, in
       if (DEV && maxPoints != null && !Number.isNaN(maxPoints)) warnOnce('maxPoints-floor', `linePaths maxPoints is ${maxPoints}; a line needs at least ${MIN_POINTS} points to keep its low and high, so it draws ${MIN_POINTS}. Pass Infinity to draw every point.`)
       cap = MIN_POINTS
     }
-    line = linePath(downsample(pts, cap), x, y)
+    drawn = downsample(pts, cap)
+    line = linePath(drawn, x, y)
     firstX = round(x(pts[0].x))
     lastX = round(x(pts[pts.length - 1].x))
   }
   const area = `${line} L${lastX} ${zeroY} L${firstX} ${zeroY} Z`
-  return { line, area, zeroY, x, y }
+  return { line, area, zeroY, x, y, drawn }
 }
 
 /**
@@ -285,4 +288,44 @@ export function barPaths(groups, { width, height, pad = 4, categories = 0, yDoma
     return d
   })
   return { paths, zeroY, centres, rects }
+}
+
+/**
+ * The point whose x is nearest a position, for a scrubber (RFC 0004 §1.1), or null for no points or a position
+ * that isn't a number. `xFraction` is a share of the x domain, 0 the domain's start and 1 its end, and a value
+ * outside 0..1 is clamped. `points` are ascending by x, as the charts draw them; a caller on a category axis has
+ * already mapped each category to its band's centre, so one function serves time, number and category axes.
+ * `domain` defaults to the first and last x of `points`; a chart drawn on a window (Today's P&L's session) passes
+ * it, so the right edge of the box is the end of the window and not the last reading. A tie goes to the earlier
+ * point. A binary search over a fixed number of steps: it allocates nothing and cannot loop on unsorted input.
+ */
+export function nearestPoint(points, xFraction, { domain } = {}) {
+  const n = points ? points.length : 0
+  if (!n || typeof xFraction !== 'number' || Number.isNaN(xFraction)) return null
+  const [d0, d1] = domain || [points[0].x, points[n - 1].x]
+  const target = d0 + clamp(xFraction, 0, 1) * (d1 - d0)
+  // The first point at or after the target.
+  let lo = 0
+  let hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (points[mid].x < target) lo = mid + 1
+    else hi = mid
+  }
+  let at = lo
+  if (lo >= n) at = n - 1
+  else if (lo > 0 && target - points[lo - 1].x <= points[lo].x - target) at = lo - 1
+  const p = points[at]
+  return { index: at, x: p.x, y: p.y }
+}
+
+/**
+ * Turns a pointer's share of the drawing box (0 at its start edge, 1 at its end) into a share of the x domain,
+ * undoing the inset `pad` the drawing keeps inside the viewBox (`linePaths`). The result may fall outside 0..1
+ * over the padding; nearestPoint clamps it.
+ */
+export function plotFraction(boxFraction, { width, pad = 0 }) {
+  const inner = width - 2 * pad
+  if (!(inner > 0)) return boxFraction
+  return (boxFraction * width - pad) / inner
 }

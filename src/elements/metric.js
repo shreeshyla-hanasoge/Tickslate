@@ -104,13 +104,12 @@ export function metricModel(data, variant, ctx) {
   let headline = '—'
   let spoken = ''
   if (known) {
-    spoken = show(value, 'negative', compact)
-    headline = spoken
+    // The spoken name never compacts, and the full form is what the pointer gets as a title (RFC 0004 §1.5).
+    spoken = show(value, 'negative', false)
+    headline = compact ? show(value, 'negative', true) : spoken
     if (variant === 'S' && !compact) {
       if (format === 'money' || format === 'percent' || (format === 'number' && !unit)) {
         headline = fmt.fit(value, HEADLINE_CHARS.S, { style: format, decimals, sign: 'negative' })
-        // The spoken name keeps the full form unless the tile itself went compact.
-        spoken = show(value, 'negative', false)
       } else if (headline.length > HEADLINE_CHARS.S) {
         const short = show(value, 'negative', true)
         if (short.length < headline.length) headline = short
@@ -167,6 +166,7 @@ export function metricModel(data, variant, ctx) {
     time: '',
     synced: syncedParts(t),
     value: headline,
+    valueTitle: known && headline !== spoken ? spoken : '',
     valueNum: known ? value : NaN,
     delta,
     arrow,
@@ -341,7 +341,7 @@ svg.mut { color: var(--ts-muted); }
     text('pre', vm.synced.pre)
     text('time', vm.time)
     text('post', vm.synced.post)
-    text('value', vm.value)
+    this._setAttr(text('value', vm.value), 'title', vm.valueTitle || null)
     this.flash('value', vm.valueNum, { goodWhen: this.data && this.data.goodWhen })
 
     const box = this.$('[data-k="deltabox"]')

@@ -342,9 +342,6 @@ themes.
 These are real gaps for a trading app. They are on the roadmap, not in the
 library; plan around them.
 
-- **Chart scrubbing and exact values.** The equity curve and `<ts-chart>` show
-  their extremes and end in words, and `select` reads a point on a chart, but
-  there is no crosshair that reads the exact value under a finger or cursor.
 - **Compact density.** Rows and tiles have one height (`--ts-row`). A denser
   grid for a trading desk's small print is not there yet; the terminal preset
   tightens padding and type, not row height.

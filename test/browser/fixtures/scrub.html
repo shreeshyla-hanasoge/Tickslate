@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- One scrubbable chart for the scrub spec. ?chart=pnl|equity|chart|metric picks Today's P&L (M), the equity curve (Wide, M or
+     XL), <ts-chart> or a <ts-metric> (for its title only); ?size=M|XL|Wide|L; ?width=px (the tile's width, default 640); ?scale=n multiplies every money
+     figure (a large one makes the headline compact); ?theme=light|dark; ?preset=terminal (or calm, signal...);
+     ?scrub=off sets scrub="off" on the chart, ?gridscrub=off on the grid; ?grid puts the chart in a <ts-grid id="g">
+     so the spec can edit; ?bars gives <ts-chart> a category bar series. window.__s has the chart (el), the grid
+     (grid) and nextFrame(). Made-up numbers from data.js; nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scrub fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+</style>
+</head>
+<body>
+<main><div id="wrap"></div></main>
+<script type="module">
+  import '/src/elements/index.js'
+  import { setup, dataFor, frozenClock } from './data.js'
+
+  setup()
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+
+  const kind = params.get('chart') || 'pnl'
+  const tag = { pnl: 'ts-today-pnl', equity: 'ts-equity-curve', chart: 'ts-chart', metric: 'ts-metric' }[kind] || 'ts-today-pnl'
+  const size = params.get('size') || (kind === 'equity' ? 'XL' : 'M')
+  const scale = Number(params.get('scale') || 1)
+  const wrap = document.getElementById('wrap')
+  wrap.style.width = `${params.get('width') || 640}px`
+  wrap.style.maxWidth = '100%'
+
+  const el = document.createElement(tag)
+  el.setAttribute('item', 'c')
+  el.setAttribute('size', size)
+  el.clock = frozenClock
+  if (params.get('scrub')) el.setAttribute('scrub', params.get('scrub'))
+
+  let data = dataFor(tag, scale)
+  if (kind === 'chart' && params.has('bars')) {
+    const cats = ['January', 'February', 'March', 'April', 'May', 'June']
+    data = {
+      xType: 'category',
+      format: 'money',
+      series: [
+        { name: 'Profit', kind: 'bar', points: cats.map((x, i) => ({ x, y: i % 3 === 1 ? -410 : 900 + i * 40 })) },
+        { name: 'Target', points: cats.map((x) => ({ x, y: 800 })) },
+      ],
+    }
+  }
+  el.data = data
+
+  let grid = null
+  if (params.has('grid')) {
+    grid = document.createElement('ts-grid')
+    grid.id = 'g'
+    grid.setAttribute('aria-label', 'Dashboard')
+    if (params.get('gridscrub')) grid.setAttribute('scrub', params.get('gridscrub'))
+    grid.append(el)
+    wrap.append(grid)
+  } else {
+    // A grid sizes its tiles; alone, a tile is one row (150px) or two (316px, with the gap) tall.
+    el.style.height = size === 'S' || size === 'Wide' ? '150px' : '316px'
+    el.style.display = 'block'
+    wrap.append(el)
+  }
+
+  window.__s = {
+    el,
+    grid,
+    data,
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

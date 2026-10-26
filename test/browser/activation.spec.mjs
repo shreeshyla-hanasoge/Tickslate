@@ -263,9 +263,11 @@ test.describe('chart point selection', () => {
     expect(await chart.locator('.pt[tabindex="0"]').count()).toBe(1)
     expect(await chart.locator('.pt[tabindex="-1"]').count()).toBe(199)
 
-    // One Tab from the control before the chart lands on the group; another leaves it.
+    // One Tab from the control before the chart lands on its scrubber (RFC 0004 §1.4), the next on the group of points, and a third leaves it.
     await page.locator('ts-card[item="tasks"]').evaluate((el) => el.setAttribute('tabindex', '0'))
     await page.locator('ts-card[item="tasks"]').focus()
+    await page.keyboard.press('Tab')
+    expect(await chart.evaluate((el) => el.shadowRoot.activeElement?.getAttribute('data-k') ?? null)).toBe('scrubSlider')
     await page.keyboard.press('Tab')
     const active = () => chart.evaluate((el) => el.shadowRoot.activeElement?.getAttribute('data-index') ?? null)
     expect(await active()).toBe('0')

@@ -116,6 +116,10 @@
  *                   and the tile is named by the tag.
  *   heading-level   Attribute, 1 to 6: the aria-level of the tile's heading.
  *                   The widget's own, else the nearest <ts-grid>'s, else 3.
+ *   scrub           Attribute and property, 'on' or 'off' (RFC 0004 §1.4). Only
+ *                   the charts act on it: 'off' stops hover, touch and keyboard
+ *                   scrubbing. The widget's own, else the nearest <ts-grid>'s,
+ *                   else on.
  *   locale, currency, time-zone
  *                   Attributes. Each resolves: own attribute → nearest
  *                   ancestor <ts-grid>'s attribute → configure() defaults.
@@ -693,7 +697,7 @@ function unwatchView(el) {
 
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level', 'href', 'activatable', 'stale-after', 'flash']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level', 'href', 'activatable', 'stale-after', 'flash', 'scrub']
   }
 
   constructor() {
@@ -899,6 +903,17 @@ export class TsWidget extends Base {
     this.toggleAttribute('activatable', !!value)
   }
 
+  /** 'off' or 'on' when set on this widget, else null; the grid's value and the default are read by _scrubOn(). */
+  get scrub() {
+    const v = this.getAttribute('scrub')
+    return v === null ? null : v === 'off' ? v : 'on'
+  }
+
+  set scrub(value) {
+    if (value === null || value === undefined) this.removeAttribute('scrub')
+    else this.setAttribute('scrub', String(value))
+  }
+
   get clock() {
     return this._clock
   }
@@ -976,8 +991,12 @@ export class TsWidget extends Base {
     const target = grid && typeof grid._link === 'function' ? grid : null
     if (target === this._grid) return
     if (this._grid) this._grid._unlink(this)
+    // A chart's scrubber hears when editing starts, so its tab stop goes with it (RFC 0004 §1.4).
+    const onEdit = this._onEditChange
+    if (onEdit && this._grid) this._grid.removeEventListener('ts-edit-change', onEdit)
     this._grid = target
     if (target) target._link(this)
+    if (onEdit && target) target.addEventListener('ts-edit-change', onEdit)
   }
 
   /** The first match for `selector` in the shadow root, remembered until the template is rebuilt. */
@@ -1251,6 +1270,14 @@ export class TsWidget extends Base {
     if (value === null) {
       if (el.getAttribute(name) !== null) el.removeAttribute(name)
     } else if (el.getAttribute(name) !== value) el.setAttribute(name, value)
+  }
+
+  /** Whether a chart scrubs: the widget's own `scrub`, else the nearest grid's, else on. Anything but 'off' is on. */
+  _scrubOn() {
+    const own = this.getAttribute('scrub')
+    if (own !== null) return own !== 'off'
+    const grid = findGrid(this)
+    return !grid || grid.getAttribute('scrub') !== 'off'
   }
 
   _isEditing() {

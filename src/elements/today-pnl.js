@@ -13,6 +13,7 @@
 
 import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { linePaths } from './chart.js'
+import { Scrubber, SCRUB_CSS, lineScrub, scrubMarkup } from './scrub.js'
 import { EN, toNumber, toTime } from '../core/index.js'
 
 // Characters the headline holds per variant before fmt.fit() switches it to
@@ -162,9 +163,9 @@ function chartOf(data, pts, fmt, t) {
   // One reading is not a curve; the chart says so instead of drawing a line
   // that implies a trend.
   if (pts.length < 2) {
-    return { empty: true, message: t('pnl.noIntraday'), ariaLabel: t('pnl.chartEmpty'), ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [] }
+    return { empty: true, message: t('pnl.noIntraday'), ariaLabel: t('pnl.chartEmpty'), ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [], scrub: null }
   }
-  const { line, area, zeroY, x, y } = linePaths(pts, { ...CHART_BOX, pad: PAD, xDomain: domain })
+  const { line, area, zeroY, x, y, drawn } = linePaths(pts, { ...CHART_BOX, pad: PAD, xDomain: domain })
   const first = pts[0]
   const last = pts[pts.length - 1]
   let low = first
@@ -204,6 +205,8 @@ function chartOf(data, pts, fmt, t) {
     lastX: Math.round(x(last.x) * 10) / 10,
     marks,
     droppedMarks: dropped,
+    // What the scrubber reads: the drawn points only, as numbers (RFC 0004 §1.2). The window domain is already in x.
+    scrub: lineScrub('time', { ...CHART_BOX, pad: PAD }, drawn, x, y, [{ name: t('chart.scrubNet'), ys: (p) => p.y, mark: true }]),
   }
 }
 
@@ -233,6 +236,8 @@ export function todayPnlModel(data, variant, ctx) {
     label: variant === 'S' ? t('pnl.today') : ctx.label,
     time,
     net: fmt.fit(d.net, HEADLINE_CHARS[variant] || HEADLINE_CHARS.Wide),
+    // The full figure, for the pointer, when fit() made the headline compact (RFC 0004 §1.5).
+    netTitle: '',
     netNum: net,
     netTone: tone(d.net),
     realized: fmt.money(d.realized),
@@ -250,6 +255,8 @@ export function todayPnlModel(data, variant, ctx) {
   }
 
   vm.netArrow = arrowFor(vm.net)
+  const full = fmt.money(d.net)
+  if (vm.net !== full) vm.netTitle = full
 
   if (variant === 'S') {
     vm.footer = joined([counts, feesPlain && t('pnl.feesNote', { amount: feesPlain })])
@@ -289,7 +296,7 @@ ${figure('big nv', 'net', 'value')}
   M: `
 ${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"></span>' })}
 <div class="rowb base">${figure('xbig nv', 'net', 'value')}<span class="sm mut" data-k="summary"></span></div>
-<div class="chart" part="chart">
+<div class="chart sc" part="chart" data-k="plot">
   <svg viewBox="0 0 ${CHART_BOX.width} ${CHART_BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">
     <defs>
       <clipPath id="up"><rect x="0" y="0" width="${CHART_BOX.width}" data-k="clip-up"></rect></clipPath>
@@ -304,6 +311,7 @@ ${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"><
   </svg>
   <div class="marks" data-k="marks"></div>
   <div class="nodata sm" part="empty" data-k="nodata" hidden></div>
+  ${scrubMarkup(1, 1)}
 </div>
 <div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
@@ -348,7 +356,7 @@ export class TsTodayPnl extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `${FIGURE_CSS}
+  static styles = `${FIGURE_CSS}${SCRUB_CSS}
 [hidden] { display: none; }
 /* Clip rather than overflow: a headline too wide for its slot must never
    run into the column beside it. fit() and the tile's scaled type make
@@ -405,6 +413,11 @@ export class TsTodayPnl extends TsWidget {
     return SKELETONS[variant] || SKELETONS.Wide
   }
 
+  constructor() {
+    super()
+    this._scrubber = new Scrubber(this)
+  }
+
   _skeletonLabel(variant, label) {
     return variant === 'S' ? this.t('pnl.today') : label
   }
@@ -429,18 +442,25 @@ export class TsTodayPnl extends TsWidget {
         el.style.setProperty('--fc', String(s.length))
       }
     }
+    // The title goes on the headline value (part="value"), so the tooltip is over the number alone (RFC 0004 §1.5).
+    const titled = (k, s) => {
+      const el = this.$(`[data-k="${k}"]`)
+      if (el) this._setAttr(el, 'title', s || null)
+    }
     this.$('[data-k="dot"]').toggleAttribute('hidden', !vm.live)
     text('label', vm.label)
 
     if (variant === 'S') {
       text('time', vm.time)
       toned('net', 'big nv', vm.net, vm.netArrow, vm.netTone)
+      titled('net', vm.netTitle)
       this.flash('net', vm.netNum)
       text('footer', vm.footer)
       return
     }
 
     toned('net', 'xbig nv', vm.net, vm.netArrow, vm.netTone)
+    titled('net', vm.netTitle)
     this.flash('net', vm.netNum)
     text('lbRealised', this.t('pnl.realised'))
     text('lbUnrealised', this.t('pnl.unrealised'))
@@ -457,6 +477,7 @@ export class TsTodayPnl extends TsWidget {
     text('counts', vm.counts)
     text('summary', vm.summary)
     this._updateChart(vm.chart)
+    this._scrubber?.sync(vm.chart.scrub, vm.ariaLabel)
     text('t0', vm.chart.ticks[0])
     text('t1', vm.chart.ticks[1]).style.insetInlineStart = `${vm.chart.midAt}%`
     text('t2', vm.chart.ticks[2])

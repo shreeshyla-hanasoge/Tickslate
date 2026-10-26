@@ -92,6 +92,10 @@ export class FakeNode {
     if (!this.kids.has(sel)) this.kids.set(sel, new FakeNode())
     return this.kids.get(sel)
   }
+  // A chart finds its scrub dots and read-out lines by class; the stand-in has none.
+  querySelectorAll() {
+    return []
+  }
 }
 
 export class FakeRoot extends FakeNode {
