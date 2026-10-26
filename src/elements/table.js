@@ -249,7 +249,7 @@ th, td { box-sizing: border-box; min-inline-size: ${MIN_COLUMN}px; padding: 7px 
    auto layout. A fixed column is pinned by the CSSOM on each cell. Both come after .t to win. */
 th.wc, td.wc { inline-size: 1%; max-inline-size: none; }
 th.wc > * { max-inline-size: calc(50cqi - 16px); }
-td.wc > span:last-child { display: block; max-inline-size: calc(50cqi - 16px); overflow: hidden; text-overflow: ellipsis; }
+td.wc > span:last-child { display: inline-block; vertical-align: bottom; max-inline-size: calc(50cqi - 16px); overflow: hidden; text-overflow: ellipsis; }
 th.wf, td.wf { inline-size: auto; }
 th:first-child, td:first-child { padding-inline-start: 0; }
 th:last-child, td:last-child { padding-inline-end: 0; }

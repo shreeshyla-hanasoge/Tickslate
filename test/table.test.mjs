@@ -997,10 +997,26 @@ describe('column widths', () => {
     assert.equal(b.head.children[0].style.maxInlineSize, '', 'a width taken away is cleared on the cell')
   })
 
+  test('no <col> is left over when columns shrink while a number remains', () => {
+    const columns = [
+      { key: 'a', label: 'A', format: 'number', width: 90 },
+      { key: 'b', label: 'B', format: 'number' },
+      { key: 'c', label: 'C', format: 'number' },
+      { key: 'd', label: 'D', format: 'number' },
+    ]
+    const b = sized(columns, 520)
+    assert.equal(b.table.children[0].children.length, 4)
+    // 112 px keeps two columns; the numeric one stays, so the group stays and must lose two <col>s.
+    b.view({ columns, rows: ROWS_FILLS }, 112)
+    assert.equal(b.table.children[0].localName, 'colgroup')
+    assert.equal(b.table.children[0].children.length, b.head.children.length)
+    assert.equal(b.head.children.length, 2)
+  })
+
   test('the CSS: a content column is 1% and its text is capped at half the table; a fixed one is not pinned by a class', () => {
     const css = T.TsTable.styles
     assert.match(css, /th\.wc, td\.wc \{ inline-size: 1%; max-inline-size: none; \}/)
-    assert.match(css, /td\.wc > span:last-child \{[^}]*max-inline-size: calc\(50cqi - 16px\)/)
+    assert.match(css, /td\.wc > span:last-child \{ display: inline-block; vertical-align: bottom; max-inline-size: calc\(50cqi - 16px\)/)
     assert.match(css, /th\.wf, td\.wf \{ inline-size: auto; \}/)
     assert.ok(css.indexOf('.wc') > css.indexOf('.t {'), 'declared after .t, so it wins')
   })

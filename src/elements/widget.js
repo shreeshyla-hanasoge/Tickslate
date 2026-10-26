@@ -1357,7 +1357,21 @@ export class TsWidget extends Base {
     this._setAttr(heading, 'aria-label', named && heading.textContent !== label ? label : null)
     // The full text for a pointer user when CSS cuts the visible label short (RFC 0004 §11.3); the DOM text and the name stay whole.
     this._setAttr(heading, 'title', named ? label : null)
+    this._describeMeta()
     this._applyActivation(heading, label)
+  }
+
+  /**
+   * When CSS drops the header's meta (a tile under 7rem), its text ("just now", "synced 11:42", "stale 5 min") would leave the
+   * accessibility tree with it, so the tile is described by it and the dot carries it as a title. Read at each render.
+   */
+  _describeMeta() {
+    const meta = this.$('[data-k="meta"]')
+    const gone = !!meta && !meta.hasAttribute('hidden') && typeof meta.getClientRects === 'function' && meta.getClientRects().length === 0
+    const text = gone ? meta.textContent.trim() : ''
+    this._setAttr(this._section, 'aria-description', text || null)
+    const dot = this.$('[data-k="dot"]')
+    if (dot) this._setAttr(dot, 'title', text || null)
   }
 
   _applyActivation(heading, label) {
