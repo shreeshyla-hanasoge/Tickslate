@@ -558,10 +558,10 @@ export class TsChart extends TsWidget {
 .prow { flex: 1; min-height: 0; display: flex; gap: 8px; }
 .plot { position: relative; flex: 1; min-width: 0; min-height: 0; }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; direction: ltr; }
-.yax { position: relative; width: 34px; flex: none; font-size: 10px; color: var(--ts-muted); }
+.yax { position: relative; width: 34px; flex: none; font-size: var(--ts-text-xs, max(10px, .625rem)); color: var(--ts-muted); }
 .yin { position: absolute; inset-inline: 0; inset-block: 3%; display: flex; flex-direction: column; justify-content: space-between; }
 .yin span { height: 0; display: flex; align-items: center; justify-content: flex-end; line-height: 1; white-space: nowrap; }
-.xax { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-size: 11px; color: var(--ts-muted); min-height: 14px; }
+.xax { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-size: var(--ts-text-sm, max(11px, .6875rem)); color: var(--ts-muted); min-height: 14px; }
 .xax > :last-child { justify-self: end; }
 .xax > * { unicode-bidi: plaintext; }
 .xax.gut { padding-inline-end: 42px; }
@@ -584,12 +584,12 @@ export class TsChart extends TsWidget {
 .sw.bar { width: 10px; height: 10px; }
 .sw.area { width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--c) 30%, transparent); box-shadow: inset 0 2px 0 var(--c); }
 .sname { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ts-muted); }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--ts-text-sm, max(11px, .6875rem)); }
 .li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .legend .n { color: var(--ts-muted); }
 .crow { flex: 1; min-height: 0; display: flex; gap: 20px; }
 .rail { width: 190px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 14px; border-inline-start: 1px solid var(--ts-line); padding-inline-start: 20px; }
-.ri { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 11px; }
+.ri { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: var(--ts-text-sm, max(11px, .6875rem)); }
 @container (max-width: 460px) {
   .crow { flex-direction: column; gap: 10px; }
   .rail { width: auto; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; gap: 8px 16px; border-inline-start: 0; padding-inline-start: 0; }

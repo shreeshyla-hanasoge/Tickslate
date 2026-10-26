@@ -131,7 +131,7 @@ const WATCHED = ['profile', 'locked', 'item', 'size', 'hidden', 'label', 'aria-l
 const CSS = `
   :host { display: block; }
   :host([hidden]), [hidden] { display: none !important; }
-  .wrap { color: var(--ts-ink); font: 14px/1.35 var(--ts-font-ui); }
+  .wrap { color: var(--ts-ink); font: var(--ts-text-lg, max(14px, .875rem))/1.35 var(--ts-font-ui); }
   .wrap:focus { outline: none; }
   .rows { margin: 0; padding: 0; padding-inline-start: 28px; }
   .rows li { padding-block: 10px; border-block-end: 1px solid var(--ts-line); }
@@ -142,7 +142,7 @@ const CSS = `
   button {
     min-inline-size: 44px; min-block-size: 44px; box-sizing: border-box; margin: 0; padding: 0 14px; cursor: pointer;
     border: 1px solid var(--ts-line); border-radius: 999px; background: var(--ts-surface); color: inherit;
-    font: 600 13px var(--ts-font-ui); white-space: nowrap;
+    font: 600 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); white-space: nowrap;
   }
   button:hover { background: var(--ts-surface-2); }
   button[aria-pressed="true"] { background: var(--ts-accent); border-color: var(--ts-accent); color: var(--ts-surface); }

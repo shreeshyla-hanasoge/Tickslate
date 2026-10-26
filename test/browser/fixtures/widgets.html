@@ -16,7 +16,8 @@
   h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
   h2 { font: 600 15px/1.2 var(--ts-font-ui); margin: 24px 0 8px; }
   .set { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
-  figure { margin: 0; max-width: 100%; }
+  /* A tile with no content of its own to size it (the progress S) would shrink to 44px inside its own figure; a phone's S is 170. */
+  figure { margin: 0; max-width: 100%; min-width: min(170px, 100%); }
   figcaption { margin-top: 4px; font-size: 12px; color: var(--ts-muted); }
   .fill { height: 100%; background: var(--ts-surface-2); }
   ul { margin: 0; padding: 0; list-style: none; }

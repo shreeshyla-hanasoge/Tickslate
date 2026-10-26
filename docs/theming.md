@@ -376,10 +376,13 @@ comfortable density only: at compact density the 94px content box of an S tile i
 - **Row heights stay in px**, because a layout must not move when a reader changes
   a font. A host that wants tiles to grow with the text sets `--ts-row` in rem
   itself, for example `ts-grid { --ts-row: 9.375rem }`.
-- **Not every widget follows yet.** `<ts-today-pnl>`, `<ts-equity-curve>`, the
-  shared tile text and the grid's own controls use the scale. The rest of the
-  built-in widgets still draw their small text in px until one follow-up
-  converts them, so at a larger root font size their small text does not grow.
+- **Every built-in widget follows.** The cards, metrics, charts, lists, calendars,
+  gauges and the grid's own controls all size their text from the scale, so at a
+  larger root font size their small text grows with it. A widget you write yourself
+  uses the same tokens (`font-size: var(--ts-text-sm)`); a px size in it stays a px size.
+- **A tile that cannot fit a row gives it up.** At compact density, or at a larger
+  root font size, a tile hides its secondary rows (the `sec` class) before it cuts
+  a headline or a figure; the words stay in the tile's accessible name.
 
 ### Checking text spacing
 

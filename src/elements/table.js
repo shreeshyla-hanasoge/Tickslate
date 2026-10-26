@@ -220,7 +220,7 @@ const STYLES = `
 [hidden] { display: none; }
 .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .scroll:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
-table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--ts-text-md, max(12px, .75rem)); }
 th, td { box-sizing: border-box; min-inline-size: ${MIN_COLUMN}px; padding: 7px 8px; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A text column gives way to the figures beside it, down to the 56px floor, and ends in an ellipsis; a figure is never cut. */
 .t { max-inline-size: 0; inline-size: 100%; }
@@ -232,7 +232,7 @@ th:last-child, td:last-child { padding-inline-end: 0; }
 /* The header stays while the body scrolls under it. */
 th {
   position: sticky; inset-block-start: 0; z-index: 2; background: var(--ts-surface); border-block-end: 1px solid var(--ts-line);
-  font-size: var(--ts-label-size, 10px); text-transform: var(--ts-label-case, uppercase); letter-spacing: var(--ts-label-tracking, .12em);
+  font-size: var(--ts-label-size, max(11px, .6875rem)); text-transform: var(--ts-label-case, uppercase); letter-spacing: var(--ts-label-tracking, .12em);
   font-weight: var(--ts-label-weight, 600); color: var(--ts-muted);
 }
 td { border-block-end: 1px solid var(--ts-line); }

@@ -114,10 +114,10 @@ export class TsCard extends TsWidget {
 slot[name="value"]::slotted(*) {
   display: block; flex: none; white-space: nowrap; overflow: hidden; unicode-bidi: isolate;
   font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-headline-weight, var(--ts-num-weight, 500));
-  font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em;
+  font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 19cqi); line-height: 1; letter-spacing: -.01em;
 }
 slot[name="footer"]::slotted(*) {
-  display: block; flex: none; font-size: 11px; color: var(--ts-muted);
+  display: block; flex: none; font-size: var(--ts-text-sm, max(11px, .6875rem)); color: var(--ts-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 `

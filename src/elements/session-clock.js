@@ -536,7 +536,9 @@ export class TsSessionClock extends TsWidget {
 .title { white-space: nowrap; flex: none; }
 .ts, .ms { display: none; }
 .legend { display: flex; gap: 10px; white-space: nowrap; }
-.nx { font-weight: 600; white-space: nowrap; }
+/* When the header is short the next close gives way (an ellipsis), never the clock beside it. */
+.nx { font-weight: 600; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clock { flex: none; }
 .lanes { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; justify-content: center; }
 .lane { display: flex; align-items: center; gap: 14px; }
 .lcol { width: 110px; flex: none; display: flex; flex-direction: column; gap: 1px; }
@@ -565,7 +567,7 @@ export class TsSessionClock extends TsWidget {
   .mk { box-sizing: border-box; border: 2px solid CanvasText; box-shadow: none; }
 }
 @container (max-width: 480px) { .legend { display: none; } }
-@container (max-width: 400px) { .lane { gap: 10px; } .lcol { width: 84px; } .lr, .lrw { width: 72px; } }
+@container (max-width: 400px) { .lane { gap: 10px; } .lcol { width: 84px; } .lr, .lrw { width: auto; min-width: 72px; } }
 /* A phone-width S (~170px): short words so nothing wraps or truncates. */
 @container (max-width: 220px) { .tf, .mf { display: none; } .ts, .ms { display: inline; } }
 `
@@ -591,7 +593,7 @@ export class TsSessionClock extends TsWidget {
       '<div class="rowb"><span class="big time" part="value"></span><span class="sm mut zone"></span></div>' +
       '<span class="f1"></span>' +
       '<div class="trk"><div class="fill"></div><div class="gps"></div></div>' +
-      '<div class="row xs mut ft"><span class="n from"></span><span class="f1"></span><span class="mid ell"><span class="mf"></span><span class="ms"></span></span><span class="f1"></span><span class="n to"></span></div>'
+      '<div class="row xs mut ft sec"><span class="n from"></span><span class="f1"></span><span class="mid ell"><span class="mf"></span><span class="ms"></span></span><span class="f1"></span><span class="n to"></span></div>'
     )
   }
 

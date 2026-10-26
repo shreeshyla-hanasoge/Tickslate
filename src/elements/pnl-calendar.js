@@ -282,11 +282,13 @@ export function moveFocus(bands, date, key, ctrl = false) {
 
 const k = (name) => `[data-k="${name}"]`
 
-const stat = (key, cls) => `<div class="col cell"><span class="lb ell" data-k="lb${key}"></span>${figure(cls, key.toLowerCase())}</div>`
+const stat = (key, cls, tier = '') => `<div class="col cell${tier}"><span class="lb ell" data-k="lb${key}"></span>${figure(cls, key.toLowerCase())}</div>`
 const SUMMARY = {
   Tall: `${stat('Net', 'n md')}${stat('Rate', 'n md')}`,
   M: `${stat('Net', 'n md')}${stat('Rate', 'n md')}${stat('Best', 'n md')}${stat('Worst', 'n md')}`,
-  Banner: `${stat('Net', 'n md')}${stat('Rate', 'n md')}${stat('Best', 'n md')}${stat('Worst', 'n md')}`,
+  // Best and Worst are the Banner's secondary stats: a snug tile keeps the net and the rate (the summary text has all four).
+  // A Banner stacked under 700px, on a 150px row, goes without them too: with them the year gets no room at all, and a weekday name has no row to sit in.
+  Banner: `${stat('Net', 'n md')}${stat('Rate', 'n md')}${stat('Best', 'n md', ' sec')}${stat('Worst', 'n md', ' sec')}`,
 }
 
 const SKELETONS = {
@@ -322,9 +324,9 @@ export class TsPnlCalendar extends TsWidget {
 .rw { flex: 1; min-height: 0; }
 .mrow { flex: none; block-size: 12px; }
 .mw { flex: 1; min-width: 0; }
-.mo { display: block; font-size: 9px; line-height: 12px; color: var(--ts-muted); white-space: nowrap; unicode-bidi: plaintext; }
+.mo { display: block; font-size: var(--ts-text-2xs, max(9px, .5625rem)); line-height: 12px; color: var(--ts-muted); white-space: nowrap; unicode-bidi: plaintext; }
 .sp, .wl { flex: none; inline-size: 2.4em; }
-.wl { font-size: 9px; color: var(--ts-muted); display: flex; align-items: center; white-space: nowrap; overflow: hidden; unicode-bidi: plaintext; }
+.wl { font-size: var(--ts-text-2xs, max(9px, .5625rem)); color: var(--ts-muted); display: flex; align-items: center; white-space: nowrap; overflow: hidden; unicode-bidi: plaintext; }
 .c { flex: 1; min-height: 0; min-width: 0; border-radius: 2px; box-sizing: border-box; background: var(--ts-surface-2); position: relative; }
 .c.pos { background: color-mix(in srgb, var(--ts-profit) var(--s, 100%), transparent); }
 .c.neg { background: color-mix(in srgb, var(--ts-loss) var(--s, 100%), transparent); }
@@ -334,8 +336,8 @@ export class TsPnlCalendar extends TsWidget {
 .c.neg::after { content: ''; position: absolute; inset-block-start: 0; inset-inline-end: 0; inline-size: 45%; block-size: 45%; max-inline-size: 7px; max-block-size: 7px; background: var(--ts-ink); clip-path: polygon(0 0, 100% 0, 100% 100%); }
 .c:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 1px; z-index: 1; }
 /* A wide fallback face with tracking runs to about .72em a character, so the figure is sized for that and not for the shared .62. */
-.cell .md { font-size: min(17px, calc(100cqi / (var(--fc, 10) * .72 + .65))); }
-.none { color: var(--ts-muted); font-size: 12px; text-align: center; padding-block-start: 4px; unicode-bidi: plaintext; }
+.cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * .72 + .65))); }
+.none { color: var(--ts-muted); font-size: var(--ts-text-md, max(12px, .75rem)); text-align: center; padding-block-start: 4px; unicode-bidi: plaintext; }
 .calsk { flex: 1; min-height: 40px; position: relative; }
 .calsk .sk { position: absolute; inset: 0; width: auto; }
 @container (max-width: 260px) { .sp, .wl { display: none; } }
@@ -347,6 +349,7 @@ export class TsPnlCalendar extends TsWidget {
   .body.banner .sum { grid-template-columns: repeat(2, minmax(0, 1fr)); inline-size: 280px; flex: none; align-content: center; }
   .body.banner .calwrap { flex: 1; min-width: 0; }
 }
+@container ts-tile (max-width: 699px) and (max-height: 8.5rem) { .body.banner .sum .sec, .body.banner .sp, .body.banner .wl { display: none; } }
 /* Forced colours drop backgrounds the page set, so the heat is drawn again from system colours: a gain in Highlight,
    a loss in CanvasText with a double border and its corner, both stepped by strength, a flat day in ButtonFace, a
    day with no entry dotted and a day to come dashed. */

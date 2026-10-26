@@ -23,12 +23,12 @@ const CSS = `
   }
   .opt {
     min-inline-size: 44px; min-block-size: 44px; box-sizing: border-box; margin: 0; padding: 0 16px; cursor: pointer;
-    border: 0; border-radius: 999px; background: none; color: inherit; font: 600 13px var(--ts-font-ui); white-space: nowrap;
+    border: 0; border-radius: 999px; background: none; color: inherit; font: 600 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); white-space: nowrap;
   }
   .opt:hover { background: var(--ts-surface-2); }
   .opt[aria-pressed="true"] { background: var(--ts-accent); color: var(--ts-surface); }
   .opt:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
-  .next { margin: 6px 0 0; padding-inline: 4px; color: var(--ts-muted); font: 13px var(--ts-font-ui); }
+  .next { margin: 6px 0 0; padding-inline: 4px; color: var(--ts-muted); font: var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); }
   @media (forced-colors: active) {
     .switcher { border-color: CanvasText; }
     .opt[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }

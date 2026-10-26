@@ -8,12 +8,14 @@ import { test, expect } from '@playwright/test'
 const GALLERY = '/widgets.html'
 const FIXTURE = '/test/browser/fixtures/widgets.html'
 
-// Runs in the page. For every tile in the gallery it finds the headline, label and figure text that a widget clips:
-// a text run whose ink leaves a box that hides overflow, or whose box is squeezed below its own content. A label may be
-// shortened with an ellipsis (that is how a narrow tile says so); a headline or figure may not be cut at all. Text a
-// widget scrolls (a list inside a tile) and text the host slotted in are not the widget's to fit.
-function findClips(source) {
-  const OWN = ['lb', 'big', 'xbig', 'n', 'nv', 'md']
+// Runs in the page. For every tile it inspects every text node in every shadow root (a note, a footer, a month label or
+// the words under a bar included, not only the headline) and finds the ones a widget clips: a text run whose ink leaves a
+// box that hides overflow, or whose box is squeezed below its own content. A label, a name, a note or the line under a
+// stat may be shortened with an ellipsis (that is how a narrow tile says so); a headline or a figure may not be cut at
+// all. Text a widget scrolls (a list inside a tile) and text the host slotted in are not the widget's to fit.
+function findClips({ fixture = false, phone = false, grid = false, place = null } = {}) {
+  // Only these are figures: an ellipsis on one of them is a cut, on anything else it is the tile saying it is narrow.
+  const FIGURE = ['big', 'xbig', 'n', 'nv', 'md']
   const composedParent = (n) => n.assignedSlot || n.parentNode || n.host || null
   const out = []
   const visit = (node, acc) => {
@@ -26,96 +28,87 @@ function findClips(source) {
       }
     }
   }
-  // The gallery draws each widget at every size in both themes; the fixture draws all 43 tiles in the one theme its URL names.
-  const tiles = source === 'fixture' ? [...window.__fx.tiles.values()] : document.querySelectorAll('figure > [size]')
-  for (const el of tiles) {
-    const set = el.closest('.set')
-    const place = source === 'fixture' ? 'desktop' : set.classList.contains('phone') ? 'phone' : set.previousElementSibling && set.previousElementSibling.textContent === 'States' ? 'states' : 'desktop'
-    const theme = source === 'fixture' ? window.__fx.theme : el.closest('.theme').dataset.theme
+  // The gallery's figures, or every tile of the fixture page: all the built-in widgets, at each size they have.
+  const subjects = grid
+    ? [...document.querySelectorAll('#g > *')].map((el) => ({ el, tile: `${el.localName}:${el.getAttribute('size')} ${place}`, place, theme: document.documentElement.dataset.theme || 'light' }))
+    : fixture
+    ? [...window.__fx.tiles].map(([key, el]) => ({ el, tile: `${key} ${phone ? 'phone' : 'desktop'}`, place: phone ? 'phone' : 'desktop', theme: new URLSearchParams(location.search).get('theme') || 'light' }))
+    : [...document.querySelectorAll('figure > [size]')].map((el) => {
+        const set = el.closest('.set')
+        const place = set.classList.contains('phone') ? 'phone' : set.previousElementSibling && set.previousElementSibling.textContent === 'States' ? 'states' : 'desktop'
+        return { el, tile: `${el.localName} ${el.getAttribute('size')} ${place}`, place, theme: el.closest('.theme').dataset.theme }
+      })
+  for (const { el, tile, theme } of subjects) {
     const texts = []
     visit(el.shadowRoot, texts)
     for (const t of texts) {
       const parent = t.parentElement
-      let own = null
+      let figure = null
+      let isLabel = false
       for (let a = parent; a && a.nodeType === 1; a = composedParent(a)) {
-        if (a.classList && OWN.some((c) => a.classList.contains(c))) {
-          own = a
-          break
-        }
+        if (a.classList && a.classList.contains('lb')) isLabel = true
         if (a.getAttribute && ['value', 'label'].includes(a.getAttribute('part'))) {
-          own = a
+          if (a.getAttribute('part') === 'label') isLabel = true
+          else figure = figure || a
+        }
+        if (a.classList && FIGURE.some((c) => a.classList.contains(c))) {
+          figure = a
           break
         }
       }
-      // The fixture pass reads every text run, secondary notes and axis labels included, which the gallery pass leaves out;
-      // a note may end in an ellipsis (that is how it says it is short of room) but may not be cut by the tile.
-      if (!own && source === 'fixture') own = parent
-      if (!own) continue
-      const isLabel = own.classList.contains('lb') || own.getAttribute('part') === 'label' || own === parent && !OWN.some((c) => own.classList.contains(c))
+      // The second line under a stat (.sub) is built to give way with an ellipsis before the figure does (edge-stats.js).
+      const mayShorten = !figure || isLabel || figure.classList.contains('sub')
       const range = document.createRange()
       range.selectNodeContents(t)
       const rects = [...range.getClientRects()].filter((q) => q.width > 0.5 && q.height > 0.5)
       if (!rects.length) continue
-      // Hidden from sight on purpose: a collapsed box, or a tier's display: none (no rects, skipped above).
-      let skip = false
+      // Text a reader does not see: a visually hidden helper is a box of a pixel or so.
+      let hidden = false
       for (let a = parent; a && a.nodeType === 1; a = composedParent(a)) {
-        const s = getComputedStyle(a)
         const q = a.getBoundingClientRect()
-        if (s.overflowY === 'auto' || s.overflowY === 'scroll' || (q.width <= 1.5 && q.height <= 1.5 && s.overflowX !== 'visible')) {
-          skip = true
+        const s = getComputedStyle(a)
+        if (s.visibility !== 'visible' || (q.width <= 1.5 && q.height <= 1.5 && s.overflowX !== 'visible')) {
+          hidden = true
           break
         }
       }
-      if (skip) continue
+      if (hidden) continue
+      const size = parseFloat(getComputedStyle(parent).fontSize) || 12
       const left = Math.min(...rects.map((q) => q.left))
+      const right = Math.max(...rects.map((q) => q.right))
+      const top = Math.min(...rects.map((q) => q.top))
+      const bottom = Math.max(...rects.map((q) => q.bottom))
       // Letter spacing adds room after the last glyph, which is not ink.
       const spacing = Math.max(0, parseFloat(getComputedStyle(parent).letterSpacing) || 0)
-      const right = Math.max(...rects.map((q) => q.right)) - spacing
-      let block = parent
-      while (block && block.nodeType === 1 && ['inline', 'contents'].includes(getComputedStyle(block).display)) block = composedParent(block)
-      const blockBox = block.getBoundingClientRect()
-      const size = parseFloat(getComputedStyle(block).fontSize)
-      for (let n = parent; n && n !== document.documentElement; n = composedParent(n)) {
-        if (n.nodeType !== 1) continue
+      for (let n = parent; n && n.nodeType === 1 && n !== document.documentElement; n = composedParent(n)) {
         const s = getComputedStyle(n)
-        if (!['hidden', 'clip'].some((v) => s.overflowX === v || s.overflowY === v)) continue
+        const clipsX = s.overflowX !== 'visible'
+        const clipsY = s.overflowY !== 'visible'
+        if (!clipsX && !clipsY) continue
+        // A scroller owns its content.
+        if (['auto', 'scroll'].some((v) => s.overflowX === v || s.overflowY === v)) break
         const box = n.getBoundingClientRect()
-        const ellipsis = s.textOverflow === 'ellipsis'
-        const sideways = !ellipsis && (left < box.left - 2 || right > box.right + 2)
-        // A line box is shorter than the glyphs' own box (line-height 1), so a little overflow is not ink.
-        const squeezed = n === block ? n.scrollHeight - n.clientHeight > 0.16 * size : blockBox.top < box.top - 2 || blockBox.bottom > box.bottom + 2
-        const shortened = ellipsis && !isLabel && n.scrollWidth - n.clientWidth > 1 + spacing
-        if (sideways || squeezed || shortened) {
-          out.push({ tile: `${el.localName} ${el.getAttribute('size')} ${place}`, theme, text: t.textContent.trim().slice(0, 30), by: String(n.className || n.localName), sideways, squeezed, shortened })
+        const inner = {
+          left: box.left + (parseFloat(s.borderLeftWidth) || 0),
+          right: box.right - (parseFloat(s.borderRightWidth) || 0),
+          top: box.top + (parseFloat(s.borderTopWidth) || 0),
+          bottom: box.bottom - (parseFloat(s.borderBottomWidth) || 0),
         }
+        const sideways = clipsX && (left < inner.left - 1 || right - spacing > inner.right + 1)
+        // A line box is taller than the ink of its glyphs (line-height 1 and tight rows), so a fifth of the size is not a cut.
+        const squeezed = clipsY && (top < inner.top - 0.2 * size - 1 || bottom > inner.bottom + 0.2 * size + 1)
+        if (!sideways && !squeezed) continue
+        // Only an ellipsis on the width, on text that is built to give way with one, is not a cut.
+        const shortened = s.textOverflow === 'ellipsis' && sideways && !squeezed
+        // What is drawn ends at that box, so the boxes around it have nothing more to clip.
+        if (shortened && mayShorten) break
+        out.push({ tile, theme, text: t.textContent.trim().slice(0, 30), by: String(n.className || n.localName), sideways, squeezed, shortened })
+        break
       }
     }
   }
   return out
 }
-
-// Tiles that clip under compact density with the overrides on, and whose widgets another story converts: they are
-// listed so the spec fails the day one stops clipping (shrink the list) and the day a new one starts. Each reason is
-// the row that would fix it with the shared .sec and .ter classes of widget.js.
-const KNOWN = new Map([
-  ['ts-metric S desktop', 'the compare row under the headline is not marked .sec; metric.js moves with type-scale-rollout'],
-  ['ts-metric Wide desktop', 'the compare row under the headline is not marked .sec; metric.js moves with type-scale-rollout'],
-  ['ts-session-clock S desktop', 'the from and to row under the progress track is not marked .sec; session-clock.js is market-presets-and-breaks'],
-  ['ts-session-clock Banner phone', 'two px at the right edge of the next-close text; session-clock.js is market-presets-and-breaks'],
-])
-
-// Tiles the gallery never draws, and so the gallery's checks never looked at: they clip at compact density alone, because the
-// row under their headline is not marked .sec (or .ter). type-scale-rollout converts their files and marks those rows; until
-// it merges, this list names them, and the spec fails the day one stops being cut (shrink the list) or a new one starts.
-// The value is the reason, and a leading "~" marks a tile whose fit depends on the engine's font metrics (WebKit's line boxes
-// leave it whole), which may be cut or not and so is allowed but not required.
-const KNOWN_COMPACT = new Map([
-  ['ts-progress Wide desktop', '~ the "of target" line and the reset line are not marked .sec; progress.js moves with type-scale-rollout'],
-  ['ts-progress S desktop', '~ the "of target" line is squeezed 2px short of its line box (the ink is whole); progress.js moves with type-scale-rollout'],
-  ['ts-capital-funding S desktop', 'the shortfall line under the bar is not marked .sec; capital-funding.js moves with type-scale-rollout'],
-  ['ts-edge-stats Wide desktop', 'the trades and period note is not marked .sec; edge-stats.js moves with type-scale-rollout'],
-  ['ts-pnl-calendar Banner desktop', 'the weekday row is not marked .ter; pnl-calendar.js moves with type-scale-rollout'],
-])
 
 // The gallery asks Google Fonts for its two faces; refuse that, so every run measures the same fallback faces whether or not the machine is online.
 async function open(page, query) {
@@ -126,11 +119,8 @@ async function open(page, query) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
-async function clips(page, known = KNOWN, source = 'gallery') {
-  const found = await page.evaluate(findClips, source)
-  const unknown = found.filter((c) => !known.has(c.tile))
-  const tiles = new Set(found.map((c) => c.tile))
-  return { found, unknown, stale: [...known.keys()].filter((k) => !tiles.has(k)) }
+async function clips(page, options) {
+  return page.evaluate(findClips, options)
 }
 
 test.describe('compact density and text spacing in the gallery', () => {
@@ -182,52 +172,22 @@ test.describe('compact density and text spacing in the gallery', () => {
     expect(await measure()).toEqual(before)
   })
 
-  // Compact density alone leaves nothing cut in any gallery widget. With the overrides on, only the tiles of KNOWN are cut
-  // (the session clock's phone Banner shows it in Firefox and WebKit even at comfortable density), and a later story fixes them.
+  // Nothing is cut: not at compact density, not with the overrides on, and not with both. A tile that cannot fit its
+  // secondary rows hides them (the .sec and .ter classes), so a headline, a label or a figure is never the thing that gives.
   for (const query of ['?density=compact', '?spacing=on', '?density=compact&spacing=on']) {
     test(`no headline, label or figure is cut at ${query}, in both themes`, async ({ page }) => {
       await open(page, query)
-      const { found, unknown, stale } = await clips(page)
+      const found = await clips(page)
       // Both theme blocks are in the page, so a missing theme would pass quietly.
       expect(new Set(await page.evaluate(() => [...document.querySelectorAll('.theme')].map((b) => b.dataset.theme)))).toEqual(new Set(['light', 'dark']))
-      expect(unknown, JSON.stringify(unknown, null, 1)).toEqual([])
-      if (query.includes('density') && query.includes('spacing')) expect(stale, `no longer clips: ${stale.join(', ')}`).toEqual([])
-      else if (!query.includes('spacing')) expect(found).toEqual([])
-    })
-  }
-
-  // The gallery has six widgets. The fixture draws every registered widget at every size it supports, so this is the check that
-  // reaches the rest. Compact density alone, no text spacing: the tiles of KNOWN_COMPACT are the only ones cut.
-  for (const theme of ['light', 'dark']) {
-    test(`every fixture tile at compact density alone in ${theme}: only the listed tiles are cut`, async ({ page }) => {
-      await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
-      // Tiles are drawn at their desktop column widths, so a phone engine needs a desktop-wide viewport to hold them.
-      await page.setViewportSize({ width: 1400, height: 900 })
-      await page.goto(`${FIXTURE}?theme=${theme}`)
-      await page.waitForFunction(() => window.__ready === true)
-      await page.evaluate(async () => {
-        const { SIZES } = await import('/src/core/index.js')
-        document.documentElement.dataset.tsDensity = 'compact'
-        // A tile is as wide as its columns, set on the figure it sits in (a bare percentage would collapse to the content).
-        for (const el of window.__fx.tiles.values()) {
-          const cols = SIZES[el.getAttribute('size')].cols
-          el.parentElement.style.width = `${cols * 304 + (cols - 1) * 16}px`
-          el.style.width = '100%'
-        }
-        await window.__fx.nextFrame()
-      })
-      expect(await page.evaluate(() => window.__fx.tiles.size)).toBeGreaterThanOrEqual(43)
-      const { unknown, stale } = await clips(page, KNOWN_COMPACT, 'fixture')
-      expect(unknown, JSON.stringify(unknown, null, 1)).toEqual([])
-      const required = stale.filter((tile) => !KNOWN_COMPACT.get(tile).startsWith('~'))
-      expect(required, `no longer clips: ${required.join(', ')}`).toEqual([])
+      expect(found, JSON.stringify(found, null, 1)).toEqual([])
     })
   }
 
   test('today\'s P&L and the equity curve are clean at every size, in both themes, at compact density with the overrides on', async ({ page }) => {
     await open(page, '?density=compact&spacing=on')
-    const { found } = await clips(page)
-    expect(found.filter((c) => /ts-today-pnl|ts-equity-curve/.test(c.tile)), 'the two widgets this story converts').toEqual([])
+    const found = await clips(page)
+    expect(found.filter((c) => /ts-today-pnl|ts-equity-curve/.test(c.tile)), 'the two widgets the density story converts').toEqual([])
   })
 
   test('a compact tile gives up its secondary rows: a snug S tile has no footer, a comfortable one keeps it', async ({ page }) => {
@@ -237,6 +197,121 @@ test.describe('compact density and text spacing in the gallery', () => {
     await page.getByRole('radio', { name: 'Compact' }).check()
     expect(await footer()).toBe('none')
   })
+})
+
+// The gallery draws six widgets. The fixture page draws all of them (the cards, metrics, charts, lists, calendars and
+// gauges, 43 tiles at their sizes), so the same check runs there: at compact density alone and with the four WCAG 1.4.12
+// overrides on as well, light and dark, at a desktop column width and at a phone's (the two columns and 150px rows of
+// RFC 0001 §4.1). Compact alone is its own run: a note that only the overrides happen to hide would pass the other one.
+const SPACING = '*, *::before, *::after { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } p { margin-block-end: 2em !important; }'
+
+// Puts the text-spacing overrides on the document and on every open shadow root, the way the gallery's switch does.
+function applySpacing(SPACING) {
+  const sheet = new CSSStyleSheet()
+  sheet.replaceSync(SPACING)
+  const adopt = (root) => { root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet] }
+  const walk = (root) => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { adopt(el.shadowRoot); walk(el.shadowRoot) } }
+  adopt(document)
+  walk(document)
+}
+
+test.describe('every built-in widget at compact density', () => {
+  for (const spacing of [false, true]) {
+    for (const theme of ['light', 'dark']) {
+      for (const phone of [false, true]) {
+        test(`${theme}, ${phone ? 'phone' : 'desktop'}, compact${spacing ? ' with the text-spacing overrides' : ' alone'}: no headline, label, figure or note is cut`, async ({ page }) => {
+          await page.setViewportSize({ width: phone ? 390 : 1400, height: 900 })
+          await page.goto(`${FIXTURE}?theme=${theme}`)
+          await page.waitForFunction(() => window.__ready === true)
+          await page.evaluate(({ phone, spacing, SPACING, applySpacing }) => {
+            const COLS = { S: 1, Tall: 1, Wide: 2, M: 2, L: 3, Banner: 4, XL: 4 }
+            for (const el of window.__fx.tiles.values()) {
+              const c = COLS[el.getAttribute('size')]
+              // A phone is two columns (170px a cell); a desktop column is 304px with 16px gaps.
+              const w = phone ? (c === 1 ? 170 : 350) : c * 304 + (c - 1) * 16
+              el.style.width = `${w}px`
+              el.parentElement.style.width = `${w}px`
+            }
+            // A phone's rows are --ts-row-compact whatever the density (RFC 0004 §2.1).
+            if (phone) document.documentElement.style.setProperty('--ts-row', 'var(--ts-row-compact)')
+            document.documentElement.setAttribute('data-ts-density', 'compact')
+            if (spacing) new Function(`return (${applySpacing})`)()(SPACING)
+          }, { phone, spacing, SPACING, applySpacing: applySpacing.toString() })
+          await page.evaluate(() => window.__fx.nextFrame())
+          await page.waitForTimeout(300)
+          const found = await clips(page, { fixture: true, phone })
+          expect(found, JSON.stringify(found, null, 1)).toEqual([])
+        })
+      }
+    }
+  }
+})
+
+// A tablet is the case the two fixed widths above never reach: a real <ts-grid> at two or three columns, with the
+// compact rows of 150px (RFC 0001 §4.1), where a Wide or a Banner tile is narrower than its desktop self.
+//
+// Three cuts are known and wait for layout work that tiering cannot do (a tier hides a row at a content height, and a
+// comfortable tile of the same height must keep it): they are listed here with the reason, and each has a fixme below
+// that asserts the tile is clean, so fixing one turns its fixme into a failure to delete.
+const KNOWN = [
+  { tile: 'ts-progress:Wide', width: 700, why: 'at 150px rows the words under the bar are pushed out by an xbig figure whose line is 1.5 tall; hiding them would also hide them on a comfortable phone' },
+  { tile: 'ts-today-pnl:S', width: 800, why: 'the figure is sized at 15cqi for a 304px tile, and the overrides add .12em a character to it at 249px' },
+  { tile: 'ts-pnl-calendar:Banner', width: 800, why: 'the last month label starts a week from the edge, and the overrides widen it past the tile' },
+]
+
+test.describe('every built-in widget in a real <ts-grid> at phone, tablet and desktop widths and compact density', () => {
+  const GRID = '/test/browser/fixtures/grid.html'
+  const draw = async (page, { width, spacing, theme }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`${GRID}?theme=${theme}`)
+    await page.waitForFunction(() => customElements.get('ts-grid'))
+    await page.evaluate(async ({ spacing, SPACING, applySpacing, theme }) => {
+      const { WIDGETS } = await import('/src/core/index.js')
+      const { setup, dataFor, frozenClock } = await import('/test/browser/fixtures/data.js')
+      const g = document.getElementById('g')
+      document.documentElement.dataset.theme = theme
+      setup()
+      for (const c of [...g.children]) c.remove()
+      g.setAttribute('density', 'compact')
+      g.setAttribute('edit-controls', 'off')
+      let i = 0
+      for (const [key, spec] of Object.entries(WIDGETS)) {
+        if (!customElements.get(spec.tag)) continue
+        for (const size of spec.sizes) {
+          const el = document.createElement(spec.tag)
+          el.setAttribute('item', `${key}-${size}-${i++}`)
+          el.setAttribute('size', size)
+          el.setAttribute('label', spec.label)
+          if (spec.tag === 'ts-card') el.insertAdjacentHTML('beforeend', '<span slot="value">42</span>')
+          else {
+            el.clock = frozenClock
+            el.data = dataFor(spec.tag)
+          }
+          g.append(el)
+        }
+      }
+      await new Promise((r) => setTimeout(r, 500))
+      if (spacing) new Function(`return (${applySpacing})`)()(SPACING)
+      await new Promise((r) => setTimeout(r, 500))
+    }, { spacing, SPACING, applySpacing: applySpacing.toString(), theme })
+    return clips(page, { grid: true, place: `${width}px` })
+  }
+  for (const width of [390, 700, 800, 1280]) {
+    for (const spacing of [false, true]) {
+      for (const theme of ['light', 'dark']) {
+        test(`${width}px, ${theme}, compact${spacing ? ' with the text-spacing overrides' : ' alone'}: nothing is cut`, async ({ page }) => {
+          const found = (await draw(page, { width, spacing, theme })).filter((c) => !KNOWN.some((k) => k.width === width && c.tile.startsWith(k.tile)))
+          expect(found, JSON.stringify(found, null, 1)).toEqual([])
+        })
+      }
+    }
+  }
+  for (const known of KNOWN) {
+    test.fixme(`${known.tile} at ${known.width}px, compact with the text-spacing overrides, is not cut (${known.why})`, async ({ page }) => {
+      const found = (await draw(page, { width: known.width, spacing: true, theme: 'light' })).filter((c) => c.tile.startsWith(known.tile))
+      expect(found, JSON.stringify(found, null, 1)).toEqual([])
+    })
+  }
 })
 
 test.describe('the rem type scale', () => {

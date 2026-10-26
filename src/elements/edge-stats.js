@@ -167,12 +167,12 @@ const DIST = `<div class="dist" data-k="dist" hidden><span class="lb" data-k="di
 // S has no room for the trade count and scope under its stat (they are in the tile's name), and a narrow Wide drops them too.
 const TEMPLATES = {
   S: `${head}
-<div class="col one" data-k="body"><span class="lb ell" data-k="l0"></span>${figure('big nv', 'v0', 'value')}${figure('n sm sub', 's0')}</div>
+<div class="col one" data-k="body"><span class="lb ell" data-k="l0"></span>${figure('big nv', 'v0', 'value')}${figure('n sm sub sec', 's0')}</div>
 ${NONE}`,
   Wide: `${head}
 <div class="stats" data-k="stats">${[0, 1, 2, 3].map(cell).join('')}</div>
 ${NONE}
-${note(' wn')}`,
+${note(' wn sec')}`,
   M: `${head}
 <div class="stats" data-k="stats">${[0, 1, 2, 3].map(cell).join('')}</div>
 ${DIST}
@@ -189,7 +189,7 @@ const SKELETONS = {
 const STYLES = `${FIGURE_CSS}
 [hidden] { display: none; }
 .nv { white-space: nowrap; max-inline-size: 100%; overflow: hidden; text-overflow: clip; unicode-bidi: isolate; }
-.big.nv { font-size: min(34px, 15cqi); }
+.big.nv { font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 15cqi); }
 .one { gap: 6px; }
 .wn { margin-block-start: auto; }
 .sub { font-weight: var(--ts-num-weight-small, 500); color: var(--ts-muted); }
@@ -206,7 +206,7 @@ const STYLES = `${FIGURE_CSS}
 .cell { display: var(--cdisp, flex); flex-direction: column; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; align-items: var(--calign, stretch); }
 .cell > .lb { grid-column: 1 / -1; }
 /* The second line gives way (an ellipsis) before the figure does, and a signed one is let into the gap between the cells rather than cut. */
-.cell .sub { font-size: 11px; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell .sub { font-size: var(--ts-text-sm, max(11px, .6875rem)); min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell .sub.pos, .cell .sub.neg { overflow: visible; }
 @container (max-width: 439px) {
   .stats { --cdisp: grid; --calign: baseline; }
@@ -222,7 +222,7 @@ const STYLES = `${FIGURE_CSS}
 .hb.loss .hbar { background: repeating-linear-gradient(135deg, var(--ts-loss) 0 2px, color-mix(in srgb, var(--ts-loss) 35%, transparent) 2px 4px); }
 .hb.loss.zero .hbar { background: var(--ts-line); }
 .hbw { flex: 1; min-block-size: 0; display: flex; align-items: flex-end; }
-.hl { font-size: 9px; color: var(--ts-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
+.hl { font-size: var(--ts-text-2xs, max(9px, .5625rem)); color: var(--ts-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
 @media (forced-colors: active) {
   .hbar { background: CanvasText; forced-color-adjust: none; }
   .hb.loss .hbar { background: ButtonFace; border: 1px dashed CanvasText; }
@@ -340,8 +340,10 @@ export class TsEdgeStats extends TsWidget {
     vm.cells.forEach((c, i) => {
       write(`l${i}`, c.label)
       figureOf(`v${i}`, variant === 'S' ? 'big nv' : 'n md', c.main, c.main.text.length)
-      if (c.sub) figureOf(`s${i}`, 'n sm sub', c.sub)
-      else figureOf(`s${i}`, 'n sm sub', { arrow: '', text: '', tone: 'mut' })
+      // S's line under the stat is its secondary row (its count is in the tile's name); the larger sizes keep theirs.
+      const sub = variant === 'S' ? 'n sm sub sec' : 'n sm sub'
+      if (c.sub) figureOf(`s${i}`, sub, c.sub)
+      else figureOf(`s${i}`, sub, { arrow: '', text: '', tone: 'mut' })
       // The stat's own name keys the flash, so a switch of the `stat` attribute is not a tick.
       const fig = this.$(`[data-k="v${i}"]`)
       if (fig) setAttr(fig, 'data-flash', c.key)

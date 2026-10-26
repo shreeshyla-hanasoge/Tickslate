@@ -27,7 +27,7 @@ const CSS = `
     inline-size: min(560px, calc(100% - 32px)); max-inline-size: none;
     border: 1px solid var(--ts-line); border-radius: var(--ts-radius, 10px);
     background: var(--ts-surface); color: var(--ts-ink); box-shadow: var(--ts-shadow-lift);
-    font: 14px/1.35 var(--ts-font-ui);
+    font: var(--ts-text-lg, max(14px, .875rem))/1.35 var(--ts-font-ui);
   }
   dialog::backdrop { background: color-mix(in srgb, var(--ts-ink) 45%, transparent); }
   .body {
@@ -35,32 +35,32 @@ const CSS = `
     max-block-size: min(680px, calc(100vh - 48px)); max-block-size: min(680px, calc(100dvh - 48px));
   }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .title { margin: 0; font: 600 17px var(--ts-font-ui); }
+  .title { margin: 0; font: 600 var(--ts-text-2xl, max(17px, 1.0625rem)) var(--ts-font-ui); }
   button, input { font: inherit; color: inherit; }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .close, .chip {
     min-inline-size: 44px; min-block-size: 44px; box-sizing: border-box; margin: 0; padding: 0 16px; cursor: pointer;
-    border: 1px solid var(--ts-line); border-radius: 999px; background: var(--ts-surface); font-weight: 600; font-size: 13px;
+    border: 1px solid var(--ts-line); border-radius: 999px; background: var(--ts-surface); font-weight: 600; font-size: var(--ts-text-base, max(13px, .8125rem));
   }
   .close:hover, .chip:hover { background: var(--ts-surface-2); }
   .search {
     box-sizing: border-box; inline-size: 100%; min-block-size: 44px; margin: 0; padding: 0 14px;
     border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm, 6px); background: var(--ts-surface);
     /* 16px, so iOS Safari doesn't zoom the page when the field takes focus. */
-    font-size: 16px;
+    font-size: var(--ts-text-xl, max(16px, 1rem));
   }
   .results { flex: 1 1 auto; min-block-size: 0; overflow-y: auto; overscroll-behavior: contain; margin-inline: -4px; padding-inline: 4px; }
   .group + .group { margin-block-start: 16px; }
   .group-title {
     margin: 0 0 4px; color: var(--ts-muted);
-    font: var(--ts-label-weight, 600) var(--ts-label-size, 10px) var(--ts-font-ui);
+    font: var(--ts-label-weight, 600) var(--ts-label-size, max(11px, .6875rem)) var(--ts-font-ui);
     letter-spacing: var(--ts-label-tracking, .12em); text-transform: var(--ts-label-case, uppercase);
   }
   .rows { margin: 0; padding: 0; list-style: none; }
   .row { display: flex; flex-direction: column; gap: 8px; padding-block: 12px; border-block-end: 1px solid var(--ts-line); }
   .row:last-child { border-block-end: 0; }
   .name { display: block; font-weight: 600; }
-  .desc { display: block; margin-block-start: 2px; color: var(--ts-muted); font-size: 13px; }
+  .desc { display: block; margin-block-start: 2px; color: var(--ts-muted); font-size: var(--ts-text-base, max(13px, .8125rem)); }
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .empty { margin: 0; padding-block: 24px; text-align: center; color: var(--ts-muted); }
   .fail { margin: 0; padding: 10px 12px; border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm, 6px); font-weight: 600; }
