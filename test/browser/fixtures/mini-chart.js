@@ -26,6 +26,9 @@ window.__mc = {
   dataFor,
   miniBars,
   miniProfile,
+  // The chart drawn in tile `id`. The set is in the order charts first drew, and the tiles' first renders are time-sliced
+  // (RFC 0003 §23), so on a slower machine its first member is not always the one in #m.
+  chartIn: (id) => [...charts].find((c) => document.getElementById(id).shadowRoot.contains(c.container)),
   count: (name) => calls.filter((c) => c === name).length,
   nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
 }

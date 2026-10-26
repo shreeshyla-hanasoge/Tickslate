@@ -142,7 +142,7 @@ test.describe('the theme', () => {
     await open(page, 'light')
     await fill(page)
     const theme = () => page.evaluate(() => {
-      const chart = [...window.__mc.charts][0]
+      const chart = window.__mc.chartIn('m')
       return { background: chart.theme.background, up: chart.theme.up, text: chart.theme.text }
     })
     const light = await theme()
@@ -168,7 +168,7 @@ test.describe('the theme', () => {
   test('follows the red-up palette: up candles take the loss colour', async ({ page }) => {
     await open(page)
     await fill(page)
-    const up = () => page.evaluate(() => [...window.__mc.charts][0].theme.up)
+    const up = () => page.evaluate(() => window.__mc.chartIn('m').theme.up)
     const green = await up()
     const before = await page.evaluate(() => window.__mc.count('setTheme'))
     await page.evaluate(() => {
@@ -193,7 +193,7 @@ test.describe('the theme wherever it is set', () => {
       await open(page, 'light')
       await fill(page)
       const theme = () => page.evaluate(() => {
-        const t = [...window.__mc.charts][0].theme
+        const t = window.__mc.chartIn('m').theme
         return JSON.stringify([t.background, t.up, t.down])
       })
       const was = await theme()
