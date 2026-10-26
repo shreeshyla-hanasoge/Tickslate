@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { todayPnlModel, CHART_BOX } from '../src/elements/today-pnl.js'
 import { createFormatter, createMessages } from '../src/core/index.js'
 import { resetWarnings } from '../src/elements/dev.js'
+import { readsOf } from './ops.mjs'
 import { downsample, scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths, nearestPoint, plotFraction } from '../src/elements/chart.js'
 
 describe('scale', () => {
@@ -580,15 +581,19 @@ describe('nearestPoint (RFC 0004 §1.1)', () => {
     assert.equal(nearestPoint(drawn, 1).x, 4999)
   })
 
-  test('is a binary search: a thousand lookups in 100,000 points take under 5 ms', () => {
-    const big = Array.from({ length: 100000 }, (_, i) => ({ x: i * 3, y: i }))
-    nearestPoint(big, 0.5)
-    const t0 = performance.now()
-    let sum = 0
-    for (let i = 0; i < 1000; i++) sum += nearestPoint(big, i / 999).index
-    const ms = performance.now() - t0
-    assert.ok(sum > 0)
-    assert.ok(ms < 5, `${ms.toFixed(2)} ms`)
+  test('is a binary search: a lookup reads a handful of points, however long the series', () => {
+    // Counts reads of the points instead of timing a loop: time under load says nothing about the algorithm.
+    // A scan would read ten thousand times as many points at 100,000 as at 10; a bisection reads about twice as many.
+    const lookups = (n) => {
+      const big = Array.from({ length: n }, (_, i) => ({ x: i * 3, y: i }))
+      return readsOf(big, (points) => {
+        for (let i = 0; i < 100; i++) nearestPoint(points, i / 99)
+      }) / 100
+    }
+    const small = lookups(10)
+    const large = lookups(100000)
+    assert.ok(large <= 100, `${large} reads per lookup in 100,000 points`)
+    assert.ok(large <= small * 8, `${small} reads per lookup in 10 points, ${large} in 100,000`)
   })
 })
 
