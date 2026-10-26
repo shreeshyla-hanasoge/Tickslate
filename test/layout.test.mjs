@@ -557,21 +557,6 @@ describe('dropIndex', () => {
     ask(items[1].id, { col: 1, row: 1 })
   })
 
-  // Timing is the best of several batches, because load only ever adds time. The sweep takes about 0.1 ms at 100
-  // tiles when idle (the old per-slot layout took several milliseconds), so the ceilings below are 10x that.
-  const bestBatchMs = (n, calls, batches) => {
-    const items = tiles(n)
-    const run = (i) => dropIndex(items, `t${i % n}`, { col: i % 4, row: i % 12 }, 4, WIDGETS, 2)
-    for (let i = 0; i < calls; i++) run(i) // warm up
-    let best = Infinity
-    for (let b = 0; b < batches; b++) {
-      const start = performance.now()
-      for (let i = 0; i < calls; i++) run(i)
-      best = Math.min(best, (performance.now() - start) / calls)
-    }
-    return best
-  }
-
   test('does not grow faster than linearly in the tile count', () => {
     // Counts reads of the tiles instead of timing two sizes. The sweep lays the other tiles out once, so 4x the
     // tiles is about 4x the reads; the old per-slot layout read them 16x as often (15.2 measured).
@@ -580,14 +565,21 @@ describe('dropIndex', () => {
     assert.ok(ratio > 2 && ratio <= 6, `120 tiles read the tiles ${ratio.toFixed(1)}x as often as 30`)
   })
 
-  test('averages well under a millisecond at 100 tiles, whichever tile is held', () => {
-    const each = bestBatchMs(100, 50, 15)
-    assert.ok(each < 1, `${each.toFixed(3)} ms per call`)
-  })
-
-  test('a generous ceiling holds at 120 tiles, and stays far inside a frame for 30', () => {
-    assert.ok(bestBatchMs(120, 20, 15) < 5)
-    assert.ok(bestBatchMs(30, 50, 15) < 1)
+  test('reads a bounded number of times per tile at 30, 100 and 120 tiles, whichever tile is held', () => {
+    // Reads of the tiles stand in for the old millisecond ceilings: a clock measures the runner's load, a count
+    // measures the algorithm. The sweep reads each tile about 22 times; the old per-slot layout read them far more
+    // as the list grew, so a per-tile figure that rises with the count fails here.
+    const perTile = (n) => {
+      let worst = 0
+      for (let k = 0; k < n; k += 7) {
+        const reads = readsOf(tiles(n), (items) => dropIndex(items, `t${k}`, { col: k % 4, row: k % 12 }, 4, WIDGETS, 2))
+        worst = Math.max(worst, reads / n)
+      }
+      return worst
+    }
+    const [few, hundred, many] = [30, 100, 120].map(perTile)
+    for (const each of [few, hundred, many]) assert.ok(each <= 40, `${each.toFixed(1)} reads per tile`)
+    assert.ok(many <= few * 1.5, `${few.toFixed(1)} reads per tile at 30 tiles, ${many.toFixed(1)} at 120`)
   })
 })
 
