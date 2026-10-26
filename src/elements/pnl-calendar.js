@@ -287,6 +287,7 @@ const SUMMARY = {
   Tall: `${stat('Net', 'n md')}${stat('Rate', 'n md')}`,
   M: `${stat('Net', 'n md')}${stat('Rate', 'n md')}${stat('Best', 'n md')}${stat('Worst', 'n md')}`,
   // Best and Worst are the Banner's secondary stats: a snug tile keeps the net and the rate (the summary text has all four).
+  // A Banner stacked under 700px, on a 150px row, goes without them too: with them the year gets no room at all, and a weekday name has no row to sit in.
   Banner: `${stat('Net', 'n md')}${stat('Rate', 'n md')}${stat('Best', 'n md', ' sec')}${stat('Worst', 'n md', ' sec')}`,
 }
 
@@ -348,6 +349,7 @@ export class TsPnlCalendar extends TsWidget {
   .body.banner .sum { grid-template-columns: repeat(2, minmax(0, 1fr)); inline-size: 280px; flex: none; align-content: center; }
   .body.banner .calwrap { flex: 1; min-width: 0; }
 }
+@container ts-tile (max-width: 699px) and (max-height: 8.5rem) { .body.banner .sum .sec, .body.banner .sp, .body.banner .wl { display: none; } }
 /* Forced colours drop backgrounds the page set, so the heat is drawn again from system colours: a gain in Highlight,
    a loss in CanvasText with a double border and its corner, both stepped by strength, a flat day in ButtonFace, a
    day with no entry dotted and a day to come dashed. */

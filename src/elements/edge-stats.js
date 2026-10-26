@@ -172,7 +172,7 @@ ${NONE}`,
   Wide: `${head}
 <div class="stats" data-k="stats">${[0, 1, 2, 3].map(cell).join('')}</div>
 ${NONE}
-${note(' wn')}`,
+${note(' wn sec')}`,
   M: `${head}
 <div class="stats" data-k="stats">${[0, 1, 2, 3].map(cell).join('')}</div>
 ${DIST}

@@ -133,7 +133,13 @@ const CONVERTED = [...ELEMENT_FILES, ...readdirSync(new URL('../src/themes/prese
 // capped by the tile's width (min(<token>, 15cqi)) are not here: their cap is a token, so no px is left in them.
 const ALLOWED = [['calc(8.6cqi - 2px)', 'a 2px offset inside a container-relative size, not a text size']]
 
-/** Source with every var(...) group removed (a fallback is not a declaration), balanced to any depth. */
+const TOKEN = /^--ts-(?:text-\w+|label-size)$/
+
+/**
+ * Source with every var(...) of a type token reduced to var(), because that fallback is the token's own value and the
+ * fallback test below holds it to that. Any other var(--x, <fallback>) keeps its fallback in the text, so a size hidden
+ * in one is found. Balanced to any depth.
+ */
 function withoutVars(text) {
   let out = ''
   for (let i = 0; i < text.length; ) {
@@ -145,26 +151,81 @@ function withoutVars(text) {
         else if (text[j] === ')') depth--
         j++
       } while (depth > 0 && j < text.length)
-      out += 'var()'
+      const inner = text.slice(i + 4, j - 1)
+      const comma = inner.indexOf(',')
+      const name = (comma < 0 ? inner : inner.slice(0, comma)).trim()
+      out += TOKEN.test(name) || comma < 0 ? 'var()' : `var(${withoutVars(inner.slice(comma + 1))})`
       i = j
     } else out += text[i++]
   }
   return out
 }
 
+/**
+ * Every font size a source draws in an absolute unit, as the text of its declaration. It finds `font-size` and the
+ * `font` shorthand in a stylesheet, in an inline `style="…"` or `style='…'`, in a `cssText = "…"` string and in a
+ * `fontSize` property, in any case (CSS keywords are not case sensitive), and an unnamed-unit `font-size="11"` SVG
+ * attribute, which is px.
+ */
+function fontSizeProblems(source) {
+  const text = withoutVars(stripComments(source))
+  const found = []
+  for (const m of text.matchAll(/(?:^|[\s;{"'`])(font-size|font)\s*:\s*([^;}`"']*)/gi)) if (/\b\d*\.?\d+(?:px|pt|pc)\b/i.test(m[2])) found.push(`${m[1]}: ${m[2].trim()}`)
+  for (const m of text.matchAll(/\bfontSize\s*[:=]\s*([^;,}\n]*)/gi)) if (/\b\d*\.?\d+(?:px|pt|pc)\b/i.test(m[1])) found.push(`fontSize: ${m[1].trim()}`)
+  for (const m of text.matchAll(/\bfont-size\s*=\s*["']?\s*(\d*\.?\d+)(?:px|pt)?\b/gi)) found.push(`font-size="${m[1]}"`)
+  return found
+}
+
 describe('the scan of every element file and preset', () => {
   for (const path of CONVERTED) {
     test(`${path} declares no font size in px`, () => {
-      const source = withoutVars(stripComments(read(path)))
-      const found = []
-      // font-size: … and the font shorthand, up to the end of the declaration.
-      for (const m of source.matchAll(/(?:^|[\s;{])(font-size|font)\s*:\s*([^;}`]*)/g)) if (/\b\d+(\.\d+)?px\b/.test(m[2])) found.push(`${m[1]}: ${m[2].trim()}`)
+      const found = fontSizeProblems(read(path))
       const unexplained = found.filter((f) => !ALLOWED.some(([text]) => f.includes(text)))
       assert.deepEqual(unexplained, [], `${path} has a px font size: use a --ts-text-* token (or --ts-label-size)`)
     })
 
     test(`${path} has no 10px label fallback`, () => {
       assert.ok(!/var\(--ts-label-size,\s*10px\)/.test(read(path)), path)
+    })
+  }
+
+  // The scan is only worth its name if it fails on each way a px size can be written. Each form is planted in a scratch
+  // copy of a real element's source (nothing on disk changes) and must be found; the forms the files may use must not be.
+  const PLANTED = {
+    'a declaration in a stylesheet': '.x { font-size: 11px; }',
+    'a stylesheet declaration in capitals': '.x { FONT-SIZE: 11PX; }',
+    'the font shorthand': '.x { font: 500 12px/1 sans-serif; }',
+    'an !important size': '.x { font-size: 11px!important; }',
+    'a size inside calc': '.x { font-size: calc(var(--a) + 11px); }',
+    'an inline style in double quotes': 'const a = `<span style="font-size:11px">x</span>`',
+    'an inline style in single quotes': "const a = `<span style='font-size:11px'>x</span>`",
+    'a cssText string in double quotes': 'el.style.cssText = "font-size:11px"',
+    'a cssText string in single quotes': "el.style.cssText = 'font-size:11px'",
+    'a var() whose fallback is not a token': '.x { font-size: var(--foo, 11px); }',
+    'a var() nested in a var() fallback': '.x { font-size: var(--foo, var(--bar, 11px)); }',
+    'a fontSize property': "el.style.fontSize = '11px'",
+    'a fontSize key': "Object.assign(el.style, { fontSize: '11px' })",
+    'a point size': '.x { font-size: 9pt; }',
+    'an SVG attribute with no unit': '<text font-size="11">x</text>',
+  }
+  const ALLOWED_FORMS = {
+    'a type token with its own fallback': '.x { font-size: var(--ts-text-sm, max(11px, .6875rem)); }',
+    'the label token': '.x { font: 600 var(--ts-label-size, max(11px, .6875rem)) / 1 sans-serif; }',
+    'a cap that is a token': '.x { font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 15cqi); }',
+    'a relative size': '.x { font-size: .7em; }',
+    'a px that is not a size': '.x { width: var(--foo, 11px); margin: 11px; }',
+    'a comment': '/* font-size: 11px */ .x { color: red; }',
+  }
+  for (const [form, planted] of Object.entries(PLANTED)) {
+    test(`the scan fails on ${form}`, () => {
+      assert.deepEqual(fontSizeProblems('const a = 1'), [])
+      const scratch = `${read('src/elements/card.js')}\n${planted}\n`
+      assert.ok(fontSizeProblems(scratch).length > 0, `not found: ${planted}`)
+    })
+  }
+  for (const [form, allowed] of Object.entries(ALLOWED_FORMS)) {
+    test(`the scan lets ${form} through`, () => {
+      assert.deepEqual(fontSizeProblems(allowed), [])
     })
   }
 
@@ -262,6 +323,8 @@ describe('tiles are size containers (RFC 0004 §2.2)', () => {
     assert.match(clock.template('S'), /class="row xs mut ft sec"/)
     const edge = await tag('edge-stats', 'TsEdgeStats')
     assert.match(edge.template('S'), /class="n sm sub sec" data-k="s0"/)
+    // The trade count and scope under the Wide's four stats were cut at plain compact density when only S marked its row.
+    assert.match(edge.template('Wide'), /class="sm mut ell wn sec" data-k="note"/)
     assert.doesNotMatch(edge.template('M'), /class="[^"]*\bsec\b/)
     const funding = await tag('capital-funding', 'TsCapitalFunding')
     assert.match(funding.template('S'), /class="sm n ell st sec" data-k="status"/)
@@ -270,6 +333,8 @@ describe('tiles are size containers (RFC 0004 §2.2)', () => {
     assert.match(progress.template('Wide'), /class="rowb sec"/)
     const calendar = await tag('pnl-calendar', 'TsPnlCalendar')
     assert.match(calendar.template('Banner'), /class="col cell sec"/)
+    // A Banner stacked under 700px on a 150px row also drops the Best and Worst, so the year gets room.
+    assert.match(calendar.styles, /@container ts-tile \(max-width: 699px\) and \(max-height: 8\.5rem\) \{ \.body\.banner \.sum \.sec, \.body\.banner \.sp, \.body\.banner \.wl \{ display: none; \} \}/)
   })
 
   test('a widget\'s own display does not outrank the shared snug rule: a row marked .sec that sets display restates the tier', async () => {

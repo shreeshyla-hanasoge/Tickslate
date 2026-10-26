@@ -8,12 +8,14 @@ import { test, expect } from '@playwright/test'
 const GALLERY = '/widgets.html'
 const FIXTURE = '/test/browser/fixtures/widgets.html'
 
-// Runs in the page. For every tile in the gallery it finds the headline, label and figure text that a widget clips:
-// a text run whose ink leaves a box that hides overflow, or whose box is squeezed below its own content. A label, or the line under a stat, may be
-// shortened with an ellipsis (that is how a narrow tile says so); a headline or figure may not be cut at all. Text a
-// widget scrolls (a list inside a tile) and text the host slotted in are not the widget's to fit.
-function findClips({ fixture = false, phone = false } = {}) {
-  const OWN = ['lb', 'big', 'xbig', 'n', 'nv', 'md']
+// Runs in the page. For every tile it inspects every text node in every shadow root (a note, a footer, a month label or
+// the words under a bar included, not only the headline) and finds the ones a widget clips: a text run whose ink leaves a
+// box that hides overflow, or whose box is squeezed below its own content. A label, a name, a note or the line under a
+// stat may be shortened with an ellipsis (that is how a narrow tile says so); a headline or a figure may not be cut at
+// all. Text a widget scrolls (a list inside a tile) and text the host slotted in are not the widget's to fit.
+function findClips({ fixture = false, phone = false, grid = false, place = null } = {}) {
+  // Only these are figures: an ellipsis on one of them is a cut, on anything else it is the tile saying it is narrow.
+  const FIGURE = ['big', 'xbig', 'n', 'nv', 'md']
   const composedParent = (n) => n.assignedSlot || n.parentNode || n.host || null
   const out = []
   const visit = (node, acc) => {
@@ -27,7 +29,9 @@ function findClips({ fixture = false, phone = false } = {}) {
     }
   }
   // The gallery's figures, or every tile of the fixture page: all the built-in widgets, at each size they have.
-  const subjects = fixture
+  const subjects = grid
+    ? [...document.querySelectorAll('#g > *')].map((el) => ({ el, tile: `${el.localName}:${el.getAttribute('size')} ${place}`, place, theme: document.documentElement.dataset.theme || 'light' }))
+    : fixture
     ? [...window.__fx.tiles].map(([key, el]) => ({ el, tile: `${key} ${phone ? 'phone' : 'desktop'}`, place: phone ? 'phone' : 'desktop', theme: new URLSearchParams(location.search).get('theme') || 'light' }))
     : [...document.querySelectorAll('figure > [size]')].map((el) => {
         const set = el.closest('.set')
@@ -39,66 +43,67 @@ function findClips({ fixture = false, phone = false } = {}) {
     visit(el.shadowRoot, texts)
     for (const t of texts) {
       const parent = t.parentElement
-      let own = null
+      let figure = null
+      let isLabel = false
       for (let a = parent; a && a.nodeType === 1; a = composedParent(a)) {
-        if (a.classList && OWN.some((c) => a.classList.contains(c))) {
-          own = a
-          break
-        }
+        if (a.classList && a.classList.contains('lb')) isLabel = true
         if (a.getAttribute && ['value', 'label'].includes(a.getAttribute('part'))) {
-          own = a
+          if (a.getAttribute('part') === 'label') isLabel = true
+          else figure = figure || a
+        }
+        if (a.classList && FIGURE.some((c) => a.classList.contains(c))) {
+          figure = a
           break
         }
       }
-      if (!own) continue
-      const isLabel = own.classList.contains('lb') || own.getAttribute('part') === 'label'
       // The second line under a stat (.sub) is built to give way with an ellipsis before the figure does (edge-stats.js).
-      const mayShorten = isLabel || own.classList.contains('sub')
+      const mayShorten = !figure || isLabel || figure.classList.contains('sub')
       const range = document.createRange()
       range.selectNodeContents(t)
       const rects = [...range.getClientRects()].filter((q) => q.width > 0.5 && q.height > 0.5)
       if (!rects.length) continue
-      // Hidden from sight on purpose: a collapsed box, or a tier's display: none (no rects, skipped above).
-      let skip = false
+      // Text a reader does not see: a visually hidden helper is a box of a pixel or so.
+      let hidden = false
       for (let a = parent; a && a.nodeType === 1; a = composedParent(a)) {
-        const s = getComputedStyle(a)
         const q = a.getBoundingClientRect()
-        if (s.overflowY === 'auto' || s.overflowY === 'scroll' || (q.width <= 1.5 && q.height <= 1.5 && s.overflowX !== 'visible')) {
-          skip = true
+        const s = getComputedStyle(a)
+        if (s.visibility !== 'visible' || (q.width <= 1.5 && q.height <= 1.5 && s.overflowX !== 'visible')) {
+          hidden = true
           break
         }
       }
-      if (skip) continue
-      let left = Math.min(...rects.map((q) => q.left))
+      if (hidden) continue
+      const size = parseFloat(getComputedStyle(parent).fontSize) || 12
+      const left = Math.min(...rects.map((q) => q.left))
+      const right = Math.max(...rects.map((q) => q.right))
+      const top = Math.min(...rects.map((q) => q.top))
+      const bottom = Math.max(...rects.map((q) => q.bottom))
       // Letter spacing adds room after the last glyph, which is not ink.
       const spacing = Math.max(0, parseFloat(getComputedStyle(parent).letterSpacing) || 0)
-      let right = Math.max(...rects.map((q) => q.right)) - spacing
-      // The range of a shortened text still spans the words that were cut, but what is drawn ends at the box with the ellipsis.
-      for (let n = parent; n && n.nodeType === 1; n = composedParent(n)) {
+      for (let n = parent; n && n.nodeType === 1 && n !== document.documentElement; n = composedParent(n)) {
         const s = getComputedStyle(n)
-        if (s.textOverflow !== 'ellipsis' || s.overflowX === 'visible') continue
+        const clipsX = s.overflowX !== 'visible'
+        const clipsY = s.overflowY !== 'visible'
+        if (!clipsX && !clipsY) continue
+        // A scroller owns its content.
+        if (['auto', 'scroll'].some((v) => s.overflowX === v || s.overflowY === v)) break
         const box = n.getBoundingClientRect()
-        left = Math.max(left, box.left)
-        right = Math.min(right, box.right)
-        break
-      }
-      let block = parent
-      while (block && block.nodeType === 1 && ['inline', 'contents'].includes(getComputedStyle(block).display)) block = composedParent(block)
-      const blockBox = block.getBoundingClientRect()
-      const size = parseFloat(getComputedStyle(block).fontSize)
-      for (let n = parent; n && n !== document.documentElement; n = composedParent(n)) {
-        if (n.nodeType !== 1) continue
-        const s = getComputedStyle(n)
-        if (!['hidden', 'clip'].some((v) => s.overflowX === v || s.overflowY === v)) continue
-        const box = n.getBoundingClientRect()
-        const ellipsis = s.textOverflow === 'ellipsis'
-        const sideways = !ellipsis && (left < box.left - 2 || right > box.right + 2)
-        // A line box is shorter than the glyphs' own box (line-height 1), so a little overflow is not ink.
-        const squeezed = n === block ? n.scrollHeight - n.clientHeight > 0.16 * size : blockBox.top < box.top - 2 || blockBox.bottom > box.bottom + 2
-        const shortened = ellipsis && !mayShorten && n.scrollWidth - n.clientWidth > 1 + spacing
-        if (sideways || squeezed || shortened) {
-          out.push({ tile, theme, text: t.textContent.trim().slice(0, 30), by: String(n.className || n.localName), sideways, squeezed, shortened })
+        const inner = {
+          left: box.left + (parseFloat(s.borderLeftWidth) || 0),
+          right: box.right - (parseFloat(s.borderRightWidth) || 0),
+          top: box.top + (parseFloat(s.borderTopWidth) || 0),
+          bottom: box.bottom - (parseFloat(s.borderBottomWidth) || 0),
         }
+        const sideways = clipsX && (left < inner.left - 1 || right - spacing > inner.right + 1)
+        // A line box is taller than the ink of its glyphs (line-height 1 and tight rows), so a fifth of the size is not a cut.
+        const squeezed = clipsY && (top < inner.top - 0.2 * size - 1 || bottom > inner.bottom + 0.2 * size + 1)
+        if (!sideways && !squeezed) continue
+        // Only an ellipsis on the width, on text that is built to give way with one, is not a cut.
+        const shortened = s.textOverflow === 'ellipsis' && sideways && !squeezed
+        // What is drawn ends at that box, so the boxes around it have nothing more to clip.
+        if (shortened && mayShorten) break
+        out.push({ tile, theme, text: t.textContent.trim().slice(0, 30), by: String(n.className || n.localName), sideways, squeezed, shortened })
+        break
       }
     }
   }
@@ -194,41 +199,117 @@ test.describe('compact density and text spacing in the gallery', () => {
 })
 
 // The gallery draws six widgets. The fixture page draws all of them (the cards, metrics, charts, lists, calendars and
-// gauges, 43 tiles at their sizes), so the same check runs there: compact rows and the four WCAG 1.4.12 overrides on,
-// light and dark, at a desktop column width and at a phone's (the two columns and 150px rows of RFC 0001 §4.1).
-test.describe('every built-in widget at compact density with the text-spacing overrides on', () => {
-  const SPACING = '*, *::before, *::after { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } p { margin-block-end: 2em !important; }'
-  for (const theme of ['light', 'dark']) {
-    for (const phone of [false, true]) {
-      test(`${theme}, ${phone ? 'phone' : 'desktop'}: no headline, label or figure is cut`, async ({ page }) => {
-        await page.setViewportSize({ width: phone ? 390 : 1400, height: 900 })
-        await page.goto(`${FIXTURE}?theme=${theme}`)
-        await page.waitForFunction(() => window.__ready === true)
-        await page.evaluate(({ phone, SPACING }) => {
-          const COLS = { S: 1, Tall: 1, Wide: 2, M: 2, L: 3, Banner: 4, XL: 4 }
-          for (const el of window.__fx.tiles.values()) {
-            const c = COLS[el.getAttribute('size')]
-            // A phone is two columns (170px a cell); a desktop column is 304px with 16px gaps.
-            const w = phone ? (c === 1 ? 170 : 350) : c * 304 + (c - 1) * 16
-            el.style.width = `${w}px`
-            el.parentElement.style.width = `${w}px`
-          }
-          // A phone's rows are --ts-row-compact whatever the density (RFC 0004 §2.1).
-          if (phone) document.documentElement.style.setProperty('--ts-row', 'var(--ts-row-compact)')
-          document.documentElement.setAttribute('data-ts-density', 'compact')
-          const sheet = new CSSStyleSheet()
-          sheet.replaceSync(SPACING)
-          const adopt = (root) => { root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet] }
-          const walk = (root) => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { adopt(el.shadowRoot); walk(el.shadowRoot) } }
-          adopt(document)
-          walk(document)
-        }, { phone, SPACING })
-        await page.evaluate(() => window.__fx.nextFrame())
-        await page.waitForTimeout(300)
-        const found = await clips(page, { fixture: true, phone })
-        expect(found, JSON.stringify(found, null, 1)).toEqual([])
-      })
+// gauges, 43 tiles at their sizes), so the same check runs there: at compact density alone and with the four WCAG 1.4.12
+// overrides on as well, light and dark, at a desktop column width and at a phone's (the two columns and 150px rows of
+// RFC 0001 §4.1). Compact alone is its own run: a note that only the overrides happen to hide would pass the other one.
+const SPACING = '*, *::before, *::after { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } p { margin-block-end: 2em !important; }'
+
+// Puts the text-spacing overrides on the document and on every open shadow root, the way the gallery's switch does.
+function applySpacing(SPACING) {
+  const sheet = new CSSStyleSheet()
+  sheet.replaceSync(SPACING)
+  const adopt = (root) => { root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet] }
+  const walk = (root) => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { adopt(el.shadowRoot); walk(el.shadowRoot) } }
+  adopt(document)
+  walk(document)
+}
+
+test.describe('every built-in widget at compact density', () => {
+  for (const spacing of [false, true]) {
+    for (const theme of ['light', 'dark']) {
+      for (const phone of [false, true]) {
+        test(`${theme}, ${phone ? 'phone' : 'desktop'}, compact${spacing ? ' with the text-spacing overrides' : ' alone'}: no headline, label, figure or note is cut`, async ({ page }) => {
+          await page.setViewportSize({ width: phone ? 390 : 1400, height: 900 })
+          await page.goto(`${FIXTURE}?theme=${theme}`)
+          await page.waitForFunction(() => window.__ready === true)
+          await page.evaluate(({ phone, spacing, SPACING, applySpacing }) => {
+            const COLS = { S: 1, Tall: 1, Wide: 2, M: 2, L: 3, Banner: 4, XL: 4 }
+            for (const el of window.__fx.tiles.values()) {
+              const c = COLS[el.getAttribute('size')]
+              // A phone is two columns (170px a cell); a desktop column is 304px with 16px gaps.
+              const w = phone ? (c === 1 ? 170 : 350) : c * 304 + (c - 1) * 16
+              el.style.width = `${w}px`
+              el.parentElement.style.width = `${w}px`
+            }
+            // A phone's rows are --ts-row-compact whatever the density (RFC 0004 §2.1).
+            if (phone) document.documentElement.style.setProperty('--ts-row', 'var(--ts-row-compact)')
+            document.documentElement.setAttribute('data-ts-density', 'compact')
+            if (spacing) new Function(`return (${applySpacing})`)()(SPACING)
+          }, { phone, spacing, SPACING, applySpacing: applySpacing.toString() })
+          await page.evaluate(() => window.__fx.nextFrame())
+          await page.waitForTimeout(300)
+          const found = await clips(page, { fixture: true, phone })
+          expect(found, JSON.stringify(found, null, 1)).toEqual([])
+        })
+      }
     }
+  }
+})
+
+// A tablet is the case the two fixed widths above never reach: a real <ts-grid> at two or three columns, with the
+// compact rows of 150px (RFC 0001 §4.1), where a Wide or a Banner tile is narrower than its desktop self.
+//
+// Three cuts are known and wait for layout work that tiering cannot do (a tier hides a row at a content height, and a
+// comfortable tile of the same height must keep it): they are listed here with the reason, and each has a fixme below
+// that asserts the tile is clean, so fixing one turns its fixme into a failure to delete.
+const KNOWN = [
+  { tile: 'ts-progress:Wide', width: 700, why: 'at 150px rows the words under the bar are pushed out by an xbig figure whose line is 1.5 tall; hiding them would also hide them on a comfortable phone' },
+  { tile: 'ts-today-pnl:S', width: 800, why: 'the figure is sized at 15cqi for a 304px tile, and the overrides add .12em a character to it at 249px' },
+  { tile: 'ts-pnl-calendar:Banner', width: 800, why: 'the last month label starts a week from the edge, and the overrides widen it past the tile' },
+]
+
+test.describe('every built-in widget in a real <ts-grid> at tablet widths and compact density', () => {
+  const GRID = '/test/browser/fixtures/grid.html'
+  const draw = async (page, { width, spacing, theme }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`${GRID}?theme=${theme}`)
+    await page.waitForFunction(() => customElements.get('ts-grid'))
+    await page.evaluate(async ({ spacing, SPACING, applySpacing, theme }) => {
+      const { WIDGETS } = await import('/src/core/index.js')
+      const { setup, dataFor, frozenClock } = await import('/test/browser/fixtures/data.js')
+      const g = document.getElementById('g')
+      document.documentElement.dataset.theme = theme
+      setup()
+      for (const c of [...g.children]) c.remove()
+      g.setAttribute('density', 'compact')
+      g.setAttribute('edit-controls', 'off')
+      let i = 0
+      for (const [key, spec] of Object.entries(WIDGETS)) {
+        if (!customElements.get(spec.tag)) continue
+        for (const size of spec.sizes) {
+          const el = document.createElement(spec.tag)
+          el.setAttribute('item', `${key}-${size}-${i++}`)
+          el.setAttribute('size', size)
+          el.setAttribute('label', spec.label)
+          if (spec.tag === 'ts-card') el.insertAdjacentHTML('beforeend', '<span slot="value">42</span>')
+          else {
+            el.clock = frozenClock
+            el.data = dataFor(spec.tag)
+          }
+          g.append(el)
+        }
+      }
+      await new Promise((r) => setTimeout(r, 500))
+      if (spacing) new Function(`return (${applySpacing})`)()(SPACING)
+      await new Promise((r) => setTimeout(r, 500))
+    }, { spacing, SPACING, applySpacing: applySpacing.toString(), theme })
+    return clips(page, { grid: true, place: `${width}px` })
+  }
+  for (const width of [700, 800]) {
+    for (const spacing of [false, true]) {
+      for (const theme of ['light', 'dark']) {
+        test(`${width}px, ${theme}, compact${spacing ? ' with the text-spacing overrides' : ' alone'}: nothing is cut`, async ({ page }) => {
+          const found = (await draw(page, { width, spacing, theme })).filter((c) => !KNOWN.some((k) => k.width === width && c.tile.startsWith(k.tile)))
+          expect(found, JSON.stringify(found, null, 1)).toEqual([])
+        })
+      }
+    }
+  }
+  for (const known of KNOWN) {
+    test.fixme(`${known.tile} at ${known.width}px, compact with the text-spacing overrides, is not cut (${known.why})`, async ({ page }) => {
+      const found = (await draw(page, { width: known.width, spacing: true, theme: 'light' })).filter((c) => c.tile.startsWith(known.tile))
+      expect(found, JSON.stringify(found, null, 1)).toEqual([])
+    })
   }
 })
 
