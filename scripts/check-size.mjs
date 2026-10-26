@@ -51,12 +51,15 @@ const BUDGETS = {
   // Measured 2026-10-13: core 8,484 B. The messages story put the EN table in
   // the core, so both figures below were re-measured on 2026-10-14: core
   // 10,394 B.
-  'dist-lib/index.js': { maxKb: 13, mode: 'enforce', target: 're-measured after locale-formatting, RFC 0003 §25, CI measurement', date: '2026-10-16' },
+  // Re-baselined at 0.3.0 (release-0-3-0, 2026-10-26): this row and every entry row below are set to the measured min+gz plus 10 %,
+  // rounded up to the next 0.5 kB (RFC 0003 §25), measured on the 0.3.0 release candidate. index.js is now a 666 B shim over the
+  // shared chunks, which is why its figure falls from 13 kB to 1 kB.
+  'dist-lib/index.js': { maxKb: 1, mode: 'enforce', target: 're-baselined at 0.3.0 from measurement + 10 %, RFC 0003 §25', date: '2026-10-26' },
   // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-14, after
   // messages: 10,551 B.
   // Re-measured 2026-10-26 (market-presets-and-breaks, authorised per RFC 0003 §25): the break engine and the five new presets
   // (nyse, nasdaq, lse, fx, tse) took the UMD to 17,062 B, so 18,768 B with 10 %, which rounds up to 18.5 kB.
-  'dist-lib/umd/tickslate.umd.js': { maxKb: 18.5, mode: 'enforce', target: 're-measured for the break engine and the five new presets (nyse, nasdaq, lse, fx, tse), RFC 0003 §25', date: '2026-10-26' },
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 20.5, mode: 'enforce', target: 're-baselined at 0.3.0 from measurement + 10 %, RFC 0003 §25', date: '2026-10-26' },
   // The all-in `tickslate/elements` and the two CDN files carry no budget:
   // P1 adds about a dozen widgets to them, so RFC 0002's 50 kB figure belongs
   // to the 0.1.0 widget set. They are reported, and 0.2.0 release preparation
@@ -188,27 +191,29 @@ const remeasuredFifteenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured 
 // messages), and controls 17,417 B (19,159 B, 19 kB) for the seven new shared grid.* messages. No other row moved.
 // Authorised by the orchestrator after review (RFC 0003 §25).
 const remeasuredSixteenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured with the resize badge, the first-run hint, the calm profile switch and their messages (edit-feedback), RFC 0004 §3, RFC 0003 §25', date: '2026-10-26' })
+// Re-baselined at 0.3.0 (release-0-3-0, 2026-10-26): every row below is its measured min+gz plus 10 %, rounded up to the next 0.5 kB.
+const rebaselined = (maxKb) => ({ ...entry(maxKb), target: 're-baselined at 0.3.0 from measurement + 10 %, RFC 0003 §25', date: '2026-10-26' })
 const ENTRY_BUDGETS = {
-  controls: remeasuredThirteenth(19),
-  'edge-stats': remeasuredTwelfth(28.5),
-  'capital-funding': remeasuredTwelfth(29.5),
-  grid: remeasuredSixteenth(40.5),
-  card: remeasuredTwelfth(25.5),
-  metric: remeasuredTwelfth(27.5),
-  chart: remeasuredFifteenth(37),
-  'today-pnl': remeasuredFifteenth(33),
-  'equity-curve': remeasuredFifteenth(33),
-  'session-clock': remeasuredFourteenth(29),
-  table: remeasuredTwelfth(29),
-  watchlist: remeasuredTwelfth(29.5),
-  'open-positions': remeasuredTwelfth(30.5),
-  progress: remeasuredTwelfth(26),
-  'pnl-calendar': remeasuredTwelfth(30),
-  'layout-list': remeasuredTwelfth(15),
-  'mini-chart': { ...newEntry(29), date: '2026-10-26' },
-  breakdown: genericEntry(28.5),
-  status: genericEntry(27),
-  feed: genericEntry(26.5),
+  controls: rebaselined(20.5),
+  'edge-stats': rebaselined(30),
+  'capital-funding': rebaselined(31),
+  grid: rebaselined(42.5),
+  card: rebaselined(27),
+  metric: rebaselined(29.5),
+  chart: rebaselined(39),
+  'today-pnl': rebaselined(35),
+  'equity-curve': rebaselined(35),
+  'session-clock': rebaselined(31),
+  table: rebaselined(31),
+  watchlist: rebaselined(31.5),
+  'open-positions': rebaselined(32),
+  progress: rebaselined(27.5),
+  'pnl-calendar': rebaselined(31.5),
+  'layout-list': rebaselined(16.5),
+  'mini-chart': rebaselined(32),
+  breakdown: rebaselined(30.5),
+  status: rebaselined(28.5),
+  feed: rebaselined(28.5),
 }
 
 /**
