@@ -106,9 +106,9 @@ test.describe('two Tall tiles side by side at 390 px', () => {
 })
 
 // A tile of a chosen width, so the 11.25 rem rule is read at 150 and 179 px and left alone at 260.
-async function tileAt(page, width, dir = 'ltr', label = 'Open positions and exits') {
+async function tileAt(page, width, dir = 'ltr', label = 'Open positions and exits', data = null) {
   return page.evaluate(
-    ({ width, dir, label }) => {
+    ({ width, dir, label, data }) => {
       document.getElementById('probe')?.remove()
       const host = document.createElement('div')
       host.id = 'probe'
@@ -120,9 +120,10 @@ async function tileAt(page, width, dir = 'ltr', label = 'Open positions and exit
       card.style.cssText = 'display: block; block-size: 100%'
       host.append(card)
       document.body.append(host)
+      if (data) card.data = typeof data === 'function' ? data() : data
       return null
     },
-    { width, dir, label },
+    { width, dir, label, data },
   )
 }
 
@@ -457,5 +458,86 @@ test.describe('in every engine', () => {
     })
     expect(f.y).toBeGreaterThan(f.vh * 2)
     expect(f.overflow).toBe(false)
+  })
+})
+
+// The floor and the meta rule, each on its own (a tile with a live, stale meta so there is something to drop).
+const visibleOf = (page) =>
+  page.evaluate(() => {
+    const root = document.querySelector('#probe ts-card').shadowRoot
+    const label = root.querySelector('[part="label"]')
+    const meta = root.querySelector('[data-k="meta"]')
+    const text = label.textContent
+    return {
+      visible: label.scrollWidth > label.clientWidth + 0.5 ? Math.floor((label.clientWidth / label.scrollWidth) * text.length) : text.length,
+      metaShown: !!meta && !meta.hidden && meta.getClientRects().length > 0,
+      description: root.querySelector('.tile').getAttribute('aria-description'),
+      dotTitle: root.querySelector('[data-k="dot"]')?.getAttribute('title') ?? null,
+      metaText: meta ? meta.textContent.trim() : '',
+    }
+  })
+const STALE = { live: true, asOf: 0 }
+
+test.describe('the label floor and the meta rule', () => {
+  test('at 152 px (meta kept) the label still keeps five characters beside a stale meta', async ({ page }) => {
+    await open(page, 390)
+    await tileAt(page, 152, 'ltr', 'Open positions and exits', STALE)
+    await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[data-k="meta"]')?.textContent)
+    const v = await visibleOf(page)
+    expect(v.metaShown, 'the meta is still there above 7rem').toBe(true)
+    expect(v.visible).toBeGreaterThanOrEqual(5)
+  })
+
+  test('at 130 px the meta is dropped whole, the tile is described by it, and the dot carries it as a title', async ({ page }) => {
+    await open(page, 390)
+    await tileAt(page, 130, 'ltr', 'Open positions and exits', STALE)
+    await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[data-k="meta"]')?.textContent)
+    // Drawn once more now that the box is known, as a live tick does.
+    await page.evaluate(() => { document.querySelector('#probe ts-card').data = { live: true, asOf: 0 } })
+    await page.waitForFunction(() => document.querySelector('#probe ts-card').shadowRoot.querySelector('.tile').hasAttribute('aria-description'))
+    const v = await visibleOf(page)
+    expect(v.metaShown).toBe(false)
+    expect(v.metaText).not.toBe('')
+    expect(v.description).toBe(v.metaText)
+    expect(v.dotTitle).toBe(v.metaText)
+    expect(v.visible).toBeGreaterThanOrEqual(5)
+  })
+
+  test('two Tall tiles at 320 px: the sync text is in each tile\u2019s description', async ({ page }) => {
+    await open(page, 320)
+    await page.evaluate((layout) => { document.getElementById('board').layout = layout }, TALL_PAIR)
+    await page.waitForFunction(() => document.querySelector('[item="watchlist"]').getBoundingClientRect().width > 0)
+    // A render after the layout, as the feed's own ticks make.
+    await page.waitForTimeout(2500)
+    for (const item of ['capitalFunding', 'watchlist']) {
+      const d = await page.evaluate((item) => {
+        const root = document.querySelector(`[item="${item}"]`).shadowRoot
+        const meta = root.querySelector('[data-k="meta"]')
+        return { shown: !!meta && meta.getClientRects().length > 0, text: meta ? meta.textContent.trim() : '', description: root.querySelector('.tile').getAttribute('aria-description') }
+      }, item)
+      expect(d.shown).toBe(false)
+      expect(d.text).not.toBe('')
+      expect(d.description).toBe(d.text)
+    }
+  })
+
+  test('a signed content column stays on one line, and its row is as tall as an unset column\u2019s', async ({ page }) => {
+    await open(page, 1280)
+    const rows = [{ id: 1, sym: 'ALPHA 24300 PE', pnl: 1250.5 }]
+    const heightOf = async (width) => {
+      await tableAt(page, 700, [{ key: 'sym', label: 'Instrument' }, { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', ...(width ? { width } : {}) }], rows)
+      return page.evaluate(() => Math.round(document.querySelector('#tprobe ts-table').shadowRoot.querySelector('tbody tr').getBoundingClientRect().height))
+    }
+    const unset = await heightOf(null)
+    const signed = await heightOf('content')
+    expect(signed).toBe(unset)
+    // And with a long symbol the signed figure beside it keeps its arrow on its line.
+    await tableAt(page, 700, [{ key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', width: 'content' }, { key: 'sym', label: 'Instrument' }], [{ id: 1, sym: 'X', pnl: 1250.5 }])
+    const one = await page.evaluate(() => {
+      const td = document.querySelector('#tprobe ts-table').shadowRoot.querySelector('tbody td')
+      const [arrow, text] = td.children
+      return { sameLine: Math.abs(arrow.getBoundingClientRect().top - text.getBoundingClientRect().top) < 8 }
+    })
+    expect(one.sameLine).toBe(true)
   })
 })

@@ -10,6 +10,8 @@
 - `configure({ clock })` given anything but a function or `null` keeps the clock already set. `persistLayout()` with no `defaults` takes the grid's layout at attach as the defaults, so `reset()` has somewhere to go. The header's meta now shrinks first (and ends in an ellipsis) so a label keeps about six characters at 320 px or large text. `grid.clock` and `widget.clock` still work and win for the element they are set on; read without one, they return the page clock's function, or `Date.now()`.
 - A `<ts-table>` far down the page draws its first fit even before it is near the viewport, so a full-page screenshot or a find in the page no longer reads it with columns it has already measured to be too many.
 
+- When a tile is under 7rem wide and its header meta ("just now", "synced 11:42", "stale 5 min") is dropped, the tile's `aria-description` and the dot's `title` carry that text, so neither the age nor the sync time is lost. It is read at each render, so a tile narrowed without a redraw catches up at its next one.
+
 ### Internal
 
 - Deviation from RFC 0004 §11.2: `persistLayout` hears host assignments through a private `_watchLayout(fn)` hook on `<ts-grid>` (a layout can be assigned without any event), so a fake grid without it only misses the later captures. The grid also marks its own writes with `_persistWriting`, so its fallback layout for a device with nothing saved follows the host's latest layout and never a saved one. The `defaults` option of `persistLayout()` is still used first; a host assignment replaces it for that device from then on.
