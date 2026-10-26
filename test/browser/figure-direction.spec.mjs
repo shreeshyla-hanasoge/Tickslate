@@ -2,7 +2,7 @@
 // the page runs right to left, and an Arabic, Hebrew or Persian figure must read the same in either page direction.
 // The probe measures with Range rects, the way the eye sees it, over every text node in every shadow root.
 import { test, expect } from '@playwright/test'
-import { drawn } from './drawn.mjs'
+import { drawn, rendered } from './drawn.mjs'
 
 const PAGE = '/test/browser/fixtures/widgets.html'
 
@@ -24,7 +24,9 @@ async function open(page, locale, dir) {
     }
     walk(document)
   }, { locale, dir })
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 100)))))
+  // Every tile re-draws in the new locale; read them only when none still owes that render.
+  await rendered(page)
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
 }
 
 // For each visible text node with a sign and a digit: where the sign sits against the first digit ('before' or 'after'),

@@ -17,3 +17,18 @@ export const gridDrawn = (page, selector = '#g > *') =>
     const tile = el.shadowRoot && el.shadowRoot.querySelector('.tile')
     return !!tile && !!tile.getAttribute('aria-label') && !tile.hasAttribute('aria-busy')
   }), selector)
+
+// No widget on the page owes a render. Changing an attribute that every tile formats with (locale, currency) queues one
+// render per tile, and a burst of those is time-sliced over several tasks (RFC 0003 §23), so frames and a timer only guess
+// at when the last is done. A widget keeps _queued set from the request until it has drawn, which is the condition itself.
+export const rendered = (page) =>
+  page.waitForFunction(() => {
+    const owing = (root) => {
+      for (const el of root.querySelectorAll('*')) {
+        if (el._queued === true) return true
+        if (el.shadowRoot && owing(el.shadowRoot)) return true
+      }
+      return false
+    }
+    return !owing(document)
+  })
