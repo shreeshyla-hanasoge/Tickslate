@@ -18,9 +18,11 @@ test.beforeEach(async ({ page }) => {
   // The animations the grid runs on its board, so a crossfade can be counted.
   await page.addInitScript(() => {
     window.__anims = []
+    window.__fades = []
     const animate = Element.prototype.animate
     Element.prototype.animate = function (keyframes, options) {
       if (this.classList && this.classList.contains('board')) window.__anims.push(JSON.stringify(keyframes))
+      if (this.classList && this.classList.contains('badge')) window.__fades.push(JSON.stringify([keyframes, options]))
       return animate.call(this, keyframes, options)
     }
   })
@@ -193,10 +195,9 @@ test.describe('the size badge with motion', () => {
     await chrome(page, 'notes').locator('.handle').focus()
     await page.keyboard.press('+')
     await expect(badge(page, 'notes')).toBeVisible()
-    // Just past the second the fade is under way: partly transparent, not yet hidden.
-    await page.waitForTimeout(1080)
-    const opacity = await badge(page, 'notes').evaluate((el) => (el.hidden ? 'gone' : Number(getComputedStyle(el).opacity)))
-    expect(opacity === 'gone' || opacity < 1).toBe(true)
+    // A second after the key press the badge fades rather than vanishing. Wait for the fade itself, which is what
+    // the grid starts, and not for a moment on the clock: how long the page and the test each wait under load differs.
+    await expect.poll(() => page.evaluate(() => window.__fades)).toEqual([JSON.stringify([[{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-in', fill: 'forwards' }])])
     await expect(badge(page, 'notes')).toBeHidden({ timeout: 1500 })
     expect(await badge(page, 'notes').evaluate((el) => getComputedStyle(el).display)).toBe('none')
   })
@@ -389,8 +390,10 @@ test.describe('the calm profile switch, with motion', () => {
     await expect(toast(page)).toHaveAttribute('aria-label', 'Switched to After close')
     await expect(toast(page).locator('.msg')).toHaveText('Switched to After close')
     await expect(toast(page).locator('.undo')).toHaveText('Keep Market hours')
-    const keep = await toast(page).locator('.undo').boundingBox()
-    expect(keep.height).toBeGreaterThanOrEqual(44)
+    // The laid-out height, not the box on screen: the toast is still moving in, and a transform at rest by a fraction of a pixel
+    // would read 43.99998.
+    const keep = await toast(page).locator('.undo').evaluate((el) => parseFloat(getComputedStyle(el).height))
+    expect(keep).toBeGreaterThanOrEqual(44)
     // Spoken once, by the status region; the toast is not a live region.
     await expect.poll(async () => (await said(page)).filter((s) => s.includes('Showing the After close layout.')).length).toBe(1)
     await page.waitForTimeout(400)
