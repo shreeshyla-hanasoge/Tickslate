@@ -228,8 +228,7 @@ ${header({ dot: true, meta: true })}
 <div class="scroll" data-k="scroll" role="group" tabindex="0">
 <table part="table" data-k="table">
 <caption class="visually-hidden" data-k="caption"></caption>
-<colgroup data-k="cols"></colgroup>
-<thead><tr data-k="head"></tr></thead>
+<thead data-k="thead"><tr data-k="head"></tr></thead>
 <tbody data-k="body"></tbody>
 </table>
 <div class="none mut" data-k="none" hidden></div>
@@ -245,10 +244,13 @@ table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-si
 th, td { box-sizing: border-box; min-inline-size: ${MIN_COLUMN}px; padding: 7px 8px; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A text column gives way to the figures beside it, down to the 56px floor, and ends in an ellipsis; a figure is never cut. */
 .t { max-inline-size: 0; inline-size: 100%; }
-/* A content column takes its widest text and no more, up to half the table; the browser's own table layout does the sums.
-   A fixed column keeps the width its <col> was given and does not take part in the share. Both come after .t to win. */
-th.wc, td.wc { inline-size: 1%; max-inline-size: 50%; }
-th.wf, td.wf { inline-size: auto; max-inline-size: 0; }
+/* A content column takes its widest text and no more; the browser's own table layout does the sums. Its cap, half the table
+   (the tile is the size container and the table fills it), is on the text itself: a cell's max-inline-size is not honoured in
+   auto layout. A fixed column is pinned by the CSSOM on each cell. Both come after .t to win. */
+th.wc, td.wc { inline-size: 1%; max-inline-size: none; }
+th.wc > * { max-inline-size: calc(50cqi - 16px); }
+td.wc > span:last-child { display: block; max-inline-size: calc(50cqi - 16px); overflow: hidden; text-overflow: ellipsis; }
+th.wf, td.wf { inline-size: auto; }
 th:first-child, td:first-child { padding-inline-start: 0; }
 th:last-child, td:last-child { padding-inline-end: 0; }
 .start { text-align: start; }
@@ -291,6 +293,19 @@ const SORT_GLYPH = { ascending: '↑', descending: '↓', none: '' }
 
 // content: wc; a number: wf; fill and shared: none (they share what is left, as today).
 const widthClass = (w) => (w === 'content' ? ' wc' : typeof w === 'number' ? ' wf' : '')
+
+/** Writes one CSSOM length only when it changes; an element with no style (a test's) is left alone. */
+const setSize = (el, prop, value) => {
+  if (el.style && el.style[prop] !== value) el.style[prop] = value
+}
+
+// A fixed column is pinned on each cell, not only on its <col>: a cell's own width and the unset text columns' share would
+// otherwise win in a table with another text column, and the column would fall back to the 56px floor.
+const pin = (cell, w) => {
+  const px = typeof w === 'number' ? `${w}px` : ''
+  setSize(cell, 'minInlineSize', px)
+  setSize(cell, 'maxInlineSize', px)
+}
 
 const setAttr = (el, name, value) => {
   if (el.getAttribute(name) !== value) el.setAttribute(name, value)
@@ -349,6 +364,7 @@ export class TsTable extends TsWidget {
     this._fitAsked = false
     // False until a measured draw needs nothing more: until then each draw _fit asks for is owed even out of view.
     this._fitted = false
+    this._colgroup = null
     this._fitData = undefined
     this._active = undefined
     this._userSort = null
@@ -509,11 +525,26 @@ export class TsTable extends TsWidget {
     }
   }
 
-  /** One <col> per drawn column; a fixed width goes in through the CSSOM, never markup (RFC 0004 §11.1). */
+  /**
+   * A <colgroup> with one <col> per drawn column, only while some column has a number for a width, so a table with none
+   * has the DOM it always had. The width goes in through the CSSOM, never markup (RFC 0004 §11.1).
+   */
   _writeCols(columns) {
-    const group = this.$('[data-k="cols"]')
-    if (!group) return
+    const fixed = columns.some((c) => typeof c.width === 'number')
+    let group = this._colgroup
+    if (!fixed) {
+      if (group && group.parentNode) group.parentNode.removeChild(group)
+      this._colgroup = null
+      return
+    }
     const doc = this.ownerDocument
+    if (!group) {
+      const thead = this.$('[data-k="thead"]')
+      if (!thead || !thead.parentNode) return
+      group = doc.createElement('colgroup')
+      thead.parentNode.insertBefore(group, thead)
+      this._colgroup = group
+    }
     while (group.children.length > columns.length) group.removeChild(group.lastChild)
     columns.forEach((c, i) => {
       let col = group.children[i]
@@ -521,14 +552,14 @@ export class TsTable extends TsWidget {
         col = doc.createElement('col')
         group.appendChild(col)
       }
-      const want = typeof c.width === 'number' ? `${c.width}px` : ''
-      if (col.style && col.style.inlineSize !== want) col.style.inlineSize = want
+      setSize(col, 'inlineSize', typeof c.width === 'number' ? `${c.width}px` : '')
     })
   }
 
   _writeHead(th, col, doc) {
     setAttr(th, 'class', `${col.align}${col.numeric ? '' : ' t'}${widthClass(col.width)}`)
     setAttr(th, 'aria-sort', col.sort)
+    pin(th, col.width)
     // A column that stops being sortable (or starts) swaps the button for plain text, never the cell.
     const want = col.sortable ? 'button' : 'span'
     let inner = th.firstChild
@@ -571,6 +602,7 @@ export class TsTable extends TsWidget {
       }
       const cls = `${col.align}${col.numeric ? ' n' : ' t'}${widthClass(col.width)}${cell.tone === 'mut' ? '' : ` ${cell.tone}`}`
       setAttr(td, 'class', cls)
+      pin(td, col.width)
       // The arrow and the value are the last two children; the row button, when there is one, is first.
       setText(td.children[td.children.length - 2], cell.arrow)
       setText(td.children[td.children.length - 1], cell.text)

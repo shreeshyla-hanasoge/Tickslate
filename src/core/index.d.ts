@@ -784,7 +784,7 @@ export interface CalendarInput {
   sessions: readonly SessionSpec[]
   /** Session id → 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
-  /** The instant holiday coverage is judged against. Default: Date.now(), read once when the calendar is created. Pass it in tests and in servers that render at a fixed time. */
+  /** The instant holiday coverage is judged against. Default: the page clock (`configure({ clock })`), else Date.now(), read once when the calendar is created. Pass it in tests and in servers that render at a fixed time. */
   now?: number
 }
 

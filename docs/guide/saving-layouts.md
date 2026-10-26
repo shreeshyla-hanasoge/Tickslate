@@ -95,7 +95,7 @@ grid.layout = layout
 ```
 
 `reset()` returns to the last layout captured this way, not the one the grid
-started with. A device the host did not assign to keeps its own defaults. The
+started with. A device the host did not assign to starts from the host's layout too, unless you gave `defaults` for it. The
 `persist` attribute and `persistLayout()` behave the same; there is no separate
 option for this.
 

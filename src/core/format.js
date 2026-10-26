@@ -27,14 +27,13 @@ export function configure(options = {}) {
     if (m && typeof m === 'object') defaults.messages = m
     else delete defaults.messages
   }
-  // The page clock (RFC 0004 §11.4). Only a function counts; null returns to Date.now(). The core stores it and calls nothing.
+  // The page clock (RFC 0004 §11.4). Only a function counts (anything else is ignored, the prior clock stays); null returns to Date.now(). The core stores it and calls nothing.
   if (options.clock !== undefined) {
     const c = options.clock
     if (typeof c === 'function') defaults.clock = c
-    else {
-      delete defaults.clock
-      if (c !== null) warnBadClock()
-    }
+    else if (c === null) delete defaults.clock
+    // Anything else is ignored and the clock already set stays: a typo must not silently put a demo back on real time.
+    else warnBadClock()
   }
   // A copy, so a listener that subscribes or unsubscribes while being called does not skip another;
   // one that was unsubscribed in the meantime is not called.

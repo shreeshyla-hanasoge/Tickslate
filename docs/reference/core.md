@@ -374,7 +374,7 @@ takes the time from this too. Calling `configure({ clock })` notifies
 `onConfigure` listeners, so every widget draws again and every grid works out its
 schedule again, quietly, as setting `grid.clock` does; say it again after the time
 the function returns has moved. `null` returns to `Date.now()`. Anything that is not
-a function is ignored, with one development warning. `grid.clock` and `widget.clock`
+a function is ignored, with one development warning, and the clock already set stays. `grid.clock` and `widget.clock`
 keep working and win for the element they are set on, and still return a function:
 the one in effect.
 
@@ -488,7 +488,7 @@ createCalendar(input: {
   sessions: readonly SessionSpec[]
   /** Session id -> 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
-  /** The instant holiday coverage is judged against. Default: `Date.now()`, read once here. */
+  /** The instant holiday coverage is judged against. Default: the page clock (`configure({ clock })`), else `Date.now()`, read once here. */
   now?: number
 }): Calendar
 ```

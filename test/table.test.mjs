@@ -60,7 +60,7 @@ describe('without a DOM', () => {
       assert.equal(html, T.TsTable.template('M'))
       assert.match(html, /<table part="table"/)
       assert.match(html, /<caption class="visually-hidden" data-k="caption"><\/caption>/)
-      assert.match(html, /<thead><tr data-k="head"><\/tr><\/thead>/)
+      assert.match(html, /<thead data-k="thead"><tr data-k="head"><\/tr><\/thead>/)
       assert.match(html, /<tbody data-k="body"><\/tbody>/)
       assert.match(html, /data-k="scroll" role="group" tabindex="0"/)
       assert.doesNotMatch(html, />[^<]*\p{L}[^<]*</u)
@@ -919,52 +919,137 @@ describe('column widths', () => {
     assert.deepEqual(sized.columns.map((c) => [c.align, c.sort]), plain.columns.map((c) => [c.align, c.sort]))
   })
 
-  function sized(columns) {
+  function sized(columns, width = 520) {
     const doc = new MiniDoc()
     const create = doc.createElement.bind(doc)
-    doc.createElement = (tag) => Object.assign(create(tag), { style: {} })
+    doc.createElement = (tag) => {
+      const n = Object.assign(create(tag), { style: {} })
+      Object.defineProperty(n, 'parentNode', { get: () => n.parent, configurable: true })
+      return n
+    }
     const b = build({ doc })
-    b.node('scroll').clientWidth = 520
-    b.view({ columns, rows: ROWS_FILLS }, 520)
+    // The thead is a child of the table, as in the real template: that is where the colgroup goes.
+    const table = b.node('table')
+    const thead = b.node('thead')
+    table.appendChild(thead)
+    thead.parentNode = table
+    b.table = table
+    b.node('scroll').clientWidth = width
+    b.view({ columns, rows: ROWS_FILLS }, width)
     return b
   }
+  const FIXED = [{ key: 'sym', label: 'Instrument', width: 'content' }, { key: 'qty', label: 'Qty', format: 'number', width: 96 }, { key: 'pnl', label: 'P&L', format: 'money' }]
 
-  test('the template has a colgroup and no width in its markup', () => {
+  test('the template has no colgroup and no width in its markup', () => {
     const html = T.TsTable.template('L')
-    assert.match(html, /<colgroup data-k="cols"><\/colgroup>/)
-    assert.doesNotMatch(html, /width|style=/)
+    assert.doesNotMatch(html, /colgroup|width|style=/)
   })
 
-  test('a fixed width is written with the CSSOM on a <col>, never markup, and a content column is a class', () => {
-    const b = sized([{ key: 'sym', label: 'Instrument', width: 'content' }, { key: 'qty', label: 'Qty', format: 'number', width: 96 }, { key: 'pnl', label: 'P&L', format: 'money' }])
-    const cols = b.node('cols').children
+  test('a fixed width is written with the CSSOM, never markup: on a <col> and pinned on every cell of its column', () => {
+    const b = sized(FIXED)
+    const cols = b.table.children[0].children
+    assert.equal(b.table.children[0].localName, 'colgroup')
     assert.equal(cols.length, 3)
     assert.deepEqual(cols.map((c) => c.localName), ['col', 'col', 'col'])
     assert.deepEqual(cols.map((c) => c.style.inlineSize), ['', '96px', ''])
     assert.ok(cols.every((c) => c.attrs.size === 0), 'no attribute is written on a col')
+    const pins = (cell) => [cell.style.minInlineSize, cell.style.maxInlineSize]
+    assert.deepEqual(b.head.children.map(pins), [['', ''], ['96px', '96px'], ['', '']])
+    assert.deepEqual(b.body.children[0].children.map(pins), [['', ''], ['96px', '96px'], ['', '']])
     assert.deepEqual(b.head.children.map((th) => th.getAttribute('class')), ['start t wc', 'end wf', 'end'])
-    assert.deepEqual(b.body.children[0].children.map((td) => td.getAttribute('class').split(' ').filter((c) => ['wc', 'wf'].includes(c))), [['wc'], ['wf'], []])
+  })
+
+  test('with other text columns left unset (Time and Side), the fixed column is still pinned on its cells', () => {
+    const columns = [
+      { key: 'sym', label: 'Instrument', width: 'content' },
+      { key: 'time', label: 'Time', format: 'time' },
+      { key: 'side', label: 'Side' },
+      { key: 'qty', label: 'Qty', format: 'number', width: 96 },
+    ]
+    const b = sized(columns)
+    assert.deepEqual(b.head.children.map((th) => th.style.minInlineSize), ['', '', '', '96px'])
+    assert.deepEqual(b.head.children.map((th) => th.style.maxInlineSize), ['', '', '', '96px'])
+    assert.deepEqual(b.body.children[0].children.map((td) => td.style.maxInlineSize), ['', '', '', '96px'])
+    assert.ok(!/max-inline-size:\s*0\b/.test(T.TsTable.styles.match(/th\.wf, td\.wf \{[^}]*\}/)[0]), 'the class no longer pins a fixed column to zero')
+  })
+
+  test('a table with no fixed width has no colgroup at all, and one made later takes it away again', () => {
+    const b = sized([{ key: 'sym', label: 'Instrument', width: 'content' }, { key: 'pnl', label: 'P&L', format: 'money' }])
+    assert.equal(b.table.children.length, 1, 'only the thead')
+    b.view({ columns: FIXED, rows: ROWS_FILLS }, 520)
+    assert.equal(b.table.children[0].localName, 'colgroup')
+    b.view({ columns: [{ key: 'sym', label: 'Instrument' }], rows: ROWS_FILLS }, 520)
+    assert.equal(b.table.children.length, 1, 'the colgroup is gone')
   })
 
   test('columns that come and go take their <col> with them, and an unchanged width writes nothing', () => {
-    const columns = [{ key: 'sym', label: 'Instrument', width: 'content' }, { key: 'qty', label: 'Qty', format: 'number', width: 96 }, { key: 'pnl', label: 'P&L', format: 'money' }]
-    const b = sized(columns)
+    const b = sized(FIXED)
     const log = b.doc.log.length
-    b.view({ columns, rows: ROWS_FILLS }, 520)
+    b.view({ columns: FIXED, rows: ROWS_FILLS }, 520)
     assert.equal(b.doc.log.length, log, 'the same draw writes nothing')
-    b.view({ columns, rows: ROWS_FILLS }, 100)
-    assert.equal(b.node('cols').children.length, 1)
+    // At 100 px only the first column is kept, and it has no fixed width: the colgroup goes with the column that needed it.
+    b.view({ columns: FIXED, rows: ROWS_FILLS }, 100)
+    assert.equal(b.table.children.length, 1)
     b.view({ columns: [{ key: 'qty', label: 'Qty', format: 'number', width: 80 }], rows: ROWS_FILLS }, 520)
-    assert.equal(b.node('cols').children[0].style.inlineSize, '80px')
-    b.view({ columns: [{ key: 'qty', label: 'Qty', format: 'number' }], rows: ROWS_FILLS }, 520)
-    assert.equal(b.node('cols').children[0].style.inlineSize, '', 'a width taken away is cleared')
+    assert.equal(b.table.children[0].children[0].style.inlineSize, '80px')
+    assert.equal(b.head.children[0].style.maxInlineSize, '80px')
+    b.view({ columns: [{ key: 'qty', label: 'Qty', format: 'number', width: 'fill' }, { key: 'pnl', label: 'P&L', format: 'money', width: 70 }], rows: ROWS_FILLS }, 520)
+    assert.equal(b.head.children[0].style.maxInlineSize, '', 'a width taken away is cleared on the cell')
   })
 
-  test('the CSS puts a content column at 1% and no wider than half, and a fixed one off the text share', () => {
+  test('the CSS: a content column is 1% and its text is capped at half the table; a fixed one is not pinned by a class', () => {
     const css = T.TsTable.styles
-    assert.match(css, /th\.wc, td\.wc \{ inline-size: 1%; max-inline-size: 50%; \}/)
-    assert.match(css, /th\.wf, td\.wf \{ inline-size: auto; max-inline-size: 0; \}/)
+    assert.match(css, /th\.wc, td\.wc \{ inline-size: 1%; max-inline-size: none; \}/)
+    assert.match(css, /td\.wc > span:last-child \{[^}]*max-inline-size: calc\(50cqi - 16px\)/)
+    assert.match(css, /th\.wf, td\.wf \{ inline-size: auto; \}/)
     assert.ok(css.indexOf('.wc') > css.indexOf('.t {'), 'declared after .t, so it wins')
+  })
+
+  test('the first fit of a table out of view is owed a draw, and a settled one is not', () => {
+    const b = build()
+    const el = b.el
+    el.isConnected = true
+    el._drawn = true
+    el._inView = false
+    let rendered = 0
+    el._render = () => rendered++
+    // Unfitted: the fit asks for a draw and the viewport observer's skip must not apply.
+    el._ask()
+    assert.equal(el._drawOwed, true)
+    el._flush()
+    assert.equal(rendered, 1, 'drawn although the table is far from the viewport')
+    // A measured draw that needs nothing more settles it.
+    b.node('scroll').clientWidth = 400
+    b.node('scroll').scrollWidth = 400
+    el._scrollEl = b.node('scroll')
+    el._slots = Math.floor(400 / 56)
+    el._cols = [{}, {}]
+    el._fitAsked = false
+    el._fit()
+    assert.equal(el._fitted, true)
+    assert.equal(el._drawOwed, false)
+    // After that a request while out of view is skipped, as RFC 0003 section 23 says.
+    el._ask()
+    el._flush()
+    assert.equal(rendered, 1, 'a settled table waits for the viewport')
+  })
+
+  test('the heading carries the full label as its title, written only when it changes', () => {
+    const b = build()
+    const el = b.el
+    const heading = new MiniNode(b.doc, 'span')
+    heading.textContent = 'Fills'
+    el._refs = new Map([['[part="label"]', heading]])
+    el._headingLevel = () => 3
+    el._applyActivation = () => {}
+    Object.defineProperty(el, 'label', { value: 'Fills', configurable: true })
+    el._markHeading(null, 'Fills and partial fills')
+    assert.equal(heading.getAttribute('title'), 'Fills and partial fills')
+    const log = b.doc.log.length
+    el._markHeading(null, 'Fills and partial fills')
+    assert.equal(b.doc.log.length, log, 'unchanged: nothing is written')
+    el._markHeading(null, 'Fills')
+    assert.equal(heading.getAttribute('title'), 'Fills')
   })
 })
 

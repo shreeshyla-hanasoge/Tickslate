@@ -363,6 +363,11 @@ export interface TableColumn {
   decimals?: number
   /** Default 'end' for number, money, percent and duration, else 'start'. */
   align?: 'start' | 'end' | 'center'
+  /**
+   * 'content': as wide as its widest text, up to half the table. 'fill' and 'shared' (the default) share what is left.
+   * A number: that many CSS pixels, at least 40.
+   */
+  width?: 'content' | 'fill' | 'shared' | number
   /** '+' or '−' with the pos or neg colour and an arrow. */
   tone?: 'sign'
   /** Lower stays longer when columns must hide. Default: the column's position. */

@@ -426,6 +426,11 @@ describe('configure({ clock })', () => {
       for (const bad of [5, '12:00', {}, true]) configure({ clock: bad })
       assert.equal(currentConfig().clock, undefined)
       assert.equal(warned.length, 1, 'once, however many')
+      // With a clock already set, a bad value leaves it alone instead of putting the page back on real time.
+      const prior = () => FROZEN
+      configure({ clock: prior })
+      for (const bad of ['x', 7, {}, false]) configure({ clock: bad })
+      assert.equal(currentConfig().clock, prior)
       assert.match(warned[0], /clock/)
     } finally {
       restore()

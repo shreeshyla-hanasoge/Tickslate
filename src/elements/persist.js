@@ -96,7 +96,11 @@ export function persistLayout(grid, options = {}) {
     // and setting it again would end implicit mode for a layout nobody changed.
     const wanted = captured[d] || fallback()[d]
     if (wanted == null || grid.layout === wanted) return
-    assign(readLayout(wanted, { unknown: 'keep', device: d }).layout)
+    try {
+      assign(readLayout(wanted, { unknown: 'keep', device: d }).layout)
+    } catch (e) {
+      applyFailed(e)
+    }
   }
 
   function assign(layout) {
@@ -184,6 +188,9 @@ export function persistLayout(grid, options = {}) {
 
   function switchTo(d) {
     if (!isDevice(d) || d === device) return
+    // Attached with no defaults after the host set its layout: that layout is the defaults, so reset() has somewhere to go.
+    // Only the first device seen, before any edit: later the layout on show may be a saved one or the other device's.
+    if (device === null && defaults == null && !edited[d] && !captured[d]) captured[d] = grid.layout
     device = d
     load(d)
   }

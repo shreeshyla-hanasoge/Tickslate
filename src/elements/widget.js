@@ -425,7 +425,10 @@ export function localeDirection(tag) {
 // The label has its own line height (1.2) because 'normal' is a font's choice and Firefox rounds it up: the 11px label's line box
 // grew 1 to 2px over the 10px one it replaced, enough to push a full funding or edge tile past its bottom edge there.
 // Narrow tiles (RFC 0004 §11.3): under 11.25rem (180px at a 16px root, so it follows the reader's text size) the label is the one
-// flex item that gives way. `.ell` on it already supplies the overflow, nowrap and ellipsis, so the rule need only let it shrink.
+// flex item that gives way, but only down to about six characters. Below 7rem (112px at a 16px root, so at 320px, or at a larger text
+// size where the room shrinks in rem) there is no room for a label and its meta ("just now") together, and the meta is dropped
+// whole rather than clipped: the dot and the tile's name still say live or stale. `.ell` on the label supplies the overflow,
+// nowrap and ellipsis.
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -503,7 +506,8 @@ ${standaloneCss()}
 /* The header's meta says 'synced 11:42', and on a tile narrower than 200px just '14:05', so the label keeps its room. */
 .meta { flex: none; white-space: nowrap; }
 @container (max-width: 200px) { .pre { display: none; } }
-@container ts-tile (max-width: 11.25rem) { .hd > .lb { flex: 0 1 auto; min-inline-size: 0; } }
+@container ts-tile (max-width: 11.25rem) { .hd > .lb { flex: 0 1 auto; min-inline-size: 6ch; } }
+@container ts-tile (max-width: 7rem) { .hd > .meta { display: none; } }
 @container ts-tile (max-height: 6.5rem) { .sec, .tile > .f1 { display: none; } }
 @container ts-tile (max-height: 5rem) { .ter { display: none; } }
 @keyframes ts-pulse {

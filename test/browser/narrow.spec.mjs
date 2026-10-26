@@ -293,3 +293,169 @@ test.describe('the fills table in the trading example', () => {
     expect(info.th[0]).toBeLessThan(info.tableWidth / 2 + 1)
   })
 })
+
+// A table of its own, in a tile of a chosen width, so the widths are read where a phone would put them.
+async function tableAt(page, width, columns, rows) {
+  await page.evaluate(
+    ({ width, columns, rows }) => {
+      document.getElementById('tprobe')?.remove()
+      const host = document.createElement('div')
+      host.id = 'tprobe'
+      host.style.cssText = `position: fixed; inset-block-start: 0; inset-inline-start: 0; inline-size: ${width}px; block-size: 300px; z-index: 9`
+      const el = document.createElement('ts-table')
+      el.setAttribute('label', 'Probe')
+      el.setAttribute('size', 'M')
+      el.style.cssText = 'display: block; block-size: 100%'
+      host.append(el)
+      document.body.append(host)
+      el.data = { columns, rows }
+    },
+    { width, columns, rows },
+  )
+  await page.waitForFunction(() => document.querySelector('#tprobe ts-table')?.shadowRoot?.querySelector('tbody tr'))
+  await page.waitForTimeout(300)
+  return page.evaluate(() => {
+    const root = document.querySelector('#tprobe ts-table').shadowRoot
+    const scroll = root.querySelector('[data-k="scroll"]')
+    return {
+      clientWidth: scroll.clientWidth,
+      overflows: scroll.scrollWidth > scroll.clientWidth + 1,
+      heads: [...root.querySelectorAll('thead th')].map((th) => [th.getAttribute('data-key'), Math.round(th.getBoundingClientRect().width)]),
+    }
+  })
+}
+
+test.describe('column widths in a real table', () => {
+  const SYMBOL = 'ALPHA 24300 PE WEEKLY EXP 03 NOV'
+  const rows = [{ id: 1, sym: SYMBOL, time: Date.UTC(2026, 9, 26, 5), side: 'Buy', qty: 75, pnl: 1250.5 }]
+
+  test('a fixed width holds although Time and Side are left unset (a text column beside it does not win)', async ({ page }) => {
+    await open(page, 1280)
+    const columns = [
+      { key: 'sym', label: 'Instrument', width: 'content' },
+      { key: 'time', label: 'Time', format: 'time' },
+      { key: 'side', label: 'Side' },
+      { key: 'qty', label: 'Qty', format: 'number', width: 120 },
+      { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign' },
+    ]
+    const t = await tableAt(page, 700, columns, rows)
+    const width = Object.fromEntries(t.heads)
+    expect(width.qty).toBe(120)
+    expect(t.overflows).toBe(false)
+    // The other columns are not squeezed to the floor by it.
+    expect(width.pnl).toBeGreaterThan(56)
+  })
+
+  test('the reviewed case: sym 120 and pnl 90 beside unset Time and qty render at 120 and 90 pixels, figures whole', async ({ page }) => {
+    await open(page, 1280)
+    const columns = [
+      { key: 'sym', label: 'Instrument', width: 120 },
+      { key: 'time', label: 'Time', format: 'time' },
+      { key: 'qty', label: 'Qty', format: 'number', decimals: 2 },
+      { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', width: 90 },
+    ]
+    const t = await tableAt(page, 1240, columns, [{ id: 1, sym: 'ALPHA 50', time: Date.UTC(2026, 9, 26, 5), qty: 2450.5, pnl: 8765.43 }])
+    const width = Object.fromEntries(t.heads)
+    expect(width.sym).toBe(120)
+    expect(width.pnl).toBe(90)
+    expect(width.time).toBeGreaterThan(56)
+    const cut = await page.evaluate(() => [...document.querySelectorAll('#tprobe ts-table')[0].shadowRoot.querySelectorAll('td')].filter((td) => td.scrollWidth > td.clientWidth + 1).map((td) => td.textContent))
+    expect(cut).toEqual([])
+  })
+
+  test('a content column is capped at half the table, so a long symbol does not push the figures out', async ({ page }) => {
+    await open(page, 1280)
+    const columns = [
+      { key: 'sym', label: 'Instrument', width: 'content', priority: 0 },
+      { key: 'side', label: 'Side', priority: 3, width: 'content' },
+      { key: 'qty', label: 'Qty', format: 'number', priority: 2 },
+      { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', priority: 1 },
+    ]
+    // 390 px tile: 352 px of table.
+    const t = await tableAt(page, 390, columns, rows)
+    const width = Object.fromEntries(t.heads)
+    expect(t.clientWidth).toBe(352)
+    expect(width.sym).toBeLessThanOrEqual(t.clientWidth / 2 + 1)
+    expect(width.sym).toBeGreaterThan(100)
+    expect(t.overflows).toBe(false)
+    // What was dropped before the cap (Qty, Side and P&L) is mostly back: P&L and Qty stay.
+    expect(Object.keys(width)).toEqual(expect.arrayContaining(['sym', 'qty', 'pnl']))
+    const cell = await page.evaluate(() => {
+      const td = document.querySelector('#tprobe ts-table').shadowRoot.querySelector('tbody td')
+      return { title: td.getAttribute('title'), text: td.textContent }
+    })
+    expect(cell.title).toBe(SYMBOL)
+    expect(cell.text).toBe(SYMBOL)
+  })
+})
+
+test.describe('the heading at 320 px and at large text', () => {
+  const cases = [['320 px', 320, null], ['root 24 px', 390, '24px']]
+  for (const [name, width, root] of cases) {
+    test(`${name}: the label keeps at least five visible characters beside the meta`, async ({ page }) => {
+      await open(page, width)
+      if (root) await page.evaluate((px) => { document.documentElement.style.fontSize = px }, root)
+      await page.evaluate((layout) => {
+        document.getElementById('board').layout = layout
+      }, TALL_PAIR)
+      await page.waitForFunction(() => document.querySelector('[item="watchlist"]').getBoundingClientRect().width > 0)
+      for (const item of ['capitalFunding', 'watchlist']) {
+        const h = await page.evaluate((item) => {
+          const tile = document.querySelector(`[item="${item}"]`)
+          const label = tile.shadowRoot.querySelector('[part="label"]')
+          const text = label.textContent
+          const visible = label.scrollWidth > label.clientWidth + 0.5 ? Math.floor((label.clientWidth / label.scrollWidth) * text.length) : text.length
+          const meta = tile.shadowRoot.querySelector('[data-k="meta"]')
+          return { text, visible, title: label.getAttribute('title'), tile: Math.round(tile.getBoundingClientRect().width), meta: meta && !meta.hidden ? Math.round(meta.getBoundingClientRect().width) : 0 }
+        }, item)
+        expect(h.visible, `${h.text} shows ${h.visible} characters in a ${h.tile} px tile`).toBeGreaterThanOrEqual(5)
+        expect(h.title).toBe(h.text)
+      }
+    })
+  }
+})
+
+// The page clock and the far-table first fit, in every engine (RFC 0004 §11.4, and the owed first fit of a table).
+test.describe('in every engine', () => {
+  test('configure({ clock }) drives a grid and a widget that have no clock of their own, and null puts them back', async ({ page }) => {
+    await open(page, 1280)
+    const out = await page.evaluate(async () => {
+      const { configure } = await import('/src/core/index.js')
+      const grid = document.getElementById('board')
+      const sessions = document.querySelector('ts-session-clock')
+      const read = () => sessions.shadowRoot.textContent.replace(/\s+/g, ' ')
+      // The example set its own page clock; take it over with a frozen one and look at the widget and the grid.
+      const noon = Date.UTC(2026, 9, 26, 6, 30)
+      configure({ clock: () => noon })
+      await new Promise((r) => setTimeout(r, 300))
+      const frozen = { grid: grid.clock(), sessions: read(), profile: grid.profile }
+      configure({ clock: () => Date.UTC(2026, 9, 26, 17, 30) })
+      await new Promise((r) => setTimeout(r, 300))
+      const later = { grid: grid.clock(), sessions: read(), profile: grid.profile }
+      grid.clock = () => noon
+      configure({ clock: () => 5 })
+      const own = grid.clock()
+      grid.clock = null
+      const back = grid.clock()
+      return { frozen, later, own, back, noon }
+    })
+    expect(out.frozen.grid).toBe(out.noon)
+    expect(out.frozen.sessions).toContain('12:00')
+    expect(out.frozen.profile).toBe('market')
+    expect(out.later.profile).toBe('closed')
+    expect(out.later.sessions).not.toBe(out.frozen.sessions)
+    expect(out.own).toBe(out.noon)
+    expect(out.back).toBe(5)
+  })
+
+  test('a table far down the page has its first fit before anyone scrolls to it', async ({ page }) => {
+    await open(page, 390)
+    const f = await page.evaluate(async () => {
+      const scroll = document.querySelector('ts-table').shadowRoot.querySelector('[data-k="scroll"]')
+      await new Promise((r) => setTimeout(r, 500))
+      return { y: document.querySelector('ts-table').getBoundingClientRect().top, vh: innerHeight, overflow: scroll.scrollWidth > scroll.clientWidth + 1 }
+    })
+    expect(f.y).toBeGreaterThan(f.vh * 2)
+    expect(f.overflow).toBe(false)
+  })
+})
