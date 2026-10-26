@@ -378,6 +378,13 @@ export interface Messages {
   'grid.unpinned': string
   'grid.stripFull': string
   'grid.pinUnsupported': string
+  'grid.badge': string
+  'grid.hint.touch': string
+  'grid.hint.pointer': string
+  'grid.hintDismiss': string
+  'grid.profileSwitched': string
+  'grid.keepProfile': string
+  'grid.keptProfile': string
   'picker.title': string
   'picker.search': string
   'picker.close': string

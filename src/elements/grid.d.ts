@@ -43,6 +43,11 @@ export interface TsAddRequestDetail {
   size: SizeName
 }
 
+export interface TsHintDismissDetail {
+  /** `'dismiss'` when the user pressed Got it; `'edit'` when edit mode started by any route. */
+  reason: 'dismiss' | 'edit'
+}
+
 export interface TsReadingOrderChangeDetail {
   /** The visible tiles' ids in their new visual order. */
   order: string[]
@@ -73,10 +78,19 @@ export interface TsReadingOrderChangeDetail {
  * editing, and the grid's polite status region announces each step. A
  * scheduled profile change that falls due while editing applies after Done.
  *
+ * Feedback (RFC 0004 §3): while a tile is resized, by pointer or keys, a badge in its chrome
+ * (`part="badge"`, "Medium · 2×2", decorative) shows the size it will have and fades a second
+ * after release. The `hint` attribute shows a coach mark (`part="hint"`, with a `part="hint-dismiss"`
+ * button) at the first tile until it is dismissed or edit mode starts; `ts-hint-dismiss` tells the
+ * host, which remembers it (the library stores nothing). A profile change made by the schedule
+ * crossfades the tiles (none under reduced motion) and the toast offers "Keep <previous profile>",
+ * which calls `override(previous)`; `undo-toast="off"` suppresses that toast too. The switch is
+ * announced once by the grid's polite status region.
+ *
  * Attributes: `editing`, `profile`, `locked`, `density="compact"`, `undo-toast="off"`,
  * `edit-controls="off"`, `locale` (for plural forms in its messages),
  * `persist="my-dash"` (saves the layout to `localStorage` per device, with no script).
- * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
+ * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`, `badge`, `hint`, `hint-dismiss`.
  * Slots: the default one for tiles, and `empty`. The grid assigns tiles to its
  * own slots itself, so a tile's `slot` attribute is not used, except
  * `slot="empty"` on the content that replaces the empty board's text.
@@ -136,6 +150,14 @@ export declare class TsGrid extends HTMLElement {
    * Setting it re-measures; a saved layout is cells, so it is unchanged. Reflects the `density` attribute.
    */
   density: 'comfortable' | 'compact'
+  /**
+   * When set, a coach mark points at the first tile until it is dismissed or edit mode starts, and
+   * `ts-hint-dismiss` fires with `reason` `'dismiss'` or `'edit'`. Removing the attribute fires nothing.
+   * The library stores nothing: the host remembers the event and stops setting `hint`. If it does not, the
+   * mark stays hidden for the rest of the element's life; removing and re-adding the attribute shows it again.
+   * Not shown on a locked or empty grid, while editing, or while the page is hidden. Reflects the `hint` attribute.
+   */
+  hint: boolean
   /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
   readonly hiddenItems: ReadonlyArray<{ id: string; type: string; label: string }>
   /**
@@ -212,6 +234,7 @@ declare global {
     'ts-layout-issues': CustomEvent<{ issues: LayoutIssue[] }>
     'ts-edit-change': CustomEvent<{ editing: boolean }>
     'ts-reading-order-change': CustomEvent<TsReadingOrderChangeDetail>
+    'ts-hint-dismiss': CustomEvent<TsHintDismissDetail>
     'ts-columns-change': CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone'; initial: boolean }>
     'ts-profile-change': CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>
   }

@@ -119,8 +119,12 @@ list wins.
     without movement.
 18. **No `aria-live` on ticking values.** Prices, P&L and clocks change their
     labels silently. Only changes the user caused are announced: grid editing
-    through the grid's polite status region, and the undo toast
-    (`role="status"`).
+    through the grid's polite status region, the undo toast (`role="status"`),
+    and a scheduled change of profile, announced once through the grid's polite
+    status region. The toast that offers to keep the previous profile is a
+    labelled group (`role="group"`), not a live region, so the switch is
+    spoken once. The resize badge and the first-run hint are never announced:
+    the badge is `aria-hidden`, and the hint is a `role="note"`.
 
 ## Automated checks
 

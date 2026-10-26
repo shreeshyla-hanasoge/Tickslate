@@ -133,6 +133,13 @@ export const EN = Object.freeze({
   'grid.unpinned': '{label} unpinned.',
   'grid.stripFull': 'The top strip is full. Unpin a tile first.',
   'grid.pinUnsupported': 'This widget has no small size.',
+  'grid.badge': '{name} · {cols}×{rows}',
+  'grid.hint.touch': 'Touch and hold a tile to rearrange your dashboard',
+  'grid.hint.pointer': 'Press and hold a tile, or choose Edit layout, to rearrange your dashboard',
+  'grid.hintDismiss': 'Got it',
+  'grid.profileSwitched': 'Switched to {profile}',
+  'grid.keepProfile': 'Keep {previous}',
+  'grid.keptProfile': 'Keeping {profile} until the next change.',
 
   // <ts-widget-picker>
   'picker.title': 'Add a widget',

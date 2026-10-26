@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- RFC 0004 §3: the resize badge, the first-run hint and the calm profile switch.
+     No inline script or style, so the same page serves the strict-CSP check.
+       ?theme=dark   dark theme          ?w=390   container width in px      ?rtl   a right-to-left page
+       ?hint         sets the hint       ?locked / ?empty / ?implicit        ?toast=off  undo-toast="off"
+       ?schedule     a market schedule on a pretend clock (15:30 IST); window.__fx.cross('15:46') jumps it
+       ?live         the pretend clock runs on, from 400 ms before the close   ?strip   pins one tile to the phone strip -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edit feedback fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<script type="module" src="/src/elements/index.js"></script>
+<script type="module" src="./edit-feedback.js"></script>
+</head>
+<body>
+<main>
+  <h1>Edit feedback fixture</h1>
+  <div id="wrap">
+    <ts-grid id="g" aria-label="Dashboard">
+      <ts-card item="sales" label="Sales" size="Wide"><span slot="value">128</span></ts-card>
+      <ts-card item="notes" label="Notes" size="S"><span slot="value">42</span></ts-card>
+      <ts-card item="tasks" label="Tasks" size="S"><span slot="value">7</span></ts-card>
+      <ts-card item="queue" label="Queue" size="Wide"><span slot="value">3</span></ts-card>
+      <ts-card item="alerts" label="Alerts" size="S"><span slot="value">0</span></ts-card>
+    </ts-grid>
+  </div>
+  <button id="outside" type="button">Outside button</button>
+</main>
+</body>
+</html>
