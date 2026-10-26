@@ -350,6 +350,40 @@
           "value"
         ]
       },
+      "ts-mini-chart": {
+        "class": "TsMiniChart",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry",
+          "ts-action:timeframe"
+        ],
+        "parts": [
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile",
+          "timeframes"
+        ]
+      },
       "ts-open-positions": {
         "class": "TsOpenPositions",
         "attributes": [
