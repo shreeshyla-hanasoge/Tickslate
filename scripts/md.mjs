@@ -42,8 +42,18 @@ export function slugify(text) {
     .replace(/\s/g, '-')
 }
 
-const textOf = (html) => html
-  .replace(/<[^>]*>/g, '')
+// One pass of a pattern can leave a new match behind ("<<b>script>" loses "<b>" and is "<script>" again), so a
+// removal repeats until the text stops changing.
+const settle = (text, strip) => {
+  let prev
+  do {
+    prev = text
+    text = strip(text)
+  } while (text !== prev)
+  return text
+}
+
+const textOf = (html) => settle(html, (h) => h.replace(/<[^>]*>/g, ''))
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
 
 // ── Inline ──────────────────────────────────────────────────────────────────
@@ -67,7 +77,7 @@ function renderInline(src, opts) {
   })
 
   // Comments are for whoever edits the Markdown, never for the page.
-  s = s.replace(/<!--[\s\S]*?-->/g, '')
+  s = settle(s, (t) => t.replace(/<!--[\s\S]*?-->/g, ''))
 
   // Autolinks in angle brackets.
   s = s.replace(/<(https?:\/\/[^\s<>]+)>/g, (_, url) => hold(anchor(url, escapeHtml(url), opts)))

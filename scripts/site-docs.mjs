@@ -65,9 +65,13 @@ function plainTitle(title, src) {
 
 /** The first paragraph's plain text, cut to a sentence or 160 characters, for the hub and the description meta. */
 export function summaryOf(md) {
-  const para = md
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
+  // Repeated until stable: removing one comment can join the text around it into another.
+  let bare = md.replace(/```[\s\S]*?```/g, '')
+  for (let prev = ''; prev !== bare;) {
+    prev = bare
+    bare = bare.replace(/<!--[\s\S]*?-->/g, '')
+  }
+  const para = bare
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .find((p) => p && !/^(#|>|\||[-*] |\d+\. )/.test(p))
