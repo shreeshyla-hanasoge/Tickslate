@@ -49,6 +49,7 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-strip-top: 0px;
     --ts-num-weight: 500;
     --ts-num-weight-small: 500;
+    --ts-num-width: .62;
     --ts-label-size: max(11px, .6875rem);
     --ts-label-case: uppercase;
     --ts-label-tracking: .12em;

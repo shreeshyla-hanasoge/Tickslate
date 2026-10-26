@@ -127,7 +127,8 @@
  *                   inputs change.
  *   messages        Property. Overrides for this widget's strings; null clears.
  *   t               The translate function: messages on this element, then the
- *                   nearest <ts-grid>'s, then configure(), then EN. Cached like
+ *                   nearest <ts-grid>'s, then configure(), then the English the
+ *                   class registered with defineWidget, then EN. Cached like
  *                   the formatter. Static template text is never written
  *                   here: put it in a `data-k` node and fill it in update()
  *                   with this.t, so a template stays a pure function of its variant.
@@ -176,7 +177,7 @@ import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isS
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
 import { escapeHtml, markupAllowed, mountShadow, setHTML, setNodes, setText } from './html.js'
-import { translator } from './messages-cache.js'
+import { translator, classDefaultsOf } from './messages-cache.js'
 import { subscribe, shareable } from './ticker.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
@@ -366,12 +367,12 @@ export function arrowFor(text) {
 
 // The rules of the signed figures, for the widgets that draw them. `.fg` keeps the arrow, sign and digits on one line.
 // A figure cell (.cell: a stat in a row of three, or the rail's column) is its own size container, and the figure in it
-// is sized to the cell's width and its own length (--fc, set by update()). 0.62em a character is wider than any
-// proportional face and covers a monospace one; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
+// is sized to the cell's width and its own length (--fc, set by update()). --ts-num-width (.62em a character) is wider
+// than any proportional face and covers a monospace one, and a host with a wider face sets it; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
 export const FIGURE_CSS = `
 .fg { white-space: nowrap; }
 .cell { container-type: inline-size; }
-.cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * .62 + .65))); }
+.cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * var(--ts-num-width, .62) + .65))); }
 `
 
 /**
@@ -869,6 +870,14 @@ export class TsWidget extends Base {
       const text = this.t(id)
       if (text !== id) return text
     }
+    // A registered custom widget answers to the same key, from the host or from its author's messages
+    // (defineWidget), whether or not it has any: the message wins over a static label, as in the catalog.
+    const registered = classDefaultsOf(this.constructor)
+    if (registered && !key) {
+      const id = `widget.${registered.type}.label`
+      const text = this.t(id)
+      if (text !== id) return text
+    }
     return this.spec.label
   }
 
@@ -973,7 +982,8 @@ export class TsWidget extends Base {
 
   /**
    * Resolved per key: this element's messages, then the nearest grid's, then
-   * configure()'s, then EN. One function is shared by every element that
+   * configure()'s, then the English a custom widget registered with
+   * defineWidget, then EN. One function is shared by every element that
    * resolves to the same tables and locale; assign a new object to change a table.
    */
   get t() {
@@ -983,7 +993,8 @@ export class TsWidget extends Base {
 
   _translatorFor(config, grid) {
     const locale = resolveFormatOptions(this, grid).locale || config.locale
-    return translator(config.messages, grid && grid.messages, this._messages, locale)
+    const defaults = classDefaultsOf(this.constructor)
+    return translator(config.messages, grid && grid.messages, this._messages, locale, defaults ? defaults.table : null)
   }
 
   /**
@@ -1138,8 +1149,24 @@ export class TsWidget extends Base {
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
     watchView(this)
-    if (DEV) this._watchForData()
+    if (DEV) {
+      this._watchForData()
+      this._checkNumWidth()
+    }
     this.requestRender()
+  }
+
+  // --ts-num-width multiplies a count of characters in a calc(), so a unit (".62em") makes the whole
+  // font-size invalid and the figures fall back to the browser default. CSS cannot strip a unit, so say so once.
+  _checkNumWidth() {
+    if (DEV) {
+      const style = typeof getComputedStyle === 'function' ? getComputedStyle(this) : null
+      if (!style || typeof style.getPropertyValue !== 'function') return
+      const raw = String(style.getPropertyValue('--ts-num-width')).trim()
+      if (raw && !/^[0-9]*\.?[0-9]+$/.test(raw)) {
+        warnOnce('num-width', `--ts-num-width is "${raw}"; it must be a bare number of ems per figure, such as .62, with no unit, or figure sizes fall back to the browser default.`)
+      }
+    }
   }
 
   disconnectedCallback() {
@@ -1625,7 +1652,7 @@ export class TsWidget extends Base {
 
   /**
    * The empty view's words: the host's `widget.<catalogKey>.empty` message
-   * first, then the class's own `emptyText` (a widget author's choice, which
+   * first (or `widget.<type>.empty` for a registered custom widget), then the class's own `emptyText` (a widget author's choice, which
    * for a built-in is the EN value), then `widget.empty`.
    */
   _emptyText() {
@@ -1636,6 +1663,13 @@ export class TsWidget extends Base {
       const id = `widget.${key}.empty`
       const text = t(id)
       if (text !== id && (text !== EN[id] || own === EN[id])) return text
+    }
+    // A registered custom widget has no catalogKey; its type names the key (defineWidget's messages, or a host's).
+    const registered = !key && classDefaultsOf(this.constructor)
+    if (registered) {
+      const id = `widget.${registered.type}.empty`
+      const text = t(id)
+      if (text !== id) return text
     }
     return own === EN['widget.empty'] ? t('widget.empty') : own
   }

@@ -282,6 +282,16 @@ describe('layers merge as strings only', () => {
     assert.notEqual(translator(cfg, null, own, 'en'), translator(cfg, own, null, 'en'))
     assert.equal(translator(null, null, null, 'en'), translator(undefined, undefined, undefined, 'en'))
   })
+
+  test('a widget\'s defaults are one more layer of the key: same table, same function; no table, the plain one', () => {
+    const defaults = Object.freeze({ 'acme.x': 'default' })
+    assert.equal(translator(null, null, null, 'en', defaults), translator(null, null, null, 'en', defaults))
+    assert.notEqual(translator(null, null, null, 'en', defaults), translator(null, null, null, 'en'))
+    assert.notEqual(translator(null, null, null, 'en', defaults), translator(null, null, null, 'en', { ...defaults }))
+    assert.equal(translator(null, null, null, 'en', undefined), translator(null, null, null, 'en'))
+    assert.equal(translator(null, null, null, 'en', defaults)('acme.x'), 'default')
+    assert.equal(translator({ 'acme.x': 'host' }, null, null, 'en', defaults)('acme.x'), 'host')
+  })
 })
 
 describe('configure({ messages })', () => {

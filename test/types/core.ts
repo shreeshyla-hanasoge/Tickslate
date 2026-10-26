@@ -16,3 +16,7 @@ export const badSize: SizeName = 'Huge'
 
 // @ts-expect-error the core has no export of that name
 export { notAThing } from 'tickslate'
+
+// A custom widget's own keys are any string (RFC 0004 §10.2).
+import { createMessages as createMessagesForCustomKeys } from 'tickslate'
+export const customKey: string = createMessagesForCustomKeys()('acme-mrr.up', { delta: '5%' })

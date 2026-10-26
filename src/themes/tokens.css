@@ -68,6 +68,8 @@
   --ts-strip-top: 0px;
   --ts-num-weight: 500;
   --ts-num-weight-small: 500;
+  /* Average advance of a figure character in em, the sign included: figures that fit a cell are sized from it. A wider --ts-font-num needs a larger number. */
+  --ts-num-width: .62;
   /* Typography of the tile label and the headline figure; these defaults are the look before they were tokens. */
   --ts-label-size: max(11px, .6875rem);
   --ts-label-case: uppercase;

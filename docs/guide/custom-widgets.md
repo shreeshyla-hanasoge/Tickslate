@@ -42,17 +42,18 @@ host owns that, and sets `el.data = …` whenever a number moves.
 export class AcmeMrr extends TsWidget {
   // What a grid, a picker and widgetCatalog() know about this widget.
   static spec = {
-    label: 'MRR',
     sizes: ['S', 'Wide', 'M'],
-    description: 'Monthly recurring revenue and its change on last month.',
     category: 'Revenue',
   }
 ```
 
-`static spec` says what the widget is called and which of the
-[seven sizes](../widgets/ts-grid.md) it is designed for. A tile snaps `size` to
-this list, and defaults to its first. `description` and `category` are optional
-one-liners for the widget picker; they are recorded in the catalog with the rest.
+`static spec` says which of the [seven sizes](../widgets/ts-grid.md) the widget is
+designed for. A tile snaps `size` to this list, and defaults to its first. The
+widget's name and one-line description are messages, not part of the spec (see
+[Words](#words-your-own-message-keys-with-english-defaults)), so a host can translate
+them; `category` is an optional group name for the widget picker. A static `label`
+or `description` still works, but it is a fixed string no host can reword, so prefer the
+message.
 
 ## 2. The template: static markup, one per size
 
@@ -172,7 +173,7 @@ as `decimals: 1` does) keeps a change that shows as zero from getting an arrow.
 // mrr.js
   let ariaLabel = known ? `${label}, ${money(mrr)}` : label
   if (known && delta) {
-    const how = rise ? say(t, 'acme.mrr.up', { delta: spokenDelta }) : fall ? say(t, 'acme.mrr.down', { delta: spokenDelta }) : say(t, 'acme.mrr.flat')
+    const how = rise ? t('acme-mrr.up', { delta: spokenDelta }) : fall ? t('acme-mrr.down', { delta: spokenDelta }) : t('acme-mrr.flat')
     ariaLabel += `, ${how}`
   }
 ```
@@ -183,47 +184,81 @@ month" instead of just "MRR".
 ### Words: your own message keys, with English defaults
 
 The built-in widgets get every word from `t`, so a host can translate or reword
-any of them. Do the same with keys of your own, under a prefix (`acme.mrr.*`):
-nothing the tile says sits in its markup or in the view model's code, and a host
-overrides any of it with `configure({ messages })`, or the `messages` property on
-the widget or its grid, exactly as it overrides Tickslate's.
+any of them. Do the same with keys of your own: nothing the tile says sits in its
+markup or in the view model's code, and a host overrides any of it with
+`configure({ messages })`, or the `messages` property on the widget or its grid,
+exactly as it overrides Tickslate's.
 
-There is one gap. Tickslate has no place to register a custom widget's default
-text, and `t` answers with the key itself when no table has it (after trying its
-own English). So the widget carries its own English, and uses `t`'s answer only
-when it is not the bare key:
+Ship the English with the widget: `defineWidget` takes a `messages` table (section 8),
+so the widget needs no `configure()` call to read well, and no code of its own to
+fall back on:
 
 ```js
 // mrr.js
-// Every word the widget shows comes from a message, never from the template, so a host can
-// translate or reword it with configure({ messages }) under these keys. Tickslate has no place to
-// register a custom widget's defaults, so the widget carries its own English.
-const ENGLISH = Object.freeze({
-  'acme.mrr.up': 'up {delta} on last month',
-  'acme.mrr.down': 'down {delta} on last month',
-  'acme.mrr.flat': 'no change on last month',
-  'acme.mrr.trend': '{label} trend, from {from} to {to}',
-  'acme.mrr.breakdown': 'Breakdown',
-  'acme.mrr.customers.one': '{count} customer',
-  'acme.mrr.customers.other': '{count} customers',
+// Every word the widget shows comes from a message, never from the template. These are its English
+// defaults, handed to defineWidget below: Tickslate answers from them after the host's own tables
+// (configure({ messages }), the grid's, the element's) and before its built-in English, so a host
+// translates or rewords any of them under the same keys. The prefix is the widget's type.
+export const MESSAGES = Object.freeze({
+  'widget.acme-mrr.label': 'MRR',
+  'widget.acme-mrr.description': 'Monthly recurring revenue and its change on last month.',
+  'widget.acme-mrr.empty': 'No revenue data yet',
+  'acme-mrr.up': 'up {delta} on last month',
+  'acme-mrr.down': 'down {delta} on last month',
+  'acme-mrr.flat': 'no change on last month',
+  'acme-mrr.trend': '{label} trend, from {from} to {to}',
+  'acme-mrr.breakdown': 'Breakdown',
+  'acme-mrr.customers.one': '{count} customer',
+  'acme-mrr.customers.other': '{count} customers',
 })
-const PLURALS = new Intl.PluralRules('en')
-const fill = (text, params) => text.replace(/\{(\w+)\}/g, (whole, name) => (params && name in params ? String(params[name]) : whole))
-
-// t() answers with the key itself when no table has it. Only then does the English above speak, so a
-// host's text always wins. Given a count, t looks for key.one, key.few… then key.other, in the host's language.
-const say = (t, key, params, count) => {
-  const text = t(key, params, count)
-  if (text !== key) return text
-  const form = count === undefined ? key : `${key}.${PLURALS.select(count)}`
-  return fill(ENGLISH[form] || ENGLISH[`${key}.other`], { count, ...params })
-}
 ```
 
-A plural passes the count as the third argument: `t(key, params, count)` reads
-`acme.mrr.customers.few`, `.other` and so on, by the host's locale. When the host
-gave none of them, the English forms are chosen with `Intl.PluralRules('en')`,
-so English never gets another language's rules. A host that translates it:
+| Key | English | Where it shows |
+|---|---|---|
+| `widget.acme-mrr.label` | `MRR` | The tile's label and its name in a grid or picker (a `label` attribute still wins) |
+| `widget.acme-mrr.description` | `Monthly recurring revenue…` | The one-line description in the picker |
+| `widget.acme-mrr.empty` | `No revenue data yet` | The empty view (`data = null`) |
+| `acme-mrr.up` | `up {delta} on last month` | The spoken name, on a rise |
+| `acme-mrr.down` | `down {delta} on last month` | The spoken name, on a fall |
+| `acme-mrr.flat` | `no change on last month` | The spoken name, when it did not move |
+| `acme-mrr.trend` | `{label} trend, from {from} to {to}` | The sparkline's label |
+| `acme-mrr.breakdown` | `Breakdown` | The button that emits `breakdown` |
+| `acme-mrr.customers.one`, `.other` | `{count} customer`, `{count} customers` | The customer count |
+
+The rules for the keys:
+
+- Each starts with `widget.<type>.` or `<type>.` (here `widget.acme-mrr.` or
+  `acme-mrr.`), so two widgets can never collide. A plural form such as `.few` is
+  part of the key.
+- None may be a key Tickslate already has: a widget adds strings, and rewording a
+  built-in one is the host's job. `defineWidget` throws a `TypeError` for a
+  key outside the prefix, a built-in key or a value that is not a string.
+- The order is: this element's `messages`, its grid's, `configure({ messages })`, **the
+  widget's defaults**, then Tickslate's own English. A host's translation always wins; the
+  defaults answer only what the host left out. A count picks `key.one`, `key.few`… then
+  `key.other`, by the host's language when the host supplied the text, and by English
+  rules for the defaults.
+- `widget.<type>.label`, `.description` and `.empty` are the tile's name, its one-line
+  description in the picker and its empty-view text. They are read through `t` wherever
+  the widget is shown (the tile, the grid, the picker, the layout list), so a host's
+  `configure({ messages: { 'widget.acme-mrr.label': … } })` renames the widget everywhere
+  at once. The catalog entry's `label` is therefore `''` when you write the message;
+  read the name through `t`, not from `widgetCatalog()`.
+- **One name per widget.** When a class has both a static `label` and a `widget.<type>.label`
+  message, the message wins on the tile and in the catalog alike, and the static label is
+  ignored. A static label with no message is the name everywhere, but no host can reword it.
+- The defaults are English text, so a count in them picks `.one` and `.other` by English plural
+  rules whatever the host's locale. A host that translates a plural supplies its own forms, and
+  its language's rules choose among them. An author who writes in another language should ship
+  that language's strings from the host side (`configure`), not as the widget's defaults.
+- A subclass of a registered widget uses the nearest registered class's type and defaults,
+  without registering again.
+- The defaults are kept per copy of Tickslate. A class that extends one copy's `TsWidget` but is
+  registered through another copy's `defineWidget` gets none, with no warning, so a page that
+  bundles two copies should register each widget through the copy it extends.
+
+A plural passes the count as the third argument: `t(key, params, count)`. A host that
+translates it:
 
 ```js
 import { configure } from 'tickslate'
@@ -231,25 +266,24 @@ import { configure } from 'tickslate'
 configure({
   locale: 'pl',
   messages: {
-    'acme.mrr.up': 'więcej o {delta} niż w zeszłym miesiącu',
-    'acme.mrr.customers.one': '{count} klient',
-    'acme.mrr.customers.few': '{count} klientów',
-    'acme.mrr.customers.other': '{count} klientów',
+    'acme-mrr.up': 'więcej o {delta} niż w zeszłym miesiącu',
+    'acme-mrr.customers.one': '{count} klient',
+    'acme-mrr.customers.few': '{count} klientów',
+    'acme-mrr.customers.other': '{count} klientów',
   },
 })
 ```
 
-Two strings are not messages: `static spec`'s `label` (the host sets a `label`
-attribute, as with any tile) and `static emptyText` (the host may slot its own
-content into `slot="empty"`).
+The empty view's text is a message too, `widget.<type>.empty` (the host may also slot its
+own content into `slot="empty"`).
 
 ### `fit()`: a figure that is too long for its slot
 
 ```js
 // mrr.js
     // fit() tries the full number, then compact, and keeps the shorter that fits the slot.
-    customers: Number.isFinite(count) ? say(t, 'acme.mrr.customers', { count: fmt.fit(count, COUNT_CHARS, { style: 'number' }) }, count) : '',
-    more: say(t, 'acme.mrr.breakdown'),
+    customers: Number.isFinite(count) ? t('acme-mrr.customers', { count: fmt.fit(count, COUNT_CHARS, { style: 'number' }) }, count) : '',
+    more: t('acme-mrr.breakdown'),
 ```
 
 A tile is a fixed box, so a longer number can't make it grow. `fmt.fit(value,
@@ -419,12 +453,11 @@ these, first match wins:
 |---|---|---|
 | Error | `state="error"`, `el.error = '…'`, or your view model threw | Nothing. A Retry button appears if `actions` includes `'retry'` |
 | Loading | `state="loading"`, or `data` was never set | Nothing, or define `static skeleton(variant)` for blocks shaped like your layout |
-| Empty | `data = null` | Say what empty means for you with `emptyText` |
+| Empty | `data = null` | Say what empty means for you with the `widget.<type>.empty` message |
 | Content | Anything else | `template`, then `viewModel`, then `update` |
 
 ```js
-// mrr.js
-  static emptyText = 'No revenue data yet'
+'widget.acme-mrr.empty': 'No revenue data yet',
 ```
 
 Set `data = undefined` or leave it unset while the host fetches, `null` when
@@ -458,16 +491,21 @@ kinds are `number`, `numeric` (anything `toNumber` reads), `time`, `string`,
 // The tag and type carry a prefix of your own, so they can never clash with a future Tickslate
 // widget. Only this very class is a no-op the second time: if this module is evaluated again (hot
 // reload, a second bundle) it makes a new class, and defineWidget would throw. The guard keeps the first.
-if (!widgetCatalog()['acme-mrr']) defineWidget('acme-mrr', AcmeMrr, { type: 'acme-mrr' })
+if (!widgetCatalog()['acme-mrr']) defineWidget('acme-mrr', AcmeMrr, { type: 'acme-mrr', messages: MESSAGES })
 ```
 
-`defineWidget(tag, Class, { type })` does two things in one call:
+`defineWidget(tag, Class, { type, messages })` does three things in one call:
 
 1. It defines the custom element, as `customElements.define` would (and stamps it
    with Tickslate's version, so a second copy of the library can tell).
 2. It records the class's `static spec` in the widget catalog under `type`, the
    key a host uses in a layout. The record is a **snapshot** taken at this call:
    changing `static spec` afterwards does not change the catalog.
+3. With `messages`, it keeps a frozen copy of the widget's English strings (see
+   [Words](#words-your-own-message-keys-with-english-defaults)). They are
+   registered with the catalog entry and apply to every element of this class.
+   Calling again with the same class and different `messages` warns once in
+   development and keeps the first table.
 
 A wrong catalog entry is worse than a failed call, so it throws a `TypeError`,
 records and defines nothing and tells no subscriber, for:
@@ -481,7 +519,9 @@ records and defines nothing and tells no subscriber, for:
 - a `tag` that is recorded under another type, or that another class already owns;
 - a class already recorded under another type, or the same class and type under a
   second tag;
-- a spec with no valid size.
+- a spec with no valid size;
+- a `messages` key outside `widget.<type>.` and `<type>.`, a key Tickslate already
+  has, or a value that is not a string.
 
 Calling it again with the **same class object**, tag and type does nothing. That
 is the only repeat that is safe. A module that is evaluated twice (a hot reload,
@@ -513,8 +553,8 @@ Use it in a page like any other widget:
 import { widgetCatalog, onCatalogChange } from 'tickslate/elements'
 
 widgetCatalog()['acme-mrr']
-// { tag: 'acme-mrr', label: 'MRR', sizes: ['S', 'Wide', 'M'],
-//   description: 'Monthly recurring revenue and its change on last month.', category: 'Revenue' }
+// { tag: 'acme-mrr', label: '', sizes: ['S', 'Wide', 'M'], category: 'Revenue' }
+// label and description are messages: the grid and the picker read them through t().
 
 // A widget that registers after a picker or a grid connected:
 const stop = onCatalogChange((type) => console.log(`${type} is now in the catalog`))
@@ -575,8 +615,10 @@ node --test examples/custom-widget/*.test.mjs
 It has three kinds of test, cheapest first:
 
 1. **The view model with no DOM.** Call `mrrModel(data, variant, ctx)` with a
-   formatter from `createFormatter({ locale, currency })` and a `t` from
-   `createMessages(null, 'en-US')`. This is where figures, signs, arrows,
+   formatter from `createFormatter({ locale, currency })` and a `t` that has
+   your defaults under it: the test builds one with the same layering Tickslate uses
+   (the host's table, then your `MESSAGES`). `createMessages(null, 'en-US')` alone
+   returns bare keys for your own strings. This is where figures, signs, arrows,
    dashes, the accessible name, a right-to-left locale (`ar-EG`), translated
    messages and plurals, and bad data are checked.
 2. **The element on a tiny fake DOM.** The file writes out the few classes the
@@ -585,23 +627,25 @@ It has three kinds of test, cheapest first:
    `update` wrote. Its `querySelector` finds only the `data-k` and `data-action`
    names the template really contains, so a typo or a missing node fails the test
    instead of being invented. It checks that a second `data` writes no markup, that the
-   Breakdown button emits `ts-action`, and that `null` is the empty view.
+   Breakdown button emits `ts-action`, and that `null` shows your empty message and a
+   host's `configure()` override of it wins.
 3. **Registration.** `widgetCatalog()['acme-mrr']` holds the spec, the fake
-   registry holds the tag, and evaluating the module again does not throw.
+   registry holds the tag, the picker entry shows your label and description (and a
+   host's override of either), and evaluating the module again does not throw.
 
 For a real browser, run `npm run dev` in a clone, or load your module from any
 page that imports `tickslate/elements`.
 
 ## Checklist
 
-- [ ] `static spec` with a label and at least one valid size
+- [ ] `static spec` with at least one valid size; the name, description and empty text are messages (`widget.<type>.label`, `.description`, `.empty`)
 - [ ] Tokens only: no colours in `styles`
 - [ ] `template(variant)` is static; every figure is written by `update`
 - [ ] `viewModel` is pure, never throws on partial data, and returns `ariaLabel`
 - [ ] Gains and losses carry a sign, an `aria-hidden` arrow and a tone, decided from the number and not the text
 - [ ] No English in the template: every word is a message key with a default of your own
 - [ ] `update` sets text and attributes, and never rebuilds markup
-- [ ] `static dataShape` and `static emptyText`
+- [ ] `static dataShape` and a `widget.<type>.empty` message
 - [ ] No attribute or property named like an `HTMLElement` member (`title`, `hidden`, `scroll`…)
 - [ ] A prefix of your own on the tag and the type, registered with `defineWidget`, guarded against a second evaluation
 - [ ] A test that runs with no install
