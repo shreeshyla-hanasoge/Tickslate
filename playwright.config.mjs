@@ -9,6 +9,10 @@ const BASE = `http://127.0.0.1:${PORT}`
 export default defineConfig({
   testDir: './test/browser',
   testMatch: '**/*.spec.mjs',
+  // The screenshot baselines are Linux ones written in the pinned Playwright image (the visual job, which sets
+  // TS_VISUAL). The browser job runs on the bare runner, whose fonts and rasteriser differ, so it can't match them
+  // and skips the file. Off CI the file still runs, against the maintainer's own platform baselines.
+  testIgnore: process.env.CI && !process.env.TS_VISUAL ? '**/visual.spec.mjs' : undefined,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
