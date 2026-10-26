@@ -230,8 +230,8 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-radius-sm` | Small radius | `6px` | same | Buttons, skeleton blocks |
 | `--ts-shadow` | Tile shadow at rest | `0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25)` | `none` | Tiles |
 | `--ts-fill` | How strongly an area under a line is tinted (a percentage) | `12%` | `16%` | Area fills in curves and charts |
-| `--ts-font-ui` | UI text face | `'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif` | same | Labels, buttons and the grid's controls |
-| `--ts-font-num` | Figures face | `'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif` | same | Headline and small figures; tabular, lining numerals are forced on it |
+| `--ts-font-ui` | UI text face | `'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif` | same | Labels, buttons and the grid's controls |
+| `--ts-font-num` | Figures face | `'Newsreader', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif` | same | Headline and small figures; tabular, lining numerals are forced on it |
 | `--ts-row` | Grid row height | `150px` | same | `<ts-grid>` at 3 and 4 columns, and standalone tile heights. Set in px |
 | `--ts-gap` | Grid gap | `16px` | same | `<ts-grid>` at 3 and 4 columns, and standalone tile heights. Set in px |
 | `--ts-grid-max-width` | Widest the board grows; it is centred when capped | `none` | same | `<ts-grid>`. Set a length such as `1600px`; columns follow the board's own width, so a capped board on a large monitor keeps ordinary tiles |
@@ -396,8 +396,12 @@ you can see both together. The library ships no such sheet.
 
 The tokens name two faces but Tickslate does not load them:
 
-- `--ts-font-ui` starts with **Geist**, then the system UI stack.
-- `--ts-font-num` starts with **Newsreader**, then a **sans** stack, deliberately
+- `--ts-font-ui` starts with **Geist**, then the platform's own UI face (San Francisco, Segoe UI, Roboto),
+  then **Arial**, then `system-ui`. Arial comes before `system-ui` for one reason: on Linux, `system-ui` is
+  often DejaVu Sans, whose digits are 14% wider than Arial's (.636em against .556em), and the layouts here (the label floor,
+  the figure sizes) are fitted to Helvetica-class widths. Linux resolves `Arial` to Liberation Sans, which has
+  Arial's metrics exactly, so a Linux page without Geist measures like a Mac or Windows one.
+- `--ts-font-num` starts with **Newsreader**, then the same sans stack, deliberately
   not Georgia: Georgia's digits are old-style and proportional, so live figures
   would jitter and sit at uneven heights without the web font. System sans
   digits are lining, and the figure classes force `tabular-nums`, so numbers

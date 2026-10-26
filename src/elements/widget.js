@@ -506,7 +506,7 @@ ${standaloneCss()}
 /* The header's meta says 'synced 11:42', and on a tile narrower than 200px just '14:05', so the label keeps its room. */
 .meta { flex: none; white-space: nowrap; }
 @container (max-width: 200px) { .pre { display: none; } }
-@container ts-tile (max-width: 11.25rem) { .hd > .lb { flex: 0 1 auto; min-inline-size: 6ch; } }
+@container ts-tile (max-width: 11.25rem) { .hd > .lb { flex: 0 1 auto; min-inline-size: max(6ch, 4.2em); } }
 @container ts-tile (max-width: 7rem) { .hd > .meta { display: none; } }
 @container ts-tile (max-height: 6.5rem) { .sec, .tile > .f1 { display: none; } }
 @container ts-tile (max-height: 5rem) { .ter { display: none; } }

@@ -38,8 +38,8 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-radius-sm: 6px;
     --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
     --ts-fill: 12%;
-    --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --ts-font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif;
+    --ts-font-num: 'Newsreader', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif;
     --ts-row: 150px;
     --ts-gap: 16px;
     --ts-grid-max-width: none;

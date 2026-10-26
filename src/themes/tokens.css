@@ -47,14 +47,14 @@
   --ts-radius-sm: 6px;
   --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
   --ts-fill: 12%;
-  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif;
   /*
    * Newsreader is the designed face. The fallback is a sans stack, not Georgia:
    * Georgia's digits are old-style and proportional, so live figures would
    * jitter and sit at uneven heights without the web font. System sans digits
    * are lining, and tabular-nums on the figure classes makes them equal width.
    */
-  --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-font-num: 'Newsreader', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif;
   --ts-row: 150px;
   --ts-gap: 16px;
   /* Caps the board's width and centres it; columns follow the board's own width, so a capped board on a large monitor keeps ordinary tiles. */

@@ -37,8 +37,8 @@
   --ts-radius-sm: 6px;
   --ts-shadow: none;
   --ts-fill: 16%;
-  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif;
+  --ts-font-num: 'Newsreader', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif;
   --ts-num-weight: 500;
   --ts-num-weight-small: 600;
   --ts-label-size: max(11px, .6875rem);
