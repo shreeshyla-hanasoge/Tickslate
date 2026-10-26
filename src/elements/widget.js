@@ -371,7 +371,7 @@ export function arrowFor(text) {
 export const FIGURE_CSS = `
 .fg { white-space: nowrap; }
 .cell { container-type: inline-size; }
-.cell .md { font-size: min(17px, calc(100cqi / (var(--fc, 10) * .62 + .65))); }
+.cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * .62 + .65))); }
 `
 
 /**
@@ -415,6 +415,14 @@ export function localeDirection(tag) {
   }
 }
 
+// Height tiers (RFC 0004 §2.2), kept out of the stylesheet because a comment in it ships to every page. The tile is a size
+// container, and a height query measures its content box: the row less the padding and border, which is 7rem on a
+// comfortable tile and 5.875rem on a compact one at a 16px root. Snug (6.5rem) hides the secondary rows (.sec) and tight (5rem)
+// the tertiary ones (.ter), so a default dashboard hides nothing, and a compact one, or one at a larger root font size,
+// gives up its secondary rows before anything clips. Each widget marks the rows that are its own. A snug tile also drops the
+// spacer (.f1) that pushes a footer to the bottom, which is a gap and a flex share to give back and hides nothing.
+// The label has its own line height (1.2) because 'normal' is a font's choice and Firefox rounds it up: the 11px label's line box
+// grew 1 to 2px over the 10px one it replaced, enough to push a full funding or edge tile past its bottom edge there.
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -423,23 +431,24 @@ ${standaloneCss()}
   box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 10px;
   padding: var(--ts-pad, 18px); background: var(--ts-surface); border: 1px solid var(--ts-line);
   border-radius: var(--ts-radius); box-shadow: var(--ts-shadow); color: var(--ts-ink);
-  font: 13px var(--ts-font-ui); overflow: hidden; position: relative;
-  container-type: inline-size;
+  font: var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); overflow: hidden; position: relative;
+  container: ts-tile / size;
 }
 .hd { display: flex; align-items: center; gap: 8px; min-height: 18px; }
 .lb {
-  font-size: var(--ts-label-size, 10px); text-transform: var(--ts-label-case, uppercase);
+  font-size: var(--ts-label-size, max(11px, .6875rem)); text-transform: var(--ts-label-case, uppercase);
   letter-spacing: var(--ts-label-tracking, .12em); font-weight: var(--ts-label-weight, 600); color: var(--ts-muted);
+  line-height: 1.2;
 }
 .n, .big, .xbig {
   font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate; direction: var(--ts-fig-dir, ltr);
 }
 .big, .xbig { font-weight: var(--ts-headline-weight, var(--ts-num-weight, 500)); }
-.big { font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em; }
-.xbig { font-size: min(48px, 9cqi); line-height: 1; letter-spacing: -.02em; }
-.md { font-size: min(17px, 12cqi); }
-.sm { font-size: 11px; }
-.xs { font-size: 10px; }
+.big { font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 19cqi); line-height: 1; letter-spacing: -.01em; }
+.xbig { font-size: min(var(--ts-text-xbig, max(48px, 3rem)), 9cqi); line-height: 1; letter-spacing: -.02em; }
+.md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), 12cqi); }
+.sm { font-size: var(--ts-text-sm, max(11px, .6875rem)); }
+.xs { font-size: var(--ts-text-xs, max(10px, .625rem)); }
 .n.sm, .n.xs { font-weight: var(--ts-num-weight-small, 500); }
 /* The arrow beside a signed figure (arrowFor): a small mark raised to the digits' middle, and no room taken when it is empty. */
 .ar:empty { display: none; }
@@ -461,7 +470,7 @@ ${standaloneCss()}
 .sep { border-top: 1px solid var(--ts-line); }
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .btn {
-  font: 500 11px var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
+  font: 500 var(--ts-text-sm, max(11px, .6875rem)) var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
   border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer; position: relative; z-index: 2;
 }
 .btn.on { background: var(--ts-surface-2); color: var(--ts-ink); box-shadow: inset 0 -2px 0 var(--ts-accent); }
@@ -491,6 +500,8 @@ ${standaloneCss()}
 /* The header's meta says 'synced 11:42', and on a tile narrower than 200px just '14:05', so the label keeps its room. */
 .meta { flex: none; white-space: nowrap; }
 @container (max-width: 200px) { .pre { display: none; } }
+@container ts-tile (max-height: 6.5rem) { .sec, .tile > .f1 { display: none; } }
+@container ts-tile (max-height: 5rem) { .ter { display: none; } }
 @keyframes ts-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ts-profit) 55%, transparent); }
   70% { box-shadow: 0 0 0 7px transparent; }
@@ -500,7 +511,7 @@ ${standaloneCss()}
 @media (prefers-reduced-motion: reduce) { .flash-up, .flash-down, .flash-neither { background-color: transparent; } }
 .empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ts-muted); text-align: center; }
 .err { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
-.err-msg { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; font-size: 12px; font-weight: 500; color: var(--ts-ink); text-align: start; }
+.err-msg { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; font-size: var(--ts-text-md, max(12px, .75rem)); font-weight: 500; color: var(--ts-ink); text-align: start; }
 .err-msg svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--ts-warn); }
 .btn.retry { color: var(--ts-ink); }
 .sk { display: block; flex: none; position: relative; overflow: hidden; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); }

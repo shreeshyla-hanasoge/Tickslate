@@ -279,13 +279,13 @@ const TEMPLATES = {
 ${header({ dot: true, meta: true })}
 ${figure('big nv', 'net', 'value')}
 <span class="f1"></span>
-<span class="sm mut ell" data-k="footer"></span>`,
+<span class="sm mut ell sec" data-k="footer"></span>`,
   Wide: `
 <div class="cols">
   <div class="col lhs">
     ${header({ dot: true, meta: true })}
     ${figure('xbig nv', 'net', 'value')}
-    <span class="sm mut" data-k="note"></span>
+    <span class="sm mut sec" data-k="note"></span>
   </div>
   <div class="col rhs">
     <div class="rowb"><span class="lb f1" data-k="lbRealised"></span>${figure('n', 'realized')}</div>
@@ -313,7 +313,7 @@ ${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"><
   <div class="nodata sm" part="empty" data-k="nodata" hidden></div>
   ${scrubMarkup(1, 1)}
 </div>
-<div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
+<div class="axis sm mut n ter"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
   <div class="col cell"><span class="lb" data-k="lbRealised"></span>${figure('n md', 'realized')}</div>
   <div class="col cell"><span class="lb" data-k="lbUnrealised"></span>${figure('n md', 'unrealized')}</div>
@@ -356,6 +356,12 @@ export class TsTodayPnl extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
+  // Density and text size (RFC 0004 §2), kept out of the stylesheet because a comment in it ships to every page:
+  // - .lhs has min-width: auto, not the .col default of 0, so a figure that grows (a reader's letter spacing, a larger root
+  //   font size) widens its column and narrows the one beside it, instead of being cut. Its header and note are inline-size
+  //   contained, so only the figure counts: a long label still ellipsizes and never widens the column.
+  // - The S headline has no neighbour, so it may use the tile's padding when letter spacing widens it; the tile still clips
+  //   at its own edge.
   static styles = `${FIGURE_CSS}${SCRUB_CSS}
 [hidden] { display: none; }
 /* Clip rather than overflow: a headline too wide for its slot must never
@@ -363,7 +369,8 @@ export class TsTodayPnl extends TsWidget {
    that rare; this makes it harmless. */
 .nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; }
 .cols { flex: 1; display: flex; gap: 24px; align-items: stretch; min-height: 0; }
-.lhs { flex: 1.15; min-width: 0; justify-content: space-between; }
+.lhs { flex: 1.15; min-width: auto; justify-content: space-between; }
+.lhs > .hd, .lhs > .sec { contain: inline-size; }
 .rhs { flex: 1; min-width: 0; justify-content: center; gap: 10px; }
 /* Narrow tile (a 2-column phone): the three figures stack label over value
    and shrink to their content, so the headline gets the rest of the width.
@@ -397,8 +404,8 @@ export class TsTodayPnl extends TsWidget {
    tiles only: 10 characters of a monospace face (0.6em each) and the arrow (0.4em) still fit the content box of a
    2-column phone's tile, where the figure never wraps or clips. A roomy tile keeps the 34px cap. The Wide headline sits
    in the left column (1.15 of 2.15 of the tile less the gap): 6.2em of that, and 48px when the tile is roomy. */
-.big.nv { font-size: min(34px, 15cqi); }
-.xbig.nv { font-size: min(48px, calc(8.6cqi - 2px)); }
+.big.nv { overflow: visible; max-width: none; font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 15cqi); }
+.xbig.nv { font-size: min(var(--ts-text-xbig, max(48px, 3rem)), calc(8.6cqi - 2px)); }
 @media (forced-colors: active) {
   .mk.entry { background: Highlight; border-color: ButtonFace; }
   .mk.exit { background: CanvasText; border-color: ButtonFace; }

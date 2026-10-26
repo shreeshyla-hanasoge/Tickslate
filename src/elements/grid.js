@@ -111,6 +111,7 @@ const TOAST_MS = 6000
 // A developer's warning, not interface text, so it stays out of the messages.
 const LOCKED_WARNING = '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.'
 const EMPTY_PERSIST_WARNING = '<ts-grid> persist attribute is empty, so saving is off. Give it a key, for example persist="my-dashboard".'
+const DENSITY_WARNING = '<ts-grid> density must be "comfortable" or "compact", so it was treated as "comfortable".'
 const NAMED_ROOT_WARNING = '<ts-grid> reused a shadow root that assigns slots by name, so reading and Tab order follow the DOM order, not the layout. Add shadowrootslotassignment="manual" to its <template shadowrootmode>, or leave the declarative shadow root out.'
 // Wording and link are fixed by RFC 0003 §4.3.
 const UNSAVED_WARNING = '<ts-grid> edits will be lost on reload: add a persist attribute, or call persistLayout(). See docs/guide/saving-layouts.md'
@@ -138,9 +139,12 @@ function registered(item) {
 // - The pin button is the fourth chrome button, top-end opposite remove, and shares remove's box. Its arrow is drawn
 //   with ::before, not written, so it is not text the grid owns: up pins, down unpins.
 // - The strip sits at the top of the page when stuck, so a strip tile's buttons are drawn inside its corner.
+// - The compact tokens sit on :host, so a rule on the ts-grid element in the page's CSS still wins, while a value on :root or a
+//   wrapper is only inherited and loses (RFC 0004 §2.1).
 const CSS = `
   :host { display: block; position: relative; inline-size: 100%; max-inline-size: var(--ts-grid-max-width, none); margin-inline: auto; -webkit-tap-highlight-color: transparent; }
   :host([hidden]) { display: none; }
+  :host([density="compact"]) { --ts-row: 120px; --ts-pad: 12px; --ts-gap: 10px; }
   :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
   .strip { position: sticky; inset-block-start: var(--ts-strip-top, 0px); z-index: 7; background: var(--ts-bg); transition: height ${SLIDE}; }
@@ -195,10 +199,10 @@ const CSS = `
     display: flex; align-items: center; justify-content: center;
     background: var(--ts-surface-2); color: var(--ts-ink);
     border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow, none);
-    font: 600 16px/1 var(--ts-font-ui, system-ui, sans-serif);
+    font: 600 var(--ts-text-xl, max(16px, 1rem))/1 var(--ts-font-ui, system-ui, sans-serif);
   }
   .remove:focus-visible span, .pin:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
-  .pin span { font-size: 13px; }
+  .pin span { font-size: var(--ts-text-base, max(13px, .8125rem)); }
   .pin span::before { content: '\\2191'; }
   .chrome.in-strip .pin span::before { content: '\\2193'; }
   .chrome.in-strip .remove, .chrome.in-strip .pin { inset-block-start: -10px; }
@@ -236,7 +240,7 @@ const CSS = `
     position: relative; display: inline-flex; align-items: center; gap: 0; padding-block: 4px; padding-inline: 20px 4px;
     border-radius: 999px; box-sizing: border-box; max-width: calc(100% - 32px); white-space: nowrap;
     background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
-    font: 500 13px var(--ts-font-ui); pointer-events: auto;
+    font: 500 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); pointer-events: auto;
   }
   /* Kept in the tree while off, so the status region announces the next text put in it. */
   .toast:not(.on) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; opacity: 0; pointer-events: none; }
@@ -255,13 +259,13 @@ const CSS = `
   .pb {
     min-width: 44px; min-height: 44px; margin: 0; padding: 0 20px; border: 0; border-radius: 999px; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
-    background: none; color: var(--ts-ink); font: 600 13px var(--ts-font-ui);
+    background: none; color: var(--ts-ink); font: 600 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui);
   }
   .pb:focus-visible, .mi:focus-visible, .edit-btn:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .pb[aria-expanded="true"] { background: var(--ts-surface-2); }
   .pb.done { padding-inline: 24px; background: var(--ts-accent); color: var(--ts-surface); }
   .pb.ghost { border: 1px solid var(--ts-line); background: var(--ts-surface); }
-  .pb .plus { color: var(--ts-accent); font-size: 16px; line-height: 1; }
+  .pb .plus { color: var(--ts-accent); font-size: var(--ts-text-xl, max(16px, 1rem)); line-height: 1; }
   .menu {
     position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; z-index: 3; box-sizing: border-box;
     width: 250px; max-width: calc(100vw - 32px); max-height: 50vh; overflow-y: auto; padding: 6px;
@@ -269,14 +273,14 @@ const CSS = `
     background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line);
     border-radius: var(--ts-radius); box-shadow: var(--ts-shadow-lift); pointer-events: auto;
   }
-  .menu-h { padding: 8px 10px 6px; font: 600 10px var(--ts-font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+  .menu-h { padding: 8px 10px 6px; font: 600 var(--ts-text-xs, max(10px, .625rem)) var(--ts-font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
   .mi {
     display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px;
     margin: 0; padding: 0 10px; border: 0; border-radius: var(--ts-radius-sm); cursor: pointer; text-align: start;
-    background: none; color: inherit; font: 13px var(--ts-font-ui);
+    background: none; color: inherit; font: var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui);
   }
   .mi:hover { background: var(--ts-surface-2); }
-  .mi .plus { color: var(--ts-accent); font-size: 16px; }
+  .mi .plus { color: var(--ts-accent); font-size: var(--ts-text-xl, max(16px, 1rem)); }
   /* Visually hidden until a keyboard user reaches it, so it is the first Tab stop without crowding the dashboard. */
   .edit-btn {
     position: absolute; top: 12px; inset-inline-start: 12px; z-index: 8; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
@@ -285,11 +289,11 @@ const CSS = `
   .edit-btn:focus-visible {
     width: auto; height: auto; min-height: 44px; margin: 0; padding: 0 18px; overflow: visible; clip-path: none;
     border: 1px solid var(--ts-line); border-radius: 999px; cursor: pointer;
-    background: var(--ts-surface); color: var(--ts-ink); font: 600 13px var(--ts-font-ui); box-shadow: var(--ts-shadow-lift);
+    background: var(--ts-surface); color: var(--ts-ink); font: 600 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); box-shadow: var(--ts-shadow-lift);
   }
   .empty {
     position: absolute; inset: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 12px; padding: 16px; text-align: center; color: var(--ts-ink); font: 500 14px var(--ts-font-ui);
+    justify-content: center; gap: 12px; padding: 16px; text-align: center; color: var(--ts-ink); font: 500 var(--ts-text-lg, max(14px, .875rem)) var(--ts-font-ui);
     border: 1.5px dashed color-mix(in srgb, var(--ts-ink) 22%, transparent); border-radius: var(--ts-radius);
     background: color-mix(in srgb, var(--ts-ink) 4%, transparent);
   }
@@ -336,7 +340,7 @@ const CHROME_HTML = '<button class="handle" type="button" aria-describedby="hint
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'scrub', 'aria-label']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'scrub', 'aria-label']
   }
 
   constructor() {
@@ -724,6 +728,16 @@ export class TsGrid extends Base {
 
   get columns() {
     return this._columns
+  }
+
+  /** 'comfortable' (the default) or 'compact', which shortens the rows and tightens the padding and gaps. Anything else is 'comfortable'. Reflects the `density` attribute. */
+  get density() {
+    return this.getAttribute('density') === 'compact' ? 'compact' : 'comfortable'
+  }
+
+  set density(value) {
+    if (value == null || value === '') this.removeAttribute('density')
+    else this.setAttribute('density', String(value))
   }
 
   /** A key that saves this grid's layout to localStorage per device; null, or no attribute, turns saving off. Reflects the `persist` attribute. */
@@ -1131,6 +1145,12 @@ export class TsGrid extends Base {
       delete this.messages
       this.messages = value
     }
+    // Likewise a density property set before upgrade.
+    if (Object.prototype.hasOwnProperty.call(this, 'density')) {
+      const value = this.density
+      delete this.density
+      this.density = value
+    }
     // Likewise a persist property set before upgrade: it becomes the attribute.
     if (Object.prototype.hasOwnProperty.call(this, 'persist')) {
       const value = this.persist
@@ -1266,6 +1286,10 @@ export class TsGrid extends Base {
     } else if (['locale', 'currency', 'time-zone', 'hour-cycle'].includes(name)) {
       this._refreshText()
       this._invalidateWidgets()
+    } else if (name === 'density') {
+      if (DEV && value !== null && value !== 'comfortable' && value !== 'compact') warnOnce('grid-density', DENSITY_WARNING)
+      // The rows and gaps are read from the tokens, so a change re-measures; a layout is cells, so nothing else moves.
+      if (this.isConnected && this._m && !this._blocked) this._measure(true)
     } else if (name === 'scrub') {
       // A tile reads the grid's value when it renders, so it draws again to drop or restore its tab stop at once.
       this._invalidateWidgets()

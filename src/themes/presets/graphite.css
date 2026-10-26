@@ -39,10 +39,9 @@
   --ts-fill: 16%;
   --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --ts-pad: 16px;
   --ts-num-weight: 500;
   --ts-num-weight-small: 600;
-  --ts-label-size: 10px;
+  --ts-label-size: max(11px, .6875rem);
   --ts-label-case: uppercase;
   --ts-label-tracking: .12em;
   --ts-label-weight: 600;
@@ -62,6 +61,15 @@
   --ts-series-5: #F472B6;
   --ts-series-6: #A3E635;
   --ts-focus: var(--ts-accent);
+}
+
+/*
+ * Owned by density: skipped on a compact element, on one inside a compact element, and on a
+ * <ts-grid density="compact">, so compact padding (RFC 0004 §2.1) beats the preset's on the
+ * same element or an ancestor. A rule in the grid's shadow root cannot outrank this one.
+ */
+:where([data-ts-theme='graphite']:not([data-ts-density='compact'], [density='compact'], [data-ts-density='compact'] *, [density='compact'] *)) {
+  --ts-pad: 16px;
 }
 
 /*

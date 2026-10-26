@@ -38,10 +38,9 @@
   --ts-fill: 0%;
   --ts-font-ui: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
   --ts-font-num: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-  --ts-pad: 12px;
   --ts-num-weight: 500;
   --ts-num-weight-small: 500;
-  --ts-label-size: 10px;
+  --ts-label-size: max(11px, .6875rem);
   --ts-label-case: uppercase;
   --ts-label-tracking: .1em;
   --ts-label-weight: 500;
@@ -61,6 +60,15 @@
   --ts-series-5: #BE185D;
   --ts-series-6: #4D7C0F;
   --ts-focus: var(--ts-accent);
+}
+
+/*
+ * Owned by density: skipped on a compact element, on one inside a compact element, and on a
+ * <ts-grid density="compact">, so compact padding (RFC 0004 §2.1) beats the preset's on the
+ * same element or an ancestor. A rule in the grid's shadow root cannot outrank this one.
+ */
+:where([data-ts-theme='terminal']:not([data-ts-density='compact'], [density='compact'], [data-ts-density='compact'] *, [density='compact'] *)) {
+  --ts-pad: 12px;
 }
 
 /*

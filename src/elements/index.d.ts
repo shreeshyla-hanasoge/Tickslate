@@ -1172,6 +1172,7 @@ export type TsFeedAction = TsCommonAction
  * @attr {string} time-zone - IANA zone its tiles format times with.
  * @attr {string} hour-cycle - The hour cycle its tiles use.
  * @attr {string} persist - A key that saves the layout to localStorage per device.
+ * @attr {'comfortable' | 'compact'} density - 'compact' sets --ts-row to 120px, --ts-pad to 12px and --ts-gap to 10px. Default 'comfortable'.
  * @attr {string} aria-label - The name of the grid's region.
  * @fires {CustomEvent<TsLayoutChangeDetail>} ts-layout-change - A move, resize, remove, add or undo; save `detail.layout`.
  * @fires {CustomEvent<{ issues: LayoutIssue[] }>} ts-layout-issues - A layout was repaired when read.
@@ -1276,6 +1277,7 @@ export interface TsElementAttributes {
     'time-zone'?: string | undefined
     'hour-cycle'?: string | undefined
     persist?: string | undefined
+    density?: 'comfortable' | 'compact' | undefined
     'stale-after'?: number | string | undefined
     flash?: 'off' | undefined
     scrub?: 'on' | 'off' | undefined
