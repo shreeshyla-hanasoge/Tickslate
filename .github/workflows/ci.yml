@@ -95,3 +95,33 @@ jobs:
             node_modules/.playwright/results/
           if-no-files-found: ignore
           retention-days: 14
+
+  # The framework examples, built the way a consumer would: the packed tarball of
+  # this very commit installed into a copy of each example (examples/vanilla-cdn,
+  # react-vite, vue-vite, svelte-vite), built, and smoke-tested in Chromium. It
+  # runs `npm run release` itself rather than downloading the build job's
+  # artifact, so the tarball it installs is the one this job built, and it needs
+  # the build job green first so a broken package fails there, once. Installing
+  # the frameworks needs the network, which a hosted runner has.
+  examples:
+    name: examples (react, vue, svelte, script tag)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run release
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:consumers

@@ -1,0 +1,9 @@
+{
+  "name": "tickslate-example-vanilla-cdn",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Tickslate from a plain script tag. No build step: install, then serve this folder with any static server.",
+  "dependencies": {
+    "tickslate": "file:../../dist-lib"
+  }
+}

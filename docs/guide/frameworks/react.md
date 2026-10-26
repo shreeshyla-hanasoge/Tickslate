@@ -4,10 +4,10 @@ Tickslate widgets are custom elements, so React renders them like any tag. The
 only React-specific question is how data and events reach them. This recipe
 covers React 19 and React 18.
 
-> **To be verified.** The property and event behaviour below follows
-> [RFC 0001 §10](../../rfc/0001-api.md) and React's documented custom element
-> support. It has not yet been run in a scratch app; consumer-examples will
-> confirm it. The `onts-action` form is marked where it appears.
+> A working React 19 app is in
+> [examples/react-vite](../../../examples/react-vite). CI builds it from the
+> packed package and runs it in Chromium, so the React 19 sections below are
+> exercised there on every change.
 
 ## Set up
 
@@ -24,22 +24,16 @@ import 'tickslate/tokens.css' // optional: the tiles carry their own defaults
 ```
 
 For TypeScript, `tickslate/elements` augments `HTMLElementTagNameMap`, so
-`document.querySelector('ts-grid')` is typed. To type the tags in JSX, add a
-declaration once (the exact shape depends on your `@types/react`):
+`document.querySelector('ts-grid')` is typed. To type the tags in JSX, import
+the types-only entry once, anywhere in the project (needs `@types/react`
+18.2.6 or later):
 
 ```ts
-// tickslate-jsx.d.ts
-import type { TsGrid, TsMetric, TsCard } from 'tickslate/elements'
-declare module 'react' {
-  namespace JSX {
-    interface IntrinsicElements {
-      'ts-grid': React.DetailedHTMLProps<React.HTMLAttributes<TsGrid>, TsGrid>
-      'ts-metric': React.DetailedHTMLProps<React.HTMLAttributes<TsMetric>, TsMetric>
-      'ts-card': React.DetailedHTMLProps<React.HTMLAttributes<TsCard>, TsCard>
-    }
-  }
-}
+import type {} from 'tickslate/jsx'
 ```
+
+Every `ts-*` tag then checks its attributes (`size="Huge"` is an error) and
+its `data` against the widget's own type.
 
 ## React 19
 
@@ -55,13 +49,20 @@ export function Signups({ stats }) {
 ```
 
 `stats` is `undefined` until your fetch resolves, which shows the loading
-skeleton; pass `null` for the empty state. Boolean attributes such as `locked`
-are strings in JSX: `<ts-grid locked="" />`.
+skeleton; pass `null` for the empty state. A boolean attribute takes a
+boolean: `<ts-metric activatable />` works in React 19,
+which sets the property.
 
-Events: use a ref and `addEventListener`, which works in every version (the
-next section's hook wraps it). React 19 can also bind custom events with an
-`on` prefix, `onts-layout-change={handler}`; this form is **to be verified**
-and the ref form below is the safe choice.
+Events: React 19 binds a custom event by its own name behind an `on` prefix, so
+`ts-action` is `onts-action`:
+
+```jsx
+<ts-grid onts-action={(event) => console.log(event.detail.action)}>…</ts-grid>
+```
+
+JSX does not type-check a hyphenated prop, so annotate the event yourself
+(`event: CustomEvent`). A ref and `addEventListener` works in every version
+(the hook below wraps it) and is the form to use on React 18.
 
 ## React 18 (and 19)
 
@@ -101,7 +102,8 @@ export function useTsEvent(ref, name, handler) {
 
 ## Saving layouts
 
-`persistLayout` takes the grid element, so call it in an effect and dispose it
+The simplest way is the `persist` attribute, `<ts-grid persist="ops-dashboard">`,
+which the example uses. `persistLayout` takes the grid element, so call it in an effect and dispose it
 on cleanup:
 
 ```jsx
@@ -138,8 +140,9 @@ useTsEvent(grid, 'ts-layout-change', (e) => api.saveLayout(e.detail.layout))
 
 Importing `tickslate/elements` where there is no DOM registers nothing and
 does not throw, so Next.js and Remix can import it from a server component.
-The tiles upgrade in the browser; until then, known tags reserve their height
-so the page does not jump.
+The tiles upgrade in the browser; until then, `tickslate/tokens.css` makes known
+tags reserve their height so the page does not jump. See
+[server-side rendering](../ssr.md) and the [Next.js recipe](nextjs.md).
 
 ## Notes
 

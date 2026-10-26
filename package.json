@@ -19,6 +19,7 @@
     "test:types": "npm run check:types",
     "test": "node --test test/*.test.mjs examples/custom-widget/*.test.mjs",
     "test:browser": "playwright test",
+    "test:consumers": "node scripts/test-consumers.mjs",
     "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run build:cdn && npm run pack:lib && npm run verify:package && npm run size"
   },
   "devDependencies": {
