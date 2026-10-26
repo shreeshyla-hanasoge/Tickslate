@@ -29,7 +29,7 @@ function checkVersion(v) {
 // removed from the built HTML. Any other link to another host fails the build.
 // Inline scripts and comments are left alone on purpose: the playground's Copy
 // HTML builds a page that links the CDN, and that text is data, not a request.
-const INERT = /<script\b[\s\S]*?<\/script\s*>|<!--[\s\S]*?--!?>/gi
+const INERT = /<script\b[\s\S]*?<\/script[^>]*>|<!--[\s\S]*?--!?>/gi
 const FONT_LINK = /<link\b[^>]*\bhref=["']https:\/\/fonts\.(?:googleapis|gstatic)\.com[^"']*["'][^>]*>\s*/gi
 // What would reach another host: an element that loads a URL, a CSS url() or @import.
 const EXTERNAL_REF = /<(?:link|script|img|iframe|source|video|audio|embed|object)\b[^>]*\b(?:href|src|data)=["'](?:https?:)?\/\/|url\(\s*["']?(?:https?:)?\/\/|@import\s*(?:url\(\s*)?["']?(?:https?:)?\/\//i
@@ -38,7 +38,7 @@ const EXTERNAL_JS = /\bimport\(\s*["'`](?:https?:)?\/\/|\bnew URL\(\s*["'`](?:ht
 // For the check, a script keeps its opening tag (and so its src) and loses only
 // its body, so an external <script src> is caught while inline text is not.
 const forCheck = (text) => {
-  let out = text.replace(/(<script\b[^>]*>)[\s\S]*?<\/script\s*>/gi, '$1</script>')
+  let out = text.replace(/(<script\b[^>]*>)[\s\S]*?<\/script[^>]*>/gi, '$1</script>')
   // Repeated until stable: removing one comment can join the text around it into another.
   for (let prev = ''; prev !== out;) {
     prev = out

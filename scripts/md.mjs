@@ -42,18 +42,26 @@ export function slugify(text) {
     .replace(/\s/g, '-')
 }
 
-// One pass of a pattern can leave a new match behind ("<<b>script>" loses "<b>" and is "<script>" again), so a
-// removal repeats until the text stops changing.
-const settle = (text, strip) => {
-  let prev
-  do {
+// Removes every open...close span by scanning, not by pattern, and again until nothing is left to remove: cutting
+// one span can join the text around it into a new one ("<!<!-- a -->-- b -->"), and one pass would leave that behind.
+const cut = (text, open, close) => {
+  for (let prev = null; prev !== text;) {
     prev = text
-    text = strip(text)
-  } while (text !== prev)
+    let out = ''
+    let at = 0
+    for (;;) {
+      const start = text.indexOf(open, at)
+      const end = start < 0 ? -1 : text.indexOf(close, start + open.length)
+      if (end < 0) break
+      out += text.slice(at, start)
+      at = end + close.length
+    }
+    text = out + text.slice(at)
+  }
   return text
 }
 
-const textOf = (html) => settle(html, (h) => h.replace(/<[^>]*>/g, ''))
+const textOf = (html) => cut(html, '<', '>')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
 
 // ── Inline ──────────────────────────────────────────────────────────────────
@@ -77,7 +85,7 @@ function renderInline(src, opts) {
   })
 
   // Comments are for whoever edits the Markdown, never for the page.
-  s = settle(s, (t) => t.replace(/<!--[\s\S]*?-->/g, ''))
+  s = cut(s, '<!--', '-->')
 
   // Autolinks in angle brackets.
   s = s.replace(/<(https?:\/\/[^\s<>]+)>/g, (_, url) => hold(anchor(url, escapeHtml(url), opts)))
