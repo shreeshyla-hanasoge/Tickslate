@@ -7,8 +7,9 @@ differ, CLAUDE.md wins and this file is out of date.
 
 Tickslate is an open-source library of dashboard widgets for any data, with a
 finance set built in. The widgets are framework-free custom elements with zero
-runtime dependencies. Version 0.1.0 is on npm; P1 work toward 0.2.0 is under
-way.
+runtime dependencies. Version 0.1.0 is on npm. 0.2.0 is prepared on
+`master` and waits for the maintainer to publish it; 0.3.0 is prepared on
+`integrate/0.3.0` (PR #53) and follows it.
 
 ## Read before writing code
 

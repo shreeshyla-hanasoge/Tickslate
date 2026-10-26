@@ -391,34 +391,52 @@ describe('downsampling (RFC 0003 §23)', () => {
     assert.ok(out.length <= 100 && out.length >= 3)
   })
 
-  test('a 500,000-reading series returns inside a generous bound', () => {
-    const big = Array.from({ length: 500000 }, (_, i) => ({ x: i, y: Math.sin(i / 9000) * 900 + ((i * 7919) % 101) }))
-    let best = Infinity
-    let drawn
-    for (let i = 0; i < 5; i++) {
-      const start = performance.now()
-      drawn = linePaths(big, { width: 375, height: 100, pad: 4 })
-      best = Math.min(best, performance.now() - start)
+  // Readings whose fields count every read, so a test can say how much work a long series costs without a clock: time
+  // under load says nothing about the algorithm (a bound of 100 ms failed once at 133 ms on a busy runner).
+  const counted = (n, make) => {
+    const reads = { n: 0 }
+    const list = Array.from({ length: n }, (_, i) => {
+      const v = make(i)
+      const o = {}
+      for (const key of Object.keys(v)) Object.defineProperty(o, key, { enumerable: true, get: () => (reads.n++, v[key]) })
+      return o
+    })
+    return { list, reads }
+  }
+
+  test('a long series is read a bounded number of times per reading, and draws at most 2 × the width', () => {
+    const wave = (i) => ({ x: i, y: Math.sin(i / 9000) * 900 + ((i * 7919) % 101) })
+    // The cost is linear: ten times the readings is about ten times the reads, so nothing in the thinning is quadratic.
+    const reads = []
+    for (const n of [5000, 50000]) {
+      const { list, reads: r } = counted(n, wave)
+      const drawn = linePaths(list, { width: 375, height: 100, pad: 4 })
+      assert.ok(points(drawn.line).length <= 750, `${points(drawn.line).length} points`)
+      assert.ok(r.n <= 20 * n, `${r.n} reads for ${n} readings`)
+      reads.push(r.n / n)
     }
-    assert.ok(points(drawn.line).length <= 750)
-    // About 15 ms idle; the best of five, because load only ever adds time.
-    assert.ok(best < 100, `${best.toFixed(1)} ms`)
+    assert.ok(reads[1] <= reads[0] * 1.5, `reads per reading grew from ${reads[0]} to ${reads[1]}`)
+    // Asked for every point, it draws every point.
+    const { list } = counted(3000, wave)
+    assert.equal(points(linePaths(list, { width: 375, height: 100, pad: 4, maxPoints: Infinity }).line).length, 3000)
   })
 
-  test("Today's P&L returns for 500,000 readings inside a generous bound, drawing at most 2 × the box width", () => {
+  test("Today's P&L reads a long series a bounded number of times per reading, drawing at most 2 × the box width", () => {
     const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
     const ctx = { fmt, t: createMessages(), now: 0, label: "Today's P&L" }
     const from = Date.UTC(2026, 2, 2, 3, 45)
-    const n = 500000
-    const intraday = Array.from({ length: n }, (_, i) => ({ t: from + i * 40, v: Math.round(Math.sin(i / 9000) * 900 + ((i * 7919) % 101)) }))
-    const data = { net: 1200, intraday, window: { from, to: from + n * 40 }, live: true }
-    let best = Infinity
+    const perReading = []
     let vm
-    for (let i = 0; i < 7; i++) {
-      const start = performance.now()
+    let intraday
+    for (const n of [5000, 50000]) {
+      const made = counted(n, (i) => ({ t: from + i * 40, v: Math.round(Math.sin(i / 9000) * 900 + ((i * 7919) % 101)) }))
+      intraday = made.list
+      const data = { net: 1200, intraday, window: { from, to: from + n * 40 }, live: true }
       vm = todayPnlModel(data, 'M', ctx)
-      best = Math.min(best, performance.now() - start)
+      assert.ok(made.reads.n <= 40 * n, `${made.reads.n} reads for ${n} readings`)
+      perReading.push(made.reads.n / n)
     }
+    assert.ok(perReading[1] <= perReading[0] * 1.5, `reads per reading grew from ${perReading[0]} to ${perReading[1]}`)
     const drawn = points(vm.chart.line)
     assert.ok(drawn.length <= 2 * CHART_BOX.width && drawn.length > CHART_BOX.width, `${drawn.length} points`)
     assert.equal(vm.dropped, 0)
@@ -426,9 +444,6 @@ describe('downsampling (RFC 0003 §23)', () => {
     let low = Infinity
     for (const r of intraday) low = Math.min(low, r.v)
     assert.ok(vm.chart.ariaLabel.includes(fmt.money(low, { decimals: 0 })))
-    // Under 50 ms when the machine is idle (about 35 ms measured); 100 ms is the ceiling for a busy CI runner,
-    // taken as the best of seven because load only ever adds time.
-    assert.ok(best < 100, `${best.toFixed(1)} ms`)
   })
 })
 
