@@ -804,6 +804,7 @@
     "--ts-muted",
     "--ts-num-weight",
     "--ts-num-weight-small",
+    "--ts-num-width",
     "--ts-pad",
     "--ts-profit",
     "--ts-radius",
