@@ -431,6 +431,9 @@ test.describe('the calm profile switch, with motion', () => {
     await expect.poll(() => onScreen(page)).toEqual(['alerts', 'sales'])
     expect(await anims(page), 'override() applies at once').toEqual([])
     expect(await toast(page).evaluate((el) => el.classList.contains('on'))).toBe(false)
+    // The override's own words are spoken on the next frame; crossing before that joins them with the next change's
+    // ("Showing the focus layout. Showing the After close layout."), which is one announcement, not the one counted below.
+    await expect.poll(() => said(page)).toEqual(['Showing the focus layout.'])
     await page.evaluate(() => window.__fx.cross('15:46'))
     await expect.poll(async () => (await anims(page)).length).toBe(2)
     await expect.poll(() => onScreen(page)).toEqual(['queue', 'tasks', 'notes'])
