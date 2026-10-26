@@ -13,11 +13,23 @@ function guard(page, errors) {
   page.on('pageerror', (error) => errors.push(error.message))
 }
 
+// Every tile has drawn its content. A burst of renders is time-sliced over several tasks (RFC 0003 §23), so right after
+// __ready a tile can still be the empty group it is built as, with no name and no figures. Waiting on frames or a timer
+// would only guess how long that takes under load; the condition is the tile's own: named, and no longer busy.
+const drawn = (page) =>
+  page.waitForFunction(() =>
+    [...window.__fx.tiles.values()].every((el) => {
+      const tile = el.shadowRoot.querySelector('.tile')
+      return !!tile.getAttribute('aria-label') && !tile.hasAttribute('aria-busy')
+    }),
+  )
+
 // The fixture lets a tile shrink to its caption (a size container has no width of its own), so each figure is given
 // the width a 4-column desktop grid would, and the drawings have room to be measured.
 async function open(page, query = '') {
   await page.goto(`${PAGE}?theme=light${query}`)
   await page.waitForFunction(() => window.__ready === true)
+  await drawn(page)
   await page.evaluate((sizes) => {
     for (const el of window.__fx.tiles.values()) {
       const { cols } = sizes[el.dataset.size]
@@ -372,6 +384,7 @@ test.describe('signed figures on a phone', () => {
         guard(page, errors)
         await page.goto(`${PAGE}?theme=${theme}&preset=${preset}`)
         await page.waitForFunction(() => window.__ready === true)
+        await drawn(page)
         const found = await page.evaluate(async ({ tiles, phone }) => {
           const out = []
           for (const key of tiles) {
