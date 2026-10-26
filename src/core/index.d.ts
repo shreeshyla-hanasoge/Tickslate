@@ -648,9 +648,9 @@ export type MessageOverrides = Partial<Messages> & { [K in `${PluralBase}.${Plur
 
 /**
  * `{param}` interpolation and plural forms; a missing key falls back to EN, then to the key itself.
- * A `count` (a number, or a numeric string) selects `key.<category>`, then `key.other`, then `key`; the category comes from the table's locale for text a host supplied, and from English for text that falls back to EN.
+ * A key a custom widget registered with `defineWidget(…, { messages })` is any string. A `count` (a number, or a numeric string) selects `key.<category>`, then `key.other`, then `key`; the category comes from the table's locale for text a host supplied, and from English for text that falls back to EN.
  */
-export type Translate = (key: MessageKey | PluralBase, params?: Record<string, string | number | null | undefined> | null, count?: number | string) => string
+export type Translate = (key: MessageKey | PluralBase | (string & {}), params?: Record<string, string | number | null | undefined> | null, count?: number | string) => string
 
 /** Every key and its English text. Frozen; keys are flat and dotted. */
 export declare const EN: Readonly<Messages>

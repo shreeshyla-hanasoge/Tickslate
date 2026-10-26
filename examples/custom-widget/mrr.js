@@ -22,29 +22,20 @@ const S_CHARS = 8
 // The customer count sits in a slot that holds about this many.
 const COUNT_CHARS = 6
 
-// Every word the widget shows comes from a message, never from the template, so a host can
-// translate or reword it with configure({ messages }) under these keys. Tickslate has no place to
-// register a custom widget's defaults, so the widget carries its own English.
-const ENGLISH = Object.freeze({
-  'acme.mrr.up': 'up {delta} on last month',
-  'acme.mrr.down': 'down {delta} on last month',
-  'acme.mrr.flat': 'no change on last month',
-  'acme.mrr.trend': '{label} trend, from {from} to {to}',
-  'acme.mrr.breakdown': 'Breakdown',
-  'acme.mrr.customers.one': '{count} customer',
-  'acme.mrr.customers.other': '{count} customers',
+// Every word the widget shows comes from a message, never from the template. These are its English
+// defaults, handed to defineWidget below: Tickslate answers from them after the host's own tables
+// (configure({ messages }), the grid's, the element's) and before its built-in English, so a host
+// translates or rewords any of them under the same keys. The prefix is the widget's type.
+export const MESSAGES = Object.freeze({
+  'widget.acme-mrr.label': 'MRR',
+  'acme-mrr.up': 'up {delta} on last month',
+  'acme-mrr.down': 'down {delta} on last month',
+  'acme-mrr.flat': 'no change on last month',
+  'acme-mrr.trend': '{label} trend, from {from} to {to}',
+  'acme-mrr.breakdown': 'Breakdown',
+  'acme-mrr.customers.one': '{count} customer',
+  'acme-mrr.customers.other': '{count} customers',
 })
-const PLURALS = new Intl.PluralRules('en')
-const fill = (text, params) => text.replace(/\{(\w+)\}/g, (whole, name) => (params && name in params ? String(params[name]) : whole))
-
-// t() answers with the key itself when no table has it. Only then does the English above speak, so a
-// host's text always wins. Given a count, t looks for key.one, key.few… then key.other, in the host's language.
-const say = (t, key, params, count) => {
-  const text = t(key, params, count)
-  if (text !== key) return text
-  const form = count === undefined ? key : `${key}.${PLURALS.select(count)}`
-  return fill(ENGLISH[form] || ENGLISH[`${key}.other`], { count, ...params })
-}
 
 /**
  * Pure: data in, display strings out. It never throws on partial data: an
@@ -73,7 +64,7 @@ export function mrrModel(data, variant, { fmt, t, label }) {
 
   let ariaLabel = known ? `${label}, ${money(mrr)}` : label
   if (known && delta) {
-    const how = rise ? say(t, 'acme.mrr.up', { delta: spokenDelta }) : fall ? say(t, 'acme.mrr.down', { delta: spokenDelta }) : say(t, 'acme.mrr.flat')
+    const how = rise ? t('acme-mrr.up', { delta: spokenDelta }) : fall ? t('acme-mrr.down', { delta: spokenDelta }) : t('acme-mrr.flat')
     ariaLabel += `, ${how}`
   }
 
@@ -86,8 +77,8 @@ export function mrrModel(data, variant, { fmt, t, label }) {
     arrow: rise ? UP : fall ? DOWN : '',
     tone: rise ? 'pos' : fall ? 'neg' : 'mut',
     // fit() tries the full number, then compact, and keeps the shorter that fits the slot.
-    customers: Number.isFinite(count) ? say(t, 'acme.mrr.customers', { count: fmt.fit(count, COUNT_CHARS, { style: 'number' }) }, count) : '',
-    more: say(t, 'acme.mrr.breakdown'),
+    customers: Number.isFinite(count) ? t('acme-mrr.customers', { count: fmt.fit(count, COUNT_CHARS, { style: 'number' }) }, count) : '',
+    more: t('acme-mrr.breakdown'),
     line: '',
     area: '',
     sparkLabel: '',
@@ -105,7 +96,7 @@ export function mrrModel(data, variant, { fmt, t, label }) {
       vm.area = area
       const from = money(points[0].y)
       const to = money(points[points.length - 1].y)
-      vm.sparkLabel = say(t, 'acme.mrr.trend', { label, from, to })
+      vm.sparkLabel = t('acme-mrr.trend', { label, from, to })
     }
   }
   return vm
@@ -130,7 +121,6 @@ const TEMPLATES = {
 export class AcmeMrr extends TsWidget {
   // What a grid, a picker and widgetCatalog() know about this widget.
   static spec = {
-    label: 'MRR',
     sizes: ['S', 'Wide', 'M'],
     description: 'Monthly recurring revenue and its change on last month.',
     category: 'Revenue',
@@ -202,4 +192,4 @@ export class AcmeMrr extends TsWidget {
 // The tag and type carry a prefix of your own, so they can never clash with a future Tickslate
 // widget. Only this very class is a no-op the second time: if this module is evaluated again (hot
 // reload, a second bundle) it makes a new class, and defineWidget would throw. The guard keeps the first.
-if (!widgetCatalog()['acme-mrr']) defineWidget('acme-mrr', AcmeMrr, { type: 'acme-mrr' })
+if (!widgetCatalog()['acme-mrr']) defineWidget('acme-mrr', AcmeMrr, { type: 'acme-mrr', messages: MESSAGES })

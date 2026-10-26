@@ -241,6 +241,7 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-strip-top` | How far below the top of the page the phone top strip sticks | `0px` | same | `<ts-grid>` at 2 columns, when tiles are pinned. Set it to the height of your own fixed header |
 | `--ts-num-weight` | Weight of figures | `500` | same | Every figure; the headline figures take `--ts-headline-weight`, which follows it |
 | `--ts-num-weight-small` | Weight of small figures | `500` | `600` | Secondary figures; Graphite is heavier because light-on-dark text reads thinner |
+| `--ts-num-width` | Average advance of a figure character, in `em` (a unitless number), sign included | `.62` | same | The figures in a tile's stat cells (a row of three, the rail's column) are sized from it so the longest one fits. Set it for a wider `--ts-font-num`: a monospace face is about `.6`, a wide display face more. It does not touch the `--ts-text-*` sizes or the caps of `.big` and `.xbig`; adjust those with the type scale below |
 | `--ts-label-size` | Size of a tile's label | `max(11px, .6875rem)` | same | The label in every header, and the small labels beside figures. 10px before 0.3.0; the px floor keeps it at 11px or more at any root font size |
 | `--ts-label-case` | Case of a tile's label (`text-transform`) | `uppercase` | same | The same labels; `none` gives sentence case |
 | `--ts-label-tracking` | Letter spacing of a tile's label | `.12em` | same | The same labels |

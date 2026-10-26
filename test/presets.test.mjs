@@ -16,8 +16,8 @@ const ONE_MODE = ['paper', 'graphite']
 const OWNED = ['--ts-profit', '--ts-loss', '--ts-accent', '--ts-focus', ...[1, 2, 3, 4, 5, 6].map((n) => `--ts-series-${n}`)]
 // The type scale is the host's (RFC 0004 §2.3), like the grid metrics: a preset sets the label size and nothing else of it.
 const TYPE_SCALE = ['2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', 'big', 'xbig'].map((n) => `--ts-text-${n}`)
-// The host's, not a theme's: grid metrics, the type scale and motion.
-const NOT_THEMED = ['--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-strip-top', '--ts-motion', '--ts-ease', ...TYPE_SCALE]
+// The host's, not a theme's: grid metrics, the type scale, motion and the figure width (it follows the font the host chose, RFC 0004 §10.3).
+const NOT_THEMED = ['--ts-num-width', '--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-strip-top', '--ts-motion', '--ts-ease', ...TYPE_SCALE]
 const GUARD = ':not([data-ts-palette])'
 
 /**

@@ -33,6 +33,7 @@ const KB = 1024
 const ALL_IN = 'tickslate/elements + core (bundled)'
 const entryLabel = (name) => `tickslate/elements/${name} (bundled)`
 const pairLabel = (name) => `grid + ${name} (bundled)`
+const addLabel = (name) => `${name} adds to grid (min+gz)`
 
 /**
  * Budgets on min+gz bytes, per row.
@@ -186,12 +187,25 @@ const ENTRY_BUDGETS = {
 }
 
 /**
- * RFC 0003 §25: the grid plus any one widget is at most 15 kB. It is 'warn'
- * and not 'enforce' because it cannot hold today: the grid alone is over 15 kB
- * (see the grid row), so every pair is. Every run prints the overage; the
- * maintainer decides whether the figure or the grid moves.
+ * RFC 0004 §10.4 (Decision 68): each widget adds at most 15 kB to the grid. RFC 0003 §25's "grid plus one
+ * widget at most 15 kB" could never hold, because the grid alone is over 15 kB. The row is judged on the
+ * DIFFERENCE: the bundle of the grid and that widget, minus the bundle of the grid alone, so what the two
+ * share (the core, the widget base) is credited and the grid's own size is held by its own entry budget.
+ * The pair total and the grid alone are printed beside it.
  */
-const PAIR_BUDGET = { maxKb: 15, mode: 'warn', target: 'RFC 0003 §25, grid + one widget', date: '2026-10-14' }
+const ADD_BUDGET = { maxKb: 15, mode: 'enforce', target: 'RFC 0004 §10.4, each widget adds at most 15 kB to the grid', date: '2026-10-26' }
+
+// Decision 68 says a widget over 15 kB is reported to the maintainer, never given a higher figure. On
+// 2026-10-26, measured on the parked-amendments story, eleven of the fifteen widgets already add more than
+// 15 kB to the grid (min+gz, the figures are in that story's PR): capital-funding 17,769 B, chart 25,035 B,
+// edge-stats 16,542 B, equity-curve 21,524 B, metric 15,932 B, open-positions 18,719 B, pnl-calendar 18,061 B,
+// session-clock 16,764 B, table 16,994 B, today-pnl 21,342 B and watchlist 17,794 B. Their rows keep the 15 kB
+// figure but stay 'warn' until the maintainer decides (parked-amendments, 2026-10-26); the other four, and every
+// new widget, are enforced. Remove a name from this list once its widget fits.
+const OVER_15 = ['capital-funding', 'chart', 'edge-stats', 'equity-curve', 'metric', 'open-positions', 'pnl-calendar', 'session-clock', 'table', 'today-pnl', 'watchlist']
+const ADD_BUDGETS = Object.fromEntries(
+  OVER_15.map((name) => [name, { ...ADD_BUDGET, mode: 'warn', target: `${ADD_BUDGET.target}; over today, kept as a warning pending the maintainer (parked-amendments)` }])
+)
 
 const problems = []
 const warnings = []
@@ -213,6 +227,9 @@ for (const rel of Object.keys(BUDGETS)) {
 }
 for (const name of Object.keys(ENTRY_BUDGETS)) {
   if (!entries.some((e) => e.name === name)) problems.push(`there is a budget for tickslate/elements/${name}, but src/elements/define/ has no module for it`)
+}
+for (const name of OVER_15) {
+  if (!entries.some((e) => e.name === name)) problems.push(`${name} is listed in OVER_15, but src/elements/define/ has no module for it`)
 }
 // And the reverse: an entry nobody budgeted is the one that grows unnoticed.
 for (const e of entries) {
@@ -276,18 +293,21 @@ for (const e of entries) {
   await bundled(entryLabel(e.name), { entryPoints: [file] }, ENTRY_BUDGETS[e.name])
 }
 
-// The grid plus each other widget, bundled together so what they share (the
-// core, the widget base) is counted once, as a host that imports both pays.
+// The grid plus each other widget, bundled together so what they share (the core, the widget base) is
+// counted once, as a host that imports both pays. Each widget is then judged on what it adds to the grid
+// alone (RFC 0004 §10.4); the pair total is reported for reference.
 const gridFile = built('elements/grid.js')
+const gridAlone = existsSync(gridFile) ? rows.find((r) => r.label === entryLabel('grid')) : null
 for (const e of entries) {
   if (e.name === 'grid') continue
   const file = built(`elements/${e.name}.js`)
-  if (!existsSync(gridFile) || !existsSync(file)) continue
-  await bundled(
-    pairLabel(e.name),
-    { stdin: { contents: `export * from ${JSON.stringify(gridFile)}\nexport * from ${JSON.stringify(file)}\n`, resolveDir: out, loader: 'js' } },
-    PAIR_BUDGET
-  )
+  if (!gridAlone || !existsSync(file)) continue
+  await bundled(pairLabel(e.name), { stdin: { contents: `export * from ${JSON.stringify(gridFile)}\nexport * from ${JSON.stringify(file)}\n`, resolveDir: out, loader: 'js' } })
+  const pair = rows[rows.length - 1]
+  // The difference, not a bundle: its raw and min are the same subtraction so the row's columns agree.
+  const delta = { rel: addLabel(e.name), label: addLabel(e.name), raw: pair.raw - gridAlone.raw, min: pair.min - gridAlone.min, gz: pair.gz - gridAlone.gz }
+  judge(delta, ADD_BUDGETS[e.name] || ADD_BUDGET)
+  rows.push(delta)
 }
 
 function judge(row, budget) {

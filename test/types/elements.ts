@@ -103,3 +103,11 @@ positions.addEventListener('ts-action', (e) => {
   // @ts-expect-error a list of positions never sends 'sort'
   if (a.action === 'sort') void 0
 })
+
+// defineWidget takes the widget's own English (RFC 0004 §10.2); a wrong value type is an error.
+import { defineWidget, TsWidget } from 'tickslate/elements'
+class TypedMrr extends TsWidget<{ n: number }, { ariaLabel?: string }> {}
+defineWidget('acme-typed', TypedMrr, { type: 'acme-typed', messages: { 'widget.acme-typed.label': 'Typed', 'acme-typed.items.one': '{count} item' } })
+defineWidget('acme-typed-bare', class extends TsWidget<{ n: number }, { ariaLabel?: string }> {}, { type: 'acme-typed-bare' })
+// @ts-expect-error a message is a string
+defineWidget('acme-typed-bad', class extends TsWidget<{ n: number }, { ariaLabel?: string }> {}, { type: 'acme-typed-bad', messages: { 'acme-typed-bad.n': 5 } })

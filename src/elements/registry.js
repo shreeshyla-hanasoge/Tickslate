@@ -6,8 +6,9 @@
  * second copy of Tickslate that meets this tag can say which version got
  * there first.
  */
-import { version, WIDGETS, SIZE_NAMES, isSize } from '../core/index.js'
+import { version, WIDGETS, EN, SIZE_NAMES, isSize } from '../core/index.js'
 import { DEV, warnOnce } from './dev.js'
+import { setClassDefaults } from './messages-cache.js'
 
 export function define(tag, ctor) {
   if (typeof customElements === 'undefined') return
@@ -42,13 +43,17 @@ const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key)
  * widget.js reads the same spec per element but degrades instead of throwing,
  * which suits a render and not a registration.
  */
-function recordedSpec(tag, Ctor, type) {
+function recordedSpec(tag, Ctor, type, messages) {
   const raw = Ctor.spec
   const sizes = raw && Array.isArray(raw.sizes) ? raw.sizes.filter(isSize) : []
   if (!sizes.length) {
     throw new TypeError(`defineWidget('${tag}', …, { type: '${type}' }): the class's static spec needs at least one valid size, such as { label: 'MRR', sizes: ['S', 'Wide'] }.`)
   }
-  const spec = { tag, label: typeof raw.label === 'string' ? raw.label : '', sizes: Object.freeze([...new Set(sizes)]) }
+  // The author's English answers a label or description the class left out, so a grid shows them
+  // (it reads the catalog, not the class). The element itself asks t() for the same key.
+  const said = (name) => (messages && typeof messages[`widget.${type}.${name}`] === 'string' ? messages[`widget.${type}.${name}`] : undefined)
+  const label = typeof raw.label === 'string' && raw.label ? raw.label : said('label') || ''
+  const spec = { tag, label, sizes: Object.freeze([...new Set(sizes)]) }
   if (raw.phoneRows && typeof raw.phoneRows === 'object') {
     const rows = {}
     for (const size of SIZE_NAMES) {
@@ -56,9 +61,37 @@ function recordedSpec(tag, Ctor, type) {
     }
     if (Object.keys(rows).length) spec.phoneRows = Object.freeze(rows)
   }
-  if (typeof raw.description === 'string') spec.description = raw.description
+  const description = typeof raw.description === 'string' ? raw.description : said('description')
+  if (description !== undefined) spec.description = description
   if (typeof raw.category === 'string') spec.category = raw.category
   return Object.freeze(spec)
+}
+
+/**
+ * The author's English table, validated and frozen (RFC 0004 §10.2): flat keys under `widget.<type>.`
+ * or `<type>.`, string values, and never a key Tickslate already has (that is the host's to reword).
+ * Returns null when there is none.
+ */
+function recordedMessages(tag, type, given) {
+  if (given === undefined || given === null) return null
+  if (typeof given !== 'object' || Array.isArray(given)) {
+    throw new TypeError(`defineWidget('${tag}', …): options.messages must be an object of flat dotted keys, such as { '${type}.empty': '…' }.`)
+  }
+  const table = {}
+  for (const key of Object.keys(given)) {
+    if (!key.startsWith(`widget.${type}.`) && !key.startsWith(`${type}.`)) {
+      throw new TypeError(`defineWidget('${tag}', …): message key '${key}' must start with 'widget.${type}.' or '${type}.', so it cannot collide with another widget's.`)
+    }
+    if (own(EN, key)) throw new TypeError(`defineWidget('${tag}', …): '${key}' is one of Tickslate's own messages. A widget adds strings; a host rewords built-in ones with configure({ messages }).`)
+    if (typeof given[key] !== 'string') throw new TypeError(`defineWidget('${tag}', …): the message '${key}' must be a string.`)
+    table[key] = given[key]
+  }
+  return Object.freeze(table)
+}
+
+const sameTable = (a, b) => {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => own(b, k) && a[k] === b[k])
 }
 
 /**
@@ -69,6 +102,9 @@ function recordedSpec(tag, Ctor, type) {
  * with a catalogKey, a type another class recorded, a tag another class owns,
  * and a spec with no valid size: a wrong catalog entry is worse than a failed
  * call (RFC 0003 §29.7). The recorded spec is a snapshot taken here.
+ *
+ * `options.messages` is the widget's own English (RFC 0004 §10.2), kept as a frozen copy: `t` answers from it after
+ * the host's tables and before EN. It throws a TypeError for a key outside the widget's prefix, a key EN has, or a non-string.
  */
 export function defineWidget(tag, Ctor, options) {
   const type = options && options.type
@@ -86,10 +122,16 @@ export function defineWidget(tag, Ctor, options) {
   if (Ctor.catalogKey) {
     throw new TypeError(`defineWidget: this class has catalogKey '${Ctor.catalogKey}', so its elements use the built-in '${Ctor.catalogKey}' spec, not the one recorded under '${type}'. Extend TsWidget directly (or set static catalogKey = null) and give it a static spec.`)
   }
+  const messages = recordedMessages(tag, type, options.messages)
   const known = registered.get(type)
   if (known) {
     if (known.Ctor !== Ctor) throw new TypeError(`defineWidget: type '${type}' is already recorded by another class (<${known.spec.tag}>).`)
-    if (known.spec.tag === tag) return
+    if (known.spec.tag === tag) {
+      if (DEV && messages && !(known.messages && sameTable(known.messages, messages))) {
+        warnOnce(`messages:${type}`, `defineWidget('${tag}') was called again with different messages, so the first table is kept.`)
+      }
+      return
+    }
     throw new TypeError(`defineWidget: this class is already recorded as <${known.spec.tag}> under '${type}', so it cannot also be <${tag}>.`)
   }
   for (const [other, entry] of registered) {
@@ -103,10 +145,11 @@ export function defineWidget(tag, Ctor, options) {
       throw new TypeError(`defineWidget: <${tag}> is already defined by ${by}, so '${type}' was not recorded.`)
     }
   }
-  const spec = recordedSpec(tag, Ctor, type)
+  const spec = recordedSpec(tag, Ctor, type, messages)
   // Before recording, so a tag the browser refuses (no hyphen, say) leaves the catalog as it was.
   define(tag, Ctor)
-  registered.set(type, { Ctor, spec })
+  registered.set(type, { Ctor, spec, messages })
+  if (messages) setClassDefaults(Ctor, type, messages)
   merged = null
   // A copy, so a listener that unsubscribes itself doesn't skip the next one; and one that
   // another listener stopped during this dispatch is skipped, not run once more.

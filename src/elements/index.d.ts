@@ -51,9 +51,25 @@ export declare function persistLayout(
  * - a class already recorded under another type, or the same class and type under a second tag;
  * - a spec with no valid size.
  *
+ * `messages` is the widget's own English, by flat dotted key. Every key starts with `widget.<type>.` or
+ * `<type>.` (plural suffixes such as `.few` are fine), and none may be a key Tickslate already has: a
+ * widget adds strings, and a host rewords built-in ones with `configure({ messages })`. The table is copied
+ * and frozen. `t` answers from it after the element's, the grid's and `configure()`'s tables and before
+ * EN, so a host's text always wins; `widget.<type>.label` and `.description` also fill a spec that has none.
+ * A repeat call with different `messages` warns once in development and keeps the first. It throws a
+ * `TypeError` for a key outside the prefix, a built-in key or a value that is not a string.
+ *
  * A failed call records and defines nothing, and notifies no one.
  */
-export declare function defineWidget(tag: string, Ctor: typeof TsWidget, options: { type: string }): void
+export declare function defineWidget(
+  tag: string,
+  // Any widget class, whatever its data and view model: `typeof TsWidget` alone admits only the base's own type arguments.
+  Ctor: new (...args: any[]) => TsWidget<any, any>,
+  options: {
+    type: string
+    messages?: Readonly<Record<string, string>>
+  },
+): void
 
 /** A frozen merge of the built-in `WIDGETS` and every `defineWidget` spec: the same object until the next registration. */
 export declare function widgetCatalog(): WidgetCatalog

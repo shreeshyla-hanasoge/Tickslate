@@ -2,7 +2,8 @@ import { test, describe, beforeEach, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { define, defineWidget, widgetCatalog, onCatalogChange } from '../src/elements/registry.js'
 import { DEV, warnOnce, resetWarnings } from '../src/elements/dev.js'
-import { version, WIDGETS } from '../src/core/index.js'
+import { version, WIDGETS, EN } from '../src/core/index.js'
+import { classDefaultsOf, translator } from '../src/elements/messages-cache.js'
 
 // Only the two methods define() uses.
 class FakeRegistry {
@@ -382,6 +383,104 @@ describe('defineWidget, widgetCatalog and onCatalogChange (RFC 0003 §3)', () =>
     const guarded = make()
     if (!widgetCatalog()['acme-hot']) defineWidget('acme-hot', guarded, { type: 'acme-hot' })
     assert.equal(registry.get('acme-hot'), first)
+  })
+
+  describe('messages: a custom widget\'s English defaults (RFC 0004 §10.2)', () => {
+    const MESSAGES = { 'widget.dflt.label': 'Defaults', 'dflt.hello': 'Hello {who}', 'dflt.items.one': '{count} item', 'dflt.items.other': '{count} items' }
+
+    test('are stored frozen and copied, and fill a label and description the class left out', () => {
+      const W = widget({ sizes: ['S'] })
+      const given = { ...MESSAGES, 'widget.dflt.description': 'Says hello.' }
+      defineWidget('acme-dflt', W, { type: 'dflt', messages: given })
+      given['dflt.hello'] = 'changed after'
+      const { type, table } = classDefaultsOf(W)
+      assert.equal(type, 'dflt')
+      assert.equal(table['dflt.hello'], 'Hello {who}')
+      assert.ok(Object.isFrozen(table))
+      assert.equal(widgetCatalog().dflt.label, 'Defaults')
+      assert.equal(widgetCatalog().dflt.description, 'Says hello.')
+    })
+
+    test('a label the class gives wins over the message', () => {
+      defineWidget('acme-both', widget({ label: 'Own', sizes: ['S'] }), { type: 'both', messages: { 'widget.both.label': 'Message' } })
+      assert.equal(widgetCatalog().both.label, 'Own')
+    })
+
+    test('answer after the host\'s tables and before EN, with English plural rules', () => {
+      const t = translator(null, null, null, 'pl', MESSAGES)
+      assert.equal(t('dflt.hello', { who: 'there' }), 'Hello there')
+      assert.equal(t('dflt.items', {}, 1), '1 item')
+      assert.equal(t('dflt.items', {}, 5), '5 items')
+      // A built-in key is still answered by EN.
+      assert.equal(t('action.retry'), EN['action.retry'])
+      // The host wins at every layer, in the order element, grid, configure().
+      assert.equal(translator({ 'dflt.hello': 'config' }, null, null, 'en', MESSAGES)('dflt.hello'), 'config')
+      assert.equal(translator({ 'dflt.hello': 'config' }, { 'dflt.hello': 'grid' }, null, 'en', MESSAGES)('dflt.hello'), 'grid')
+      assert.equal(translator({ 'dflt.hello': 'config' }, { 'dflt.hello': 'grid' }, { 'dflt.hello': 'own' }, 'en', MESSAGES)('dflt.hello'), 'own')
+      // A host that translates only one plural form keeps the author's other forms.
+      const some = translator({ 'dflt.items.other': '{count} Stück' }, null, null, 'de', MESSAGES)
+      assert.equal(some('dflt.items', {}, 3), '3 Stück')
+      assert.equal(some('dflt.items', {}, 1), '1 Stück')
+    })
+
+    test('a key nobody has comes back as itself', () => {
+      assert.equal(translator(null, null, null, 'en', MESSAGES)('dflt.unknown'), 'dflt.unknown')
+    })
+
+    test('onCatalogChange hears of the type after the defaults are stored', () => {
+      const W = widget({ sizes: ['S'] })
+      let seen
+      const off = onCatalogChange(() => {
+        seen = classDefaultsOf(W)
+      })
+      defineWidget('acme-heard', W, { type: 'heard', messages: { 'heard.x': 'x' } })
+      off()
+      assert.equal(seen.table['heard.x'], 'x')
+    })
+
+    test('throw for a key outside the prefix, a built-in key, a non-string and a non-object, and record nothing', () => {
+      const bad = (messages, pattern) => {
+        const W = widget()
+        assert.throws(() => defineWidget('acme-bad', W, { type: 'bad', messages }), pattern)
+        assert.equal(widgetCatalog().bad, undefined)
+        assert.equal(registry.get('acme-bad'), undefined)
+        assert.equal(classDefaultsOf(W), null)
+      }
+      bad({ 'other.hello': 'Hi' }, /must start with 'widget\.bad\.' or 'bad\.'/)
+      bad({ 'badly.hello': 'Hi' }, /must start with/)
+      bad({ 'bad.ok': 'fine', 'action.retry': 'Again' }, /must start with/)
+      bad({ 'bad.n': 5 }, /must be a string/)
+      bad('nope', /must be an object/)
+      bad([], /must be an object/)
+      assert.deepEqual(heard, [])
+    })
+
+    test('a key that EN already has throws, even under the widget\'s own prefix', () => {
+      const key = Object.keys(EN)[0]
+      const type = key.split('.')[0]
+      assert.throws(() => defineWidget('acme-en', widget(), { type, messages: { [key]: 'mine' } }), /one of Tickslate's own messages/)
+    })
+
+    test('a repeat call with different messages warns once and keeps the first; the same table is silent', () => {
+      const warnings = []
+      mock.method(console, 'warn', (m) => warnings.push(m))
+      const W = widget()
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'first' } })
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'first' } })
+      defineWidget('acme-rep', W, { type: 'rep' })
+      assert.deepEqual(warnings, [])
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'second' } })
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'third' } })
+      assert.equal(warnings.length, 1)
+      assert.match(warnings[0], /different messages, so the first table is kept/)
+      assert.equal(classDefaultsOf(W).table['rep.a'], 'first')
+    })
+
+    test('a class registered without messages has no defaults', () => {
+      const W = widget()
+      defineWidget('acme-none', W, { type: 'none' })
+      assert.equal(classDefaultsOf(W), null)
+    })
   })
 
   test('onCatalogChange needs a function', () => {

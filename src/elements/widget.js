@@ -127,7 +127,8 @@
  *                   inputs change.
  *   messages        Property. Overrides for this widget's strings; null clears.
  *   t               The translate function: messages on this element, then the
- *                   nearest <ts-grid>'s, then configure(), then EN. Cached like
+ *                   nearest <ts-grid>'s, then configure(), then the English the
+ *                   class registered with defineWidget, then EN. Cached like
  *                   the formatter. Static template text is never written
  *                   here: put it in a `data-k` node and fill it in update()
  *                   with this.t, so a template stays a pure function of its variant.
@@ -176,7 +177,7 @@ import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isS
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
 import { escapeHtml, markupAllowed, mountShadow, setHTML, setNodes, setText } from './html.js'
-import { translator } from './messages-cache.js'
+import { translator, classDefaultsOf } from './messages-cache.js'
 import { subscribe, shareable } from './ticker.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
@@ -366,12 +367,12 @@ export function arrowFor(text) {
 
 // The rules of the signed figures, for the widgets that draw them. `.fg` keeps the arrow, sign and digits on one line.
 // A figure cell (.cell: a stat in a row of three, or the rail's column) is its own size container, and the figure in it
-// is sized to the cell's width and its own length (--fc, set by update()). 0.62em a character is wider than any
-// proportional face and covers a monospace one; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
+// is sized to the cell's width and its own length (--fc, set by update()). --ts-num-width (.62em a character) is wider
+// than any proportional face and covers a monospace one, and a host with a wider face sets it; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
 export const FIGURE_CSS = `
 .fg { white-space: nowrap; }
 .cell { container-type: inline-size; }
-.cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * .62 + .65))); }
+.cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * var(--ts-num-width, .62) + .65))); }
 `
 
 /**
@@ -866,6 +867,13 @@ export class TsWidget extends Base {
       const text = this.t(id)
       if (text !== id) return text
     }
+    // A custom widget that registered its own English (defineWidget's messages) answers to the same key.
+    const registered = classDefaultsOf(this.constructor)
+    if (registered && !key) {
+      const id = `widget.${registered.type}.label`
+      const text = this.t(id)
+      if (text !== id) return text
+    }
     return this.spec.label
   }
 
@@ -970,7 +978,8 @@ export class TsWidget extends Base {
 
   /**
    * Resolved per key: this element's messages, then the nearest grid's, then
-   * configure()'s, then EN. One function is shared by every element that
+   * configure()'s, then the English a custom widget registered with
+   * defineWidget, then EN. One function is shared by every element that
    * resolves to the same tables and locale; assign a new object to change a table.
    */
   get t() {
@@ -980,7 +989,8 @@ export class TsWidget extends Base {
 
   _translatorFor(config, grid) {
     const locale = resolveFormatOptions(this, grid).locale || config.locale
-    return translator(config.messages, grid && grid.messages, this._messages, locale)
+    const defaults = classDefaultsOf(this.constructor)
+    return translator(config.messages, grid && grid.messages, this._messages, locale, defaults && defaults.table)
   }
 
   /**

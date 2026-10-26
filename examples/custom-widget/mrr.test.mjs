@@ -133,12 +133,15 @@ globalThis.customElements = registry
 // The base class listens for the tab becoming visible; here the tab always is.
 globalThis.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} }
 
-const { AcmeMrr, mrrModel } = await import('./mrr.js')
-const { createFormatter, createMessages } = await import('../../src/core/index.js')
+const { AcmeMrr, mrrModel, MESSAGES } = await import('./mrr.js')
+const { createFormatter, configure } = await import('../../src/core/index.js')
+const { translator } = await import('../../src/elements/messages-cache.js')
 const { defineWidget, widgetCatalog, escapeHtml, scale, linePaths } = await import('../../src/elements/index.js')
 
 const fmt = createFormatter({ locale: 'en-US', currency: 'USD' })
-const ctx = (extra = {}) => ({ fmt, t: createMessages(null, 'en-US'), label: 'MRR', ...extra })
+// What an element's `t` is: the host's table (if any) first, then the widget's defaults handed to defineWidget.
+const tFor = (host, locale = 'en-US') => translator(host || null, null, null, locale, MESSAGES)
+const ctx = (extra = {}) => ({ fmt, t: tFor(), label: 'MRR', ...extra })
 
 // Made-up figures: a fictional SaaS product's recurring revenue, in dollars.
 const DATA = { mrr: 48250, previous: 45900, customers: 412, history: [41200, 42900, 44100, 45900, 48250] }
@@ -208,7 +211,7 @@ describe('mrrModel, the pure view model', () => {
   })
 
   test('a host that translates a sentence gets its words; the rest stay English', () => {
-    const t = createMessages({ 'acme.mrr.up': 'en hausse de {delta}' }, 'fr')
+    const t = tFor({ 'acme-mrr.up': 'en hausse de {delta}' }, 'fr')
     const vm = mrrModel(DATA, 'Wide', ctx({ t }))
     assert.equal(vm.ariaLabel, 'MRR, $48,250, en hausse de 5.1%')
     assert.equal(mrrModel({ mrr: 1, previous: 2 }, 'Wide', ctx({ t })).ariaLabel, 'MRR, $1, down 50.0% on last month')
@@ -235,19 +238,19 @@ describe('mrrModel, the pure view model', () => {
     assert.equal(mrrModel({ mrr: 1, customers: 1 }, 'Wide', ctx()).customers, '1 customer')
     assert.equal(mrrModel({ mrr: 1, customers: 412 }, 'Wide', ctx()).customers, '412 customers')
     assert.equal(mrrModel({ mrr: 1, customers: 112412 }, 'Wide', ctx()).customers, '112.4K customers')
-    const pl = createMessages({ 'acme.mrr.customers.one': '{count} klient', 'acme.mrr.customers.few': '{count} klientów', 'acme.mrr.customers.other': '{count} klientów' }, 'pl')
+    const pl = tFor({ 'acme-mrr.customers.one': '{count} klient', 'acme-mrr.customers.few': '{count} klientów', 'acme-mrr.customers.other': '{count} klientów' }, 'pl')
     assert.equal(mrrModel({ mrr: 1, customers: 1 }, 'Wide', ctx({ t: pl })).customers, '1 klient')
     assert.equal(mrrModel({ mrr: 1, customers: 3 }, 'Wide', ctx({ t: pl })).customers, '3 klientów')
     // A host that gives only .other is not answered with the English .one.
-    const other = createMessages({ 'acme.mrr.customers.other': '{count} Kunden' }, 'de')
+    const other = tFor({ 'acme-mrr.customers.other': '{count} Kunden' }, 'de')
     assert.equal(mrrModel({ mrr: 1, customers: 1 }, 'Wide', ctx({ t: other })).customers, '1 Kunden')
   })
 
   test('every string comes through a message key a host can override, none from the model\'s own words', () => {
     const everything = Object.fromEntries(
-      ['up', 'down', 'flat', 'trend', 'breakdown', 'customers.one', 'customers.other'].map((k) => [`acme.mrr.${k}`, `«${k}»`]),
+      ['up', 'down', 'flat', 'trend', 'breakdown', 'customers.one', 'customers.other'].map((k) => [`acme-mrr.${k}`, `«${k}»`]),
     )
-    const vm = mrrModel(DATA, 'M', ctx({ t: createMessages(everything, 'en-US') }))
+    const vm = mrrModel(DATA, 'M', ctx({ t: tFor(everything) }))
     assert.equal(vm.ariaLabel, 'MRR, $48,250, «up»')
     assert.equal(vm.sparkLabel, '«trend»')
     assert.equal(vm.more, '«breakdown»')
@@ -272,6 +275,7 @@ describe('registration', () => {
     assert.equal(registry.get('acme-mrr'), AcmeMrr)
     const spec = widgetCatalog()['acme-mrr']
     assert.equal(spec.tag, 'acme-mrr')
+    // The class gives no label: the registered 'widget.acme-mrr.label' does.
     assert.equal(spec.label, 'MRR')
     assert.deepEqual([...spec.sizes], ['S', 'Wide', 'M'])
     assert.equal(spec.category, 'Revenue')
@@ -312,6 +316,28 @@ describe('the element', () => {
     assert.equal(text(el, 'value'), '$48,250')
     assert.equal(text(el, 'delta'), '+5.1%')
     assert.equal(section(el).getAttribute('aria-label'), 'MRR, $48,250, up 5.1% on last month')
+  })
+
+  test('speaks its registered English with no configure() call, and a host override of the same key wins', async () => {
+    const el = await make({ size: 'M' })
+    el.data = DATA
+    el.actions = ['breakdown']
+    await tick()
+    assert.equal(text(el, 'more'), 'Breakdown')
+    assert.equal(text(el, 'customers'), '412 customers')
+    el.messages = { 'acme-mrr.breakdown': 'Détail' }
+    await tick()
+    assert.equal(text(el, 'more'), 'Détail')
+    assert.equal(text(el, 'customers'), '412 customers')
+    el.messages = null
+    configure({ messages: { 'acme-mrr.breakdown': 'Aufschlüsselung', 'widget.acme-mrr.label': 'MRR (monatlich)' } })
+    try {
+      await tick()
+      assert.equal(text(el, 'more'), 'Aufschlüsselung')
+      assert.equal(text(el, 'label'), 'MRR (monatlich)')
+    } finally {
+      configure({ messages: null })
+    }
   })
 
   test('new numbers change in place: the markup is written once, only the text moves', async () => {

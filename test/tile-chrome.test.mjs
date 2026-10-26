@@ -679,7 +679,17 @@ describe('logical properties only', () => {
     assert.match(html, /^<span class="n md" data-k="peak"><span class="fg"><span class="ar" aria-hidden="true" data-k="peakAr"><\/span><span data-k="peakV"><\/span><\/span><\/span>$/)
     assert.match(W.FIGURE_CSS, /\.fg \{ white-space: nowrap; \}/)
     assert.match(W.FIGURE_CSS, /\.cell \{ container-type: inline-size; \}/)
-    assert.match(W.FIGURE_CSS, /\.cell \.md \{ font-size: min\(var\(--ts-text-2xl, max\(17px, 1\.0625rem\)\), calc\(100cqi \/ \(var\(--fc, 10\) \* \.62 \+ \.65\)\)\); \}/)
+    assert.match(W.FIGURE_CSS, /\.cell \.md \{ font-size: min\(var\(--ts-text-2xl, max\(17px, 1\.0625rem\)\), calc\(100cqi \/ \(var\(--fc, 10\) \* var\(--ts-num-width, \.62\) \+ \.65\)\)\); \}/)
+  })
+
+  test('the figure width is the --ts-num-width token, not a literal .62 (RFC 0004 §10.3)', () => {
+    // The fallback inside var() is the token's default; a bare `* .62` would ignore a host's wider face.
+    for (const [name, css] of [['SHARED_CSS', W.SHARED_CSS], ['FIGURE_CSS', W.FIGURE_CSS]]) {
+      assert.doesNotMatch(css.replace(/var\(--ts-num-width, \.62\)/g, ''), /\.62(?!\d)/, `${name} has a literal .62`)
+    }
+    assert.match(W.FIGURE_CSS, /var\(--ts-num-width, \.62\)/)
+    const tokens = read('src/themes/tokens.css')
+    assert.match(tokens, /--ts-num-width: \.62;/)
   })
 
   test('the arrow has a gap after it so it reads as a marker apart from the sign', () => {
