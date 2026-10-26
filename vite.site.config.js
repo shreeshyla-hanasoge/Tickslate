@@ -86,6 +86,7 @@ export default defineConfig({
         'examples/quickstart': src('examples/quickstart.html'),
         'examples/generic': src('examples/generic.html'),
         'examples/bare': src('examples/bare.html'),
+        'examples/trading': src('examples/trading.html'),
       },
     },
   },

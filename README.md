@@ -259,6 +259,8 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
   [Vue](docs/guide/frameworks/vue.md),
   [Svelte](docs/guide/frameworks/svelte.md),
   [Angular](docs/guide/frameworks/angular.md)
+- [A trading dashboard](docs/guide/trading-dashboard.md), with the page it follows,
+  [examples/trading.html](examples/trading.html)
 - [Saving layouts](docs/guide/saving-layouts.md)
 - [Strict CSP and Trusted Types](docs/guide/security.md)
 - [Your own widget](docs/guide/your-own-widget.md)
