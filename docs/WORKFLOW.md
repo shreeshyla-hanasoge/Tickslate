@@ -155,6 +155,8 @@ it.
 
 | When | Run |
 |---|---|
-| Before opening a story PR | `npm test` |
+| Before opening a story PR | `npm test` (it includes the API snapshot; `npm run api:update` after an intended change) |
+| A look changed | `npm run test:visual:update` (Docker, the pinned image) rewrites the baselines; `npm run test:visual` compares and is canonical only in that image, so on macOS or Windows read the CI `visual` job |
+| Coverage | `npm run coverage` |
 | Closing a wave | `npm test` and `npm run release` on `wave/<n>` |
 | Before the maintainer publishes | `npm run release`, then `npm publish ./dist-lib` (his to run) |

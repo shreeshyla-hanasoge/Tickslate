@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- Every registered widget at every size it supports, in one theme chosen by
-     ?theme=light|dark. It loads nothing from the network. The spec drives it
-     through window.__fx. ?fill=1 puts a height: 100% element in each card.
+     ?theme=light|dark|default (default: no data-theme). It loads nothing from the network. The spec drives it
+     through window.__fx. ?exact=1 sizes each tile to its real column width. ?fill=1 puts a height: 100% element in each card.
      ?preset=terminal (or calm, signal...) loads that theme preset (src/themes/presets/)
      and puts it on the page, beside data-theme, as a host would. -->
 <html lang="en">
@@ -38,9 +38,11 @@
 
   setup()
   const params = new URLSearchParams(location.search)
-  const theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  // ?theme=default leaves data-theme off, so a host that sets none sees the bare :root palette.
+  const theme = params.get('theme') === 'dark' ? 'dark' : params.get('theme') === 'default' ? 'default' : 'light'
   const fill = params.has('fill')
-  document.documentElement.dataset.theme = theme
+  const exact = params.has('exact')
+  if (theme !== 'default') document.documentElement.dataset.theme = theme
   // A preset is its own file, and reaches the widgets as tokens through the page's data-ts-theme. The page is ready
   // only once the file has loaded, or the first measurement would be of the default tokens.
   const preset = params.get('preset')
@@ -86,6 +88,12 @@
       const figure = document.createElement('figure')
       const caption = document.createElement('figcaption')
       caption.textContent = `${size} · ${SIZES[size].cols} × ${SIZES[size].rows}`
+      // A percentage width inside a shrink-to-fit flex item collapses to the content's width (a 304 px tile would be
+      // 44 px). ?exact=1 gives the figure the width and the tile all of it, for the pixel comparison.
+      if (exact) {
+        figure.style.width = el.style.width
+        el.style.width = '100%'
+      }
       figure.append(el, caption)
       set.append(figure)
       tiles.set(`${entry.key}:${size}`, el)
