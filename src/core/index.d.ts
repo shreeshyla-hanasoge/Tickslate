@@ -513,6 +513,7 @@ export interface Messages {
   'chart.scrubTableNumber': string
   'chart.scrubCaption.one': string
   'chart.scrubCaption.other': string
+  'chart.scrubMore': string
   'table.aria': string
   'table.rows.one': string
   'table.rows.other': string

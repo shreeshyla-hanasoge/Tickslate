@@ -340,7 +340,7 @@ const CHROME_HTML = '<button class="handle" type="button" aria-describedby="hint
 
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'aria-label']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'scrub', 'aria-label']
   }
 
   constructor() {
@@ -1290,6 +1290,9 @@ export class TsGrid extends Base {
       if (DEV && value !== null && value !== 'comfortable' && value !== 'compact') warnOnce('grid-density', DENSITY_WARNING)
       // The rows and gaps are read from the tokens, so a change re-measures; a layout is cells, so nothing else moves.
       if (this.isConnected && this._m && !this._blocked) this._measure(true)
+    } else if (name === 'scrub') {
+      // A tile reads the grid's value when it renders, so it draws again to drop or restore its tab stop at once.
+      this._invalidateWidgets()
     } else if (name === 'persist') {
       // Upgrade reports the attribute before connectedCallback has measured; it attaches then.
       if (this._persistOn) this._syncPersist()

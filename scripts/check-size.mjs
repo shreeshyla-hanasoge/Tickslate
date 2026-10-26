@@ -161,6 +161,11 @@ const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
 // min+gz plus 10 %, rounded up to the next 0.5 kB. Every entry now carries the strict-CSP base's html.js and adopted stylesheets,
 // perf-hygiene's ticker and gating, and the strip's and the layout list's message keys. Authorised by the orchestrator (RFC 0003 §25).
 const remeasuredTwelfth = (maxKb) => ({ ...entry(maxKb), target: 're-measured on the integrated 0.3.0 base (strict-CSP html.js and adopted stylesheets, ticker and gating, strip and layout list messages), RFC 0003 §25', date: '2026-10-26' })
+// Three rows (chart-scrub-and-exact-values, 2026-10-26), re-measured with the scrubber (pointer, touch and keyboard binding,
+// overlay, markup and styles), its hidden table of recent points and the chart.scrub* messages (twelve keys and chart.scrubMore)
+// in each of the three charts: chart 34,215 B (37,637 B with 10 %, 37 kB), equity-curve 30,646 B (33,711 B, 33 kB) and today-pnl
+// 30,464 B (33,510 B, 33 kB), each rounded up to the next 0.5 kB. No other row moved. Authorised by the orchestrator (RFC 0003 §25).
+const remeasuredThirteenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured with the chart scrubber, its hidden table and the chart.scrub* messages, RFC 0003 §25', date: '2026-10-26' })
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
   'edge-stats': remeasuredTwelfth(28.5),
@@ -168,9 +173,9 @@ const ENTRY_BUDGETS = {
   grid: remeasuredTenth(35),
   card: remeasuredTwelfth(25.5),
   metric: remeasuredTwelfth(27.5),
-  chart: remeasuredNinth(30),
-  'today-pnl': remeasuredTwelfth(29.5),
-  'equity-curve': remeasuredTwelfth(29.5),
+  chart: remeasuredThirteenth(37),
+  'today-pnl': remeasuredThirteenth(33),
+  'equity-curve': remeasuredThirteenth(33),
   'session-clock': remeasuredEleventh(26),
   table: remeasuredTwelfth(29),
   watchlist: remeasuredTwelfth(29.5),

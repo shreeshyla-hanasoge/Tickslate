@@ -3,7 +3,7 @@
      XL), <ts-chart> or a <ts-metric> (for its title only); ?size=M|XL|Wide|L; ?width=px (the tile's width, default 640); ?scale=n multiplies every money
      figure (a large one makes the headline compact); ?theme=light|dark; ?preset=terminal (or calm, signal...);
      ?scrub=off sets scrub="off" on the chart, ?gridscrub=off on the grid; ?grid puts the chart in a <ts-grid id="g">
-     so the spec can edit; ?bars gives <ts-chart> a category bar series. window.__s has the chart (el), the grid
+     so the spec can edit; ?bars gives <ts-chart> a category bar series; ?series=6 gives it six line series (the tallest read-out). window.__s has the chart (el), the grid
      (grid) and nextFrame(). Made-up numbers from data.js; nothing is loaded from the network. -->
 <html lang="en">
 <head>
@@ -61,6 +61,16 @@
         { name: 'Profit', kind: 'bar', points: cats.map((x, i) => ({ x, y: i % 3 === 1 ? -410 : 900 + i * 40 })) },
         { name: 'Target', points: cats.map((x) => ({ x, y: 800 })) },
       ],
+    }
+  }
+  if (kind === 'chart' && params.get('series') === '6') {
+    const names = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot']
+    data = {
+      series: names.map((name, k) => ({
+        name,
+        points: Array.from({ length: 24 }, (_, i) => ({ x: Date.UTC(2026, 7, 3 + i), y: 1000 + k * 300 + Math.round(180 * Math.sin(i / 3 + k)) })),
+      })),
+      asOf: data.asOf,
     }
   }
   el.data = data

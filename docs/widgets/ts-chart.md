@@ -173,7 +173,9 @@ The base members are listed in [Your own widget](../guide/your-own-widget.md).
 
 Hover a mouse over the plot, or drag a finger along it, and a rule, a dot and a small label show the point
 nearest the pointer: its x as the axis shows it (a time, a date, a number or a category), and one `name value` pair for each series. A vertical swipe still scrolls the page; only a horizontal drag
-scrubs. The label stays inside the plot at both edges. Scrubbing only changes what the tile shows, so it fires no event.
+scrubs. The label stays inside the plot at both edges, and inside its height: on a short plot (`S`, `Wide`) it lays its
+series out in two columns, and when even that is too tall it shows the series that fit and a count of the rest ("+2 more").
+The slider's value text always names every series. Scrubbing only changes what the tile shows, so it fires no event.
 
 For the keyboard the plot has one tab stop, a `role="slider"` named "Revenue, read point by point". Left and
 Right move one point earlier or later (time runs left to right in every language, so the arrows never swap), Page Up
@@ -183,7 +185,10 @@ point as the keys move, and nothing in the tile is `aria-live`.
 
 The plot has a visually hidden table of its last 12 drawn points, newest last, with a caption, column headers and
 row headers. It is the screen-reader route to the data, and it is not announced. Rows are updated in place, so a
-tick adds a row and drops the oldest rather than rebuilding the table.
+tick adds a row and drops the oldest rather than rebuilding the table. A chart with bars also keeps its visually hidden
+list of bar sentences, which names every bar and not only the last 12 points, so a screen reader may read the newest
+values both there and in the table's last row. That is a deliberate deviation from the table replacing the list
+(RFC 0004 §1.6).
 
 With several series the pointer snaps to the x of the series with the most points, and every other series shows its
 own nearest point there. A bar series shows a value only at a category it has a bar for, and reads `—` elsewhere. The
@@ -193,7 +198,7 @@ the low, the high and the last value), and the read-out names only points the li
 Choosing a point with `select` is separate. The slider is its own tab stop, before the list of points, and fires no
 event; the arrow keys on a point and on the slider never share a key.
 
-Set `scrub="off"` on a tile, or on the `<ts-grid>`, to turn it off. The table stays. Scrubbing is also off while
+Set `scrub="off"` on a tile, or on the `<ts-grid>`, to turn it off; a change on the grid applies to its tiles at once. The table stays. Scrubbing is also off while
 the grid is in edit mode.
 
 ## Freshness and change flashes
