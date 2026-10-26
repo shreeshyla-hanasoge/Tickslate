@@ -14,6 +14,7 @@
 import { currentConfig, typeOf } from '../core/index.js'
 import { sizeName } from '../core/messages.js'
 import { ensureTokens } from './default-tokens.js'
+import { inertWhenBlocked, mountShadow } from './html.js'
 import { translator } from './messages-cache.js'
 import { wording } from './picker-model.js'
 import { widgetCatalog } from './registry.js'
@@ -127,9 +128,7 @@ function onLayoutSet(grid, fn) {
 // The attributes of the grid and its tiles that change which rows there are, how they are named or whether they can be used.
 const WATCHED = ['profile', 'locked', 'item', 'size', 'hidden', 'label', 'aria-label']
 
-let template = null
-const TEMPLATE = `
-<style>
+const CSS = `
   :host { display: block; }
   :host([hidden]), [hidden] { display: none !important; }
   .wrap { color: var(--ts-ink); font: 14px/1.35 var(--ts-font-ui); }
@@ -160,7 +159,9 @@ const TEMPLATE = `
     button[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
     .rows li { border-color: CanvasText; }
   }
-</style>
+`
+
+const TEMPLATE = `
 <div class="wrap" part="list" role="region" tabindex="-1">
   <p class="locked" part="locked" hidden></p>
   <ol class="rows" part="rows"></ol>
@@ -177,12 +178,12 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 export class TsLayoutList extends Base {
   constructor() {
     super()
-    if (!template) {
-      template = document.createElement('template')
-      template.innerHTML = TEMPLATE
-    }
     const root = this.attachShadow({ mode: 'open' })
-    root.appendChild(template.content.cloneNode(true))
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._wrap = root.querySelector('.wrap')
     this._ol = root.querySelector('.rows')
     this._empty = root.querySelector('.empty')
@@ -596,3 +597,4 @@ export class TsLayoutList extends Base {
     attr(remove, 'aria-disabled', String(locked))
   }
 }
+inertWhenBlocked(TsLayoutList)
