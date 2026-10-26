@@ -16,7 +16,7 @@ const DEFAULT_CATEGORY = 'General'
  * carries only the English default (the built-ins do) gives way to the message,
  * so a translation is seen, as the label does in the grid.
  */
-function wording(t, type, spec, field) {
+export function wording(t, type, spec, field) {
   const given = spec && typeof spec[field] === 'string' ? spec[field] : ''
   const key = `widget.${type}.${field}`
   if (given && given !== EN[key]) return given

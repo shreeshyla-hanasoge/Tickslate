@@ -154,6 +154,9 @@ const remeasuredTenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured for 
 // perf-hygiene's ticker and gating code, both in the shared base, took the clock to 24,121 B bundled on the combined branch,
 // so 26,533 B with 10 %, which rounds up to 26 kB. Authorised by the coordinator (RFC 0003 §25).
 const remeasuredEleventh = (maxKb) => ({ ...entry(maxKb), target: 're-measured after the strip messages and the ticker and gating code joined the shared base, RFC 0003 §25', date: '2026-10-25' })
+// A new entry (layout-list-editor, 2026-10-25): the layout list measures 11,196 B bundled with the core, so 12,316 B with
+// 10 %, which rounds up to 12.5 kB.
+const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
   'edge-stats': newEntry(24.5),
@@ -170,6 +173,7 @@ const ENTRY_BUDGETS = {
   'open-positions': remeasuredEighth(26),
   progress: newEntry(22),
   'pnl-calendar': newEntry(25.5),
+  'layout-list': layoutListEntry(12.5),
 }
 
 /**

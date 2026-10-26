@@ -52,8 +52,8 @@ import 'tickslate/elements/metric'
 
 The entries are `grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`,
 `session-clock`, `table`, `progress`, `watchlist`, `open-positions`,
-`pnl-calendar`, `edge-stats`, `capital-funding` and `controls`
-(`<ts-widget-picker>` and `<ts-grid-controls>`). The development builds, with
+`pnl-calendar`, `edge-stats`, `capital-funding`, `controls`
+(`<ts-widget-picker>` and `<ts-grid-controls>`) and `layout-list`. The development builds, with
 their warnings, load through the `development` export condition.
 
 Or, with no build step at all, one script tag loads the core and every element

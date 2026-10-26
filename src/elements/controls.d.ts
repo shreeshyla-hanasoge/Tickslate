@@ -28,9 +28,21 @@ export declare class TsGridControls extends HTMLElement {
   picker: string | null
 }
 
+/**
+ * <ts-layout-list for="grid-id">: the grid's active profile as a list, one row per tile with a button for each
+ * size it supports, Move up, Move down and Remove, and an Undo button. It edits through the grid's move, resize
+ * and remove, so it fires the same `ts-layout-change` events as dragging and shares its undo history. Needs no
+ * pointer, no drag and no board. Parts: `list`, `rows`, `row`, `name`, `size`, `move`, `remove`, `undo`, `status`, `empty`.
+ */
+export declare class TsLayoutList extends HTMLElement {
+  /** The id of the <ts-grid> it edits. */
+  for: string
+}
+
 declare global {
   interface HTMLElementTagNameMap {
     'ts-widget-picker': TsWidgetPicker
     'ts-grid-controls': TsGridControls
+    'ts-layout-list': TsLayoutList
   }
 }

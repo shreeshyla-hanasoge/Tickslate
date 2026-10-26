@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Only <ts-layout-list> is defined at first, with a <ts-grid> in the markup that is not (the grid's entry is loaded by the test later).
+     It is for a list that leaves the page before its grid is defined. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout list, grid not defined yet</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<script type="module">
+  await import('/src/elements/define/layout-list.js')
+  window.__ready = true
+</script>
+</head>
+<body>
+<ts-grid id="g"></ts-grid>
+<ts-layout-list id="l" for="g"></ts-layout-list>
+</body>
+</html>
