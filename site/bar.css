@@ -1,0 +1,94 @@
+/*
+ * The site bar, skip link and footer every page of the public site shares,
+ * including the playground, the gallery and the examples, which link this file
+ * alone. Tokens only, so the bar follows the page's theme like the tiles do.
+ */
+.site-skip {
+  position: absolute; inset-inline-start: 12px; inset-block-start: -100px; z-index: 100;
+  padding: 10px 14px; border-radius: var(--ts-radius-sm);
+  background: var(--ts-ink); color: var(--ts-bg); font: 600 14px var(--ts-font-ui); text-decoration: none;
+}
+.site-skip:focus { inset-block-start: 12px; }
+
+.site-bar {
+  /* Reset what a page's own bare header rule (the playground's, the gallery's) would add. */
+  display: block; padding: 0; margin: 0;
+  position: sticky; inset-block-start: 0; z-index: 50;
+  background: color-mix(in srgb, var(--ts-bg) 88%, transparent);
+  border-block-end: 1px solid var(--ts-line);
+  font-family: var(--ts-font-ui);
+}
+@supports (backdrop-filter: blur(8px)) {
+  .site-bar { backdrop-filter: saturate(1.4) blur(10px); }
+}
+.site-bar-in {
+  box-sizing: border-box; max-width: 1240px; margin: 0 auto; padding: 10px 24px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
+}
+.site-word {
+  display: inline-flex; align-items: center; gap: 9px; min-height: 40px;
+  color: var(--ts-ink); text-decoration: none; font: 600 17px/1 var(--ts-font-ui); letter-spacing: -.01em;
+}
+.site-mark rect { fill: var(--ts-accent); }
+.site-mark rect:nth-child(2) { fill: var(--ts-series-2); }
+.site-nav { flex: 1 1 auto; }
+.site-nav ul { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 0; padding: 0; list-style: none; }
+.site-nav a {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0 10px; border-radius: var(--ts-radius-sm);
+  color: var(--ts-muted); text-decoration: none; font: 500 14px var(--ts-font-ui);
+}
+.site-nav a:hover { color: var(--ts-ink); background: var(--ts-surface-2); }
+.site-nav a[aria-current="page"] { color: var(--ts-ink); background: var(--ts-surface-2); }
+.site-theme {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  border: 1px solid var(--ts-line); border-radius: 999px; background: var(--ts-surface); color: var(--ts-ink);
+  font: 500 13px var(--ts-font-ui); cursor: pointer;
+}
+.site-theme:hover { border-color: var(--ts-muted); }
+.site-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.site-bar a:focus-visible, .site-theme:focus-visible, .site-skip:focus-visible, .site-foot a:focus-visible {
+  outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px;
+}
+@media (max-width: 699px) {
+  .site-bar { position: static; }
+  .site-bar-in { padding: 8px 16px; gap: 4px 12px; }
+  .site-word { flex: 1 1 auto; }
+  /* The links take one row under the wordmark and the theme switch, and
+     scroll sideways rather than wrap, so the page starts higher on a phone. */
+  .site-nav { order: 3; flex-basis: 100%; min-width: 0; }
+  .site-nav ul { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding-inline: 6px; scrollbar-width: none; }
+  .site-nav ul::-webkit-scrollbar { display: none; }
+  /* The fade (alpha only) shows there are more links to scroll to; site/theme.js sets which side. */
+  .site-nav ul[data-fade="end"] { mask-image: linear-gradient(to right, black calc(100% - 56px), transparent); }
+  .site-nav ul[data-fade="start"] { mask-image: linear-gradient(to left, black calc(100% - 56px), transparent); }
+  .site-nav ul[data-fade="both"] { mask-image: linear-gradient(to right, transparent, black 56px, black calc(100% - 56px), transparent); }
+  /* And a chevron on the side with more, drawn by the page, not read out. */
+  .site-nav { position: relative; }
+  .site-nav:has(ul[data-fade="end"])::after, .site-nav:has(ul[data-fade="both"])::after {
+    content: '›' / ''; position: absolute; inset-inline-end: -8px; inset-block-start: 50%; transform: translateY(-55%);
+    color: var(--ts-ink); font: 600 22px/1 var(--ts-font-ui); pointer-events: none;
+  }
+  .site-nav li { flex: none; }
+  .site-nav a { padding: 0 9px; min-height: 40px; white-space: nowrap; }
+}
+
+.site-foot { border-block-start: 1px solid var(--ts-line); font: 14px/1.5 var(--ts-font-ui); color: var(--ts-muted); }
+.site-foot-in {
+  box-sizing: border-box; max-width: 1240px; margin: 0 auto; padding: 28px 24px 40px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;
+}
+.site-foot p { margin: 0; }
+.site-foot nav { min-width: 0; }
+.site-foot ul { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; padding: 0; list-style: none; }
+.site-foot a { color: var(--ts-ink); text-underline-offset: 3px; }
+@media (max-width: 699px) { .site-foot-in { padding: 24px 16px 32px; } }
+
+@media (forced-colors: active) {
+  .site-nav a[aria-current="page"] { outline: 1px solid CanvasText; }
+  .site-theme { border-color: ButtonText; }
+}
+
+@media print {
+  .site-bar, .site-skip, .site-theme { display: none; }
+  .site-foot { border: 0; }
+}

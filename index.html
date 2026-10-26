@@ -24,7 +24,8 @@
   a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
   .bar button:disabled { opacity: .5; cursor: default; }
   .hint { color: var(--ts-muted); font-size: 13px; margin: 0 0 16px; }
-  .log { position: fixed; left: 16px; bottom: 16px; max-width: calc(100% - 32px); padding: 8px 12px; border-radius: var(--ts-radius-sm);
+  /* In the flow under the grid, not fixed: a fixed box sat over the bottom tile. */
+  .log { margin-top: 16px; padding: 8px 12px; border-radius: var(--ts-radius-sm); overflow-wrap: anywhere;
     background: var(--ts-surface); border: 1px solid var(--ts-line); color: var(--ts-muted); font: 12px ui-monospace, monospace; }
   .status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 0 0 12px; font-size: 13px; color: var(--ts-muted); }
   .status .num { font: var(--ts-num-weight) 20px/1 var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; color: var(--ts-ink); }
@@ -62,9 +63,10 @@
 </style>
 </head>
 <body>
-<main class="page">
+<!-- site-header -->
+<main class="page" id="main">
   <header>
-    <h1>Tickslate</h1>
+    <h1>Playground</h1>
     <nav class="links" aria-label="Other pages">
       <a href="widgets.html">Widget gallery</a>
       <a href="examples/index.html">Examples</a>
@@ -104,7 +106,7 @@
     Keyboard: Tab to a tile in edit mode, Space to pick up, arrows to move, Space to drop, + and − to resize.
     Your layout is saved in this browser.</p>
 
-  <ts-grid id="grid" locale="en-IN" currency="INR">
+  <ts-grid id="grid" locale="en-IN" currency="INR" heading-level="2">
     <ts-today-pnl item="todayPnl" label="Today's P&amp;L"></ts-today-pnl>
     <ts-session-clock item="sessionClock" label="Session clock"></ts-session-clock>
     <ts-metric item="openPositions" label="Open positions" id="openPositions"></ts-metric>
@@ -133,8 +135,8 @@
     <ts-chart item="chartEnergy" label="Birch Energy" id="chartEnergy"></ts-chart>
     <ts-equity-curve item="equityCurve" label="Equity curve"></ts-equity-curve>
   </ts-grid>
+  <div class="log" id="log" aria-live="off">No edits yet.</div>
 </main>
-<div class="log" id="log" aria-live="off">No edits yet.</div>
 
 <script type="module">
   import { createCalendar, createFormatter, presets, zonedTime, localDate } from './src/core/index.js'
@@ -550,5 +552,6 @@
   }
   for (const b of document.querySelectorAll('[data-theme-pick]')) b.addEventListener('click', () => pickTheme(b.dataset.themePick))
 </script>
+<!-- site-footer -->
 </body>
 </html>

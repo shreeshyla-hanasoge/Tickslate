@@ -268,6 +268,7 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
   [events](docs/reference/events.md), [theming](docs/theming.md)
 - [Server templates](docs/guide/server-templates.md) (Blade, Django)
 - [Bring your own chart](docs/guide/bring-your-own-chart.md) (Chart.js, ECharts)
+- [The public site](docs/site.md): how the website is built and deployed
 - The contract: [RFC 0001](docs/rfc/0001-api.md) and
   [RFC 0002](docs/rfc/0002-integration-and-ux.md). Data shapes are in the
   `.d.ts` files: [elements](src/elements/index.d.ts),

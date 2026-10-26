@@ -76,6 +76,8 @@ and the sizes match the `npm run size` table.
    (`https://cdn.jsdelivr.net/npm/tickslate@X.Y.Z/cdn/tickslate.iife.js`)
    serves the file.
 4. Start the next version's `changes/` fragments; see `changes/README.md`.
+5. Redeploy the public site with `SITE_VERSION` unset, so its install lines
+   name the version just published; see [site.md](site.md).
 
 ## If something is wrong
 
