@@ -259,7 +259,7 @@ const KNOWN = [
   { tile: 'ts-pnl-calendar:Banner', width: 800, why: 'the last month label starts a week from the edge, and the overrides widen it past the tile' },
 ]
 
-test.describe('every built-in widget in a real <ts-grid> at tablet widths and compact density', () => {
+test.describe('every built-in widget in a real <ts-grid> at phone, tablet and desktop widths and compact density', () => {
   const GRID = '/test/browser/fixtures/grid.html'
   const draw = async (page, { width, spacing, theme }) => {
     await page.setViewportSize({ width, height: 900 })
@@ -296,7 +296,7 @@ test.describe('every built-in widget in a real <ts-grid> at tablet widths and co
     }, { spacing, SPACING, applySpacing: applySpacing.toString(), theme })
     return clips(page, { grid: true, place: `${width}px` })
   }
-  for (const width of [700, 800]) {
+  for (const width of [390, 700, 800, 1280]) {
     for (const spacing of [false, true]) {
       for (const theme of ['light', 'dark']) {
         test(`${width}px, ${theme}, compact${spacing ? ' with the text-spacing overrides' : ' alone'}: nothing is cut`, async ({ page }) => {
