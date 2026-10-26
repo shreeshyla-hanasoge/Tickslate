@@ -29,7 +29,10 @@ import { TsWidget, escapeHtml } from './widget.js'
 import { linePaths, scale } from './chart.js'
 import { defineWidget, widgetCatalog, onCatalogChange } from './registry.js'
 import { persistLayout } from './persist.js'
+import { createDashboard } from './dashboard.js'
 
 export { version, persistLayout, TsGrid, TsWidget, TsCard, TsMetric, TsChart, TsTable, TsProgress, TsWatchlist, TsOpenPositions, TsPnlCalendar, TsEdgeStats, TsCapitalFunding, TsTodayPnl, TsEquityCurve, TsSessionClock, TsWidgetPicker, TsGridControls, TsLayoutList }
 // The authoring kit (RFC 0003 §3): register a widget of your own, and the helpers the built-in widgets draw with.
 export { defineWidget, widgetCatalog, onCatalogChange, linePaths, scale, escapeHtml }
+// A grid and its tiles from a layout and an object of data, for hosts with no framework (RFC 0004 §7).
+export { createDashboard }

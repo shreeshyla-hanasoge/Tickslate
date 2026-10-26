@@ -1,4 +1,4 @@
-import type { Calendar, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
+import type { Calendar, Catalog, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
 import { TsWidget } from './widget.js'
 import type { ViewModelContext, TsOpenAction, TsChartSelectAction } from './widget.js'
 
@@ -95,6 +95,43 @@ export declare function linePaths(
 
 /** Stable for 0.x. Escapes `& < > " '` in `String(s)`, for text a template writes into markup. */
 export declare function escapeHtml(s: unknown): string
+
+export interface DashboardOptions {
+  /** The layout to show: a Layout or a bare item array. The grid reads it with readLayout. */
+  layout: Layout | LayoutItem[]
+  /** Data by item id. An id with no item in any profile warns in development and is ignored. */
+  data?: Record<string, unknown>
+  /** The widget catalog. Default: `widgetCatalog()`, which includes the built-ins and every `defineWidget` type; those are also tried after a catalog you pass. */
+  catalog?: Catalog
+  /** The grid's `persist` key (saves the layout per device). Off by default. */
+  persist?: string
+  locale?: string
+  currency?: string
+  /** An IANA time zone, set as the grid's `time-zone`. */
+  timeZone?: string
+  /** The grid's accessible name (`aria-label`). Say what the dashboard is. Default: the grid's own "Dashboard". */
+  label?: string
+  /** What the picker offers and `ts-add-request` is answered for: a list of types, '*' or null. Default '*'. */
+  addTypes?: readonly string[] | '*' | null
+}
+
+export interface Dashboard {
+  readonly grid: TsGrid
+  /** Sets one tile's data, hidden tiles included. Returns false, and warns in development, for an id with no tile. */
+  set(id: string, data: unknown): boolean
+  /** Sets the tiles named in the object and no others; unknown ids warn in development. */
+  update(dataById: Record<string, unknown>): void
+  /** Removes the grid and its listeners. Idempotent. After it, `set` returns false and `update` does nothing. */
+  destroy(): void
+}
+
+/**
+ * A <ts-grid> and one tile per item of every profile, made from the catalog's tags, with `data`
+ * assigned. It answers `ts-add-request` itself, so the picker and `grid.add()` need no host code.
+ * `target` is the element to put the grid in, or a CSS selector for it (no match throws a TypeError).
+ * It does not fetch: the host loads the data and passes it.
+ */
+export declare function createDashboard(target: Element | string, options: DashboardOptions): Dashboard
 
 /** The `ts-action` detail every widget can send: the error view's Retry and tile activation (RFC 0003 §7, §22.2). */
 export type TsCommonAction = { action: 'retry' } | TsOpenAction

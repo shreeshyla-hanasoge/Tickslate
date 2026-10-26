@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- createDashboard() in a real page: four tiles from a layout and an object of
+     data, and nothing else. window.__dashboard is the handle.
+       ?theme=dark   dark theme        ?persist=key   the grid's persist key
+       ?add=off      addTypes: null -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
+</style>
+<script type="module">
+  import { createDashboard } from '/src/elements/index.js'
+  const params = new URLSearchParams(location.search)
+  if (params.get('theme') === 'dark') document.documentElement.dataset.theme = 'dark'
+  const dashboard = createDashboard('#app', {
+    layout: {
+      version: 1,
+      device: 'desktop',
+      profiles: {
+        market: [{ id: 'revenue', type: 'metric', size: 'M' }, { id: 'usage', type: 'progress', size: 'Wide' }],
+        closed: [{ id: 'revenue', type: 'metric', size: 'M' }, { id: 'trend', type: 'chart', size: 'L' }],
+      },
+      topStrip: ['revenue'],
+    },
+    data: {
+      revenue: { value: 1200, previous: 1100 },
+      usage: { value: 40, target: 100, caption: 'Quota used' },
+      trend: { series: [{ name: 'Orders', points: [{ x: '2026-10-01', y: 4 }, { x: '2026-10-02', y: 6 }] }] },
+    },
+    label: 'Fixture dashboard',
+    persist: params.get('persist') || undefined,
+    addTypes: params.get('add') === 'off' ? null : '*',
+  })
+  window.__dashboard = dashboard
+  window.__ready = true
+</script>
+</head>
+<body>
+<main>
+  <h1>Dashboard</h1>
+  <div id="app"></div>
+</main>
+</body>
+</html>
