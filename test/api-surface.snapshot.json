@@ -73,6 +73,7 @@
       "TsWatchlist",
       "TsWidget",
       "TsWidgetPicker",
+      "createDashboard",
       "defineWidget",
       "escapeHtml",
       "linePaths",
