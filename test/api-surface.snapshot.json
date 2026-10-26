@@ -55,11 +55,13 @@
   },
   "elements": {
     "exports": [
+      "TsBreakdown",
       "TsCapitalFunding",
       "TsCard",
       "TsChart",
       "TsEdgeStats",
       "TsEquityCurve",
+      "TsFeed",
       "TsGrid",
       "TsGridControls",
       "TsLayoutList",
@@ -68,6 +70,7 @@
       "TsPnlCalendar",
       "TsProgress",
       "TsSessionClock",
+      "TsStatus",
       "TsTable",
       "TsTodayPnl",
       "TsWatchlist",
@@ -84,6 +87,41 @@
       "widgetCatalog"
     ],
     "tags": {
+      "ts-breakdown": {
+        "class": "TsBreakdown",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "item",
+          "label",
+          "legend",
+          "skeleton",
+          "tile"
+        ]
+      },
       "ts-capital-funding": {
         "class": "TsCapitalFunding",
         "attributes": [
@@ -251,6 +289,41 @@
           "error",
           "header",
           "label",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-feed": {
+        "class": "TsFeed",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "item",
+          "label",
+          "list",
           "skeleton",
           "tile"
         ]
@@ -516,6 +589,43 @@
           "skeleton",
           "tile",
           "value"
+        ]
+      },
+      "ts-status": {
+        "class": "TsStatus",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "cell",
+          "chart",
+          "dot",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "row",
+          "skeleton",
+          "table",
+          "tile"
         ]
       },
       "ts-table": {
