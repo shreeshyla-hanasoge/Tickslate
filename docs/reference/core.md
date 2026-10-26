@@ -448,6 +448,8 @@ createCalendar(input: {
   sessions: readonly SessionSpec[]
   /** Session id -> 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
+  /** The instant holiday coverage is judged against. Default: `Date.now()`, read once here. */
+  now?: number
 }): Calendar
 ```
 
@@ -464,7 +466,8 @@ interface SessionSpec {
   days: readonly number[]          // ISO weekdays it OPENS on, 1 = Monday
   open: string                     // 'HH:MM' local
   close: string | { default: string; ranges: Array<{ from: string; to: string; close: string }> }   // 'HH:MM' local; may be at or before `open`
-  specialSessions?: Record<string, { open: string; close: string }>   // extra sessions by opening date; they beat weekdays and holidays
+  specialSessions?: Record<string, { open: string; close: string; breaks?: Array<{ from: string; to: string }> }>   // extra sessions by opening date; they beat weekdays and holidays, and have only their own breaks
+  breaks?: ReadonlyArray<{ from: string; to: string }>   // gaps inside each window, such as lunch: 'HH:MM' local, sorted, apart, strictly inside the window, at most four
 }
 ```
 
@@ -490,6 +493,14 @@ open") has no close the calendar can name, so `state` returns `open: true` with
 `closesAt`, `startedAt` and `progress` all `null`, `nextChange` returns `null`,
 and `<ts-session-clock>` shows "Open 24/7".
 
+**Breaks.** During a break the session is closed: `state` returns
+`onBreak: true` with `opensAt` at the break's end, and `windows` returns the
+segments either side of it. A holiday removes the window with its breaks, a
+special session has only its own, and a close range that ends before a break
+clips it for those dates. An overnight window's earlier times are the next
+morning's (a break at `02:20` in a window that opens `18:10`). See
+[Sessions, presets and holidays](../guide/sessions.md).
+
 The `Calendar`:
 
 | Member | Result |
@@ -497,20 +508,30 @@ The `Calendar`:
 | `sessions` | The session ids |
 | `session(id)` | The `SessionSpec`. Throws `RangeError` for an unknown id |
 | `isTradingDay(id, date)` | Whether the session trades on `'YYYY-MM-DD'` |
-| `hours(id, date)` | The window that opens on `date`, `{ open, close }` as instants (`close` is on the next day for an overnight session), or `null` if it does not open. It is not merged with its neighbours |
-| `state(id, now)` | `{ open, opensAt, closesAt, startedAt, progress }`: `opensAt` is the next open when closed (`null` if none within a month); the rest apply when open, with `progress` 0 to 1. For a session with no close within a month, `closesAt`, `startedAt` and `progress` are `null` while `open` is `true` |
+| `hours(id, date)` | The window that opens on `date`, `{ open, close }` as instants (`close` is on the next day for an overnight session), or `null` if it does not open. It is not merged with its neighbours. A window with breaks also has `breaks: Array<{ from, to }>` (instants) |
+| `state(id, now)` | `{ open, onBreak, opensAt, closesAt, startedAt, progress, ends }`: `opensAt` is the next open when closed, or the break's end during one (`null` if none within a month); the rest apply when open, with `progress` 0 to 1. `ends` is `'break'` when the run ends at a break, `'close'` when it ends for the day, and `null` while closed or with no end. For a session with no close within a month, `closesAt`, `startedAt` and `progress` are `null` while `open` is `true` |
 | `nextChange(id, now)` | `{ at, to: 'open' \| 'closed' }`, or `null` when there is no change within a month (including while open with no close) |
 | `candleClose(id, now, timeframeMinutes)` | The next candle close, aligned to the session open (to the day's window when the session has no known start); `null` while closed |
-| `windows(id, from, to)` | Every session window overlapping `[from, to)`, touching windows merged. A run still going a month past `to`, or a month before `from`, is cut there |
+| `windows(id, from, to, { throughBreaks? })` | Every session window overlapping `[from, to)`, touching windows merged and a break splitting its window in two. A run still going a month past `to`, or a month before `from`, is cut there. `throughBreaks: true` returns each window whole, which is what the layout profile uses |
+| `holidaysThrough(id)` | The last `'YYYY-MM-DD'` any holiday list covers for the session (the later of `holidays['*']` and `holidays[id]`), or `null` with neither. Throws `RangeError` for an unknown id |
+| `issues` | Frozen `CalendarIssue[]` found when the calendar was created: `{ session, code: 'holiday-coverage', message }` for each session whose non-empty holiday list ends less than 30 days after `now`. `[]` when there are none; a session with no list gets none |
 
 ### `presets`
 
-Ready-made sessions, checked against exchange circulars on 13 Oct 2026.
-Verify them against your exchange before relying on them.
+Ready-made sessions with regular hours only (early closes are your
+`specialSessions`) and no holidays. Each was read from its exchange's own page;
+the guide's [table](../guide/sessions.md#the-presets) gives the source and the
+date checked for every preset. Verify them against your exchange before
+relying on them.
 
 | Preset | Returns |
 |---|---|
 | `presets.nse({ segment? })` | `'equity'` (default): id `nse`, 09:15 to 15:30. `'derivatives'`: id `nse-fo`, 09:15 to 15:40 (15:30 before 3 Aug 2026) |
+| `presets.nyse({ segment? })` | `'regular'` (default): id `nyse`, 09:30 to 16:00 New York. `'pre'`: `nyse-pre`, 04:00 to 09:30. `'post'`: `nyse-post`, 16:00 to 20:00. `'extended'`: `nyse-ext`, 04:00 to 20:00 as one window |
+| `presets.nasdaq({ segment? })` | The same segments, ids `nasdaq`, `nasdaq-pre`, `nasdaq-post`, `nasdaq-ext` |
+| `presets.lse()` | Id `lse`, 08:00 to 16:30 London |
+| `presets.fx()` | Id `fx`, Sunday 17:00 to Friday 17:00 New York |
+| `presets.tse()` | Id `tse`, Tokyo: 09:00 to 15:30 with a lunch break from 11:30 to 12:30 |
 | `presets.mcx({ segment?, years? })` | `'international'` (default; metals, energy): id `mcx`, 09:00 to 23:30 during US daylight saving, else 23:55, for the given `years` (default last, this and next). `'cotton'`: `mcx-cotton`, 09:00 to 21:00. `'agri'`: `mcx-agri`, 09:00 to 17:00 |
 
 ### `usDaylightSaving(year)`
@@ -525,8 +546,11 @@ daylight saving in a year.
 `lagMinutes` after, else `'closed'`.
 
 ```ts
-interface ProfileSchedule { market: { sessions: string[]; leadMinutes?: number; lagMinutes?: number } }
+interface ProfileSchedule { market: { sessions: string[]; leadMinutes?: number; lagMinutes?: number; duringBreaks?: 'market' | 'closed' } }
 ```
+
+A break counts as market hours by default, so a layout does not switch at lunch;
+`duringBreaks: 'closed'` switches at the break's start and back at its end.
 
 ### `nextProfileChange(calendar, schedule, now)`
 

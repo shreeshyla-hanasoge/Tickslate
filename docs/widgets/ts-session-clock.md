@@ -59,6 +59,20 @@ open for over a month (a holiday is coming), there is no start to measure
 from: the track is not drawn, `S` shows only the countdown and the close, and a
 `Banner` lane reads "–Thu 00:00" with its time left.
 
+### Breaks
+
+A session with a lunch break (`presets.tse()`) is drawn as its whole day with
+the break as a gap in the track, the fill and the ticks. While it lasts the
+title reads "Break" and the countdown reads "resumes 12:30"; a Banner lane
+reads "Break" with "resumes 12:30" under it. Before the break the countdown
+says "1h 12m to break", not "to close", and after it candles count from its
+end. The tile's name says "Tokyo on break, opens 12:30". Nothing is announced
+when the break begins or ends. In forced colours the gap is edged in the text
+colour. See [Sessions, presets and holidays](../guide/sessions.md).
+
+In development builds the clock logs once per calendar when a holiday list is
+about to run out (`calendar.issues`); it changes nothing on screen.
+
 ## Minimal example
 
 ```html
