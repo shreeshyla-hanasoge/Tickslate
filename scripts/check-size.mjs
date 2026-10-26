@@ -232,6 +232,19 @@ const ADD_BUDGETS = Object.fromEntries(
   OVER_15.map((name) => [name, { ...ADD_BUDGET, mode: 'warn', target: `${ADD_BUDGET.target}; over today, kept as a warning pending the maintainer (parked-amendments)` }])
 )
 
+// Three "adds to grid" rows re-measured (stage 2 integration of the P2 wave, 2026-10-26): the shared core grew under every
+// story's message family; RFC 0004 Decision 68's 15 kB was set before parked-amendments, type-scale-rollout, edit-feedback and
+// security-hardening landed. Measured min+gz on the combined branch: mini-chart 18,522 B (20,374 B with 10 %, 20 kB), breakdown
+// 17,463 B (19,209 B, 19 kB) and status 15,460 B (17,006 B, 17 kB). Contributors, in merge order: at parked-amendments the rows
+// already stood at 18,464 B, 17,412 B and 15,352 B (the widget's own code and the core's message families from create-dashboard,
+// mini-chart, more-generic-widgets, market-presets-and-breaks, chart-scrub-and-exact-values and density-and-text-scaling);
+// type-scale-rollout then added 0 B to mini-chart, 16 B to breakdown and 13 B to status; edit-feedback 31 B, 20 B and 66 B;
+// security-hardening 27 B, 15 B and 29 B. Feed stays at 15 kB (15,223 B). Authorised by the orchestrator (RFC 0003 §25).
+const stage2Add = (maxKb) => ({ ...ADD_BUDGET, maxKb, target: 're-measured after the P2 wave joined the shared core, RFC 0003 §25 (stage 2 integration)' })
+ADD_BUDGETS['mini-chart'] = stage2Add(20)
+ADD_BUDGETS.breakdown = stage2Add(19)
+ADD_BUDGETS.status = stage2Add(17)
+
 const problems = []
 const warnings = []
 const notes = []
