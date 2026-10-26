@@ -37,8 +37,75 @@ export const peers = {
 export const MAX_APPEND = 10
 
 const FONT_TOKEN = '--ts-font-num'
-// Attributes that change what --ts-* resolves to (RFC 0004 §6.4), on <html> and on the nearest <ts-grid>.
-export const THEME_ATTRS = ['data-theme', 'class', 'data-ts-theme', 'data-ts-palette']
+// Attributes that change what --ts-* resolves to (RFC 0004 §6.4). docs/theming.md lets a host set them on any element, so
+// they are watched on every ancestor of the widget and on the widget itself, not only on <html> and the grid. `style` is
+// there for a host that sets a token inline.
+export const THEME_ATTRS = ['data-theme', 'class', 'data-ts-theme', 'data-ts-palette', 'style']
+
+// One observer on <html> serves every mini chart on the page (the ticker's pattern): the records say which element
+// changed, and a widget wakes only when that element is itself or one of its ancestors.
+const themeWatchers = new Set()
+let themeObserver = null
+
+const reaches = (target, el) => {
+  for (let n = el; n; n = n.parentNode || n.host) if (n === target) return true
+  return false
+}
+
+/** Calls `fn` when a theme attribute changes on `el` or an ancestor of it; returns the function that stops it. */
+export function watchTheme(el, fn) {
+  const watcher = { el, fn }
+  themeWatchers.add(watcher)
+  if (!themeObserver && typeof MutationObserver === 'function' && typeof document !== 'undefined' && document.documentElement) {
+    themeObserver = new MutationObserver((records) => {
+      for (const w of [...themeWatchers]) if (records.some((r) => reaches(r.target, w.el))) w.fn()
+    })
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: THEME_ATTRS, subtree: true })
+  }
+  return () => {
+    themeWatchers.delete(watcher)
+    if (!themeWatchers.size && themeObserver) {
+      themeObserver.disconnect()
+      themeObserver = null
+    }
+  }
+}
+
+// ── The profile's identity (pure) ─────────────────────────────────────────
+
+/**
+ * A fingerprint of a host's ProfileData: the same figures give the same key, whatever object carried them, so a host that
+ * rebuilds an equal profile every tick neither reloads it nor reports it again. It is the metadata plus, per session, the
+ * bin count and two checksums over the bins (a plain and a position-weighted sum), which a changed or reordered bin
+ * moves. Null when the profile cannot be read, which never equals anything.
+ */
+export function profileKey(vp) {
+  try {
+    const sessions = Array.isArray(vp.sessions) ? vp.sessions : []
+    return JSON.stringify([
+      vp.version,
+      vp.source,
+      vp.step,
+      sessions.map((s) => {
+        const bins = s && s.bins
+        let n = 0
+        let sum = 0
+        let weighted = 0
+        if (bins && typeof bins.length === 'number') {
+          n = bins.length
+          for (let i = 0; i < n; i++) {
+            const b = Number(bins[i])
+            sum += b
+            weighted += b * (i + 1)
+          }
+        }
+        return s ? [s.start, s.end, s.lo, s.poc, s.vah, s.val, s.total, s.developing, n, sum, weighted] : null
+      }),
+    ])
+  } catch {
+    return null
+  }
+}
 
 // ── The diff (pure) ───────────────────────────────────────────────────────
 
@@ -273,13 +340,17 @@ export function miniChartModel(data, variant, ctx) {
     }
   })
 
+  // The tile's group is named by the widget's label and the headline result (RFC 0003 §5.2); each chart's inner image
+  // carries the full summary, so a listener does not hear the same sentence as the group's name and again as its image.
+  const headlines = charts.map((c) => (c.lastText ? t('miniChart.join', { head: c.instrument, tail: t('miniChart.last', { close: c.lastText }) }) : c.instrument)).filter(Boolean)
+  const joined = headlines.length ? headlines.reduce((a, b) => t('miniChart.join', { head: a, tail: b })) : ''
   return {
     variant: v,
     charts,
     countdown: d.countdown === true,
     timeZone: fmt.timeZone,
     dropped,
-    ariaLabel: charts.length ? charts.map((c) => c.summary).reduce((a, b) => t('miniChart.join', { head: a, tail: b })) : '',
+    ariaLabel: joined && ctx.label ? t('miniChart.join', { head: ctx.label, tail: joined }) : joined,
     live: d.live === true,
   }
 }
@@ -360,7 +431,7 @@ export class MiniChartController {
       return null
     }
     chart.setData(spec.bars)
-    const st = { host: spec.host, chart, key: spec.key, bars: spec.bars, marksKey: null, countdown: spec.countdown, vp: null, vpCtl: null, vpLoading: false, dead: false }
+    const st = { host: spec.host, chart, key: spec.key, bars: spec.bars, marksKey: null, countdown: spec.countdown, vpKey: null, vpCtl: null, vpLoading: false, dead: false }
     this._hideCanvases(st)
     return st
   }
@@ -379,15 +450,22 @@ export class MiniChartController {
     const vp = spec.profile
     if (!vp) {
       // None given (or taken away): nothing is drawn.
-      if (st.vpCtl && st.vp) st.vpCtl.setData(null)
-      st.vp = null
+      if (st.vpCtl && st.vpKey !== null) st.vpCtl.setData(null)
+      st.vpKey = null
       return
     }
+    // Emberwick reads version 1 only; anything else it would warn about and draw nothing, which a listener cannot tell from no data.
+    if (vp.version !== undefined && vp.version !== 1) {
+      this.o.fail('badProfile', new Error(`unsupported profile version ${String(vp.version)}`), vp)
+      return
+    }
+    // The same figures in a new object (a host that rebuilds its profile every tick) are not a change.
+    const key = profileKey(vp)
     if (st.vpCtl) {
-      if (st.vp === vp) return
+      if (key !== null && st.vpKey === key) return
       try {
         st.vpCtl.setData(vp)
-        st.vp = vp
+        st.vpKey = key === null ? '' : key
       } catch (err) {
         this.o.fail('badProfile', err, vp)
       }
@@ -404,7 +482,7 @@ export class MiniChartController {
           if (st.dead) return
           try {
             st.vpCtl = mod.createVolumeProfile(st.chart, { data: vp })
-            st.vp = vp
+            st.vpKey = key === null ? '' : key
             this._hideCanvases(st)
           } catch (err) {
             this.o.fail('badProfile', err, vp)
@@ -436,8 +514,19 @@ export class MiniChartController {
       })
   }
 
-  retheme() {
-    for (const st of this.states) if (st) st.chart.setTheme(this.o.theme())
+  /** Whether any chart exists to theme or animate. */
+  active() {
+    return this.states.some(Boolean)
+  }
+
+  retheme(theme) {
+    const next = theme || this.o.theme()
+    for (const st of this.states) if (st) st.chart.setTheme(next)
+  }
+
+  /** Motion follows the system setting while the page is open, not only at creation. */
+  setAnimate(on) {
+    for (const st of this.states) if (st && typeof st.chart.setAnimate === 'function') st.chart.setAnimate(on)
   }
 
   resize() {
@@ -478,6 +567,7 @@ function chartBlock(i, xl) {
 ${xl ? `<div class="sm mut ell" data-k="note${i}"></div>` : ''}
 <div class="plot" part="chart" role="img" data-k="plot${i}" aria-label="">
 <div class="cv" data-k="cv${i}" aria-hidden="true" tabindex="-1"></div>
+<span class="sk grow" data-k="load${i}" hidden></span>
 <div class="none sm mut" data-k="none${i}" hidden></div>
 </div>
 </div>`
@@ -536,19 +626,22 @@ export class TsMiniChart extends TsWidget {
     super()
     this._noPeer = false
     this._badProfile = null
+    this._badKey = null
     this._tfKey = ''
     this._tfId = ''
     this._tfOn = ''
     this._plots = []
     this._ro = null
-    this._observers = []
+    this._unwatch = null
     this._mq = null
+    this._motion = null
+    this._themeSig = ''
     this._themeQueued = false
     this._reader = null
     this._ctl = new MiniChartController({
-      theme: () => emberwickTheme(this._readToken()),
+      theme: () => this._theme(),
       now: () => this.now(),
-      reducedMotion: () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
+      reducedMotion: () => this._reduced(),
       requestRender: () => this.requestRender(),
       fail: (kind, err, ref) => this._fail(kind, err, ref),
     })
@@ -557,9 +650,10 @@ export class TsMiniChart extends TsWidget {
       this._themeQueued = true
       queueMicrotask(() => {
         this._themeQueued = false
-        if (this.isConnected) this._ctl.retheme()
+        this._syncTheme()
       })
     }
+    this._onMotion = () => this._ctl.setAnimate(!this._reduced())
     // One listener on the tile: the buttons are rebuilt when the timeframes change.
     this._section.addEventListener('click', (e) => {
       const button = e.target && e.target.closest ? e.target.closest('button[data-tf]') : null
@@ -591,6 +685,7 @@ export class TsMiniChart extends TsWidget {
       if (DEV) warnOnce('mini-chart:no-peer', `<ts-mini-chart> could not load "emberwick"${why}. Install it with npm i emberwick (version 0.14.0 or later); the tile shows an error until then.`)
     } else {
       this._badProfile = ref
+      this._badKey = ref ? profileKey(ref) : null
       if (DEV) warnOnce(`mini-chart:bad-profile:${this._uid}`, `${this.localName} volumeProfile was rejected by Emberwick${why}; check its step and sessions against emberwick/profiles' ProfileData.`)
     }
     this.requestRender()
@@ -600,7 +695,12 @@ export class TsMiniChart extends TsWidget {
     if (this._noPeer) return 'miniChart.noPeer'
     const d = this._data
     // The bad profile is only bad until the host sends another.
-    if (this._badProfile && d && d.volumeProfile === this._badProfile) return 'miniChart.badProfile'
+    // Compared by content: a host that re-sends an equal bad profile each tick keeps the error view, not a chart per tick.
+    if (this._badProfile && d && d.volumeProfile && typeof d.volumeProfile === 'object') {
+      if (d.volumeProfile === this._badProfile) return 'miniChart.badProfile'
+      const key = this._badKey !== null ? profileKey(d.volumeProfile) : null
+      if (key !== null && key === this._badKey) return 'miniChart.badProfile'
+    }
     return null
   }
 
@@ -647,30 +747,46 @@ export class TsMiniChart extends TsWidget {
     }
   }
 
+  _reduced() {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
+
+  /** Emberwick's theme from the tokens as they resolve here now; remembers what it returned. */
+  _theme() {
+    const theme = emberwickTheme(this._readToken())
+    this._themeSig = JSON.stringify(theme)
+    return theme
+  }
+
+  /** Re-reads the tokens and tells Emberwick only when a mapped value actually changed. */
+  _syncTheme() {
+    if (!this.isConnected || !this._ctl.active()) return
+    const theme = emberwickTheme(this._readToken())
+    const sig = JSON.stringify(theme)
+    if (sig === this._themeSig) return
+    this._themeSig = sig
+    this._ctl.retheme(theme)
+  }
+
   _watchTheme() {
     this._unwatchTheme()
-    if (typeof MutationObserver === 'function' && typeof document !== 'undefined' && document.documentElement) {
-      const watch = (el) => {
-        const mo = new MutationObserver(this._onTheme)
-        mo.observe(el, { attributes: true, attributeFilter: THEME_ATTRS })
-        this._observers.push(mo)
-      }
-      watch(document.documentElement)
-      const grid = typeof this.closest === 'function' ? this.closest('ts-grid') : null
-      if (grid) watch(grid)
-    }
-    // data-theme="auto" follows the system, which changes no attribute.
+    this._unwatch = watchTheme(this, this._onTheme)
     if (typeof matchMedia === 'function') {
+      // data-theme="auto" follows the system, which changes no attribute.
       this._mq = matchMedia('(prefers-color-scheme: dark)')
       if (this._mq && this._mq.addEventListener) this._mq.addEventListener('change', this._onTheme)
+      this._motion = matchMedia('(prefers-reduced-motion: reduce)')
+      if (this._motion && this._motion.addEventListener) this._motion.addEventListener('change', this._onMotion)
     }
   }
 
   _unwatchTheme() {
-    for (const mo of this._observers) mo.disconnect()
-    this._observers = []
+    if (this._unwatch) this._unwatch()
+    this._unwatch = null
     if (this._mq && this._mq.removeEventListener) this._mq.removeEventListener('change', this._onTheme)
+    if (this._motion && this._motion.removeEventListener) this._motion.removeEventListener('change', this._onMotion)
     this._mq = null
+    this._motion = null
   }
 
   update(vm, variant) {
@@ -716,6 +832,15 @@ export class TsMiniChart extends TsWidget {
     }
     if (variant === 'L') this._updateTimeframes(vm.charts[0] || null)
     this._ctl.sync(specs)
+    // A render is a cheap moment to notice a token that changed where no attribute did (a stylesheet swap, a media query).
+    this._syncTheme()
+    // The import is pending: the plot shows its skeleton and the tile says it is busy, rather than an empty frame.
+    const pending = !this._ctl.Chart && specs.some((sp) => sp && sp.bars.length)
+    for (let i = 0; i < slots; i++) {
+      const load = this.$(k(`load${i}`))
+      if (load) load.toggleAttribute('hidden', !(pending && specs[i] && specs[i].bars.length))
+    }
+    if (pending) this._section.setAttribute('aria-busy', 'true')
     this._observe(plots)
   }
 

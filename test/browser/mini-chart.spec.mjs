@@ -65,14 +65,16 @@ test.describe('draws with the real Emberwick', () => {
     })
   }
 
-  test('the tile is named by the summary and the change carries a sign and a word', async ({ page }) => {
+  test('the tile is named by the label and the headline, its image by the full summary, and the change carries a sign and a word', async ({ page }) => {
     await open(page)
     await fill(page)
     const info = await page.evaluate(() => {
       const root = document.getElementById('m').shadowRoot
-      return { name: root.querySelector('.tile').getAttribute('aria-label'), change: root.querySelector('[data-k="chg0"]').textContent }
+      return { name: root.querySelector('.tile').getAttribute('aria-label'), image: root.querySelector('[role="img"]').getAttribute('aria-label'), change: root.querySelector('[data-k="chg0"]').textContent }
     })
-    expect(info.name).toMatch(/^ABC Corp, 5m: last .*, up 1\.20%/)
+    expect(info.name).toMatch(/^Watch, ABC Corp, last [\d.]+$/)
+    expect(info.image).toMatch(/^ABC Corp, 5m: last .*, up 1\.20%/)
+    expect(info.name).not.toBe(info.image)
     expect(info.change).toMatch(/^▲\+1\.20%$/)
   })
 
@@ -174,6 +176,45 @@ test.describe('the theme', () => {
     })
     await page.waitForFunction((n) => window.__mc.count('setTheme') > n, before)
     expect(await up()).not.toBe(green)
+  })
+})
+
+// docs/theming.md: the theme may be set on the grid or the widget, "any element". Each case changes what --ts-* resolves to
+// somewhere other than <html> or a grid, and Emberwick must hear about it.
+test.describe('the theme wherever it is set', () => {
+  const cases = {
+    'data-theme on a wrapper': () => document.getElementById('stage').setAttribute('data-theme', 'dark'),
+    'data-ts-palette on the widget itself': () => document.getElementById('m').setAttribute('data-ts-palette', 'red-up'),
+    'a class on <body>': () => document.body.classList.add('dark'),
+    'an inline token on <html>': () => document.documentElement.style.setProperty('--ts-surface', 'rgb(12, 34, 56)'),
+  }
+  for (const [name, change] of Object.entries(cases)) {
+    test(`${name} reaches setTheme`, async ({ page }) => {
+      await open(page, 'light')
+      await fill(page)
+      const theme = () => page.evaluate(() => {
+        const t = [...window.__mc.charts][0].theme
+        return JSON.stringify([t.background, t.up, t.down])
+      })
+      const was = await theme()
+      const before = await page.evaluate(() => window.__mc.count('setTheme'))
+      await page.evaluate(change)
+      await page.waitForFunction((n) => window.__mc.count('setTheme') > n, before)
+      expect(await theme()).not.toBe(was)
+    })
+  }
+
+  test('a change that moves no mapped value calls setTheme nowhere', async ({ page }) => {
+    await open(page, 'light')
+    await fill(page)
+    const before = await page.evaluate(() => window.__mc.count('setTheme'))
+    await page.evaluate(() => {
+      document.getElementById('stage').setAttribute('data-theme', 'light')
+      document.getElementById('m').classList.add('unrelated')
+    })
+    await page.evaluate(() => window.__mc.nextFrame())
+    await page.evaluate(() => window.__mc.nextFrame())
+    expect(await page.evaluate(() => window.__mc.count('setTheme'))).toBe(before)
   })
 })
 

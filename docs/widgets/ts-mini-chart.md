@@ -25,7 +25,26 @@ empty tile until `<ts-mini-chart>` is defined.
 Emberwick is loaded with `import('emberwick')` the first time there are bars,
 not when the module is imported. Without it (not installed, or your bundler
 could not resolve it) the tile shows its error view, "The chart library isn't
-installed", with one development warning, and the rest of the page is untouched.
+installed", with one development warning, and the rest of the page is untouched. The tile does not try again
+by itself once the import has failed: install the package and reload the page.
+
+While the first import is pending the chart's box shows a skeleton and the tile is marked `aria-busy`, so an
+empty frame is never mistaken for a chart with no data.
+
+### Bundlers that cannot resolve a missing package
+
+Vite (dev and build) and webpack treat an optional peer that is not installed as absent, and the tile shows its
+error view. A raw esbuild build (or a tool that wraps it, such as tsup or bun build) stops with "Could not resolve
+emberwick" instead, because it has to resolve every `import()` it sees. Either install the peer, or mark it
+external:
+
+```js
+// esbuild
+await build({ entryPoints: ['app.js'], bundle: true, external: ['emberwick', 'emberwick/profiles'] })
+```
+
+An external import is left as written, and the browser then needs a way to find `emberwick` (an import map, or
+serving it yourself). Without one the tile shows the same error view.
 
 ## Sizes
 
@@ -70,8 +89,9 @@ or a `kind` other than `entry` or `exit` is dropped, and both are counted and re
 development. Bars may arrive in any order and are drawn ascending; two bars at one time keep the later.
 `volumeProfile` is the contract of `emberwick/profiles`: Emberwick never computes a profile
 from bars, and neither does Tickslate. A profile Emberwick rejects (a `step` of 0, a session whose
-`start` is after its `end`) shows the error view, "The volume profile couldn't be drawn", until you send
-another; it is not thrown.
+`start` is after its `end`, a `version` other than 1) shows the error view, "The volume profile couldn't be
+drawn", until you send another; it is not thrown. A profile is compared by its figures, not by its object, so
+sending an equal one on every tick costs nothing: it is neither reloaded nor reported again.
 
 ## Minimal example
 
@@ -120,12 +140,16 @@ The base members are listed in [Your own widget](../guide/your-own-widget.md).
 
 ## Theme
 
-The candles take their colours from the tokens, read when the chart is made and again when the theme changes
-(`data-theme`, `class`, `data-ts-theme` or `data-ts-palette` on `<html>` or the nearest `<ts-grid>`, or the
-system's colour scheme under `data-theme="auto"`): the surface, `--ts-line`, `--ts-axis`, `--ts-muted`, `--ts-ink`,
+The candles take their colours from the tokens, read when the chart is made and again whenever one of them
+resolves differently. The theme can be set where [Theming](../theming.md) says, on any element above the tile or on
+the tile itself: `data-theme`, `class`, `data-ts-theme`, `data-ts-palette` or an inline `style` that sets a token,
+on `<html>`, a wrapper, the grid, `<body>` or the widget. One observer on `<html>` serves every mini chart on the
+page, the system's colour scheme is followed under `data-theme="auto"`, and each data update checks again, so a
+token changed by a stylesheet swap is picked up on the next tick. Emberwick is told only when a value actually
+changed. The tokens used are: the surface, `--ts-line`, `--ts-axis`, `--ts-muted`, `--ts-ink`,
 `--ts-profit` (up candles), `--ts-loss` (down candles), `--ts-accent` (the volume profile) and `--ts-font-num`.
 The `red-up` palette swaps profit and loss, so the candles follow it. Emberwick's watermark is off, and its
-animation stops under `prefers-reduced-motion`.
+animation stops under `prefers-reduced-motion`, and follows that setting if it changes while the page is open.
 
 ## Actions
 
@@ -140,7 +164,7 @@ The widget does not change its own bars: replace `bars` and `timeframe` in `data
 
 | Part | Element |
 |---|---|
-| `tile` | The tile box, `role="group"` named by the chart's summary |
+| `tile` | The tile box, `role="group"` named by the label and the headline ("Mini chart, ABC Corp, last 128.40") |
 | `header` | The header row: the live dot, the label, the timeframe buttons at `L`, the sync time |
 | `label` | The label, a `role="heading"` whose level comes from `heading-level` |
 | `chart` | The framed box one chart is drawn in; a `role="img"` named by the summary |
@@ -169,4 +193,6 @@ The widget does not change its own bars: replace `bars` and `timeframe` in `data
 - The timeframe buttons sit in a `role="group"` named "Timeframe", each a toggle with `aria-pressed`, and are at least
   44px on touch screens.
 - In forced colours the canvas keeps Emberwick's colours; the frame and the controls use the system's.
-- Emberwick's animation stops under `prefers-reduced-motion`.
+- Emberwick's animation stops under `prefers-reduced-motion`, also if the setting changes while the page is open.
+- The tile's group is named by the label and the headline, and each chart's box is the `role="img"` that carries the
+  full summary, so a screen reader does not say the same sentence twice.

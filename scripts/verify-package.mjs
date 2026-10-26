@@ -533,17 +533,26 @@ try {
   if (resolved) ok(`all ${subpaths.length} elements entries resolve to their production file by default and to their dev/ twin under --conditions=development`)
 
   // A host that has not installed Emberwick still bundles tickslate/elements: nothing it imports names the peer, so
-  // there is no `external` here and no node_modules/emberwick in the scratch consumer (RFC 0004 §6.7).
+  // there is no `external` here and the consumer cannot reach one (RFC 0004 §6.7). The scratch dir holds a symlink to
+  // dist-lib, and esbuild follows a symlink to its real path inside this repo, whose node_modules has emberwick (it is a
+  // devDependency, for the browser spec). `preserveSymlinks` keeps the lookup on the scratch path, which has none.
+  const unreachable = { absWorkingDir: scratch, preserveSymlinks: true, external: [], logLevel: 'silent', write: false, bundle: true, format: 'esm' }
+  let peerHidden = true
+  try {
+    await build({ ...unreachable, stdin: { contents: "import 'emberwick'", resolveDir: resolve(scratch, 'node_modules', manifest.name), loader: 'js' } })
+    peerHidden = false
+    fail('the scratch consumer can resolve emberwick, so the "bundles without the peer" checks below would prove nothing')
+  } catch {
+    // Could not resolve it: the consumer is blind to the peer, as intended.
+  }
+  if (peerHidden) ok('the scratch consumer cannot resolve emberwick, so a bundle that succeeds below really did not need it')
   for (const conditions of [[], ['development']]) {
     const label = conditions.length ? 'development' : 'production'
     try {
       const result = await build({
+        ...unreachable,
         stdin: { contents: `import '${manifest.name}/elements'\nimport '${manifest.name}'`, resolveDir: scratch, loader: 'js' },
-        bundle: true,
-        write: false,
-        format: 'esm',
         target: 'es2019',
-        logLevel: 'silent',
         conditions,
       })
       if (/emberwick/i.test(result.outputFiles[0].text)) fail(`a ${label} esbuild bundle of ${manifest.name}/elements names emberwick`)

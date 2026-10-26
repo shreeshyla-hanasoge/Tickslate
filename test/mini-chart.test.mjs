@@ -187,7 +187,9 @@ describe('miniChartModel', () => {
     assert.equal(model(two, 'L').charts.length, 1)
     const xl = model(two, 'XL')
     assert.deepEqual(xl.charts.map((c) => c.id), ['abc', 'xyz'])
-    assert.match(xl.ariaLabel, /^ABC Corp, 5m: .*, XYZ Ltd, 5m: /)
+    // The group is named by the label and the headline; the full sentences belong to each chart's image.
+    assert.equal(xl.ariaLabel, 'Watch, ABC Corp, last 177.00, XYZ Ltd, last 177.00')
+    for (const c of xl.charts) assert.ok(!xl.ariaLabel.includes(c.summary))
   })
   test('timeframes are listed at L only, with the current one pressed', () => {
     const data = chartData({ timeframes: ['1m', '5m', '5m', '15m', 7] })
@@ -243,6 +245,7 @@ class FakeChart {
   setMarkers(m) { this.calls.push(['setMarkers', m.length]) }
   setTheme(th) { this.calls.push(['setTheme', th]) }
   setCountdown(on) { this.calls.push(['setCountdown', on]) }
+  setAnimate(on) { this.calls.push(['setAnimate', on]) }
   resize() { this.calls.push(['resize']) }
   destroy() { this.destroyed = true; this.calls.push(['destroy']) }
   names() { return this.calls.map((c) => c[0]) }
@@ -414,7 +417,7 @@ describe('the wrapper', () => {
     assert.equal(chart.calls.at(-1)[1].up, 'rgb(1, 2, 3)')
   })
 
-  test('it observes <html> and the nearest grid for the theme attributes, and the system scheme', async () => {
+  test('one observer on <html> serves every mini chart, for the theme attributes on any ancestor, and the system scheme', async () => {
     install()
     const seen = []
     const listeners = []
@@ -425,26 +428,108 @@ describe('the wrapper', () => {
     }
     globalThis.matchMedia = (q) => ({ matches: false, media: q, addEventListener: (_, fn) => listeners.push(fn), removeEventListener: () => listeners.splice(0) })
     const html = { tag: 'html' }
-    const grid = { tag: 'ts-grid' }
+    const wrapper = { tag: 'main', parentNode: html }
     try {
-      const el = new M.TsMiniChart()
-      els.push(el)
-      el.closest = (sel) => (sel === 'ts-grid' ? grid : null)
-      el.setAttribute('label', 'Watch')
-      el.connect()
+      const a = new M.TsMiniChart()
+      const b = new M.TsMiniChart()
+      els.push(a, b)
+      a.parentNode = wrapper
+      b.parentNode = html
+      a.setAttribute('label', 'A')
+      b.setAttribute('label', 'B')
+      a.connect()
+      b.connect()
       globalThis.document.documentElement = html
-      el._watchTheme()
-      assert.deepEqual(seen.map((o) => o.el), [html, grid])
-      for (const o of seen) assert.deepEqual(o.opts, { attributes: true, attributeFilter: ['data-theme', 'class', 'data-ts-theme', 'data-ts-palette'] })
-      assert.equal(listeners.length, 1)
-      el.disconnect()
-      assert.ok(seen.every((o) => o.gone))
+      let woke = []
+      a._onTheme = () => woke.push('a')
+      b._onTheme = () => woke.push('b')
+      a._watchTheme()
+      b._watchTheme()
+      assert.equal(seen.length, 1)
+      assert.equal(seen[0].el, html)
+      assert.deepEqual(seen[0].opts, { attributes: true, attributeFilter: ['data-theme', 'class', 'data-ts-theme', 'data-ts-palette', 'style'], subtree: true })
+      // A change on the wrapper wakes only the chart under it; one on <html> wakes both.
+      const cb = seen[0].cb
+      cb([{ target: wrapper }])
+      assert.deepEqual(woke, ['a'])
+      woke = []
+      cb([{ target: html }])
+      assert.deepEqual(woke.sort(), ['a', 'b'])
+      woke = []
+      cb([{ target: { tag: 'aside' } }])
+      assert.deepEqual(woke, [])
+      a.disconnect()
+      assert.ok(!seen[0].gone, 'still watching for the other')
+      b.disconnect()
+      assert.ok(seen[0].gone)
       assert.equal(listeners.length, 0)
     } finally {
       delete globalThis.MutationObserver
       delete globalThis.matchMedia
       delete globalThis.document.documentElement
     }
+  })
+
+  test('a render that finds the same tokens does not call setTheme; one that finds a changed token does', async () => {
+    install()
+    const el = mount()
+    el.data = chartData()
+    await settle()
+    const [chart] = only()
+    el.data = chartData({ bars: bars(79) })
+    await settle()
+    assert.equal(chart.names().filter((n) => n === 'setTheme').length, 0)
+    // Nothing moved on the page's attributes, only a token behind them (a stylesheet swap).
+    el._readToken = () => (token) => (token === '--ts-profit' ? 'rgb(9, 9, 9)' : '')
+    el.data = chartData({ bars: bars(80) })
+    await settle()
+    assert.equal(chart.names().filter((n) => n === 'setTheme').length, 1)
+    el._onTheme()
+    await settle()
+    assert.equal(chart.names().filter((n) => n === 'setTheme').length, 1, 'an unchanged re-read is not repeated')
+  })
+
+  test('reduced motion is followed while the page is open', async () => {
+    install()
+    const listeners = {}
+    const state = { reduce: false }
+    globalThis.matchMedia = (q) => ({
+      get matches() { return q.includes('reduced-motion') ? state.reduce : false },
+      media: q,
+      addEventListener: (_, fn) => { listeners[q] = fn },
+      removeEventListener: () => { delete listeners[q] },
+    })
+    try {
+      const el = mount()
+      el.data = chartData()
+      await settle()
+      const [chart] = only()
+      assert.equal(chart.opts.animate, true)
+      state.reduce = true
+      listeners['(prefers-reduced-motion: reduce)']()
+      assert.deepEqual(chart.calls.at(-1), ['setAnimate', false])
+      state.reduce = false
+      listeners['(prefers-reduced-motion: reduce)']()
+      assert.deepEqual(chart.calls.at(-1), ['setAnimate', true])
+    } finally {
+      delete globalThis.matchMedia
+    }
+  })
+
+  test('while the import is pending the tile is busy and the plot shows its skeleton; neither stays', async () => {
+    install()
+    let release
+    M.peers.chart = () => new Promise((resolve) => (release = () => resolve({ Chart: FakeChart })))
+    const el = mount()
+    el.data = chartData()
+    await settle()
+    assert.equal(el._section.getAttribute('aria-busy'), 'true')
+    assert.equal(el.$('[data-k="load0"]').hasAttribute('hidden'), false)
+    release()
+    await settle()
+    assert.equal(only().length, 1)
+    assert.equal(el._section.getAttribute('aria-busy'), null)
+    assert.equal(el.$('[data-k="load0"]').hasAttribute('hidden'), true)
   })
 
   test('disconnecting destroys the chart; reconnecting draws it again', async () => {
@@ -550,6 +635,64 @@ describe('the wrapper', () => {
     await settle()
     assert.deepEqual(profiles.created[0].calls.at(-1), ['setData', null])
     assert.equal(profiles.created.length, 1)
+  })
+
+  test('an equal profile in a new object each tick neither reloads nor calls setData; a changed bin does', async () => {
+    install()
+    const el = mount({ size: 'L' })
+    el.data = chartData()
+    await settle()
+    const copy = (over = {}) => JSON.parse(JSON.stringify({ ...GOOD, ...over }))
+    el.data = { ...chartData(), volumeProfile: copy() }
+    await settle()
+    for (let i = 0; i < 5; i++) {
+      el.data = { ...chartData(), volumeProfile: copy() }
+      await settle()
+    }
+    assert.equal(profiles.created.length, 1)
+    assert.equal(profiles.created[0].calls.length, 0)
+    const moved = copy()
+    moved.sessions[0].bins = [1, 4, 4, 9, 1]
+    el.data = { ...chartData(), volumeProfile: moved }
+    await settle()
+    assert.equal(profiles.created[0].calls.length, 1)
+    assert.equal(M.profileKey(copy()), M.profileKey(copy()))
+    assert.notEqual(M.profileKey(copy()), M.profileKey(moved))
+  })
+
+  test('an equal bad profile re-sent each tick keeps the error view and makes no new chart', async () => {
+    install()
+    mock.method(console, 'warn', () => {})
+    const el = mount({ size: 'L' })
+    el.data = chartData()
+    await settle()
+    const bad = () => ({ ...GOOD, step: 0 })
+    el.data = { ...chartData(), volumeProfile: bad() }
+    await settle()
+    assert.equal(el._shown, 'view:error')
+    const made = FakeChart.all.length
+    for (let i = 0; i < 5; i++) {
+      el.data = { ...chartData(), volumeProfile: bad() }
+      await settle()
+      assert.equal(el._shown, 'view:error')
+    }
+    assert.equal(FakeChart.all.length, made)
+  })
+
+  test('a profile of version 2 is the badProfile view', async () => {
+    install()
+    mock.method(console, 'warn', () => {})
+    const el = mount({ size: 'L' })
+    el.data = chartData()
+    await settle()
+    el.data = { ...chartData(), volumeProfile: { ...GOOD, version: 2 } }
+    await settle()
+    assert.equal(el._shown, 'view:error')
+    assert.equal(el._section.querySelector('[data-k="message"]').textContent, "The volume profile couldn't be drawn")
+    assert.equal(profiles.created.length, 0)
+    el.data = { ...chartData(), volumeProfile: GOOD }
+    await settle()
+    assert.equal(el._shown, 'L')
   })
 
   test('no profile is drawn at M, and an empty one loads nothing', async () => {

@@ -129,12 +129,17 @@ const types = [
   ['src/elements/widget.d.ts', 'widget.d.ts'],
   ['src/elements/grid.d.ts', 'grid.d.ts'],
   ['src/elements/controls.d.ts', 'controls.d.ts'],
+  ['src/elements/mini-chart.d.ts', 'mini-chart.d.ts'],
 ]
 const shipped = []
 for (const [from, to] of types) {
   const src = resolve(root, from)
   if (!existsSync(src)) continue
-  const text = (await readFile(src, 'utf8')).replace(/(['"])\.\.\/core\/index\.js\1/g, '$1./index.js$1')
+  // mini-chart.d.ts names the shared widget types from './index.js' (the elements declarations in the repo); at the package
+  // root that is elements.d.ts. This runs before the core rewrite below, whose result is also './index.js'.
+  let text = await readFile(src, 'utf8')
+  if (to === 'mini-chart.d.ts') text = text.replace(/(['"])\.\/index\.js\1/g, '$1./elements.js$1')
+  text = text.replace(/(['"])\.\.\/core\/index\.js\1/g, '$1./index.js$1')
   const dest = resolve(out, to)
   await mkdir(dirname(dest), { recursive: true })
   await writeFile(dest, text)
