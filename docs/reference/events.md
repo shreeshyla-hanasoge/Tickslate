@@ -192,7 +192,10 @@ connected; read `grid.columns` too.
 The profile on show changed because of the schedule or `override()`. Not
 fired when you change the `profile` attribute yourself. It does fire when a
 schedule set at load puts the grid straight into another profile (the
-announcement is skipped then, the event is not).
+announcement is skipped then, the event is not). It fires once the new layout
+is on the board, so a handler reading `grid.readingOrder` sees the layout it
+was told about; for a scheduled switch that is half-way through the crossfade,
+about 110 ms after the profile changed.
 
 ```ts
 // detail

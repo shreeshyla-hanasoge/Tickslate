@@ -277,6 +277,29 @@ test.describe('the first-run hint', () => {
     expect(await events(page, 'ts-hint-dismiss')).toMatchObject([{ reason: 'edit' }])
   })
 
+  test('starting to edit while focus is on Got it hands focus to the first tile\'s handle, not the body', async ({ page }) => {
+    await load(page, 'hint')
+    await page.evaluate(() => window.__fx.grid.shadowRoot.querySelector('.coach-ok').focus())
+    await page.evaluate(() => { window.__fx.grid.editing = true })
+    await settle(page)
+    await expect(coach(page)).toBeHidden()
+    const where = await page.evaluate(() => {
+      const a = window.__fx.grid.shadowRoot.activeElement
+      return { handle: !!a && a.classList.contains('handle'), id: a && a.closest('.chrome') && a.closest('.chrome').dataset.id, body: document.activeElement === document.body }
+    })
+    expect(where).toEqual({ handle: true, id: 'sales', body: false })
+  })
+
+  test('the card and Got it have an edge of their own, which forced colours draw', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' })
+    await load(page, 'hint')
+    const edges = await page.evaluate(() => {
+      const r = window.__fx.grid.shadowRoot
+      return [r.querySelector('.coach'), r.querySelector('.coach-ok')].map((el) => getComputedStyle(el).borderTopWidth)
+    })
+    expect(edges).toEqual(['1px', '1px'])
+  })
+
   test('removing the attribute hides it and says nothing; setting it again shows it again', async ({ page }) => {
     await load(page, 'hint')
     await page.evaluate(() => { window.__fx.grid.hint = false })
@@ -359,7 +382,7 @@ test.describe('the calm profile switch, with motion', () => {
     await expect.poll(async () => (await anims(page)).length).toBe(2)
     expect(await anims(page)).toEqual(['[{"opacity":1},{"opacity":0}]', '[{"opacity":0},{"opacity":1}]'])
     await expect.poll(() => onScreen(page)).toEqual(['queue', 'tasks', 'notes'])
-    // The event is made at once, and the pointer or key never pays for the fade.
+    // The event comes once the layout is on the board (see the reading-order test), and the pointer or key never pays for the fade.
     expect(await events(page, 'ts-profile-change')).toMatchObject([{ profile: 'closed', reason: 'schedule' }])
     await expect(toast(page)).toHaveClass(/on/)
     await expect(toast(page)).toHaveAttribute('role', 'group')
@@ -469,6 +492,60 @@ test.describe('the calm profile switch, with motion', () => {
     await expect.poll(() => onScreen(page)).toEqual(['queue', 'tasks', 'notes'])
     expect(await anims(page)).toEqual([])
     expect(await toast(page).evaluate((el) => el.classList.contains('on'))).toBe(false)
+  })
+
+  test('the profile attribute is announced by the profile\'s name, like the schedule and override() routes', async ({ page }) => {
+    await load(page, 'schedule')
+    await page.evaluate(() => window.__fx.grid.setAttribute('profile', 'closed'))
+    await expect.poll(() => said(page)).toEqual(['Showing the After close layout.'])
+    await page.evaluate(() => window.__fx.grid.setAttribute('profile', 'market'))
+    await expect.poll(() => said(page)).toEqual(['Showing the After close layout.', 'Showing the Market hours layout.'])
+  })
+
+  test('ts-profile-change fires with the new layout on the board: a handler reading readingOrder sees it', async ({ page }) => {
+    await load(page, 'schedule')
+    await page.evaluate(() => {
+      const g = window.__fx.grid
+      window.__seen = []
+      g.addEventListener('ts-profile-change', (e) => window.__seen.push({ reason: e.detail.reason, order: [...g.readingOrder] }))
+    })
+    await page.evaluate(() => window.__fx.cross('15:46'))
+    await expect.poll(() => page.evaluate(() => window.__seen.length)).toBe(1)
+    expect((await page.evaluate(() => window.__seen))[0]).toEqual({ reason: 'schedule', order: ['queue', 'tasks', 'notes'] })
+    // The same for a kept override that lapses, which also crossfades: a fresh page, so the override is made before the close.
+    await load(page, 'schedule')
+    await page.evaluate(() => {
+      const g = window.__fx.grid
+      window.__seen = []
+      g.addEventListener('ts-profile-change', (e) => window.__seen.push({ reason: e.detail.reason, order: [...g.readingOrder] }))
+      g.override('focus')
+    })
+    await page.evaluate(() => window.__fx.cross('15:46'))
+    await expect.poll(() => page.evaluate(() => window.__seen.length)).toBe(2)
+    expect(await page.evaluate(() => window.__seen)).toEqual([
+      { reason: 'override', order: ['alerts', 'sales'] },
+      { reason: 'override-ended', order: ['queue', 'tasks', 'notes'] },
+    ])
+  })
+
+  test('clearing your own override with override(null) applies at once, with no fade', async ({ page }) => {
+    await load(page, 'schedule')
+    await page.evaluate(() => window.__fx.grid.override('focus'))
+    await expect.poll(() => onScreen(page)).toEqual(['alerts', 'sales'])
+    await page.evaluate(() => window.__fx.grid.override(null))
+    await expect.poll(() => onScreen(page)).toEqual(['sales', 'notes', 'tasks', 'queue', 'alerts'])
+    expect(await anims(page)).toEqual([])
+    expect(await events(page, 'ts-profile-change')).toMatchObject([{ reason: 'override' }, { reason: 'override-ended' }])
+  })
+
+  test('a messages change while the Keep toast shows rewords it', async ({ page }) => {
+    await load(page, 'schedule')
+    await page.evaluate(() => window.__fx.cross('15:46'))
+    await expect(toast(page).locator('.undo')).toHaveText('Keep Market hours')
+    await page.evaluate(() => { window.__fx.grid.messages = { 'grid.keepProfile': 'Garder {previous}', 'grid.profileSwitched': 'Passé à {profile}' } })
+    await expect(toast(page).locator('.undo')).toHaveText('Garder Market hours')
+    await expect(toast(page).locator('.msg')).toHaveText('Passé à After close')
+    await expect(toast(page)).toHaveAttribute('aria-label', 'Passé à After close')
   })
 
   test('the removal toast is still a status with Undo, and a switch does not leave it a group', async ({ page }) => {

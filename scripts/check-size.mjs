@@ -166,11 +166,16 @@ const remeasuredTwelfth = (maxKb) => ({ ...entry(maxKb), target: 're-measured on
 // in each of the three charts: chart 34,215 B (37,637 B with 10 %, 37 kB), equity-curve 30,646 B (33,711 B, 33 kB) and today-pnl
 // 30,464 B (33,510 B, 33 kB), each rounded up to the next 0.5 kB. No other row moved. Authorised by the orchestrator (RFC 0003 §25).
 const remeasuredThirteenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured with the chart scrubber, its hidden table and the chart.scrub* messages, RFC 0003 §25', date: '2026-10-26' })
+// Two rows (edit-feedback, RFC 0004 §3, 2026-10-26): grid 37,624 B (41,386 B with 10 %, 40.5 kB) for the resize badge, the
+// first-run hint and the calm profile switch (about 0.8 kB of CSS, 0.9 kB of grid-feedback.js, 0.7 kB of logic, 236 B of
+// messages), and controls 17,417 B (19,159 B, 19 kB) for the seven new shared grid.* messages. No other row moved.
+// Authorised by the orchestrator after review (RFC 0003 §25).
+const remeasuredFourteenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured with the resize badge, the first-run hint, the calm profile switch and their messages (edit-feedback), RFC 0004 §3, RFC 0003 §25', date: '2026-10-26' })
 const ENTRY_BUDGETS = {
-  controls: remeasuredNinth(17),
+  controls: remeasuredFourteenth(19),
   'edge-stats': remeasuredTwelfth(28.5),
   'capital-funding': remeasuredTwelfth(29.5),
-  grid: remeasuredTenth(35),
+  grid: remeasuredFourteenth(40.5),
   card: remeasuredTwelfth(25.5),
   metric: remeasuredTwelfth(27.5),
   chart: remeasuredThirteenth(37),

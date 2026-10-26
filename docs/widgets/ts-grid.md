@@ -154,7 +154,7 @@ frame. The board fades out, takes the new layout while it is clear, and fades
 back in, each way half of `--ts-motion` (220 ms by default, so 110 ms), through
 the Web Animations API. Nothing animates under `prefers-reduced-motion: reduce`.
 It runs for `reason: 'schedule'` and for `'override-ended'` (a kept profile
-lapsing at the next change); your own `override()`, the `profile` attribute, the
+lapsing at the next change); your own `override()` (including `override(null)`), the `profile` attribute, the
 first render and every edit apply at once. A switch that waited for the user to
 finish editing fades when it finally applies.
 

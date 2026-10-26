@@ -238,14 +238,14 @@ const CSS = `
   .coach {
     position: absolute; z-index: 8; box-sizing: border-box; display: flex; align-items: center; gap: 4px;
     inline-size: max-content; max-inline-size: min(320px, 100%); padding-block: 4px; padding-inline: 16px 4px;
-    border-radius: var(--ts-radius, 10px); background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
+    border: 1px solid transparent; border-radius: var(--ts-radius, 10px); background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
     font: 500 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui);
   }
   .coach .coach-text { margin: 0; flex: 1 1 auto; padding-block: 8px; }
   .coach .arrow { position: absolute; inset-block-start: -5px; inset-inline-start: 24px; inline-size: 12px; block-size: 12px; border-start-start-radius: 2px; background: inherit; rotate: 45deg; }
   .coach.over .arrow { display: none; }
   .coach-ok {
-    flex: none; min-inline-size: 44px; min-block-size: 44px; margin: 0; padding: 0 16px; border: 0; border-radius: 999px; cursor: pointer;
+    flex: none; min-inline-size: 44px; min-block-size: 44px; margin: 0; padding: 0 16px; border: 1px solid transparent; border-radius: 999px; cursor: pointer;
     background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
   }
   .coach-ok:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
@@ -431,6 +431,7 @@ export class TsGrid extends Base {
     this._editOrigin = null // the element that started editing, for the focus return
     this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
     this._toastRun = null // what the toast's button does until the toast is gone; null is Undo
+    this._toastWords = null // for a profile toast: its words from a translate function, so a locale change can redo them
     this._keeping = null // the profile name a Keep press is switching to, so the status region says it in the words of the toast
     this._fade = null // { run, anims, applied } while a scheduled switch is crossfading
     // The resize badge (RFC 0004 §3.1): up while a tile is resized, gone a second after the last release.
@@ -694,7 +695,12 @@ export class TsGrid extends Base {
     const t = this.t
     if (t === this._tText) return
     this._tText = t
-    if (!this._toastState || !this._toastState.profile) this._toastUndo.textContent = t('grid.undo')
+    if (this._toastState && this._toastState.profile && this._toastWords) {
+      const w = this._toastWords(t)
+      this._toastUndo.textContent = w.label
+      this._toastText.textContent = w.text
+      this._toast.setAttribute('aria-label', w.text)
+    } else this._toastUndo.textContent = t('grid.undo')
     this._editBtn.textContent = t('grid.editLayout')
     this._pill.setAttribute('aria-label', t('grid.editingGroup'))
     this._pill.querySelector('.done').textContent = t('grid.done')
@@ -1169,7 +1175,8 @@ export class TsGrid extends Base {
       const before = this.profile
       this._override = null
       this._reschedule(false)
-      this._profileChanged(before, 'override-ended')
+      // A user clearing their own override applies at once; only the scheduler's lapse is calm (RFC 0004 §3.3).
+      this._profileChanged(before, 'override-ended', false, true)
       this._stateChanged()
       return
     }
@@ -1334,7 +1341,7 @@ export class TsGrid extends Base {
     } else if (name === 'profile') {
       this._cancelGesture()
       this._sync(false)
-      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: this.profile }))
+      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: profileName(this.t, this.profile) }))
     } else if (['locale', 'currency', 'time-zone', 'hour-cycle'].includes(name)) {
       this._refreshText()
       this._invalidateWidgets()
@@ -1412,7 +1419,7 @@ export class TsGrid extends Base {
     this._stateChanged()
   }
 
-  _profileChanged(before, reason, quiet = false) {
+  _profileChanged(before, reason, quiet = false, instant = false) {
     const profile = this.profile
     if (profile === before) return
     this._cancelGesture()
@@ -1421,8 +1428,13 @@ export class TsGrid extends Base {
     const plan = planSwitch({ reason, quiet, rendered: this._rendered })
     // A Keep offered for an earlier switch no longer says what it did.
     if (!plan.toast && this._toastState && this._toastState.profile) this._hideToast(false)
-    if (plan.crossfade) this._crossfade(() => this._sync(false))
-    else this._sync(false)
+    // The event rides the apply step, so a handler reading readingOrder sees the layout it was told about, not the one fading out.
+    const apply = () => {
+      this._sync(false)
+      this._emit('ts-profile-change', { profile, reason })
+    }
+    if (plan.crossfade && !instant) this._crossfade(apply)
+    else apply()
     // Not on load, when nothing has changed from the user's point of view. A scheduled switch is spoken here, once;
     // the toast is a labelled group, not a live region (docs/ACCESSIBILITY.md item 18).
     if (!quiet) {
@@ -1433,10 +1445,11 @@ export class TsGrid extends Base {
       this._showToast(t('grid.profileSwitched', { profile: profileName(t, profile) }), {
         label: t('grid.keepProfile', { previous: profileName(t, before) }),
         run: () => this._keepPrevious(before),
+        // A locale change inside the toast's six seconds rewords it too.
+        words: (tt) => ({ text: tt('grid.profileSwitched', { profile: profileName(tt, profile) }), label: tt('grid.keepProfile', { previous: profileName(tt, before) }) }),
         profile: true,
       })
     }
-    this._emit('ts-profile-change', { profile, reason })
   }
 
   // ── The calm profile switch (RFC 0004 §3.3) ────────────────────────────
@@ -2114,6 +2127,8 @@ export class TsGrid extends Base {
     if (!this.isConnected) return
     // Tiles are about to be handled: a crossfade in flight lands first, so nothing is left half-faded.
     this._endFade()
+    // Read before the hint ends: hiding the card would drop focus to the body.
+    const onHint = !!this._coach && !!this.shadowRoot.activeElement && this._coach.el.contains(this.shadowRoot.activeElement)
     // Edit mode ends the hint by whatever route it began, and the profile toast's Keep would change the board under a hand.
     this._hintEnd('edit')
     if (this._toastState && this._toastState.profile) this._hideToast(false)
@@ -2127,6 +2142,11 @@ export class TsGrid extends Base {
       this._wiggle(id)
     }
     if (focusId && this._chromes.has(focusId[0])) this._chromes.get(focusId[0]).querySelector('.handle').focus({ preventScroll: true })
+    else if (onHint) {
+      // Got it is about to be hidden; its tile's handle is where focus goes, never the body.
+      const first = this._chromes.get(visualOrder([...this._placements.values()])[0])
+      if (first) first.querySelector('.handle').focus({ preventScroll: true })
+    }
     document.addEventListener('keydown', this._onDocKeyDown)
     document.addEventListener('pointerdown', this._onDocPointerDown, true)
     this._syncControls()
@@ -2861,6 +2881,7 @@ export class TsGrid extends Base {
     const group = !!(action && action.profile)
     this._toastState = { remaining: TOAST_MS, started: 0, timer: 0, hover: false, focus: false, profile: group }
     this._toastRun = action ? action.run : null
+    this._toastWords = group ? action.words : null
     this._toastUndo.textContent = action ? action.label : this.t('grid.undo')
     // The role before the text, so the words are never put into a live region that is about to stop being one.
     toast.setAttribute('role', group ? 'group' : 'status')
