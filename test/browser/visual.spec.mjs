@@ -8,50 +8,79 @@
 // An intentional look change updates the baselines in the same PR, and the PR
 // says which look changed and why.
 import { test, expect } from '@playwright/test'
-import { WIDGETS } from '../../src/core/index.js'
 
-// Same trick as render.spec.mjs: the core lists widgets whose elements are not
-// built yet, and those have no tile, so follow the registrations.
-const defined = new Set()
-globalThis.customElements = { get: () => undefined, define: (tag) => defined.add(tag) }
-await import('../../src/elements/index.js')
-delete globalThis.customElements
-
-const KEYS = Object.entries(WIDGETS).filter(([, spec]) => defined.has(spec.tag)).map(([key]) => key)
-const THEMES = ['light', 'dark']
+// 'default' sets no data-theme, so the bare :root palette of tokens.css (and default-tokens.js) is pinned too.
+const THEMES = ['light', 'dark', 'default']
 const VIEWPORTS = {
   desktop: { width: 1280, height: 800 },
   phone: { width: 390, height: 844 },
 }
 const PAGE = '/test/browser/fixtures/widgets.html'
 
+// RFC 0004 section 9.1 names maxDiffPixelRatio 0.001, which lets a 304 x 150 tile differ by 45 pixels and an XL
+// table by hundreds: a one-digit text change, a 1 px radius step and a small accent shift all slipped under it, and
+// at the default per-pixel threshold (0.1, and Playwright's 0.2) the colour shifts are not seen at all. So the ratio
+// is kept and paired with no allowed differing pixels and a per-pixel threshold of 0.005, which sees a 2-level shift
+// in every colour channel. Rendering in one pinned image is deterministic: 24 clean runs on the baselines made
+// beside them.
+const COMPARE = { maxDiffPixelRatio: 0.001, maxDiffPixels: 0, threshold: 0.005, animations: 'disabled' }
+
+// The widget list comes from the page, which knows what is registered. Playwright
+// loads every spec file in one process, so a Node-side import of the elements
+// would be evaluated by whichever spec ran first, and a stub there would leave
+// this file with an empty list. The tests below are one per theme and viewport,
+// each looping over what the page lists, with the same snapshot names as before.
 test.describe('visual baselines', () => {
   test.beforeEach(({}, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium', 'baselines are made for one engine on one platform')
   })
 
-  test('the registrations include the generic widgets', () => {
-    expect(KEYS).toEqual(expect.arrayContaining(['card', 'metric', 'chart']))
-  })
-
   for (const [viewport, size] of Object.entries(VIEWPORTS)) {
     for (const theme of THEMES) {
-      for (const key of KEYS) {
-        test(`${key} in ${theme} on ${viewport}`, async ({ page }) => {
-          await page.setViewportSize(size)
-          await page.goto(`${PAGE}?theme=${theme}`)
+      // The default palette is one look; the desktop shot is enough.
+      if (theme === 'default' && viewport === 'phone') continue
+      test(`every widget in ${theme} on ${viewport}`, async ({ page }) => {
+        test.setTimeout(120000)
+        await page.emulateMedia({ colorScheme: 'light' })
+        await page.setViewportSize(size)
+        // A table decides how many columns it keeps from what it measures around its first draw, and on about one
+        // load in ten that lands one column short whatever the settling time. Load until two loads in a row show the
+        // same columns, so a baseline is never one of the stray states.
+        const load = async () => {
+          await page.goto(`${PAGE}?theme=${theme}&exact=1`)
           await page.waitForFunction(() => window.__ready === true)
-          await page.evaluate(() => window.__fx.nextFrame())
-          // Every size of the widget in turn; a soft expect so one drifted tile does not hide the others.
-          for (const tileSize of WIDGETS[key].sizes) {
-            const tile = page.locator(`[data-key="${key}"][data-size="${tileSize}"]`)
-            await expect.soft(tile).toHaveScreenshot(`${key}-${tileSize}-${theme}-${viewport}.png`, {
-              maxDiffPixelRatio: 0.001,
-              animations: 'disabled',
-            })
+          return page.evaluate(async () => {
+            await document.fonts.ready
+            for (let i = 0; i < 6; i++) await window.__fx.nextFrame()
+            return [...document.querySelectorAll('ts-table')].map((el) => el.shadowRoot.querySelectorAll('thead th').length).join(',')
+          })
+        }
+        let seen = await load()
+        for (let tries = 0; tries < 6; tries++) {
+          const again = await load()
+          if (again === seen) break
+          seen = again
+        }
+        // On the phone, a tile that fits at its nominal width looks the same as on the desktop, so only the tiles the viewport narrows get a phone shot.
+        const entries = await page.evaluate((phone) => window.__fx.entries.map((e) => ({
+          ...e,
+          sizes: e.sizes.filter((s) => {
+            if (!phone) return true
+            const el = document.querySelector(`[data-key="${e.key}"][data-size="${s}"]`)
+            const nominal = parseFloat(el.closest('figure').style.width.match(/min\((\d+)px/)[1])
+            return el.getBoundingClientRect().width < nominal - 0.5
+          }),
+        })), viewport === 'phone')
+        // An empty list would pass vacuously, so say so loudly.
+        expect(entries.map((e) => e.key)).toEqual(expect.arrayContaining(['card', 'metric', 'chart']))
+        for (const entry of entries) {
+          for (const tileSize of entry.sizes) {
+            const tile = page.locator(`[data-key="${entry.key}"][data-size="${tileSize}"]`)
+            // A soft expect so one drifted tile does not hide the others.
+            await expect.soft(tile).toHaveScreenshot(`${entry.key}-${tileSize}-${theme}-${viewport}.png`, COMPARE)
           }
-        })
-      }
+        }
+      })
     }
   }
 })

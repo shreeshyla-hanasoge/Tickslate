@@ -1,7 +1,8 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, readdirSync, writeFileSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, relative } from 'node:path'
 
 // Pins the public surface (RFC 0004 §9.2): core and element exports, each tag's
 // observed attributes, events and parts, the --ts-* tokens and the package
@@ -23,11 +24,16 @@ const sorted = (iterable) => [...new Set(iterable)].sort()
 
 // ── The reader ──────────────────────────────────────────────────────────────
 
-/** Names an entry file exports: `export const|function|class|let x` and `export { a, b as c }`. */
+/**
+ * Names an entry file exports: `export [async] const|function[*]|class|let x`, `export default` and `export { a, b as c }`.
+ * `export * from` cannot be named by a regex, so it throws: list the names instead.
+ */
 export function exportsOf(source) {
   const code = stripComments(source)
   const names = new Set()
-  for (const m of code.matchAll(/export\s+(?:const|function|class|let)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1])
+  if (/export\s*\*/.test(code)) throw new Error('export * hides names from the API snapshot; export them by name')
+  for (const m of code.matchAll(/export\s+(?:async\s+)?(?:const|function\s*\*?|class|let|var)\s*([A-Za-z_$][\w$]*)/g)) names.add(m[1])
+  if (/export\s+default\b/.test(code)) names.add('default')
   for (const m of code.matchAll(/export\s*\{([^}]*)\}/g)) {
     for (const part of m[1].split(',')) {
       const name = part.trim().split(/\s+as\s+/).pop()
@@ -106,11 +112,17 @@ export function eventsIn(files, constants = stringConstants()) {
   return sorted(names)
 }
 
-/** Every `part="a b"` token in the template strings of a set of files. */
+/**
+ * Every part a set of files gives a node: `part="a b"` in a template string, `setAttribute('part', 'a')` and
+ * `.part.add('a')` in code. Comments are stripped first, or the header's examples would count.
+ */
 export function partsIn(files) {
   const names = new Set()
   for (const file of files) {
-    for (const m of read(file).matchAll(/\bpart="([^"$`]+)"/g)) for (const p of m[1].trim().split(/\s+/)) names.add(p)
+    const code = stripComments(read(file))
+    for (const m of code.matchAll(/\bpart="([^"$`]+)"/g)) for (const p of m[1].trim().split(/\s+/)) names.add(p)
+    for (const m of code.matchAll(/setAttribute\(\s*'part'\s*,\s*'([^'$`]+)'/g)) for (const p of m[1].trim().split(/\s+/)) names.add(p)
+    for (const m of code.matchAll(/\.part\.add\(\s*'([^']+)'/g)) names.add(m[1])
   }
   return sorted(names)
 }
@@ -125,7 +137,7 @@ export function surface() {
   const table = classes()
   const constants = stringConstants()
   const tags = {}
-  for (const { tag, className } of definedTags().sort((a, b) => a.tag.localeCompare(b.tag))) {
+  for (const { tag, className } of definedTags().sort((a, b) => (a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0))) {
     const files = filesFor(className, table)
     tags[tag] = { class: className, attributes: attributesOf(className, table), events: eventsIn(files, constants), parts: partsIn(files) }
   }
@@ -173,7 +185,15 @@ describe('the reader', () => {
 
   test('reads exports, spreads and parts from a sample', () => {
     assert.deepEqual(exportsOf("export const a = 1\n// export const no = 2\nexport { b, c as d } from './x.js'"), ['a', 'b', 'd'])
+    assert.deepEqual(exportsOf('export async function a() {}\nexport function* b() {}\nexport default class {}'), ['a', 'b', 'default'])
+    assert.throws(() => exportsOf("export * from './x.js'"), /export \*/)
     assert.deepEqual(tokensIn(':root { --ts-a: 1; --ts-b: var(--ts-a); } /* --ts-c: 2; */'), ['--ts-a', '--ts-b'])
+  })
+
+  test('reads parts set in code and ignores those named in comments', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'parts-'))
+    writeFileSync(join(dir, 'x.js'), "/* part=\"ghost\" */\n// part=\"ghost2\"\nconst t = '<i part=\"a b\"></i>'\ntd.setAttribute('part', 'cell')\nel.part.add('bar')\n")
+    assert.deepEqual(partsIn([relative(root, join(dir, 'x.js'))]), ['a', 'b', 'bar', 'cell'])
   })
 
   test('reports what changed, name by name', () => {

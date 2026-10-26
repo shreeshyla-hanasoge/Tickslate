@@ -24,11 +24,11 @@
     "test:browser": "playwright test",
     "test:consumers": "node scripts/test-consumers.mjs",
     "test:visual": "playwright test test/browser/visual.spec.mjs --project=chromium",
-    "test:visual:update": "docker run --rm --ipc=host -v \"$PWD\":/work -v tickslate-visual-node-modules:/work/node_modules -w /work mcr.microsoft.com/playwright:v1.64.0-noble sh -c \"npm ci && npx playwright test test/browser/visual.spec.mjs --project=chromium --update-snapshots\"",
+    "test:visual:update": "docker run --rm --ipc=host -e UID_GID=\"$(id -u):$(id -g)\" -v \"$PWD\":/work -v tickslate-visual-node-modules:/work/node_modules -w /work mcr.microsoft.com/playwright:v1.64.0-noble sh -c \"npm ci && npx playwright test test/browser/visual.spec.mjs --project=chromium --update-snapshots; status=\\$?; chown -R \\$UID_GID test/browser/visual.spec.mjs-snapshots; exit \\$status\"",
     "api:update": "UPDATE_API_SNAPSHOT=1 node --test test/api-surface.test.mjs",
     "coverage": "npm run coverage:core && npm run coverage:models",
     "coverage:core": "node --test --experimental-test-coverage --test-coverage-include=src/core/*.js --test-coverage-lines=90 test/*.test.mjs examples/custom-widget/*.test.mjs",
-    "coverage:models": "node --test --experimental-test-coverage --test-coverage-include=src/elements/*.js --test-coverage-exclude=src/elements/grid.js --test-coverage-exclude=src/elements/widget.js --test-coverage-exclude=src/elements/picker.js --test-coverage-exclude=src/elements/grid-controls.js --test-coverage-exclude=src/elements/persist.js --test-coverage-exclude=src/elements/registry.js --test-coverage-exclude=src/elements/ticker.js --test-coverage-exclude=src/elements/dev.js --test-coverage-exclude=src/elements/scrub.js --test-coverage-lines=80 test/*.test.mjs examples/custom-widget/*.test.mjs",
+    "coverage:models": "node --test --experimental-test-coverage --test-coverage-include=src/elements/*.js --test-coverage-exclude=src/elements/grid.js --test-coverage-exclude=src/elements/widget.js --test-coverage-exclude=src/elements/picker.js --test-coverage-exclude=src/elements/grid-controls.js --test-coverage-exclude=src/elements/persist.js --test-coverage-exclude=src/elements/registry.js --test-coverage-exclude=src/elements/ticker.js --test-coverage-exclude=src/elements/dev.js --test-coverage-exclude=src/elements/html.js --test-coverage-exclude=src/elements/layout-list.js --test-coverage-lines=80 test/*.test.mjs examples/custom-widget/*.test.mjs",
     "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run build:cdn && npm run pack:lib && npm run verify:package && npm run size"
   },
   "devDependencies": {

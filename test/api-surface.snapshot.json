@@ -107,14 +107,14 @@
           "ts-action:retry"
         ],
         "parts": [
+          "bar",
           "chart",
           "empty",
           "error",
           "header",
           "label",
           "skeleton",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-card": {
@@ -145,7 +145,6 @@
         ],
         "parts": [
           "body",
-          "chart",
           "empty",
           "error",
           "header",
@@ -185,8 +184,7 @@
           "header",
           "label",
           "skeleton",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-edge-stats": {
@@ -219,8 +217,7 @@
           "header",
           "label",
           "skeleton",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-equity-curve": {
@@ -254,8 +251,7 @@
           "header",
           "label",
           "skeleton",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-grid": {
@@ -313,6 +309,8 @@
           "empty",
           "list",
           "locked",
+          "name",
+          "row",
           "rows",
           "status",
           "undo"
@@ -376,15 +374,17 @@
           "ts-action:retry"
         ],
         "parts": [
+          "bar",
+          "cell",
           "chart",
           "empty",
           "error",
           "header",
           "label",
+          "row",
           "skeleton",
           "table",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-pnl-calendar": {
@@ -410,14 +410,12 @@
           "ts-action:retry"
         ],
         "parts": [
-          "chart",
           "empty",
           "error",
           "header",
           "label",
           "skeleton",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-progress": {
@@ -444,7 +442,6 @@
         ],
         "parts": [
           "bar",
-          "chart",
           "empty",
           "error",
           "header",
@@ -477,7 +474,6 @@
           "ts-action:retry"
         ],
         "parts": [
-          "chart",
           "empty",
           "error",
           "header",
@@ -512,15 +508,15 @@
           "ts-action:sort"
         ],
         "parts": [
-          "chart",
+          "cell",
           "empty",
           "error",
           "header",
           "label",
+          "row",
           "skeleton",
           "table",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-today-pnl": {
@@ -552,8 +548,7 @@
           "header",
           "label",
           "skeleton",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-watchlist": {
@@ -580,15 +575,17 @@
           "ts-action:retry"
         ],
         "parts": [
+          "bar",
+          "cell",
           "chart",
           "empty",
           "error",
           "header",
           "label",
+          "row",
           "skeleton",
           "table",
-          "tile",
-          "value"
+          "tile"
         ]
       },
       "ts-widget-picker": {
@@ -596,8 +593,11 @@
         "attributes": [],
         "events": [],
         "parts": [
+          "chip",
           "close",
           "empty",
+          "group",
+          "row",
           "search",
           "sheet"
         ]

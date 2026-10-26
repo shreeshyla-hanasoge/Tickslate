@@ -93,6 +93,8 @@ jobs:
           path: |
             node_modules/.playwright/report/
             node_modules/.playwright/results/
+          # Both sit under .playwright, a hidden directory that upload-artifact skips unless told otherwise.
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
 
@@ -156,20 +158,20 @@ jobs:
         with:
           name: visual-diff
           path: node_modules/.playwright/results/
+          # The results sit under .playwright, a hidden directory that upload-artifact skips unless told otherwise.
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
 
   # Line coverage of the unit suite under Node's own coverage, no install. The
-  # flags need Node 20.17 or newer, so this sets Node 22 rather than the test
-  # job's 20 floor. The thresholds are 90 % for src/core and 80 % for the view
-  # models. The view models measure below 80 % today (html.js, layout-list.js,
-  # pnl-calendar.js and progress.js are under-covered), so this job reports
-  # only (continue-on-error) until they pass; then delete that line and the job
-  # fails the build.
+  # coverage flags (--test-coverage-include, --test-coverage-exclude and
+  # --test-coverage-lines) exist only from Node 22; Node 20 rejects them, so this
+  # sets Node 22 rather than the test job's 20. The thresholds are 90 % for
+  # src/core and 80 % for the view models, with the DOM-bound infrastructure
+  # files left out (see package.json). A miss fails the build.
   coverage:
-    name: coverage (node 22, report only for now)
+    name: coverage (node 22)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

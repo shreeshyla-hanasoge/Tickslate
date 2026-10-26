@@ -498,3 +498,111 @@ describe('the keyboard', () => {
     assert.equal(key(vm, '1999-01-01', 'ArrowDown'), null)
   })
 })
+
+// ── update(): what the DOM sees ──────────────────────────────────────────
+// update() is driven with stand-in nodes, the way the sibling widgets' tests do; the build of the grid and the
+// roving keyboard are DOM-bound and belong to test/browser/calendar.spec.mjs.
+
+class FakeNode {
+  constructor(date) {
+    this.writes = 0
+    this._text = ''
+    this.attrs = new Map(date ? [['data-d', date]] : [])
+    this.vars = new Map()
+    this.style = {
+      getPropertyValue: (name) => this.vars.get(name) || '',
+      // Counts a change only: update() sets the figure-width property each time, and the browser ignores an equal value.
+      setProperty: (name, value) => {
+        if (this.vars.get(name) !== String(value)) this.writes++
+        this.vars.set(name, String(value))
+      },
+    }
+  }
+  get textContent() {
+    return this._text
+  }
+  set textContent(v) {
+    this.writes++
+    this._text = v
+  }
+  getAttribute(k) {
+    return this.attrs.has(k) ? this.attrs.get(k) : null
+  }
+  setAttribute(k, v) {
+    this.writes++
+    this.attrs.set(k, String(v))
+  }
+  toggleAttribute(k, force) {
+    const had = this.attrs.has(k)
+    if (Boolean(force) !== had) this.writes++
+    if (force) this.attrs.set(k, '')
+    else this.attrs.delete(k)
+    return Boolean(force)
+  }
+  focus() {}
+}
+
+function fakeCalendar(vm) {
+  const nodes = new Map()
+  const w = Object.create(P.TsPnlCalendar.prototype)
+  Object.defineProperty(w, 't', { value: t })
+  w.$ = (sel) => {
+    if (!nodes.has(sel)) nodes.set(sel, new FakeNode())
+    return nodes.get(sel)
+  }
+  w.flash = () => {}
+  w._cells = new Map()
+  // The build is DOM work; here it hands over one stand-in node for each cell and for each month and weekday name.
+  const months = vm.bands.flatMap((b) => b.weeks).map(() => new FakeNode())
+  const names = vm.rowLabels.map(() => new FakeNode())
+  w._build = () => {
+    for (const c of cells(vm)) if (!w._cells.has(c.date)) w._cells.set(c.date, new FakeNode(c.date))
+    return false
+  }
+  const grid = w.$(`[data-k="grid"]`)
+  grid.querySelectorAll = (sel) => (sel === '.mo' ? months : sel === '.wl' ? names : [])
+  return { w, months, names, node: (key) => w.$(`[data-k="${key}"]`), total: () => [...nodes.values(), ...w._cells.values()].reduce((n, node) => n + node.writes, 0) }
+}
+
+describe('update()', () => {
+  const data = { days: [day('2026-10-14', 1240), day('2026-10-15', -300), day('2026-10-13', 0)], today: TODAY }
+
+  test('writes the figures, the cells and the weekday names into the nodes', () => {
+    const vm = model(data, 'M')
+    const { w, node, names } = fakeCalendar(vm)
+    w.update(vm, 'M')
+    assert.equal(node('label').textContent, vm.label)
+    assert.equal(node('netV').textContent, vm.net)
+    assert.equal(node('netAr').textContent, vm.netArrow)
+    assert.match(node('net').getAttribute('class'), /pos|neg/)
+    assert.equal(node('rateV').textContent, vm.rate)
+    assert.equal(node('bestV').textContent, vm.best)
+    assert.equal(node('summary').textContent, vm.chartLabel)
+    assert.equal(node('grid').getAttribute('aria-label'), vm.label)
+    assert.deepEqual(names.map((n) => n.textContent), vm.rowLabels)
+    const win = w._cells.get('2026-10-14')
+    assert.equal(win.getAttribute('class'), 'c pos')
+    assert.equal(win.getAttribute('aria-label'), find(vm, '2026-10-14').name)
+    assert.match(win.style.getPropertyValue('--s'), /%$/)
+    assert.equal(w._cells.get('2026-10-15').getAttribute('class'), 'c neg')
+    assert.equal(w._cells.get('2026-10-16').getAttribute('tabindex'), '0', 'today holds the tab stop')
+  })
+
+  test('Tall leaves the best and worst day out; an empty month says so', () => {
+    const vm = model({ days: [], today: TODAY }, 'Tall')
+    const { w, node } = fakeCalendar(vm)
+    w.update(vm, 'Tall')
+    assert.equal(node('bestV').textContent, '')
+    assert.equal(node('none').textContent, t('calendar.noDays'))
+    assert.equal(node('none').getAttribute('hidden'), null)
+  })
+
+  test('an update that changes nothing writes nothing', () => {
+    const vm = model(data, 'M')
+    const { w, total } = fakeCalendar(vm)
+    w.update(vm, 'M')
+    const before = total()
+    w.update(vm, 'M')
+    assert.equal(total(), before)
+  })
+})

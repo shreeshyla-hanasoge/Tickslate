@@ -218,3 +218,103 @@ describe('float drift and tiny figures', () => {
     assert.doesNotMatch(TsProgress.styles, /direction:\s*ltr/)
   })
 })
+
+// ── update(): what the DOM sees ──────────────────────────────────────────
+// update() only needs $() and flash(), so it is driven here without constructing an element.
+
+class FakeNode {
+  constructor() {
+    this.writes = 0
+    this._text = ''
+    this.attrs = new Map()
+    this.vars = new Map()
+    this.style = {
+      getPropertyValue: (name) => this.vars.get(name) || '',
+      setProperty: (name, value) => {
+        this.writes++
+        this.vars.set(name, String(value))
+      },
+    }
+  }
+  get textContent() {
+    return this._text
+  }
+  set textContent(v) {
+    this.writes++
+    this._text = v
+  }
+  getAttribute(k) {
+    return this.attrs.has(k) ? this.attrs.get(k) : null
+  }
+  setAttribute(k, v) {
+    this.writes++
+    this.attrs.set(k, String(v))
+  }
+  toggleAttribute(k, force) {
+    const had = this.attrs.has(k)
+    if (Boolean(force) !== had) this.writes++
+    if (force) this.attrs.set(k, '')
+    else this.attrs.delete(k)
+    return Boolean(force)
+  }
+}
+
+const fakeWidget = () => {
+  const nodes = new Map()
+  const w = Object.create(TsProgress.prototype)
+  w.$ = (sel) => {
+    if (!nodes.has(sel)) nodes.set(sel, new FakeNode())
+    return nodes.get(sel)
+  }
+  w.flashed = []
+  w.flash = (key, value) => w.flashed.push([key, value])
+  w.node = (k) => w.$(`[data-k="${k}"]`)
+  w.total = () => [...nodes.values()].reduce((n, node) => n + node.writes, 0)
+  return w
+}
+
+describe('update()', () => {
+  test('writes the label, the figures and the meter into the nodes', () => {
+    const w = fakeWidget()
+    const vm = model({ value: 4000, target: 10000, mode: 'limit', live: true, asOf: Date.UTC(2026, 9, 12, 14, 5) }, 'Wide')
+    w.update(vm, 'Wide')
+    assert.equal(w.node('label').textContent, 'Daily loss limit')
+    assert.equal(w.node('pct').textContent, vm.pct)
+    assert.equal(w.node('text').textContent, vm.text)
+    assert.equal(w.node('caption').textContent, vm.caption)
+    assert.equal(w.node('dot').getAttribute('hidden'), vm.live ? null : '')
+    const meter = w.node('meter')
+    assert.equal(meter.getAttribute('aria-valuenow'), String(vm.pctNum))
+    assert.equal(meter.getAttribute('aria-valuetext'), vm.valueText)
+    assert.equal(meter.getAttribute('aria-label'), 'Daily loss limit')
+    assert.equal(w.node('bar').style.getPropertyValue('--w'), `${Math.round(vm.fill * 1000) / 10}%`)
+    assert.deepEqual(w.flashed, [['pct', vm.valueNum]])
+  })
+
+  test('S has no caption node written, and the meter class follows the state', () => {
+    const w = fakeWidget()
+    w.update(model({ value: 9000, target: 10000, mode: 'limit' }, 'S'), 'S')
+    assert.equal(w.node('caption').textContent, '')
+    assert.match(w.node('meter').getAttribute('class'), /^track/)
+    w.update(model({ value: 12000, target: 10000, mode: 'limit' }, 'S'), 'S')
+    assert.notEqual(w.node('meter').getAttribute('class'), 'track')
+  })
+
+  test('without a target the meter is hidden and left alone', () => {
+    const w = fakeWidget()
+    const vm = model({ value: 5 }, 'S')
+    assert.equal(vm.state, 'none')
+    w.update(vm, 'S')
+    assert.equal(w.node('meter').getAttribute('hidden'), '')
+    assert.equal(w.node('meter').getAttribute('aria-valuenow'), null)
+  })
+
+  test('an update that changes nothing writes nothing', () => {
+    const w = fakeWidget()
+    const vm = model({ value: 4000, target: 10000, mode: 'limit' }, 'Wide')
+    w.update(vm, 'Wide')
+    const before = w.total()
+    w.update(vm, 'Wide')
+    assert.equal(w.total(), before)
+  })
+})
