@@ -483,15 +483,17 @@ function banner(d, ids, first, env, now, ctx) {
 // ── Element ────────────────────────────────────────────────────────────────
 
 // Calendars already checked: the issues are frozen at creation, so once is enough.
-const coverageChecked = new WeakSet()
+let warnedCalendars = 0
+const coverageChecked = new WeakMap()
 
 /** Development only: says once per calendar that a holiday list is about to run out (RFC 0004 §5.4). It changes nothing on screen. */
 function warnCoverage(data) {
   const calendar = data && data.calendar
   if (!calendar || typeof calendar !== 'object' || coverageChecked.has(calendar)) return
-  coverageChecked.add(calendar)
+  // Keyed per calendar, so a second calendar with the same problem is reported too.
+  coverageChecked.set(calendar, (warnedCalendars += 1))
   for (const issue of Array.isArray(calendar.issues) ? calendar.issues : []) {
-    if (DEV && issue && issue.code === 'holiday-coverage') warnOnce(`holiday-coverage|${issue.session}|${issue.message}`, `${issue.message} See docs/guide/sessions.md`)
+    if (DEV && issue && issue.code === 'holiday-coverage') warnOnce(`holiday-coverage|${coverageChecked.get(calendar)}|${issue.session}|${issue.message}`, `${issue.message} See docs/guide/sessions.md`)
   }
 }
 

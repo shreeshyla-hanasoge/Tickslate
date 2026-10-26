@@ -44,10 +44,13 @@ export function createCalendar(input) {
   // Specs and holidays are read once, here: windows are cached from them, so a
   // later change to the host's objects must not reach a calendar half-way.
   const holidays = frozenCopy(given)
+  // Per session id: 'nse' and 'nse-fo' are different sessions (the F&O segment has its own list), so a
+  // segment of a preset needs the holiday under its own id too, or under '*'.
+  const holidayLists = (id) => [holidays['*'] || [], holidays[id] || []]
   const closed = new Map()
   const closedOn = (id) => {
     let set = closed.get(id)
-    if (!set) closed.set(id, (set = new Set([...(holidays['*'] || []), ...(holidays[id] || [])])))
+    if (!set) closed.set(id, (set = new Set(holidayLists(id).flat())))
     return set
   }
 
@@ -87,7 +90,7 @@ export function createCalendar(input) {
       const open = h && zonedTime(date, h.open, s.timeZone)
       const close = h && zonedTime(h.close > h.open ? date : addDays(date, 1), h.close, s.timeZone)
       // A window that is over as soon as it begins (both ends inside one spring-forward gap) never traded.
-      const w2 = h && close > open ? { date, open, close, ...split(s, date, h, open, close) } : null
+      const w2 = h && close > open ? { date, ...split(s, date, h, open, close) } : null
       w = w2 && w2.segs.length ? w2 : null
       if (windowCache.size >= 4096) windowCache.clear()
       windowCache.set(key, w)
@@ -157,7 +160,7 @@ export function createCalendar(input) {
 
   const holidaysThrough = (id) => {
     spec(id)
-    const lists = [...(holidays['*'] || []), ...(holidays[id] || [])]
+    const lists = holidayLists(id).flat()
     return lists.length ? lists.reduce((a, b) => (b > a ? b : a)) : null
   }
 
@@ -280,7 +283,9 @@ const dayNumber = (date) => Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +
  * A window cut at its breaks. A break is a local time-of-day like `open`; a
  * time earlier than the open is the next morning's. It is clamped to the
  * window, because a close range can end the day before the break, and a
- * spring-forward gap can swallow it; one that ends up empty is dropped.
+ * spring-forward gap can swallow it; one that ends up empty is dropped, and
+ * one that touches an end of the window moves that end instead (the window
+ * then closes at the break's start, or opens at its end).
  */
 function split(s, date, h, open, close) {
   const at = (hhmm) => zonedTime(hhmm >= h.open ? date : addDays(date, 1), hhmm, s.timeZone)
@@ -297,7 +302,13 @@ function split(s, date, h, open, close) {
     cursor = g.to
   }
   if (close > cursor) segs.push({ open: cursor, close })
-  return { segs, gaps: frozenCopy(gaps) }
+  // A break that runs to the close, or starts at the open, is the close or the
+  // open: the window shrinks to what trades, so no gap is left with nothing
+  // after (or before) it for locate to find.
+  if (!segs.length) return { open, close, segs, gaps: [] }
+  const first = segs[0].open
+  const last = segs[segs.length - 1].close
+  return { open: first, close: last, segs, gaps: frozenCopy(gaps.filter((g) => g.from >= first && g.to <= last)) }
 }
 
 /**
@@ -469,11 +480,12 @@ export const presets = Object.freeze({
     }
   },
 
-  // NYSE: the core session is 09:30 to 16:00 ET. NYSE (Tape A) itself has no
-  // early or late trading session; the page lists NYSE Arca Equities with an
-  // early session 04:00 to 09:30 and a late one 16:00 to 20:00, and the
-  // 'pre', 'post' and 'extended' segments follow those. Early closes are the
-  // host's specialSessions.
+  // NYSE: the core session is 09:30 to 16:00 ET. NYSE (Tape A) itself has only
+  // that session. The early (04:00 to 09:30) and late (16:00 to 20:00)
+  // sessions on the page are NYSE Arca Equities', and the 'pre', 'post' and
+  // 'extended' segments follow those, not NYSE's own (other NYSE venues start
+  // early trading at 07:00). Early closes are the host's specialSessions, and
+  // on such a day the host overrides 'nyse-post' and 'nyse-ext' too.
   // Source: https://www.nyse.com/markets/hours-calendars
   // Checked: 2026-10-26
   nyse({ segment = 'regular' } = {}) {

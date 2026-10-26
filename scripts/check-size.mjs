@@ -53,7 +53,9 @@ const BUDGETS = {
   'dist-lib/index.js': { maxKb: 13, mode: 'enforce', target: 're-measured after locale-formatting, RFC 0003 §25, CI measurement', date: '2026-10-16' },
   // The UMD is the core plus a ~150 B wrapper. Measured 2026-10-14, after
   // messages: 10,551 B.
-  'dist-lib/umd/tickslate.umd.js': { maxKb: 16.5, mode: 'enforce', target: 're-measured for 0.2.0 after the five integrated stories, RFC 0003 §25', date: '2026-10-17' },
+  // Re-measured 2026-10-26 (market-presets-and-breaks, authorised per RFC 0003 §25): the break engine and the five new presets
+  // (nyse, nasdaq, lse, fx, tse) took the UMD to 17,062 B, so 18,768 B with 10 %, which rounds up to 18.5 kB.
+  'dist-lib/umd/tickslate.umd.js': { maxKb: 18.5, mode: 'enforce', target: 're-measured for the break engine and the five new presets (nyse, nasdaq, lse, fx, tse), RFC 0003 §25', date: '2026-10-26' },
   // The all-in `tickslate/elements` and the two CDN files carry no budget:
   // P1 adds about a dozen widgets to them, so RFC 0002's 50 kB figure belongs
   // to the 0.1.0 widget set. They are reported, and 0.2.0 release preparation
@@ -161,6 +163,10 @@ const layoutListEntry = (maxKb) => ({ ...newEntry(maxKb), date: '2026-10-25' })
 // min+gz plus 10 %, rounded up to the next 0.5 kB. Every entry now carries the strict-CSP base's html.js and adopted stylesheets,
 // perf-hygiene's ticker and gating, and the strip's and the layout list's message keys. Authorised by the orchestrator (RFC 0003 §25).
 const remeasuredTwelfth = (maxKb) => ({ ...entry(maxKb), target: 're-measured on the integrated 0.3.0 base (strict-CSP html.js and adopted stylesheets, ticker and gating, strip and layout list messages), RFC 0003 §25', date: '2026-10-26' })
+// The session-clock row alone (market-presets-and-breaks, 2026-10-26): the break engine and the five new presets (nyse, nasdaq,
+// lse, fx, tse) took the clock to 26,827 B bundled, so 29,510 B with 10 %, which rounds up to 29 kB. Authorised by the
+// orchestrator (RFC 0003 §25).
+const remeasuredThirteenth = (maxKb) => ({ ...entry(maxKb), target: 're-measured for the break engine and the five new presets (nyse, nasdaq, lse, fx, tse), RFC 0003 §25', date: '2026-10-26' })
 const ENTRY_BUDGETS = {
   controls: remeasuredNinth(17),
   'edge-stats': remeasuredTwelfth(28.5),
@@ -171,7 +177,7 @@ const ENTRY_BUDGETS = {
   chart: remeasuredNinth(30),
   'today-pnl': remeasuredTwelfth(29.5),
   'equity-curve': remeasuredTwelfth(29.5),
-  'session-clock': remeasuredEleventh(26),
+  'session-clock': remeasuredThirteenth(29),
   table: remeasuredTwelfth(29),
   watchlist: remeasuredTwelfth(29.5),
   'open-positions': remeasuredTwelfth(30.5),

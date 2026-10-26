@@ -671,6 +671,68 @@ describe('breaks: an overnight window, holidays, special sessions and close rang
   })
 })
 
+describe('a break that straddles a shorter close from a close range', () => {
+  // Made up: opens 09:00, closes 23:55, but 23:30 on 2026-11-02, and a break 23:00 to 23:45 that the longest close contains.
+  const base = { id: 'g', label: 'G', timeZone: 'UTC', days: [1, 2, 3, 4, 5], open: '09:00' }
+  const withBreak = (breaks, close) => createCalendar({ sessions: [{ ...base, close, breaks }] })
+  const at = (date, hhmm) => zonedTime(date, hhmm, 'UTC')
+  const ranged = { default: '23:55', ranges: [{ from: '2026-11-02', to: '2026-11-02', close: '23:30' }] }
+  const c = withBreak([{ from: '23:00', to: '23:45' }], ranged)
+
+  test('the window closes where the break starts: no throw, no break left over', () => {
+    for (const hhmm of ['22:59', '23:00', '23:10', '23:29', '23:30', '23:50']) {
+      assert.doesNotThrow(() => {
+        c.state('g', at('2026-11-02', hhmm))
+        c.nextChange('g', at('2026-11-02', hhmm))
+        c.candleClose('g', at('2026-11-02', hhmm), 5)
+      }, hhmm)
+    }
+    const before = c.state('g', at('2026-11-02', '22:59'))
+    assert.deepEqual([before.open, before.closesAt, before.ends], [true, at('2026-11-02', '23:00'), 'close'])
+    assert.equal(c.state('g', at('2026-11-02', '23:10')).open, false)
+    assert.equal(c.state('g', at('2026-11-02', '23:10')).onBreak, false)
+    assert.deepEqual(c.nextChange('g', at('2026-11-02', '23:10')), { at: at('2026-11-03', '09:00'), to: 'open' })
+    assert.equal(c.candleClose('g', at('2026-11-02', '22:59'), 5), at('2026-11-02', '23:00'))
+    assert.deepEqual(c.hours('g', '2026-11-02'), { open: at('2026-11-02', '09:00'), close: at('2026-11-02', '23:00') })
+  })
+
+  test('the other days keep their break and their longer close', () => {
+    assert.deepEqual(c.hours('g', '2026-11-03').breaks, [{ from: at('2026-11-03', '23:00'), to: at('2026-11-03', '23:45') }])
+    assert.equal(c.state('g', at('2026-11-03', '23:10')).onBreak, true)
+    assert.equal(c.state('g', at('2026-11-03', '23:50')).closesAt, at('2026-11-03', '23:55'))
+  })
+
+  test('a break that starts after the close is ignored', () => {
+    const d = withBreak([{ from: '23:40', to: '23:50' }], ranged)
+    assert.equal(d.hours('g', '2026-11-02').breaks, undefined)
+    assert.equal(d.state('g', at('2026-11-02', '23:29')).closesAt, at('2026-11-02', '23:30'))
+    assert.equal(d.state('g', at('2026-11-02', '23:45')).onBreak, false)
+  })
+
+  test('a break that starts exactly at the close is ignored', () => {
+    const d = withBreak([{ from: '23:30', to: '23:50' }], ranged)
+    assert.equal(d.hours('g', '2026-11-02').breaks, undefined)
+    assert.equal(d.state('g', at('2026-11-02', '23:29')).closesAt, at('2026-11-02', '23:30'))
+    assert.equal(d.state('g', at('2026-11-02', '23:30')).onBreak, false)
+  })
+
+  test('a break that ends exactly at the close is the close', () => {
+    const d = withBreak([{ from: '23:00', to: '23:30' }], ranged)
+    assert.deepEqual(d.hours('g', '2026-11-02'), { open: at('2026-11-02', '09:00'), close: at('2026-11-02', '23:00') })
+    assert.equal(d.state('g', at('2026-11-02', '23:10')).onBreak, false)
+  })
+
+  test('a break that begins in a spring-forward gap is dropped, one that begins before it is stretched', () => {
+    // New York, 2027-03-14: 02:00 to 03:00 does not exist and a time in it moves to the same minutes an hour later.
+    // So 02:30 to 03:30 is 03:30 to 03:30 (nothing), and 01:30 to 02:30 is 01:30 to 03:30 (an hour).
+    const ny = (breaks) => createCalendar({ sessions: [{ id: 'n', label: 'N', timeZone: 'America/New_York', days: [7], open: '00:00', close: '06:00', breaks }] })
+    const z = (hhmm) => zonedTime('2027-03-14', hhmm, 'America/New_York')
+    assert.equal(ny([{ from: '02:30', to: '03:30' }]).hours('n', '2027-03-14').breaks, undefined)
+    assert.deepEqual(ny([{ from: '01:30', to: '02:30' }]).hours('n', '2027-03-14').breaks, [{ from: z('01:30'), to: z('03:30') }])
+    assert.doesNotThrow(() => ny([{ from: '02:30', to: '03:30' }]).state('n', z('03:10')))
+  })
+})
+
 describe('breaks and daylight saving', () => {
   test('London keeps its lunch break at the same clock time before and after the clocks go back', () => {
     const lon = createCalendar({ sessions: [{ id: 'l', label: 'L', timeZone: 'Europe/London', days: WEEK, open: '08:00', close: '16:30', breaks: [{ from: '12:00', to: '13:00' }] }] })
@@ -897,6 +959,8 @@ describe('every preset cites its source (RFC 0004 §5.3)', () => {
   const guide = readFileSync(new URL('docs/guide/sessions.md', root), 'utf8')
   const today = new Date().toISOString().slice(0, 10)
   const keys = Object.keys(presets)
+  // The exchanges' own sites: a source must be one of them, so a placeholder or a blog cannot stand in for the page read.
+  const OWN_DOMAINS = ['nyse.com', 'nasdaq.com', 'londonstockexchange.com', 'jpx.co.jp', 'cboe.com', 'nseindia.com', 'mcxindia.com']
 
   // The comment block directly above `key(` inside the presets object.
   const commentAbove = (key) => {
@@ -916,6 +980,9 @@ describe('every preset cites its source (RFC 0004 §5.3)', () => {
       assert.ok(url, `${key} has no Source: https://… line`)
       assert.ok(date, `${key} has no Checked: YYYY-MM-DD line`)
       assert.ok(date[1] <= today, `${key} was checked in the future: ${date[1]}`)
+      const age = (Date.parse(today) - Date.parse(date[1])) / 86400000
+      assert.ok(age <= 400, `${key} was checked ${age} days ago: read the page again`)
+      assert.ok(OWN_DOMAINS.some((h) => new URL(url[1]).hostname === h || new URL(url[1]).hostname.endsWith(`.${h}`)), `${key}: ${url[1]} is not one of the exchanges' own domains`)
     }
   })
 

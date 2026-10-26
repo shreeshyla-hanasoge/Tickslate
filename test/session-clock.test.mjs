@@ -838,13 +838,14 @@ describe('the holiday coverage warning', () => {
     assert.deepEqual(withWarnings(() => draw(undefined)), [])
   })
 
-  test('warns for each calendar once, even if a second one has the same text', () => {
+  test('warns for each calendar once, a second one with the same text included', () => {
+    const first = createCalendar({ sessions: [spec], holidays: { nyse: ['2026-11-10'] }, now: NOW })
     const again = createCalendar({ sessions: [spec], holidays: { nyse: ['2026-11-10'] }, now: NOW })
     const seen = withWarnings(() => {
-      draw(short, 2)
+      draw(first, 2)
       draw(again, 2)
     })
-    assert.equal(seen.length, 1, 'the dev warning is also de-duplicated by text, like the others')
+    assert.equal(seen.length, 2, 'once for each calendar, however often it is drawn')
   })
 })
 

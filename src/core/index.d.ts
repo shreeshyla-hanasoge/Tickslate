@@ -748,7 +748,7 @@ export declare const presets: {
    * 'cotton' → 'mcx-cotton', 09:00–21:00. 'agri' → 'mcx-agri', 09:00–17:00.
    */
   mcx(options?: { segment?: 'international' | 'cotton' | 'agri'; years?: number[] }): SessionSpec
-  /** NYSE, New York time. 'regular' (the default) → id 'nyse'; 'pre' → 'nyse-pre'; 'post' → 'nyse-post'; 'extended' → 'nyse-ext', pre-market through post-market as one window. */
+  /** NYSE, New York time. The 'pre', 'post' and 'extended' segments are NYSE Arca Equities' sessions (04:00 to 09:30, 16:00 to 20:00), not NYSE's own: Tape A has only the core session. On an early-close day override 'nyse-post' and 'nyse-ext' too, and give holidays under each id. 'regular' (the default) → id 'nyse'; 'pre' → 'nyse-pre'; 'post' → 'nyse-post'; 'extended' → 'nyse-ext', pre-market through post-market as one window. */
   nyse(options?: { segment?: 'regular' | 'pre' | 'post' | 'extended' }): SessionSpec
   /** Nasdaq, same segments, ids 'nasdaq', 'nasdaq-pre', 'nasdaq-post', 'nasdaq-ext'. */
   nasdaq(options?: { segment?: 'regular' | 'pre' | 'post' | 'extended' }): SessionSpec

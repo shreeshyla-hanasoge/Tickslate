@@ -7,6 +7,18 @@ const PAGE = '/test/browser/fixtures/csp.html'
 const STRICT = "default-src 'self'; style-src 'self'; script-src 'self'"
 const SHOTS = process.env.TICKSLATE_SHOTS || ''
 
+// WebKit's screenshot machinery injects a style element, which the strict CSP of these pages reports. Whatever
+// the page reported before the picture stays; only what the screenshot itself caused (a violation event, a console error) is dropped.
+async function shot(page, path) {
+  const box = await page.locator('#host').boundingBox()
+  const before = await page.evaluate(() => window.__violations.length)
+  const logged = errors.length
+  await page.screenshot({ path, clip: box, fullPage: true })
+  await page.waitForTimeout(50)
+  errors.splice(logged)
+  await page.evaluate((n) => window.__violations.splice(n), before)
+}
+
 let violations
 let errors
 
@@ -99,7 +111,7 @@ test('during the lunch break the clock reads Break and resumes, and the gap is d
   expect(r.lane1).toBe('Open 24/7')
   expect(r.s247).toBe('Open 24/7')
   expect(r.sName).toContain('on break')
-  if (SHOTS) await page.locator('#host').screenshot({ path: `${SHOTS}/break-${test.info().project.name}.png` })
+  if (SHOTS) await shot(page, `${SHOTS}/break-${test.info().project.name}.png`)
 })
 
 test('before the break the countdown is to the break, and after it to the close', async ({ page }) => {
@@ -137,7 +149,7 @@ test('pictures of the break, the countdown and a 24/7 session', async ({ page })
           for (const el of document.querySelectorAll('ts-session-clock[size="Banner"]')) el.style.gridColumn = innerWidth < 600 ? '1' : '2'
         })
         await page.waitForTimeout(150)
-        await page.locator('#host').screenshot({ path: `${SHOTS}/clock-${width}-${theme}-${hhmm.replace(':', '')}.png` })
+        await shot(page, `${SHOTS}/clock-${width}-${theme}-${hhmm.replace(':', '')}.png`)
       }
     }
   }

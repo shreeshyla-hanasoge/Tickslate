@@ -22,7 +22,7 @@ they came from, and a host can always pass its own `SessionSpec`.
 
 | Preset | Ids | Hours (local) | Source | Checked |
 |---|---|---|---|---|
-| `nyse` | `nyse`, `nyse-pre`, `nyse-post`, `nyse-ext` | Mon to Fri, New York: 09:30 to 16:00. The `pre`, `post` and `extended` segments follow NYSE Arca Equities' early session (04:00 to 09:30) and late session (16:00 to 20:00); NYSE's own Tape A has neither | https://www.nyse.com/markets/hours-calendars | 2026-10-26 |
+| `nyse` | `nyse`, `nyse-pre`, `nyse-post`, `nyse-ext` | Mon to Fri, New York: 09:30 to 16:00. The `pre`, `post` and `extended` segments are NYSE **Arca Equities'** early session (04:00 to 09:30) and late session (16:00 to 20:00), not NYSE's own: Tape A has only the core session, and other NYSE venues start early trading at 07:00 | https://www.nyse.com/markets/hours-calendars | 2026-10-26 |
 | `nasdaq` | `nasdaq`, `nasdaq-pre`, `nasdaq-post`, `nasdaq-ext` | Mon to Fri, New York: 09:30 to 16:00; pre-market 04:00 to 09:30; after hours 16:00 to 20:00 | https://www.nasdaq.com/market-activity/stock-market-holiday-schedule | 2026-10-26 |
 | `lse` | `lse` | Mon to Fri, London: 08:00 to 16:30. The opening and closing auctions either side are not drawn | https://www.londonstockexchange.com/personal-investing/faqs | 2026-10-26 |
 | `tse` | `tse` | Mon to Fri, Tokyo: 09:00 to 11:30 and 12:30 to 15:30, with a lunch break | https://www.jpx.co.jp/english/equities/trading/domestic/01.html | 2026-10-26 |
@@ -51,6 +51,10 @@ const nyse = {
   specialSessions: { '2027-11-26': { open: '09:30', close: '13:00' } },
 }
 ```
+
+The extended segments are sessions of their own, so on an early-close day
+override `nyse-post` and `nyse-ext` as well (the late session ends at 17:00
+that day, not 20:00), or they keep running to 20:00.
 
 ## Breaks
 
@@ -103,7 +107,12 @@ let calendar = createCalendar({
 clock.data = { calendar, sessions: ['nyse'] }
 ```
 
-A holiday removes the window that **opens** that day, breaks included. A
+A holiday removes the window that **opens** that day, breaks included. Holidays
+are per session id: `holidays: { nyse: dates }` closes `nyse` only, so a host
+that shows `nyse-pre`, `nyse-post` or `nyse-ext`, or `nse-fo`, passes the dates
+under each id it uses (or under `'*'`). A Friday holiday removes nothing from
+`fx`: the week's windows open Sunday to Thursday, so a holiday on a Friday
+(Cboe lists 25 December and 1 January) does not shorten it. A
 calendar is immutable: when you renew the list, build a new one and set it on
 the clock (`clock.data = { calendar: renewed, sessions }`) and pass it to
 anything else that holds the old one.
