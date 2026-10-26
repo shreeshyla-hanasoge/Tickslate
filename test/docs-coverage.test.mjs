@@ -121,7 +121,9 @@ function tokenBlock(css, selector) {
 
 const tokensCss = stripComments(read('src/themes/tokens.css'))
 const paper = tokenBlock(tokensCss, ':where(:root)')
-const graphite = tokenBlock(tokensCss, ':where([data-theme="dark"], .dark)')
+// The dark padding sits in its own block that yields to compact density (RFC 0004 §2.1).
+const compactGuard = ':not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)'
+const graphite = { ...tokenBlock(tokensCss, ':where([data-theme="dark"], .dark)'), ...tokenBlock(tokensCss, `:where([data-theme="dark"]${compactGuard}, .dark${compactGuard})`) }
 
 // ── Self-checks of the parsers, so a quiet regex can't make the rest vacuous ──
 

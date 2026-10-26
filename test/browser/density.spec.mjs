@@ -489,3 +489,56 @@ test.describe('compact density wins over a preset', () => {
     })
   }
 })
+
+// The same for the light and dark themes of tokens.css, whose padding (18px and 16px) sat on the element that names the theme:
+// a data-theme on the <ts-grid> itself beat the grid's :host rule, so compact padding lost to it.
+test.describe('compact density wins over a theme set on the grid itself', () => {
+  const GRID = '/test/browser/fixtures/grid.html?mode=explicit&w=1240'
+  const THEMES = [['light', '18px', 'light'], ['dark', '16px', 'light'], ['auto', '16px', 'dark']]
+
+  async function open(page, scheme) {
+    await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+    await page.emulateMedia({ colorScheme: scheme })
+    await page.goto(GRID)
+    await page.waitForFunction(() => window.__ready === true)
+    // The fixture puts data-theme on the page; the cases below put it where each one names.
+    await page.evaluate(() => document.documentElement.removeAttribute('data-theme'))
+  }
+  const read = (page) =>
+    page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const g = document.getElementById('g')
+      const tile = document.querySelector('#g > [item="notes"]').shadowRoot.querySelector('.tile')
+      return { pad: getComputedStyle(g).getPropertyValue('--ts-pad').trim(), drawn: getComputedStyle(tile).paddingLeft }
+    })
+
+  for (const [theme, own, scheme] of THEMES) {
+    test(`data-theme="${theme}" on the grid: its own padding, and 12px with density="compact"`, async ({ page }) => {
+      await open(page, scheme)
+      await page.evaluate((t) => document.getElementById('g').setAttribute('data-theme', t), theme)
+      expect(await read(page), 'comfortable').toEqual({ pad: own, drawn: own })
+      await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+      expect(await read(page), 'compact').toEqual({ pad: '12px', drawn: '12px' })
+      await page.evaluate(() => document.getElementById('g').removeAttribute('density'))
+      expect(await read(page), 'comfortable again').toEqual({ pad: own, drawn: own })
+    })
+
+    test(`data-theme="${theme}" on an ancestor of a compact grid`, async ({ page }) => {
+      await open(page, scheme)
+      await page.evaluate((t) => {
+        document.getElementById('wrap').setAttribute('data-theme', t)
+        document.getElementById('g').setAttribute('density', 'compact')
+      }, theme)
+      expect(await read(page)).toEqual({ pad: '12px', drawn: '12px' })
+    })
+
+    test(`a compact ancestor over a grid that names data-theme="${theme}"`, async ({ page }) => {
+      await open(page, scheme)
+      await page.evaluate((t) => {
+        document.getElementById('wrap').setAttribute('data-ts-density', 'compact')
+        document.getElementById('g').setAttribute('data-theme', t)
+      }, theme)
+      expect(await read(page)).toEqual({ pad: '12px', drawn: '12px' })
+    })
+  }
+})

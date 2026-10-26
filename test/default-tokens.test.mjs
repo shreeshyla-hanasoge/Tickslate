@@ -43,6 +43,9 @@ function parseBlocks(css, at = '') {
   return out
 }
 
+// A block that only restates a theme's padding, guarded against compact density.
+const isPad = (b) => b.decls.size === 1 && b.decls.has('--ts-pad') && b.selector.includes('data-theme')
+
 const canonical = parseBlocks(readFileSync(new URL('../src/themes/tokens.css', import.meta.url), 'utf8'))
 const layerBody = TOKENS_CSS.match(/^@layer tickslate\.defaults \{([\s\S]*)\}\s*$/)
 const defaults = layerBody ? parseBlocks(layerBody[1]) : []
@@ -90,17 +93,34 @@ describe('default tokens', () => {
   })
 
   test('the OS dark rule applies only under data-theme="auto" and the light island comes last of the themes', () => {
-    const media = canonical.filter((b) => b.at.includes('prefers-color-scheme: dark') && !b.selector.includes('data-ts-palette') && !b.at.includes('prefers-contrast'))
+    // The padding blocks restate the theme's --ts-pad where compact density is absent (RFC 0004 §2.1); they are tested below.
+    const media = canonical.filter((b) => b.at.includes('prefers-color-scheme: dark') && !b.selector.includes('data-ts-palette') && !b.at.includes('prefers-contrast') && !isPad(b))
     assert.deepEqual(media.map((b) => b.selector), [':where([data-theme="auto"])'])
     const order = canonical.map((b) => b.selector)
     assert.ok(order.indexOf(':where([data-theme="light"])') > order.indexOf(':where([data-theme="dark"], .dark)'))
   })
 
   test('every themed property in the dark blocks is restored by the light island', () => {
-    const light = canonical.find((b) => b.selector === ':where([data-theme="light"])').decls
+    const light = new Map(canonical.filter((b) => b.selector.startsWith(':where([data-theme="light"]') && !b.at.includes('prefers-contrast')).flatMap((b) => [...b.decls]))
     const paper = canonical.find((b) => b.selector === ':where(:root)').decls
     for (const block of canonical.filter((b) => b.selector.includes('dark') || b.selector.includes('auto'))) {
       for (const name of block.decls.keys()) assert.equal(light.get(name), paper.get(name), `light island ${name}`)
+    }
+  })
+
+  test('the themes\' padding sits in blocks that yield to compact density, equal in both files (RFC 0004 §2.1)', () => {
+    const guard = ':not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)'
+    for (const blocks of [canonical, defaults]) {
+      const pads = blocks.filter(isPad)
+      assert.deepEqual(pads.map((b) => [b.at.includes('prefers-color-scheme: dark'), b.selector, [...b.decls]]), [
+        [true, `:where([data-theme="auto"]${guard})`, [['--ts-pad', '16px']]],
+        [false, `:where([data-theme="dark"]${guard}, .dark${guard})`, [['--ts-pad', '16px']]],
+        [false, `:where([data-theme="light"]${guard})`, [['--ts-pad', '18px']]],
+      ])
+      // No theme block outside those sets a padding of its own, and they come before the density block that is meant to win.
+      for (const b of blocks.filter((x) => x.decls.has('--ts-pad') && !isPad(x))) assert.ok([':where(:root)', ':where([data-ts-density="compact"])'].includes(b.selector), b.selector)
+      const order = blocks.map((b) => b.selector)
+      assert.ok(order.indexOf(':where([data-ts-density="compact"])') > order.indexOf(pads[2].selector))
     }
   })
 })

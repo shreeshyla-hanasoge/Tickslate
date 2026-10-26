@@ -66,7 +66,8 @@ const ruleOf = (selector) => {
   return rule.vars
 }
 const defaultLight = ruleOf(':where(:root)')
-const defaultDark = ruleOf(':where([data-theme="dark"], .dark)')
+// The dark padding sits in its own block that yields to compact density (RFC 0004 §2.1).
+const defaultDark = { ...ruleOf(':where([data-theme="dark"], .dark)'), ...ruleOf(`:where([data-theme="dark"]${DENSITY_GUARD.replaceAll("'", '"')}, .dark${DENSITY_GUARD.replaceAll("'", '"')})`) }
 
 const files = readdirSync(new URL('../src/themes/presets/', import.meta.url)).filter((n) => n.endsWith('.css')).sort()
 
