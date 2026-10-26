@@ -48,6 +48,8 @@ interface StatusData {
 state that is not one of the four is dropped, and development warns with the count.
 
 The overall state is the worst one present: down, then degraded, then unknown, then ok.
+
+A row's "since 12 min ago" is an age, so it moves with the clock: while any row has a `since`, or the data has an `asOf`, live or not, the tile re-renders on the page's shared 15 s ticker.
 Rows keep the order they came in, because the order of a status board is part of its meaning.
 
 | State | Words | Mark | Colour token |

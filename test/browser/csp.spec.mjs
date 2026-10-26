@@ -52,7 +52,7 @@ async function serve(page, csp) {
 const BOOT = async () => {
   const { setup, dataFor, frozenClock } = await import('/test/browser/fixtures/data.js')
   setup()
-  const tags = ['ts-grid', 'ts-metric', 'ts-chart', 'ts-table', 'ts-watchlist', 'ts-open-positions', 'ts-today-pnl', 'ts-equity-curve', 'ts-session-clock', 'ts-card', 'ts-grid-controls', 'ts-widget-picker']
+  const tags = ['ts-grid', 'ts-metric', 'ts-chart', 'ts-table', 'ts-watchlist', 'ts-open-positions', 'ts-today-pnl', 'ts-equity-curve', 'ts-session-clock', 'ts-card', 'ts-breakdown', 'ts-status', 'ts-feed', 'ts-grid-controls', 'ts-widget-picker']
   await Promise.all(tags.map((tag) => customElements.whenDefined(tag)))
   const tiles = [...document.querySelectorAll('#g > *, #linked, #small')]
   for (const el of tiles) {
@@ -69,7 +69,7 @@ const BOOT = async () => {
 async function boot(page) {
   await page.goto(PAGE)
   const count = await page.evaluate(BOOT)
-  expect(count).toBe(11)
+  expect(count).toBe(14)
 }
 
 // What "styled" means: the shared CSS reached the shadow root. Unstyled, the
@@ -359,7 +359,7 @@ test.describe('where constructable sheets are missing', () => {
       const { setup, dataFor, frozenClock } = await import('/test/browser/fixtures/data.js')
       setup()
       const stage = document.getElementById('stage')
-      for (const tag of ['ts-metric', 'ts-chart', 'ts-table', 'ts-watchlist', 'ts-open-positions', 'ts-today-pnl', 'ts-equity-curve', 'ts-session-clock', 'ts-card']) {
+      for (const tag of ['ts-metric', 'ts-chart', 'ts-table', 'ts-watchlist', 'ts-open-positions', 'ts-today-pnl', 'ts-equity-curve', 'ts-session-clock', 'ts-card', 'ts-breakdown', 'ts-status', 'ts-feed']) {
         const el = document.createElement(tag)
         el.className = 'fresh'
         el.setAttribute('label', tag)

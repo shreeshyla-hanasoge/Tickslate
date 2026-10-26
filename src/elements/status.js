@@ -69,6 +69,8 @@ export function statusModel(data, variant, ctx) {
     total,
     dropped,
     live: d.live === true,
+    // A "since" is an age and an asOf is a time on the page: either one moves with the clock, live or not.
+    ages: Number.isFinite(asOf) || rows.some((r) => r.since !== ''),
     time: Number.isFinite(asOf) ? fmt.time(asOf) : '',
   }
 }
@@ -195,6 +197,8 @@ export class TsStatus extends TsWidget {
       if (el) el.toggleAttribute('hidden', on)
     }
     hide('dot', !vm.live)
+    // The shared 15 s ticker (the freshness pattern) re-renders the words; nothing else here keeps time.
+    this.every(vm.ages ? 15000 : 0)
     write('label', vm.label)
     hide('meta', !vm.time)
     write('pre', vm.synced.pre)

@@ -68,6 +68,19 @@ describe('statusModel', () => {
     assert.deepEqual([model({ rows: ROWS }).rows[0].since, model({ rows: ROWS }).rows[0].detail], ['', ''])
   })
 
+  test('a since moves with the clock: the same row reads older once the clock has advanced', () => {
+    const at = (now) => statusModel({ rows: ROWS }, 'M', { ...ctx, now }).rows[1].sinceText
+    assert.equal(at(NOW), 'since 12 min ago')
+    assert.equal(at(NOW + 10 * 60000), 'since 22 min ago')
+  })
+
+  test('ages is true while any row has a since or the data has an asOf, live or not', () => {
+    assert.equal(model({ rows: ROWS }).ages, true)
+    assert.equal(model({ rows: [ROWS[0]], asOf: NOW }).ages, true)
+    assert.equal(model({ rows: [ROWS[0]], asOf: NOW, live: false }).ages, true)
+    assert.equal(model({ rows: [ROWS[0]] }).ages, false)
+  })
+
   test('a row with no id or name, a repeated id or a state that is not one of the four is dropped and counted', () => {
     const m = model({ rows: [ROWS[0], { name: 'x', state: 'ok' }, { id: 'a', state: 'ok' }, { id: 'b', name: 'b', state: 'fine' }, { ...ROWS[0] }, null, 'x'] })
     assert.deepEqual(m.rows.map((r) => r.id), ['api'])
@@ -181,6 +194,26 @@ describe('the element draws in place', () => {
     assert.ok(body.children.every((tr) => tr.getAttribute('part') === 'row' && tr.children.every((c) => c.getAttribute('part') === 'cell' || c.getAttribute('part') === 'cell')))
     assert.equal(body.children[1].getAttribute('aria-label'), 'Price feed, Degraded')
     assert.equal(body.children[0].children[1].children[0].getAttribute('aria-hidden'), 'true')
+  })
+
+  test('the element asks for the shared ticker while anything ages, and lets it go when nothing does', () => {
+    const { el, view } = build('M')
+    const asked = []
+    el.every = (ms) => asked.push(ms)
+    view({ rows: ROWS })
+    view({ rows: [ROWS[0]], asOf: NOW })
+    view({ rows: [ROWS[0]] })
+    assert.deepEqual(asked, [15000, 15000, 0])
+  })
+
+  test('the since cell reads older when the clock advances and the tile renders again', () => {
+    const { view, body } = build('M')
+    view({ rows: ROWS })
+    assert.equal(body.children[1].children[2].textContent, 'since 12 min ago')
+    const later = { ...ctx, now: NOW + 10 * 60000 }
+    const { el: el2, body: body2 } = build('M')
+    el2.update(S.TsStatus.viewModel({ rows: ROWS }, 'M', later), 'M')
+    assert.equal(body2.children[1].children[2].textContent, 'since 22 min ago')
   })
 
   test('Tall has no since cell and does not write the detail', () => {

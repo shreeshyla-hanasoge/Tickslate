@@ -56,7 +56,7 @@ export const sameAction: MetricActionFromEntry = open
 // The grid's own events keep their details.
 const grid: TsGrid = document.createElement('ts-grid')
 grid.addEventListener('ts-layout-change', (e) => {
-  const reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' = e.detail.reason
+  const reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' | 'strip' = e.detail.reason
   void reason
 })
 

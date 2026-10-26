@@ -81,6 +81,23 @@ describe('apportion', () => {
   })
 })
 
+describe('apportion near the double limit', () => {
+  test('values near 1e308 still read as shares that sum to 100.0', () => {
+    assert.deepEqual(apportion([1e308, 1e308]), [50, 50])
+    const p = apportion([1e308, 1])
+    assert.ok(p.every(Number.isFinite))
+    assert.equal(p.reduce((a, b) => a + b, 0), 100)
+    assert.deepEqual(apportion([Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE]), [25, 25, 25, 25])
+  })
+  test('the model draws them: finite percentages, fractions and no total it cannot print', () => {
+    const m = model({ slices: [{ id: 'a', label: 'A', value: 1e308 }, { id: 'b', label: 'B', value: 1e308 }] })
+    assert.deepEqual(m.slices.map((s) => s.pct), ['50.0%', '50.0%'])
+    assert.deepEqual(m.slices.map((s) => s.fraction), [0.5, 0.5])
+    assert.equal(m.drawn, true)
+    assert.equal(m.totalText, '')
+  })
+})
+
 describe('foldSlices', () => {
   const mk = (n) => Array.from({ length: n }, (_, i) => ({ id: i, value: 100 - i }))
   test('six slices are left alone, sorted largest first', () => {
@@ -96,6 +113,72 @@ describe('foldSlices', () => {
   test('equal values keep their input order', () => {
     const out = foldSlices(['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id) => ({ id, value: 3 })))
     assert.deepEqual(out.slice(0, 5).map((s) => s.id), ['a', 'b', 'c', 'd', 'e'])
+  })
+})
+
+describe('the fold holds near-ties still', () => {
+  const key = (s) => s.key
+  const set = (...v) => v.map((value, i) => ({ key: 'k' + i, value }))
+  const shown = (out) => out.filter((s) => !s.other).map(key)
+
+  test('a slice already shown stays until a newcomer beats it by a percentage point', () => {
+    // Total 100: k4 (10.5) and k5 (9.5) are 1 point apart; held k5 stays.
+    const data = set(30, 20, 15, 10.5, 9.5, 8.5, 6.5)
+    const held = new Set(['k0', 'k1', 'k2', 'k4', 'k5'])
+    // k3 (10.5) is the newcomer, k5... shown are the top five by value: k0..k4 (k4 = 9.5). Held k5 (8.5) is out; k3 beats nothing held by a point.
+    assert.deepEqual(shown(foldSlices(data, { held })).sort(), ['k0', 'k1', 'k2', 'k3', 'k4'])
+    const tied = set(30, 20, 15, 10, 9.6, 9.8, 5.6)
+    const out = foldSlices(tied, { held: new Set(['k0', 'k1', 'k2', 'k3', 'k4']) })
+    assert.deepEqual(shown(out).sort(), ['k0', 'k1', 'k2', 'k3', 'k4'], 'k5 is 0.2 points ahead of held k4, so k4 stays')
+    assert.deepEqual(shown(foldSlices(tied)).sort(), ['k0', 'k1', 'k2', 'k3', 'k5'], 'without a held set the sort is literal')
+  })
+
+  test('a newcomer a full point ahead replaces the held slice', () => {
+    const out = foldSlices(set(30, 20, 15, 10, 9, 10.5, 5.5), { held: new Set(['k0', 'k1', 'k2', 'k3', 'k4']) })
+    assert.deepEqual(shown(out).sort(), ['k0', 'k1', 'k2', 'k3', 'k5'], 'k5 leads k4 by 1.5 points of 100')
+  })
+
+  test('the shown slices are still listed largest first, and Other sums what is left', () => {
+    const out = foldSlices(set(30, 20, 15, 10, 9, 9.8, 6.2), { held: new Set(['k0', 'k1', 'k2', 'k3', 'k4']) })
+    assert.deepEqual(out.map((s) => s.value), [30, 20, 15, 10, 9, 16])
+    assert.equal(out[5].other, true)
+  })
+
+  test('a model fed its own colours back does not flip near-tied slices on every tick', () => {
+    const slices = (a, b) => [{ id: 'a', value: 30 }, { id: 'b', value: 20 }, { id: 'c', value: 15 }, { id: 'd', value: 12 }, { id: 'e', value: a }, { id: 'f', value: b }, { id: 'g', value: 2 }].map((s) => ({ ...s, label: s.id.toUpperCase() }))
+    let colours = {}
+    const tick = (a, b) => {
+      const m = B.breakdownModel({ slices: slices(a, b) }, 'M', { ...ctx, colours })
+      colours = m.colours
+      return m
+    }
+    const first = tick(10.25, 9.75)
+    const seen = new Set()
+    for (let i = 0; i < 20; i++) {
+      const m = tick(i % 2 ? 10.25 : 9.75, i % 2 ? 9.75 : 10.25)
+      seen.add(m.slices.filter((s) => !s.other).map((s) => s.key).sort().join())
+      assert.equal(m.slices.find((s) => s.key === 'a').index, first.slices.find((s) => s.key === 'a').index)
+    }
+    assert.equal(seen.size, 1, 'the same five slices every tick')
+  })
+
+  test('colours follow the id: a swap never recolours the slices that stay', () => {
+    const ids = (...v) => v.map((value, i) => ({ id: 'id' + i, label: 'L' + i, value }))
+    const first = model({ slices: ids(30, 20, 15, 10, 9, 8, 5) })
+    const was = Object.fromEntries(first.slices.map((s) => [s.key, s.index]))
+    // id5 overtakes id4 by a clear margin, so id4 folds into Other; the survivors keep their colours.
+    const next = B.breakdownModel({ slices: ids(30, 20, 15, 10, 6, 12, 5) }, 'M', { ...ctx, colours: first.colours })
+    for (const s of next.slices.filter((x) => !x.other && was[x.key])) assert.equal(s.index, was[s.key], s.key)
+    const fresh = next.slices.find((s) => s.key === 'id5')
+    assert.ok(fresh.index >= 1 && fresh.index <= 6)
+    assert.equal(new Set(next.slices.filter((s) => !s.other).map((s) => s.index)).size, next.slices.filter((s) => !s.other).length, 'no two share a colour')
+    assert.equal(next.slices.find((s) => s.other).index, 0)
+  })
+
+  test('a host id of __proto__ is an ordinary colour key', () => {
+    const m = model({ slices: [{ id: '__proto__', label: 'P', value: 3 }, { id: 'x', label: 'X', value: 2 }] })
+    assert.equal(m.slices[0].index, 1)
+    assert.equal(B.breakdownModel({ slices: [{ id: 'x', label: 'X', value: 2 }, { id: '__proto__', label: 'P', value: 3 }] }, 'M', { ...ctx, colours: m.colours }).slices[0].index, 1)
   })
 })
 
@@ -361,6 +444,37 @@ describe('the element draws in place', () => {
     assert.equal(node('[data-k="none"]').textContent, 'Nothing to break down')
     assert.equal(node('[data-k="none"]').hasAttribute('hidden'), false)
     assert.equal(node('[data-k="chart"]').hasAttribute('hidden'), true)
+  })
+
+  test('every size says "Nothing to break down" when every part is 0, and the legend still lists the zeros', () => {
+    for (const size of ['Wide', 'Tall', 'M', 'S']) {
+      const { view, node } = build(size)
+      view({ slices: [{ id: 'a', label: 'A', value: 0 }, { id: 'b', label: 'B', value: 0 }] }, size)
+      assert.equal(node('[data-k="none"]').textContent, 'Nothing to break down', size)
+      assert.equal(node('[data-k="none"]').hasAttribute('hidden'), false, size)
+      view({ slices: [{ id: 'a', label: 'A', value: 4 }] }, size)
+      assert.equal(node('[data-k="none"]').hasAttribute('hidden'), true, size)
+    }
+  })
+
+  test('the left-out note is above the legend, not inside the scroller', () => {
+    for (const size of ['Wide', 'Tall', 'M']) {
+      const html = B.TsBreakdown.template(size)
+      assert.ok(html.indexOf('data-k="note"') < html.indexOf('data-k="scroll"'), size)
+      assert.ok(html.indexOf('data-k="none"') < html.indexOf('data-k="scroll"'), size)
+    }
+  })
+
+  test('the last segment that shows loses its gap line, even when a zero one follows it', () => {
+    const { view, bar } = build('Wide')
+    view({ slices: [{ id: 'a', label: 'A', value: 3 }, { id: 'b', label: 'B', value: 1 }, { id: 'z', label: 'Z', value: 0 }] }, 'Wide')
+    assert.deepEqual(bar.children.map((s) => / last/.test(s.getAttribute('class'))), [false, true, false])
+  })
+
+  test('the element hands each render\'s colours to the next, so a rebuilt tile keeps them', () => {
+    const { el, view } = build('M')
+    view({ slices: FIVE })
+    assert.deepEqual(Object.keys(el.viewContext().colours).sort(), FIVE.map((s) => String(s.id ?? s.label)).sort())
   })
 
   test('S writes the largest part\'s words and one length', () => {

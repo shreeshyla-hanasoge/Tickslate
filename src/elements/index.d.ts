@@ -915,6 +915,8 @@ export interface BreakdownModel {
     index: number
     other: boolean
     note: string
+    /** 'Equities, 41.2%': the spoken name of the legend item. */
+    aria: string
   }>
   /** Donut only: one ring segment for each slice with a positive share. */
   arcs: Array<{ key: string; d: string; index: number }>

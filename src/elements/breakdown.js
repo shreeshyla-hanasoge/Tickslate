@@ -19,6 +19,9 @@ import { createRows, setText } from './rows.js'
 const isObj = (v) => v !== null && typeof v === 'object'
 const text = (v) => (typeof v === 'string' ? v : '')
 
+// Above this a value is scaled down before it is summed: far below the double limit, far above any real figure.
+const HUGE = 1e150
+
 /**
  * Largest-remainder rounding: the shares of `values` as numbers with `decimals`
  * places that sum to exactly 100. Works in whole units of 10^-decimals so the
@@ -27,11 +30,14 @@ const text = (v) => (typeof v === 'string' ? v : '')
  */
 export function apportion(values, decimals = 1) {
   const list = Array.from(values || [], (v) => (Number.isFinite(v) && v > 0 ? v : 0))
-  const total = list.reduce((a, b) => a + b, 0)
+  // Values near the largest double would overflow when summed or scaled, so they are divided by the largest first.
+  const peak = list.reduce((a, b) => Math.max(a, b), 0)
+  const scaled = peak > HUGE ? list.map((v) => v / peak) : list
+  const total = scaled.reduce((a, b) => a + b, 0)
   if (!(total > 0)) return list.map(() => 0)
   const unit = Math.pow(10, decimals)
   const whole = 100 * unit
-  const exact = list.map((v) => (v * whole) / total)
+  const exact = scaled.map((v) => (v * whole) / total)
   const floors = exact.map(Math.floor)
   let left = whole - floors.reduce((a, b) => a + b, 0)
   const order = exact.map((e, i) => i).sort((a, b) => exact[b] - floors[b] - (exact[a] - floors[a]) || a - b)
@@ -43,14 +49,38 @@ export function apportion(values, decimals = 1) {
  * Sorts by value, largest first and stable on ties, and keeps the largest
  * `max - 1` when there are more than `max`, summing the rest into one
  * `{ value, other: true }` slice at the end.
+ *
+ * `held` is the set of keys shown last time. Deviation from a literal sort
+ * (recorded in the changelog fragment): near-tied slices would otherwise swap in
+ * and out of Other on every tick, so a slice already shown stays shown until a
+ * newcomer beats it by at least `margin` percentage points of the total.
  */
-export function foldSlices(slices, { max = 6 } = {}) {
+export function foldSlices(slices, { max = 6, held, margin = 1 } = {}) {
   const sorted = Array.from(slices || [], (s, i) => [s, i]).sort((a, b) => b[0].value - a[0].value || a[1] - b[1]).map((p) => p[0])
   if (sorted.length <= max) return sorted
-  const kept = sorted.slice(0, max - 1)
-  let rest = 0
-  for (let i = max - 1; i < sorted.length; i++) rest += sorted[i].value
-  kept.push({ value: rest, other: true })
+  let shown = sorted.slice(0, max - 1)
+  const rest = sorted.slice(max - 1)
+  if (held && held.size) {
+    // Measured against the largest slice so a total near the double limit cannot overflow.
+    const peak = sorted[0].value || 1
+    const total = sorted.reduce((a, s) => a + s.value / peak, 0)
+    const gap = (margin / 100) * total
+    for (;;) {
+      // The weakest newcomer against the strongest held slice that fell out: swap unless the newcomer is clear of it.
+      let n = -1
+      shown.forEach((s, i) => {
+        if (!held.has(s.key) && (n < 0 || s.value < shown[n].value)) n = i
+      })
+      const h = rest.findIndex((s) => held.has(s.key))
+      if (n < 0 || h < 0 || !((shown[n].value - rest[h].value) / peak < gap)) break
+      ;[shown[n], rest[h]] = [rest[h], shown[n]]
+    }
+    shown = shown.sort((a, b) => b.value - a.value || sorted.indexOf(a) - sorted.indexOf(b))
+  }
+  const kept = shown.slice()
+  let sum = 0
+  for (const s of rest) sum += s.value
+  kept.push({ value: Math.min(sum, Number.MAX_VALUE), other: true })
   return kept
 }
 
@@ -84,6 +114,9 @@ function shower(fmt, d) {
 export function breakdownModel(data, variant, ctx) {
   const d = isObj(data) ? data : {}
   const { fmt, t } = ctx
+  // The key and colour each slice had last time (the element hands them back), so a near-tie does not churn the fold or the colours.
+  const before = isObj(ctx.colours) ? ctx.colours : {}
+  const held = new Set(Object.keys(before))
   const show = shower(fmt, d)
   const kind = variant === 'S' ? 'share' : variant === 'M' ? 'donut' : 'stacked'
 
@@ -111,23 +144,46 @@ export function breakdownModel(data, variant, ctx) {
     kept.push({ key, label, value, note: text(s.note) })
   })
 
-  const folded = foldSlices(kept)
+  const folded = foldSlices(kept, { held })
   const pcts = apportion(folded.map((s) => s.value))
   const total = folded.reduce((a, s) => a + s.value, 0)
+  // Fractions come from values scaled by the largest, so a pair near the double limit still draws.
+  const peak = folded.reduce((a, s) => Math.max(a, s.value), 0)
+  const parts = folded.map((s) => (peak > 0 ? s.value / peak : 0))
+  const whole = parts.reduce((a, b) => a + b, 0)
+  const drawn = whole > 0
+  // A slice keeps the colour it had; a newcomer takes the lowest free one. Other is always the axis colour.
+  // No prototype, so a host's id of `__proto__` is an ordinary key.
+  const colours = Object.create(null)
+  const used = new Set()
+  for (const s of folded) {
+    const c = before[s.key]
+    if (!s.other && Number.isInteger(c) && c >= 1 && c <= 6 && !used.has(c)) {
+      colours[s.key] = c
+      used.add(c)
+    }
+  }
+  for (const s of folded) {
+    if (s.other || colours[s.key]) continue
+    let c = 1
+    while (used.has(c)) c++
+    colours[s.key] = c
+    used.add(c)
+  }
   const slices = folded.map((s, i) => ({
     key: s.other ? 'other' : s.key,
     label: s.other ? t('breakdown.other') : s.label,
     value: show(s.value),
     pct: fmt.percent(pcts[i] / 100, { sign: 'negative', decimals: 1 }),
-    fraction: total > 0 ? s.value / total : 0,
-    index: s.other ? 0 : i + 1,
+    fraction: whole > 0 ? parts[i] / whole : 0,
+    index: s.other ? 0 : colours[s.key],
     other: Boolean(s.other),
     note: s.other ? '' : s.note,
   }))
   for (const s of slices) s.aria = t('breakdown.item', { label: s.label, pct: s.pct })
 
   const arcs = []
-  if (kind === 'donut' && total > 0) {
+  if (kind === 'donut' && drawn) {
     const paths = arcPaths(slices.map((s) => s.fraction), DONUT)
     slices.forEach((s, i) => {
       if (paths[i]) arcs.push({ key: s.key, d: paths[i], index: s.index })
@@ -136,7 +192,6 @@ export function breakdownModel(data, variant, ctx) {
 
   const largest = slices[0]
   const label = ctx.label
-  const drawn = total > 0
   const ariaLabel = drawn
     ? t('breakdown.chartLabel', { label, count: kept.length, name: largest.label, pct: largest.pct }, kept.length)
     : t('breakdown.chartEmpty', { label })
@@ -144,8 +199,9 @@ export function breakdownModel(data, variant, ctx) {
   return {
     ariaLabel,
     kind,
-    total: kept.length ? show(total) : '',
-    totalText: kept.length ? t('breakdown.total', { value: show(total) }) : '',
+    total: kept.length && Number.isFinite(total) ? show(total) : '',
+    totalText: kept.length && Number.isFinite(total) ? t('breakdown.total', { value: show(total) }) : '',
+    colours,
     slices,
     arcs,
     excluded,
@@ -171,17 +227,18 @@ const SHARE = `${HEAD}
 <span class="sm mut foot" data-k="foot"></span>
 ${NONE}`
 
-// The legend scrolls inside the tile rather than growing it; the note about left-out values ends it.
-const LEGEND = (cls) => `<div class="scroll" data-k="scroll" role="group" tabindex="0"><ul class="lg ${cls}" part="legend" data-k="legend"></ul><p class="sm mut note" data-k="note" hidden></p></div>`
+// The legend scrolls inside the tile rather than growing it.
+const LEGEND = (cls) => `<div class="scroll" data-k="scroll" role="group" tabindex="0"><ul class="lg ${cls}" part="legend" data-k="legend"></ul></div>`
+// The note about left-out values sits above the legend, so it is never the line that scrolls out of view.
+const NOTE = '<p class="sm mut note" data-k="note" hidden></p>'
 const BAR = '<div class="bar" part="bar" role="img" data-k="bar"></div>'
 
 const TEMPLATES = {
   S: SHARE,
-  Wide: `${HEAD}${BAR}${LEGEND('flow')}${NONE}`,
-  Tall: `${HEAD}${BAR}${LEGEND('stack')}${NONE}`,
-  M: `${HEAD}
-<div class="dn"><div class="donut"><svg viewBox="0 0 100 100" part="chart" role="img" focusable="false" data-k="chart"><g data-k="arcs"></g></svg><span class="mid n sm" data-k="mid"></span></div>${LEGEND('stack round')}</div>
-${NONE}`,
+  Wide: `${HEAD}${NONE}${BAR}${NOTE}${LEGEND('flow')}`,
+  Tall: `${HEAD}${NONE}${BAR}${NOTE}${LEGEND('stack')}`,
+  M: `${HEAD}${NONE}${NOTE}
+<div class="dn"><div class="donut"><svg viewBox="0 0 100 100" part="chart" role="img" focusable="false" data-k="chart"><g data-k="arcs"></g></svg><span class="mid n sm" data-k="mid"></span></div>${LEGEND('stack round')}</div>`,
 }
 
 const SKELETONS = {
@@ -210,7 +267,7 @@ const STYLES = `
 /* A gap line in the surface colour parts neighbours, so slices are told apart by more than colour. */
 .bar { display: flex; flex: none; block-size: 12px; border-radius: 6px; background: var(--ts-surface-2); overflow: hidden; }
 .seg { flex: 0 1 var(--w, 0%); min-inline-size: 3px; box-sizing: border-box; border-inline-end: 2px solid var(--ts-surface); background: var(--c); }
-.seg:last-of-type { border-inline-end: 0; }
+.seg.last { border-inline-end: 0; }
 .lg { margin: 0; padding: 0; list-style: none; }
 .lg li { min-inline-size: 0; }
 .nm { min-inline-size: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ts-ink); unicode-bidi: isolate; }
@@ -225,7 +282,7 @@ const STYLES = `
 .stack .sub { grid-column: 2 / -1; display: flex; gap: 8px; min-inline-size: 0; }
 .stack .nt { min-inline-size: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .stack .nt:empty { display: none; }
-.note { margin: 4px 0 0; }
+.note { margin: 0; }
 .dn { display: flex; flex: 1; min-height: 0; align-items: center; gap: 16px; }
 .dn .scroll { align-self: stretch; }
 .donut { position: relative; flex: none; inline-size: min(46cqi, 230px); aspect-ratio: 1; }
@@ -299,6 +356,11 @@ export class TsBreakdown extends TsWidget {
     this._barRows = null
     this._arcsEl = null
     this._arcRows = null
+    this._colours = {}
+  }
+
+  viewContext() {
+    return { colours: this._colours }
   }
 
   update(vm, variant) {
@@ -317,8 +379,10 @@ export class TsBreakdown extends TsWidget {
     write('time', vm.time)
     write('post', vm.synced.post)
     write('none', vm.noRows)
-    // S has nothing but the bar, so it says so whenever the bar is not drawn; the others still list their (zero) parts.
-    hide('none', vm.drawn || (variant !== 'S' && vm.slices.length > 0))
+    // Whatever the size, a set with nothing to draw says so; the (zero) parts still list below, so the legend never contradicts the data.
+    hide('none', vm.drawn)
+    // Handed back to the next model, which keeps each slice's colour and holds near-tied slices in place.
+    this._colours = vm.colours
 
     if (variant === 'S') {
       const top = vm.slices[0]
@@ -338,8 +402,9 @@ export class TsBreakdown extends TsWidget {
       return
     }
 
-    // A set with nothing to draw says so in one line; its (zero) parts still list, so the legend never contradicts the data.
-    const rows = vm.slices.map((s, i) => ({ ...s, id: s.key, top: i === 0 }))
+    // The last segment that shows loses its gap line; a hidden zero-share one at the end must not take it.
+    const lastShown = vm.slices.reduce((at, s, i) => (s.fraction > 0 ? i : at), -1)
+    const rows = vm.slices.map((s, i) => ({ ...s, id: s.key, top: i === 0, last: i === lastShown }))
     this._bind(variant)
     const scroll = this.$('[data-k="scroll"]')
     setAttr(scroll, 'aria-label', vm.label)
@@ -410,7 +475,7 @@ export class TsBreakdown extends TsWidget {
   }
 
   _writeSeg(el, row) {
-    setAttr(el, 'class', `seg c${row.index}${row.top ? ' top' : ''}`)
+    setAttr(el, 'class', `seg c${row.index}${row.top ? ' top' : ''}${row.last ? ' last' : ''}`)
     setVar(el, '--w', pctWidth(row.fraction))
     el.toggleAttribute('hidden', row.fraction === 0)
   }

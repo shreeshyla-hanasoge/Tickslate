@@ -13,8 +13,9 @@ fetches anything.
   move, drag the corner to resize, and Undo or Add back after a removal.
 - **Generic widgets.** `<ts-metric>` (a KPI tile with change, sparkline and
   target), `<ts-chart>` (line, area and bar trends), `<ts-progress>` (a value
-  against a goal or limit), `<ts-breakdown>` (parts of a whole), `<ts-status>` (service health), `<ts-feed>` (the latest events) and `<ts-card>` (a themed tile
-  for any content, such as your own Chart.js or ECharts chart).
+  against a goal or limit), `<ts-breakdown>` (parts of a whole), `<ts-status>`
+  (service health), `<ts-feed>` (the latest events) and `<ts-card>` (a themed
+  tile for any content, such as your own Chart.js or ECharts chart).
 - **A finance set.** Today's P&L, an equity curve, an exchange session clock,
   a watchlist and open positions, a P&L calendar, edge stats and capital
   funding, plus a sortable `<ts-table>`.
@@ -51,7 +52,8 @@ import 'tickslate/elements/metric'
 ```
 
 The entries are `grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`,
-`session-clock`, `table`, `progress`, `breakdown`, `status`, `feed`, `watchlist`, `open-positions`,
+`session-clock`, `table`, `progress`, `breakdown`, `status`, `feed`,
+`watchlist`, `open-positions`,
 `pnl-calendar`, `edge-stats`, `capital-funding`, `controls`
 (`<ts-widget-picker>` and `<ts-grid-controls>`) and `layout-list`. The development builds, with
 their warnings, load through the `development` export condition.

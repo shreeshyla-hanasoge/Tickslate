@@ -55,10 +55,15 @@ How the parts are read:
 - **At most six.** With more than six parts, the largest five are shown and the rest are
   summed into one part called "Other", drawn in `--ts-axis`. The others take
   `--ts-series-1` onward.
+- **Near-ties hold still.** A part already shown stays shown until a newcomer beats it by at least one
+  percentage point, so two parts trading places by a hair on every tick do not swap in and out of "Other".
+  Colours follow the part's `id`, not its rank, so a swap never recolours the parts that stay.
+- **Large numbers are safe.** Values near the largest double are scaled before they are summed, so they still
+  read as shares.
 - **Percentages sum to 100.0%.** They are rounded by the largest-remainder method
   at one decimal, so the legend never reads 99.9% or 100.1%. With a total of 0 every part reads `0.0%`
   and nothing is drawn.
-- **Negative values are left out and said so.** The tile reads "1 negative value left out". A part
+- **Negative values are left out and said so.** The tile reads "1 negative value left out", above the legend where it cannot scroll out of view. A part
   whose value is not a number is dropped, and development warns with the count. A part of 0 stays in
   the legend at `0.0%` and draws nothing.
 
@@ -130,7 +135,7 @@ anything else, so there is no action to opt in to. See [Events](../reference/eve
 | Loading | `data` is `undefined`, or `state="loading"` | A skeleton shaped like the size's layout |
 | Empty | `data = null` | "Nothing to break down", or your `slot="empty"` content |
 | Error | `state="error"`, `error` set, an unparseable `data` attribute, or a view model that throws | A warning icon and the message, and Retry if enabled |
-| Content | An object | The drawing and the legend. With nothing to draw it says "Nothing to break down" |
+| Content | An object | The drawing and the legend. With nothing to draw (every part 0) it says "Nothing to break down" at every size, and the legend lists the zeros under it |
 
 ## Accessibility
 

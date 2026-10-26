@@ -165,6 +165,7 @@ export class TsFeed extends TsWidget {
     super()
     this._listEl = null
     this._rows = null
+    this._hold = null
   }
 
   update(vm) {
@@ -191,16 +192,41 @@ export class TsFeed extends TsWidget {
 
     const listEl = this.$('[data-k="list"]')
     this._bind(listEl)
-    // A reader who has scrolled down keeps what they are reading where it is: note the first row in view, sync, and
-    // move the scroll offset by however far that row moved. At the top nothing is held still, so the arrival shows.
-    const away = scroll.scrollTop > 0
-    const anchor = away ? this._rowInView(scroll, listEl) : null
-    const was = anchor ? anchor.getBoundingClientRect().top : 0
-    this._rows.sync(vm.items)
-    if (anchor && listEl.contains(anchor)) {
-      const moved = anchor.getBoundingClientRect().top - was
-      if (moved) scroll.scrollTop += moved
+    // A reader who has scrolled down keeps what they are reading where it is: note the first row in view and how far
+    // below the scroller's top it sits, sync, and put that row back at that offset. scrollTop moves in whole pixels on
+    // some engines (WebKit), so what it cannot take up, under a pixel, is shown by shifting the list by that remainder,
+    // and the row does not creep by a fraction on each arrival. The offset is kept from the first arrival and reused
+    // while the reader has not moved. At the top nothing is held still.
+    const edge = () => scroll.getBoundingClientRect().top
+    let hold = this._hold
+    if (scroll.scrollTop <= 0) {
+      this._shift(listEl, 0)
+      hold = null
+    } else if (!hold || scroll.scrollTop !== hold.left || !listEl.contains(hold.row)) {
+      // The reader scrolled, which hides the remainder going: measure afresh from the list as laid out.
+      this._shift(listEl, 0)
+      const row = this._rowInView(scroll, listEl)
+      hold = row ? { row, offset: row.getBoundingClientRect().top - edge(), left: 0, shift: 0 } : null
     }
+    this._rows.sync(vm.items)
+    if (hold && listEl.contains(hold.row)) {
+      const laid = hold.row.getBoundingClientRect().top - hold.shift - edge() - hold.offset
+      const was = scroll.scrollTop
+      if (laid) scroll.scrollTop = was + laid
+      hold.left = scroll.scrollTop
+      hold.shift = -(laid - (hold.left - was))
+      this._shift(listEl, hold.shift)
+    } else {
+      this._shift(listEl, 0)
+      hold = null
+    }
+    this._hold = hold
+  }
+
+  /** The sub-pixel remainder, as a translation written through the CSSOM (no style attribute). */
+  _shift(listEl, px) {
+    const want = px ? `translateY(${Math.round(px * 100) / 100}px)` : ''
+    if (listEl.style.getPropertyValue('transform') !== want) listEl.style.setProperty('transform', want)
   }
 
   _rowInView(scroll, listEl) {

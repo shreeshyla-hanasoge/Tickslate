@@ -251,6 +251,35 @@ describe('the element draws in place', () => {
     }
   })
 
+  test('an engine that rounds scrollTop to whole pixels does not creep: the sub-pixel remainder is shifted away and the row in view stays put', () => {
+    const { view, scroll, list } = build('M')
+    // Rows 40.13 px tall, and a scroller that keeps whole pixels, as WebKit does.
+    let top = 0
+    Object.defineProperty(scroll, 'scrollTop', { get: () => top, set: (v) => { top = Math.round(v) }, configurable: true })
+    const H = 40.13
+    const was = MiniNode.prototype.getBoundingClientRect
+    MiniNode.prototype.getBoundingClientRect = function () {
+      if (this.localName !== 'li') return { top: 0, bottom: 200 }
+      // The list's own translation moves every row, as a transform does in a browser.
+      const m = /translateY\((-?[\d.]+)px\)/.exec(this.parent.style.getPropertyValue('transform'))
+      const t = this.parent.children.indexOf(this) * H - top + (m ? Number(m[1]) : 0)
+      return { top: t, bottom: t + H }
+    }
+    const place = (text) => list.children.find((li) => li.children[2].textContent === text).getBoundingClientRect().top
+    try {
+      view({ items: many(20) })
+      scroll.scrollTop = 500
+      const start = place('Event 12')
+      for (let n = 21; n <= 60; n++) {
+        // The window is wide enough that the reader's row never trims out.
+        view({ items: many(n), max: 100 })
+        assert.ok(Math.abs(place('Event 12') - start) < 0.011, `arrival ${n}: drifted ${place('Event 12') - start}`)
+      }
+    } finally {
+      MiniNode.prototype.getBoundingClientRect = was
+    }
+  })
+
   test('the offset follows the row in view when an arrival and a departure come together', () => {
     const { view, scroll } = build('M')
     const unlay = lay(scroll)
