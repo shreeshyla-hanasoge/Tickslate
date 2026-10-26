@@ -133,7 +133,7 @@
  *                   here: put it in a `data-k` node and fill it in update()
  *                   with this.t, so a template stays a pure function of its variant.
  *   clock           Settable `() => number`; tests and demos freeze time.
- *   now()           clock() or Date.now().
+ *   now()           clock(), else configure({ clock }), else Date.now().
  *   $(selector)     querySelector in the shadow root, cached until the
  *                   template is rebuilt.
  *   requestRender() Schedule a render (coalesced per microtask). A widget that
@@ -424,6 +424,11 @@ export function localeDirection(tag) {
 // spacer (.f1) that pushes a footer to the bottom, which is a gap and a flex share to give back and hides nothing.
 // The label has its own line height (1.2) because 'normal' is a font's choice and Firefox rounds it up: the 11px label's line box
 // grew 1 to 2px over the 10px one it replaced, enough to push a full funding or edge tile past its bottom edge there.
+// Narrow tiles (RFC 0004 §11.3): under 11.25rem (180px at a 16px root, so it follows the reader's text size) the label is the one
+// flex item that gives way, but only down to about six characters. Below 7rem (112px at a 16px root, so at 320px, or at a larger text
+// size where the room shrinks in rem) there is no room for a label and its meta ("just now") together, and the meta is dropped
+// whole rather than clipped: the dot and the tile's name still say live or stale. `.ell` on the label supplies the overflow,
+// nowrap and ellipsis.
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -501,6 +506,8 @@ ${standaloneCss()}
 /* The header's meta says 'synced 11:42', and on a tile narrower than 200px just '14:05', so the label keeps its room. */
 .meta { flex: none; white-space: nowrap; }
 @container (max-width: 200px) { .pre { display: none; } }
+@container ts-tile (max-width: 11.25rem) { .hd > .lb { flex: 0 1 auto; min-inline-size: 6ch; } }
+@container ts-tile (max-width: 7rem) { .hd > .meta { display: none; } }
 @container ts-tile (max-height: 6.5rem) { .sec, .tile > .f1 { display: none; } }
 @container ts-tile (max-height: 5rem) { .ter { display: none; } }
 @keyframes ts-pulse {
@@ -733,6 +740,9 @@ export class TsWidget extends Base {
     // then, so a widget renders on connect and never stays blank where there is no observer.
     this._inView = true
     this._skipped = false
+    // A widget sets this while a draw it asked for must not wait for the viewport (<ts-table>'s first fit, so a table
+    // far down the page is not left holding columns it has already measured to be too many).
+    this._drawOwed = false
     // True once the widget has drawn something other than its loading skeleton; only then may a render wait.
     this._drawn = false
     this._unsubFresh = null
@@ -944,7 +954,10 @@ export class TsWidget extends Base {
   }
 
   now() {
-    return this._clock ? this._clock() : Date.now()
+    if (this._clock) return this._clock()
+    // The page clock (RFC 0004 §11.4); a widget never reads its grid's.
+    const page = currentConfig().clock
+    return page ? page() : Date.now()
   }
 
   get formatter() {
@@ -1049,7 +1062,7 @@ export class TsWidget extends Base {
     // Hidden or far away: remember that a render was wanted, and make it when the widget comes back. Only a widget that
     // already holds its content waits: the first content always draws, so the accessibility tree never keeps a
     // loading skeleton for data that has arrived, whatever order the host set things in.
-    if (!this._inView && this._drawn) {
+    if (!this._inView && this._drawn && !this._drawOwed) {
       // A host that gives the element no box (display: contents) is never "intersecting", whatever is on screen.
       if (!this._skipped && boxless(this)) {
         this._inView = true
@@ -1342,6 +1355,8 @@ export class TsWidget extends Base {
     const named = !!this.label
     this._setAttr(heading, 'aria-hidden', named ? null : 'true')
     this._setAttr(heading, 'aria-label', named && heading.textContent !== label ? label : null)
+    // The full text for a pointer user when CSS cuts the visible label short (RFC 0004 §11.3); the DOM text and the name stay whole.
+    this._setAttr(heading, 'title', named ? label : null)
     this._applyActivation(heading, label)
   }
 

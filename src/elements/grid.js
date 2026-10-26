@@ -420,6 +420,7 @@ export class TsGrid extends Base {
     this._persistOn = false // true from the first measure on connect to disconnect, when the persist attribute may attach
     this._persistKey = null // the key persistLayout is attached with
     this._persistHandle = null
+    this._layoutWatchers = new Set()
     this._persistBase = null // the layout a device with nothing saved falls back to
     // Each place Add back appears: its button, its list, and what counts as inside it.
     this._addBack = {
@@ -494,7 +495,12 @@ export class TsGrid extends Base {
     this._stateListeners = new Set() // <ts-grid-controls>, which redraw when the schedule or an override changes
     this._offCatalog = null
     this._profileTimer = 0
-    this._clock = () => Date.now()
+    // null follows configure({ clock }) (RFC 0004 §11.4); the getter returns a function either way.
+    this._clock = null
+    this._pageClock = () => {
+      const page = currentConfig().clock
+      return page ? page() : Date.now()
+    }
     this._onVisibility = () => {
       this._syncHint()
       if (document.visibilityState === 'visible') this._reschedule(true)
@@ -622,6 +628,16 @@ export class TsGrid extends Base {
     } finally {
       this._quietOrder = false
     }
+    // Before the first edit the host's layout is also what a device with nothing saved falls back to (RFC 0004 §11.2),
+    // and persistLayout hears of it to capture it for the device on show.
+    if (this._persistHandle && !this._edited && !this._persistWriting) this._persistBase = this._layout
+    for (const fn of [...this._layoutWatchers]) fn()
+  }
+
+  /** For persistLayout: `fn()` runs after each assignment of `layout`, including its own. Returns the function that stops it. */
+  _watchLayout(fn) {
+    this._layoutWatchers.add(fn)
+    return () => this._layoutWatchers.delete(fn)
   }
 
   /** Column thresholds in px of the grid's own width; defaults to { tablet: 700, desktop: 1200 }. Setting it re-measures. */
@@ -1156,11 +1172,11 @@ export class TsGrid extends Base {
 
   /** What the grid takes the time to be. Tests and demos can replace it. */
   get clock() {
-    return this._clock
+    return this._clock || this._pageClock
   }
 
   set clock(fn) {
-    this._clock = typeof fn === 'function' ? fn : () => Date.now()
+    this._clock = typeof fn === 'function' ? fn : null
     this._reschedule(true, 'schedule', true)
   }
 
@@ -1180,7 +1196,7 @@ export class TsGrid extends Base {
       this._stateChanged()
       return
     }
-    const now = this._clock()
+    const now = this.clock()
     const until = this._schedule ? nextProfileChange(this._schedule.calendar, this._schedule, now) : null
     const before = this.profile
     this._override = { profile, until: until === null ? Infinity : until }
@@ -1215,7 +1231,12 @@ export class TsGrid extends Base {
       this.persist = value
     }
     // configure() may change the messages or the locale while the grid is on the page; the widgets hear of it themselves.
-    this._offConfigure = onConfigure(() => this._refreshText())
+    this._offConfigure = onConfigure(() => {
+      this._refreshText()
+      // A new page clock moves a schedule that has no clock of its own, quietly, as setting grid.clock does.
+      // Any configure() re-runs it: a schedule is cheap and an unchanged time changes nothing.
+      if (this._schedule && !this._clock) this._reschedule(true, 'schedule', true)
+    })
     // A widget registered after the grid rendered may be the type of a tile it could not draw.
     this._offCatalog = onCatalogChange(() => {
       this._setCatalog(this._catalog)
@@ -1404,7 +1425,7 @@ export class TsGrid extends Base {
       return
     } else {
       this._deferred = false
-      const now = this._clock()
+      const now = this.clock()
       if (this._override && now >= this._override.until) {
         this._override = null
         reason = 'override-ended'

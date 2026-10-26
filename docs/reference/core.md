@@ -346,7 +346,7 @@ A value that is not readable as a number formats as a dash.
 
 ### `configure(options)`
 
-`(options: { locale?, currency?, timeZone?, messages?, styleNonce? }) => void`. Sets defaults
+`(options: { locale?, currency?, timeZone?, messages?, styleNonce?, clock? }) => void`. Sets defaults
 for formatters (and widgets) created without their own. Later calls merge. A
 widget resolves each option from its own attribute, then its `<ts-grid>`'s
 attribute, then these. `messages` replaces the whole table every widget and grid
@@ -356,6 +356,31 @@ reads (see [Messages](#messages)); `null` clears it. `styleNonce` is the CSP non
 ```js
 configure({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 ```
+
+`clock` is the page's clock: a `() => number` of milliseconds since the epoch,
+which every grid and widget reads when it has none of its own. A demo or a host
+test freezes or moves time in one place:
+
+```js
+let offset = 0
+configure({ clock: () => Date.now() + offset })
+offset = 3_600_000
+configure({ clock: () => Date.now() + offset })   // the same function, said again: every tile draws again
+```
+
+A widget reads its own `clock` property first, then this, then `Date.now()`; a
+widget never reads its grid's. A grid with a `schedule` and no `clock` of its own
+takes the time from this too. Calling `configure({ clock })` notifies
+`onConfigure` listeners, so every widget draws again and every grid works out its
+schedule again, quietly, as setting `grid.clock` does; say it again after the time
+the function returns has moved. `null` returns to `Date.now()`. Anything that is not
+a function is ignored, with one development warning, and the clock already set stays. `grid.clock` and `widget.clock`
+keep working and win for the element they are set on, and still return a function:
+the one in effect.
+
+The core itself reads the clock in one place only: `createCalendar` takes its default
+`now` from it, so a pretend clock makes `calendar.issues` deterministic. A
+`createCalendar(…, { now })` or `fmt.ago(t, now)` argument always wins.
 
 ### `onConfigure(fn)`
 
@@ -373,7 +398,7 @@ stop()
 
 ### `currentConfig()`
 
-`() => { locale?, currency?, timeZone?, messages? }`. A copy of the defaults
+`() => { locale?, currency?, timeZone?, messages?, styleNonce?, clock? }`. A copy of the defaults
 `configure()` has set.
 
 ### `toNumber(v)`
@@ -463,7 +488,7 @@ createCalendar(input: {
   sessions: readonly SessionSpec[]
   /** Session id -> 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
-  /** The instant holiday coverage is judged against. Default: `Date.now()`, read once here. */
+  /** The instant holiday coverage is judged against. Default: the page clock (`configure({ clock })`), else `Date.now()`, read once here. */
   now?: number
 }): Calendar
 ```

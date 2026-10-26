@@ -64,6 +64,41 @@ persistLayout(grid, {
 })
 ```
 
+### A layout the host sets after the grid connects
+
+A host often assigns `grid.layout` a moment after the grid connects, after a fetch
+or in a framework's mount hook. With `persist`, that layout is the defaults, and a
+saved layout still wins. The order a host can rely on, for one connection:
+
+1. `connectedCallback` runs and the grid measures. It never emits during the
+   connect call itself.
+2. `ts-columns-change` fires with `initial: true`. `persist` takes the grid's layout
+   as the defaults for that device, then applies the saved layout for the device if
+   there is one (at once for `localStorage`, later for an adapter).
+3. A `grid.layout = …` at any time before the user's first edit on that device is
+   taken as the defaults too (in the same task as the connect, after step 2, or much
+   later), and the saved layout, if any, is applied over it. A layout set before the
+   grid connects counts as step 2's layout.
+4. Applying the defaults or a saved layout fires no `ts-layout-change`. That event is
+   for commits. To know what is on screen, read `grid.layout` or listen for
+   `ts-columns-change`.
+5. The first user edit on a device, undo included, fires `ts-layout-change` and ends
+   capturing for that device: a later assignment is the host replacing the board by
+   hand, not a new default.
+
+```js
+const grid = document.querySelector('ts-grid[persist="ops"]')
+const layout = await (await fetch('/api/layout')).json()
+grid.layout = layout
+// A visitor with a saved layout still sees theirs.
+// With nothing saved they see `layout`, and the handle's reset() returns to it.
+```
+
+`reset()` returns to the last layout captured this way, not the one the grid
+started with. A device the host did not assign to starts from the host's layout too, unless you gave `defaults` for it. The
+`persist` attribute and `persistLayout()` behave the same; there is no separate
+option for this.
+
 ## The array shorthand
 
 Wherever a layout is accepted (`grid.layout = …`, `defaults`, `readLayout`),

@@ -68,6 +68,10 @@ const table = document.createElement('ts-table')
 table.data = { columns: [{ key: 'pnl', label: 'P&L', format: 'money', tone: 'sign' }], rows: [{ id: 1, pnl: 3 }], sort: { key: 'pnl', dir: 'desc' } }
 // @ts-expect-error `bold` is not a column option
 table.data = { columns: [{ key: 'pnl', label: 'P&L', bold: true }], rows: [] }
+// A column's width: 'content', 'fill', 'shared' (the default) or a number of CSS pixels.
+table.data = { columns: [{ key: 'a', label: 'A', width: 'content' }, { key: 'b', label: 'B', width: 'fill' }, { key: 'c', label: 'C', width: 'shared' }, { key: 'd', label: 'D', width: 96 }], rows: [] }
+// @ts-expect-error a width is a keyword or a number, not a CSS string
+table.data = { columns: [{ key: 'a', label: 'A', width: '96px' }], rows: [] }
 table.addEventListener('ts-action', (e) => {
   const a: TsTableAction = e.detail
   if (a.action === 'sort') {

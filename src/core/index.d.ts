@@ -281,10 +281,12 @@ export declare function configure(options: FormatOptions & {
   messages?: MessageOverrides | null
   /** The CSP nonce for the `<style>` element widgets fall back to where constructed sheets are missing (below Safari 16.4). */
   styleNonce?: string
+  /** The time every grid and widget reads when none is set on the element: ms since the epoch. null clears it; anything but a function is ignored with one development warning. */
+  clock?: (() => number) | null
 }): void
-export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides; styleNonce?: string }
+export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides; styleNonce?: string; clock?: () => number }
 /** Calls `fn` with the new defaults after every configure(); returns a function that stops it. Registers nothing until called. */
-export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides; styleNonce?: string }) => void): () => void
+export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides; styleNonce?: string; clock?: () => number }) => void): () => void
 /** A finite number from a number, a decimal string or a decimal-library object; else NaN. */
 export declare function toNumber(v: unknown): number
 
@@ -782,7 +784,7 @@ export interface CalendarInput {
   sessions: readonly SessionSpec[]
   /** Session id → 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
-  /** The instant holiday coverage is judged against. Default: Date.now(), read once when the calendar is created. Pass it in tests and in servers that render at a fixed time. */
+  /** The instant holiday coverage is judged against. Default: the page clock (`configure({ clock })`), else Date.now(), read once when the calendar is created. Pass it in tests and in servers that render at a fixed time. */
   now?: number
 }
 

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { createFormatter, configure, currentConfig, onConfigure, toNumber } from '../src/core/index.js'
+import { createFormatter, configure, currentConfig, onConfigure, toNumber, createCalendar } from '../src/core/index.js'
 
 const inr = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
 const MINUS = '−'
@@ -387,3 +387,97 @@ describe('ago', () => {
   })
 })
 
+
+// The page clock (RFC 0004 §11.4): the core stores the function and calls nothing but the calendar's default `now`.
+describe('configure({ clock })', () => {
+  const FROZEN = Date.UTC(2026, 9, 26, 5, 0)
+  const warned = []
+  const realWarn = console.warn
+  const restore = () => {
+    configure({ clock: null })
+    console.warn = realWarn
+  }
+  const quiet = () => {
+    warned.length = 0
+    console.warn = (m) => warned.push(String(m))
+  }
+
+  test('is stored, returned by currentConfig(), and cleared by null', () => {
+    quiet()
+    try {
+      assert.equal(currentConfig().clock, undefined)
+      const clock = () => FROZEN
+      configure({ clock })
+      assert.equal(currentConfig().clock, clock)
+      configure({ locale: 'en-IN' })
+      assert.equal(currentConfig().clock, clock, 'another option leaves it alone')
+      configure({ clock: null })
+      assert.equal(currentConfig().clock, undefined)
+      assert.deepEqual(warned, [])
+    } finally {
+      restore()
+      configure({ locale: '' })
+    }
+  })
+
+  test('only a function counts: anything else is ignored with one warning and clears nothing it should keep', () => {
+    quiet()
+    try {
+      for (const bad of [5, '12:00', {}, true]) configure({ clock: bad })
+      assert.equal(currentConfig().clock, undefined)
+      assert.equal(warned.length, 1, 'once, however many')
+      // With a clock already set, a bad value leaves it alone instead of putting the page back on real time.
+      const prior = () => FROZEN
+      configure({ clock: prior })
+      for (const bad of ['x', 7, {}, false]) configure({ clock: bad })
+      assert.equal(currentConfig().clock, prior)
+      assert.match(warned[0], /clock/)
+    } finally {
+      restore()
+    }
+  })
+
+  test('listeners hear of it, and the core calls the function only for the calendar\u2019s default now', () => {
+    quiet()
+    const seen = []
+    const off = onConfigure((c) => seen.push(c.clock))
+    let calls = 0
+    const clock = () => (calls++, FROZEN)
+    try {
+      configure({ clock })
+      assert.deepEqual(seen, [clock])
+      createFormatter({ locale: 'en-IN', timeZone: 'Asia/Kolkata' }).time(FROZEN)
+      assert.equal(calls, 0, 'formatting never reads it')
+      createCalendar({ sessions: [{ id: 's', label: 'S', timeZone: 'Asia/Kolkata', days: [1, 2, 3, 4, 5], open: '09:15', close: '15:30' }] })
+      assert.equal(calls, 1, 'createCalendar reads it once, for its default now')
+      createCalendar({ sessions: [{ id: 's', label: 'S', timeZone: 'Asia/Kolkata', days: [1, 2, 3, 4, 5], open: '09:15', close: '15:30' }], now: FROZEN })
+      assert.equal(calls, 1, 'a per-call now wins and the page clock is not read')
+    } finally {
+      off()
+      restore()
+    }
+  })
+
+  test('a pretend clock makes calendar.issues deterministic', () => {
+    quiet()
+    const spec = { sessions: [{ id: 's', label: 'S', timeZone: 'UTC', days: [1, 2, 3, 4, 5], open: '09:00', close: '17:00' }], holidays: { s: ['2026-11-10'] } }
+    try {
+      configure({ clock: () => Date.UTC(2026, 10, 1) })
+      assert.match(createCalendar(spec).issues[0].message, /9 days from now/)
+      configure({ clock: () => Date.UTC(2026, 11, 1) })
+      assert.match(createCalendar(spec).issues[0].message, /21 days ago/)
+    } finally {
+      restore()
+    }
+  })
+
+  test('fmt.ago still takes now as an argument', () => {
+    quiet()
+    try {
+      configure({ clock: () => 0 })
+      assert.equal(inr.ago(FROZEN - 120000, FROZEN), '2 min ago')
+    } finally {
+      restore()
+    }
+  })
+})

@@ -236,7 +236,7 @@ grid.catalog = { ...WIDGETS, news: { tag: 'my-news', label: 'News', sizes: ['Tal
 | `openPicker` | `(() => void) \| null` | Set by [`<ts-grid-controls>`](ts-grid-controls.md) while a picker is linked. The edit pill then shows **Add**, which calls it |
 | `schedule` | `(ProfileSchedule & { calendar }) \| null` | Switches between `'market'` and `'closed'` on time |
 | `override(profile)` | `(string \| null) => void` | Show a profile until the schedule next changes (or until `override(null)` with no schedule) |
-| `clock` | `() => number` | What the grid takes the time to be. Defaults to `Date.now` |
+| `clock` | `() => number` | What the grid takes the time to be. Defaults to the page clock (`configure({ clock })`), falling back to `Date.now()` |
 
 ## Editing
 

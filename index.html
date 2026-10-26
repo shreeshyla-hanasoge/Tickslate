@@ -139,7 +139,7 @@
 </main>
 
 <script type="module">
-  import { createCalendar, createFormatter, presets, zonedTime, localDate } from './src/core/index.js'
+  import { configure, createCalendar, createFormatter, presets, zonedTime, localDate } from './src/core/index.js'
   import { persistLayout } from './src/elements/index.js'
 
   const defaults = {
@@ -250,20 +250,22 @@
 
   let offset = 0
   const now = () => Date.now() + offset
-  grid.clock = now
+  // One clock for the page: the grid and every widget without a clock of its own read it. Calling configure() again
+  // after the offset moves is what makes them read it again.
+  configure({ clock: now })
   const pretend = document.getElementById('pretend')
   pretend.addEventListener('change', () => {
     if (!pretend.value) return
     const [h, m, sec = '00'] = pretend.value.split(':')
     const today = localDate(Date.now(), 'Asia/Kolkata')
     offset = zonedTime(today, `${h}:${m}`, 'Asia/Kolkata') + Number(sec) * 1000 - Date.now()
-    grid.clock = now
+    configure({ clock: now })
     tick()
   })
   document.getElementById('live').addEventListener('click', () => {
     offset = 0
     pretend.value = ''
-    grid.clock = now
+    configure({ clock: now })
     tick()
   })
 
@@ -272,9 +274,6 @@
   const pnlEl = grid.querySelector('[item="todayPnl"]')
   const clockEl = grid.querySelector('[item="sessionClock"]')
   const equityEl = grid.querySelector('[item="equityCurve"]')
-  // Same function the grid uses, so "Pretend it's" moves the widgets too.
-  for (const el of [pnlEl, clockEl, equityEl]) el.clock = now
-
   clockEl.data = { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
 
   // Today's P&L: a random walk, one reading every 2s, over today's NSE F&O session.
