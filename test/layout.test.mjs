@@ -1,6 +1,7 @@
-import { test, describe } from 'node:test'
+import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { readsOf } from './ops.mjs'
+import { FakeElement, FakeDocument } from './fake-dom.mjs'
 import {
   SIZES,
   SIZE_NAMES,
@@ -22,6 +23,7 @@ import {
   withProfile,
   setTopStrip,
 } from '../src/core/index.js'
+import { createPlacer, placeFirst } from '../src/core/place.js'
 
 // Positions as [id, col, row] so expectations read like a picture of the grid.
 const at = (result) => result.placements.map((p) => [p.id, p.col, p.row])
@@ -463,14 +465,89 @@ describe('dropIndex', () => {
     assert.equal(dropIndex(row, 'nope', { col: 0, row: 0 }, 4, {}), -1)
   })
 
-  // dropIndex tries every slot and lays out the first i + 1 tiles for each, so
-  // it is O(n^3) in the tile count by construction (measured: about 40x from
-  // 30 to 120 tiles). The tests below catch an accidental step beyond that
-  // without comparing two small timings, which flake under load.
+  // The slow, obvious dropIndex: lay out the first i + 1 tiles for every slot. The sweep must agree with it.
+  const referenceDrop = (items, id, target, columns, catalog, aspect = 1) => {
+    const from = items.findIndex((item) => item.id === id)
+    if (from === -1) return -1
+    let best = from
+    let bestDistance = Infinity
+    for (let i = 0; i < items.length; i++) {
+      const p = place(moveItem(items, id, i).slice(0, i + 1), columns, catalog).placements[i]
+      const dc = (p.col - target.col) * aspect
+      const dr = p.row - target.row
+      const distance = dc * dc + dr * dr
+      if (distance < bestDistance || (distance === bestDistance && Math.abs(i - from) < Math.abs(best - from))) {
+        best = i
+        bestDistance = distance
+      }
+    }
+    return best
+  }
+
+  // Incremental placement: the answer must not change, only the cost.
   const tiles = (n) => Array.from({ length: n }, (_, i) => s(`t${i}`, SIZE_NAMES[i % SIZE_NAMES.length]))
+
+  test('agrees with laying out every prefix, for every tile, column count and target', () => {
+    for (const n of [1, 2, 7, 24]) {
+      const items = tiles(n)
+      for (const columns of [2, 3, 4]) {
+        for (const aspect of [0.2, 1, 2]) {
+          for (let k = 0; k < n; k++) {
+            for (const target of [{ col: 0, row: 0 }, { col: 1.5, row: 0.3 }, { col: columns - 1, row: 2.7 }, { col: 0.4, row: 9 }]) {
+              const id = `t${k}`
+              assert.equal(dropIndex(items, id, target, columns, WIDGETS, aspect), referenceDrop(items, id, target, columns, WIDGETS, aspect), `${n} tiles, ${columns} columns, ${id}`)
+            }
+          }
+        }
+      }
+    }
+  })
+
+  test('createPlacer probes without keeping the item, and adds exactly as placeFirst does', () => {
+    const items = tiles(12)
+    const placer = createPlacer(4, WIDGETS)
+    const added = items.map((item) => placer.add(item))
+    assert.deepEqual(added, placeFirst(items, 4, WIDGETS, items.length).placements)
+    const fresh = createPlacer(4, WIDGETS)
+    const before = fresh.probe(items[0])
+    assert.deepEqual(fresh.probe(items[0]), before, 'probing twice changes nothing')
+    assert.deepEqual(fresh.add(items[0]), { id: 't0', ...before, cols: added[0].cols, rows: added[0].rows, variant: added[0].variant })
+  })
+
+  test('asking again for the same tiles reuses the slots, and a tile edited in place is noticed', () => {
+    const items = tiles(10)
+    const first = dropIndex(items, 't3', { col: 2, row: 1 }, 4, WIDGETS)
+    // The same array, a different pointer: the layout is not recomputed, and the answer follows the target.
+    assert.equal(dropIndex(items, 't3', { col: 2, row: 1 }, 4, WIDGETS), first)
+    assert.equal(dropIndex(items, 't3', { col: 0, row: 0 }, 4, WIDGETS), referenceDrop(items, 't3', { col: 0, row: 0 }, 4, WIDGETS))
+    // A host that edits a tile in the array it already passed gets the new layout, not a stale one.
+    items[0] = { ...items[0], size: 'XL' }
+    assert.equal(dropIndex(items, 't3', { col: 2, row: 1 }, 4, WIDGETS), referenceDrop(items, 't3', { col: 2, row: 1 }, 4, WIDGETS))
+    items[1].size = 'XL'
+    assert.equal(dropIndex(items, 't3', { col: 0, row: 3 }, 4, WIDGETS), referenceDrop(items, 't3', { col: 0, row: 3 }, 4, WIDGETS))
+    // Another column count or tile is its own question.
+    assert.equal(dropIndex(items, 't5', { col: 1, row: 2 }, 3, WIDGETS), referenceDrop(items, 't5', { col: 1, row: 2 }, 3, WIDGETS))
+  })
+
+  test('a tile removed, swapped or added in the array already passed gets the new layout', () => {
+    const items = tiles(10)
+    const ask = (id, target) => assert.equal(dropIndex(items, id, target, 4, WIDGETS), referenceDrop(items, id, target, 4, WIDGETS), `${items.map((i) => i.id).join(',')} / ${id}`)
+    for (const id of ['t3', 't6']) ask(id, { col: 2, row: 1 })
+    items.splice(1, 1)
+    for (const id of ['t3', 't6']) for (const target of [{ col: 2, row: 1 }, { col: 0, row: 4 }]) ask(id, target)
+    ;[items[2], items[5]] = [items[5], items[2]]
+    for (const id of ['t3', 't6']) for (const target of [{ col: 2, row: 1 }, { col: 0, row: 4 }]) ask(id, target)
+    items.push(s('t99', 'L'))
+    for (const id of ['t3', 't99']) ask(id, { col: 3, row: 5 })
+    items.length = 4
+    ask(items[1].id, { col: 1, row: 1 })
+  })
+
+  // Timing is the best of several batches, because load only ever adds time. The sweep takes about 0.1 ms at 100
+  // tiles when idle (the old per-slot layout took several milliseconds), so the ceilings below are 10x that.
   const bestBatchMs = (n, calls, batches) => {
     const items = tiles(n)
-    const run = (i) => dropIndex(items, `t${i % n}`, { col: i % 4, row: i % 12 }, 4, {}, 2)
+    const run = (i) => dropIndex(items, `t${i % n}`, { col: i % 4, row: i % 12 }, 4, WIDGETS, 2)
     for (let i = 0; i < calls; i++) run(i) // warm up
     let best = Infinity
     for (let b = 0; b < batches; b++) {
@@ -481,31 +558,22 @@ describe('dropIndex', () => {
     return best
   }
 
-  test('does not grow faster than cubically with the tile count', () => {
-    // Counts reads of the tiles instead of timing two sizes. Each of the n
-    // slots lays out a prefix, so the tiles are read O(n^2) times: 4x the tiles
-    // is 16x the reads (measured 15.2). An extra loop over the tiles would make
-    // it 64x, so 17 leaves room only for constants.
-    const reads = (n) => readsOf(tiles(n), (items) => dropIndex(items, `t${n >> 1}`, { col: 2, row: 5 }, 4, {}, 2))
+  test('does not grow faster than linearly in the tile count', () => {
+    // Counts reads of the tiles instead of timing two sizes. The sweep lays the other tiles out once, so 4x the
+    // tiles is about 4x the reads; the old per-slot layout read them 16x as often (15.2 measured).
+    const reads = (n) => readsOf(tiles(n), (items) => dropIndex(items, `t${n >> 1}`, { col: 2, row: 5 }, 4, WIDGETS, 2))
     const ratio = reads(120) / reads(30)
-    assert.ok(ratio > 8 && ratio <= 17, `120 tiles read the tiles ${ratio.toFixed(1)}x as often as 30`)
+    assert.ok(ratio > 2 && ratio <= 6, `120 tiles read the tiles ${ratio.toFixed(1)}x as often as 30`)
   })
 
-  test('a step past cubic in the cell scan is still caught by a generous ceiling', () => {
-    // The scan inside placement is not observable from here, so this one is
-    // timed: 120 tiles take about 2 ms idle, and a ceiling of 100 ms (50x) is
-    // reached only by a regression of another factor of n. The best of 15
-    // batches, because load only ever adds time.
-    const each = bestBatchMs(120, 3, 15)
-    assert.ok(each < 100, `${each.toFixed(1)} ms per call for 120 tiles`)
+  test('averages well under a millisecond at 100 tiles, whichever tile is held', () => {
+    const each = bestBatchMs(100, 50, 15)
+    assert.ok(each < 1, `${each.toFixed(3)} ms per call`)
   })
 
-  test('stays far inside a frame for 30 tiles', () => {
-    // It runs on every pointer move while dragging. It takes well under a
-    // tenth of a millisecond alone, so 5 ms is a ceiling that only a real
-    // regression, not a busy machine, reaches in the best of 15 batches.
-    const each = bestBatchMs(30, 20, 15)
-    assert.ok(each < 5, `${each.toFixed(3)} ms per call`)
+  test('a generous ceiling holds at 120 tiles, and stays far inside a frame for 30', () => {
+    assert.ok(bestBatchMs(120, 20, 15) < 5)
+    assert.ok(bestBatchMs(30, 50, 15) < 1)
   })
 })
 
@@ -598,5 +666,138 @@ describe('readLayout: array shorthand and unknown: keep', () => {
     assert.deepEqual(layout.profiles.market, [])
     assert.deepEqual(issues.map((i) => [i.code, i.fixed]), [['unknown-widget', 'dropped']])
     assert.equal(readLayout([{ id: 'mine', size: 'M' }], { unknown: 'drop' }).layout.profiles.market.length, 0)
+  })
+})
+
+// <ts-grid> against a bare-bones DOM with none of the three observers (RFC 0003 §23), the way a jsdom page loads it.
+describe('<ts-grid> observer guards', () => {
+  // A shadow root that accepts whatever the grid asks of it. Every property is another such node, a call returns
+  // nothing except for the few that make a node, and a few widths are real. What the test asserts is that the grid
+  // mounts and measures, not that this stand-in lays anything out.
+  const MAKES = new Set(['querySelector', 'closest', 'cloneNode', 'appendChild'])
+  const node = (name = '') =>
+    new Proxy(function () {}, {
+      apply: () => (MAKES.has(name) ? node() : name === 'querySelectorAll' ? [] : undefined),
+      get(target, key) {
+        if (key === Symbol.toPrimitive) return () => ''
+        if (key === 'then' || typeof key === 'symbol') return undefined
+        if (key === 'children' || key === 'childNodes') return []
+        if (key === 'isConnected') return true
+        if (key === 'dataset' || key === 'style') return (target[key] ||= {})
+        return (target[key] ||= node(key))
+      },
+      set(target, key, value) {
+        target[key] = value
+        return true
+      },
+    })
+
+  let width = 1000
+  class StubGrid extends FakeElement {
+    attachShadow() {
+      this.shadowRoot = node()
+      return this.shadowRoot
+    }
+    get children() {
+      return []
+    }
+    get clientWidth() {
+      return width
+    }
+  }
+
+  const keys = ['HTMLElement', 'document', 'window', 'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'IntersectionObserver']
+  const saved = {}
+  let TsGrid
+  let frames
+
+  before(async () => {
+    for (const k of keys) saved[k] = Object.getOwnPropertyDescriptor(globalThis, k)
+    frames = []
+    globalThis.HTMLElement = StubGrid
+    globalThis.document = Object.assign(new FakeDocument(), { createElement: () => ({ content: node(), set innerHTML(v) {} }) })
+    globalThis.window = new EventTarget()
+    // A frame handle is its place in the list plus one, so cancelling is exact.
+    globalThis.requestAnimationFrame = (fn) => frames.push(fn)
+    globalThis.cancelAnimationFrame = (id) => {
+      if (id > 0) frames[id - 1] = null
+    }
+    globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' })
+    for (const k of ['ResizeObserver', 'MutationObserver', 'IntersectionObserver']) delete globalThis[k]
+    TsGrid = (await import('../src/elements/grid.js?observer-guards')).TsGrid
+  })
+
+  after(() => {
+    for (const k of keys) {
+      if (saved[k]) Object.defineProperty(globalThis, k, saved[k])
+      else delete globalThis[k]
+    }
+  })
+
+  const flush = () => {
+    const run = frames.splice(0)
+    for (const fn of run) if (fn) fn()
+  }
+
+  test('mounts and measures with no ResizeObserver, MutationObserver or IntersectionObserver, and unmounts', () => {
+    assert.equal(typeof ResizeObserver, 'undefined')
+    assert.equal(typeof MutationObserver, 'undefined')
+    assert.equal(typeof IntersectionObserver, 'undefined')
+    const grid = new TsGrid()
+    grid.connect()
+    assert.equal(grid._columns, 3)
+    assert.equal(grid._resizeObserver == null && grid._mutationObserver == null, true)
+    grid.disconnect()
+    assert.equal(grid.isConnected, false)
+  })
+
+  test('without a ResizeObserver a window resize measures again, and leaving stops listening', () => {
+    width = 1000
+    const grid = new TsGrid()
+    grid.connect()
+    assert.equal(grid._columns, 3)
+    width = 500
+    window.dispatchEvent(new Event('resize'))
+    flush()
+    assert.equal(grid._columns, 2)
+    grid.disconnect()
+    width = 1300
+    window.dispatchEvent(new Event('resize'))
+    flush()
+    assert.equal(grid._columns, 2, 'a disconnected grid ignores the window')
+    width = 1000
+  })
+
+  test('with the observers present they are used, and disconnected on the way out', () => {
+    const log = []
+    globalThis.ResizeObserver = class {
+      constructor(fn) {
+        this.fn = fn
+      }
+      observe() {
+        log.push('resize.observe')
+      }
+      disconnect() {
+        log.push('resize.disconnect')
+      }
+    }
+    globalThis.MutationObserver = class {
+      observe() {
+        log.push('mutation.observe')
+      }
+      disconnect() {
+        log.push('mutation.disconnect')
+      }
+    }
+    try {
+      const grid = new TsGrid()
+      grid.connect()
+      grid.disconnect()
+    } finally {
+      delete globalThis.ResizeObserver
+      delete globalThis.MutationObserver
+    }
+    // Two mutation observers: one for the dir attribute (RTL), one for the children.
+    assert.deepEqual(log, ['resize.observe', 'mutation.observe', 'mutation.observe', 'resize.disconnect', 'mutation.disconnect', 'mutation.disconnect'])
   })
 })

@@ -65,14 +65,22 @@ const joined = (parts) => parts.filter(Boolean).join(' · ')
 function readings(intraday) {
   if (!Array.isArray(intraday)) return { pts: [], dropped: 0 }
   const out = []
+  let ordered = true
+  let before = -Infinity
   for (const r of intraday) {
     const t = toTime(r && r.t)
     const v = toNumber(r && r.v)
-    if (Number.isFinite(t) && Number.isFinite(v)) out.push({ x: t, y: v })
+    if (Number.isFinite(t) && Number.isFinite(v)) {
+      if (t < before) ordered = false
+      before = t
+      out.push({ x: t, y: v })
+    }
   }
   // Hosts append, but a merged feed may not arrive in order, and a line
-  // drawn through unsorted points doubles back on itself.
-  return { pts: out.sort((a, b) => a.x - b.x), dropped: intraday.length - out.length }
+  // drawn through unsorted points doubles back on itself. A feed that is in
+  // order, which is nearly every one, skips the sort: half a million
+  // comparisons are a visible share of the frame.
+  return { pts: ordered ? out : out.sort((a, b) => a.x - b.x), dropped: intraday.length - out.length }
 }
 
 /** The curve's value at time t, between the readings either side of it. */
