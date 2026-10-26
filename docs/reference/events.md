@@ -50,6 +50,7 @@ interface TsActionDetail {
 | `exit-all` | `<ts-open-positions>` | The user presses Exit all, and `actions` includes `'exit-all'`. The button only shows while a position is open | none |
 | `rebalance` | `<ts-capital-funding>` | The user presses an account's Rebalance button, and `actions` includes `'rebalance'`. Nothing is moved by the widget: show your own flow, then send the new `accounts` | `id`: the account's id, as given |
 | `select` | `<ts-table>`, `<ts-chart>` | The user activates a row, or a chart point, and `actions` includes `'select'` | A table sends `id`, the row's id as given; a chart sends `value`, `series`, `y` and `index` |
+| `timeframe` | `<ts-mini-chart>` | The user presses a timeframe button at `L`, and `actions` includes `'timeframe'`. Nothing changes in the widget: send the new `bars` and `timeframe` in `data` | `id`: the chart's id, `value`: the timeframe pressed, as listed in `timeframes` |
 
 ```js
 document.addEventListener('ts-action', (e) => {

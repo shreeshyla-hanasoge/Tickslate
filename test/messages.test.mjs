@@ -15,7 +15,8 @@ describe('EN', () => {
   test('is frozen, with flat dotted keys whose values are text', () => {
     assert.ok(Object.isFrozen(EN))
     for (const [key, value] of Object.entries(EN)) {
-      assert.match(key, /^[a-z]+(\.[A-Za-z0-9]+)+$/, key)
+      // The family may be camelCase (miniChart.*, RFC 0004 §6.6), as the segments after it already are.
+      assert.match(key, /^[a-zA-Z]+(\.[A-Za-z0-9]+)+$/, key)
       assert.equal(typeof value, 'string', key)
       assert.ok(value.length > 0, key)
     }
@@ -1160,7 +1161,7 @@ describe('a grid tells the widgets under it', () => {
 
 describe('the source', () => {
   const files = readdirSync(new URL('../src/elements/', import.meta.url)).filter((f) => f.endsWith('.js'))
-  const FAMILY = /^(widget|action|size|time|grid|pnl|equity|session|metric|chart|table|progress|funding|calendar|edge|watchlist|positions|picker|controls|list|category)\./
+  const FAMILY = /^(widget|action|size|time|grid|pnl|equity|session|metric|chart|table|progress|funding|calendar|edge|watchlist|positions|picker|controls|list|category|miniChart)\./
 
   // Every string literal in the elements' source that is shaped like a key of one of the families, in single or double quotes or backticks.
   // A template literal with a ${…} in it is not a literal key; those are covered below, from the lists they are built from.

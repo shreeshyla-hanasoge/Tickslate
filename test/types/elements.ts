@@ -3,6 +3,9 @@
 import { TsMetric, TsGrid } from 'tickslate/elements'
 import type { TsChartAction, TsEquityCurveAction, TsMetricAction, TsTableAction, TsWatchlistAction, TsOpenPositionsAction, TsCommonAction, MetricData } from 'tickslate/elements'
 import { TsCard } from 'tickslate/elements/card'
+import type { TsMiniChart, MiniChartData, MiniChartProfile } from 'tickslate/elements/mini-chart'
+// @ts-expect-error the mini chart ships only at its own entry; the all-in entry never loads Emberwick
+import type { TsMiniChart as NotHere } from 'tickslate/elements'
 import type { TsChartSelectAction } from 'tickslate/elements/chart'
 import type { TsOpenAction, TsMetricAction as MetricActionFromEntry } from 'tickslate/elements/metric'
 
@@ -103,3 +106,14 @@ positions.addEventListener('ts-action', (e) => {
   // @ts-expect-error a list of positions never sends 'sort'
   if (a.action === 'sort') void 0
 })
+
+// The mini chart (tickslate/elements/mini-chart): a host's own volume profile is typed without the optional peer installed.
+const profile: MiniChartProfile = { version: 1, step: 0.5, sessions: [{ start: 1, end: 2, lo: 99, bins: [1, 4, 9] }] }
+const mini = document.createElement('ts-mini-chart')
+const miniClass: TsMiniChart = mini
+const miniData: MiniChartData = { charts: [{ id: 'abc', instrument: 'ABC Corp', bars: [] }], volumeProfile: profile }
+mini.data = miniData
+// @ts-expect-error a profile is version 1
+mini.data = { charts: [], volumeProfile: { ...profile, version: 2 } }
+void miniClass
+void (null as unknown as NotHere)

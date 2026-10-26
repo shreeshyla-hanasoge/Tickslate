@@ -617,6 +617,27 @@ export interface Messages {
   'calendar.chartNote': string
   'calendar.weekend.one': string
   'calendar.weekend.other': string
+  'miniChart.summary': string
+  'miniChart.head': string
+  'miniChart.last': string
+  'miniChart.summaryEmpty': string
+  'miniChart.bars.one': string
+  'miniChart.bars.other': string
+  'miniChart.marks.one': string
+  'miniChart.marks.other': string
+  'miniChart.entries.one': string
+  'miniChart.entries.other': string
+  'miniChart.exits.one': string
+  'miniChart.exits.other': string
+  'miniChart.pair': string
+  'miniChart.join': string
+  'miniChart.noPeer': string
+  'miniChart.badProfile': string
+  'miniChart.timeframes': string
+  'miniChart.up': string
+  'miniChart.down': string
+  'miniChart.flat': string
+  'widget.miniChart.empty': string
 }
 
 export type MessageKey = keyof Messages

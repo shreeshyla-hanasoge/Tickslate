@@ -13,7 +13,7 @@ import { resolve } from 'node:path'
  * pack-lib.mjs copies it into dist-lib/.
  *
  * Emberwick is an optional peer (the mini-chart widget draws with it), so it
- * is never bundled.
+ * is never bundled: neither the package nor its subpath entries (emberwick/profiles).
  *
  * Run with: npm run build:lib
  */
@@ -36,7 +36,7 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      external: ['emberwick'],
+      external: [/^emberwick(\/|$)/],
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',

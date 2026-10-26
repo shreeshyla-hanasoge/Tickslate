@@ -12,6 +12,8 @@ export * from './grid.js'
 // controls.d.ts (the picker and the grid controls) ships beside this file too.
 export * from './controls.js'
 import type { TsGrid, LayoutAdapter } from './grid.js'
+// Declared in mini-chart.d.ts, not here: the class ships only at tickslate/elements/mini-chart (RFC 0004 §6.1).
+import type { TsMiniChart } from './mini-chart.js'
 
 export interface PersistLayoutOptions {
   /** Each device is stored under `${key}:${device}`. Required unless `adapter` is given. */
@@ -1071,5 +1073,6 @@ declare global {
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock
+    'ts-mini-chart': TsMiniChart
   }
 }

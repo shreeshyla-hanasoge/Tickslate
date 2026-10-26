@@ -402,6 +402,29 @@ export const EN = Object.freeze({
   'calendar.chartNote': '{summary}. {note}',
   'calendar.weekend.one': '{count} weekend entry not shown',
   'calendar.weekend.other': '{count} weekend entries not shown',
+
+  // <ts-mini-chart>
+  'miniChart.summary': '{head}: {details}',
+  'miniChart.head': '{instrument}, {timeframe}',
+  'miniChart.last': 'last {close}',
+  'miniChart.summaryEmpty': '{instrument}: no bars yet',
+  'miniChart.bars.one': '{count} bar',
+  'miniChart.bars.other': '{count} bars',
+  'miniChart.marks.one': '{count} mark',
+  'miniChart.marks.other': '{count} marks',
+  'miniChart.entries.one': '{count} entry',
+  'miniChart.entries.other': '{count} entries',
+  'miniChart.exits.one': '{count} exit',
+  'miniChart.exits.other': '{count} exits',
+  'miniChart.pair': '{a} and {b}',
+  'miniChart.join': '{head}, {tail}',
+  'miniChart.noPeer': "The chart library isn't installed",
+  'miniChart.badProfile': "The volume profile couldn't be drawn",
+  'miniChart.timeframes': 'Timeframe',
+  'miniChart.up': 'up {pct}',
+  'miniChart.down': 'down {pct}',
+  'miniChart.flat': 'unchanged',
+  'widget.miniChart.empty': 'No bars yet',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

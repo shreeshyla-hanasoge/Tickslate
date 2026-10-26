@@ -42,7 +42,7 @@ export default defineConfig({
     rollupOptions: {
       // Rollup asks twice: with the raw specifier, then with the resolved
       // path. Only the resolved path identifies the core reliably.
-      external: (id) => id === 'emberwick' || resolve(id) === coreEntry,
+      external: (id) => /^emberwick(\/|$)/.test(id) || resolve(id) === coreEntry,
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',

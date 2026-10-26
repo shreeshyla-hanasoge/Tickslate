@@ -37,6 +37,11 @@ const TAGS = {
 }
 const tagsOf = (file) => TAGS[file] || [`ts-${file}`]
 
+// The one entry the all-in module does not gather: <ts-mini-chart> draws with the optional peer Emberwick, so it is
+// reached only at tickslate/elements/mini-chart (RFC 0004 §6.1). Every other module is in index.js.
+const NOT_IN_ALL_IN = ['mini-chart']
+const inAllIn = files.filter((f) => !NOT_IN_ALL_IN.includes(f))
+
 describe('define modules', () => {
   let registry
   beforeEach(() => {
@@ -48,7 +53,7 @@ describe('define modules', () => {
   })
 
   test('there is a define module for each built-in widget', () => {
-    for (const file of ['grid', 'card', 'metric', 'series-chart', 'today-pnl', 'equity-curve', 'session-clock', 'table', 'progress', 'watchlist', 'open-positions', 'pnl-calendar', 'edge-stats', 'capital-funding']) {
+    for (const file of ['grid', 'card', 'metric', 'series-chart', 'today-pnl', 'equity-curve', 'session-clock', 'table', 'progress', 'watchlist', 'open-positions', 'pnl-calendar', 'edge-stats', 'capital-funding', 'mini-chart']) {
       assert.ok(files.includes(file), `src/elements/define/${file}.js is missing`)
     }
   })
@@ -79,9 +84,15 @@ describe('define modules', () => {
 describe('the all-in entry', () => {
   test('imports every define module', async () => {
     const text = await readFile(new URL('../src/elements/index.js', import.meta.url), 'utf8')
-    for (const file of files) {
+    for (const file of inAllIn) {
       assert.ok(text.includes(`'./define/${file}.js'`), `src/elements/index.js does not import ./define/${file}.js`)
     }
+  })
+
+  test('does not import the mini chart, which would load the optional peer Emberwick for every host', async () => {
+    const text = await readFile(new URL('../src/elements/index.js', import.meta.url), 'utf8')
+    for (const file of NOT_IN_ALL_IN) assert.ok(!text.includes(`${file}.js`), `src/elements/index.js imports ${file}`)
+    assert.ok(!/emberwick/i.test(text.replace(/\/\*[\s\S]*?\*\//g, '')), 'src/elements/index.js names emberwick')
   })
 
   test('registers every element and keeps its export list', async () => {
@@ -91,7 +102,8 @@ describe('the all-in entry', () => {
       // The define modules are imported here for the first time without a
       // query string, so this is the one place their define() calls run.
       const mod = await import('../src/elements/index.js')
-      assert.deepEqual([...registry.defined].sort(), files.flatMap(tagsOf).sort())
+      assert.deepEqual([...registry.defined].sort(), inAllIn.flatMap(tagsOf).sort())
+      assert.ok(!registry.defined.includes('ts-mini-chart'), '<ts-mini-chart> is registered by its own entry only')
       // The names 0.1.0 exported; later stories add to the list, never remove.
       for (const name of ['version', 'persistLayout', 'TsGrid', 'TsWidget', 'TsCard', 'TsMetric', 'TsChart', 'TsTodayPnl', 'TsEquityCurve', 'TsSessionClock']) {
         assert.ok(name in mod, `tickslate/elements no longer exports ${name}`)

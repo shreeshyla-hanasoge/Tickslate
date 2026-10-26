@@ -1,0 +1,5 @@
+body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+main { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+#m { width: min(624px, 100%); }
+#l { width: min(624px, 100%); }
+#xl { width: min(1264px, 100%); }
