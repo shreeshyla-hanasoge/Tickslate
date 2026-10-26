@@ -380,9 +380,14 @@ test('a drag asks for the slot again only when the pointer crosses into another 
   })
   await page.mouse.move(from.x, from.y)
   await page.mouse.down()
-  // A hundred one-pixel steps along the path: far more frames than cells crossed.
+  // A hundred one-pixel steps along the path, a frame after each: the drag asks once per frame, so the frames are what
+  // outnumber the cells crossed. Left to itself WebKit sends all hundred moves inside a handful of frames, and the
+  // count then says how fast the engine is, not whether the answer is reused.
   const steps = 100
-  for (let i = 1; i <= steps; i++) await page.mouse.move(from.x + ((to.x - 20 - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps)
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(from.x + ((to.x - 20 - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps)
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())))
+  }
   await page.mouse.up()
   const calls = await page.evaluate(() => window.__memos.map(({ memo, col, row, same }) => ({ id: memo ? [col, row].join() : null, memo: memo ? 1 : 0, same })))
   const distinctMemos = await page.evaluate(() => new Set(window.__memos.map((m) => m.memo).filter(Boolean)).size)
