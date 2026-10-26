@@ -314,9 +314,11 @@ describe('the trading dashboard example and guide', () => {
   test('every example page is linked from the examples index and built into the site', () => {
     const index = read('examples/index.html')
     const site = read('vite.site.config.js')
+    // The site config builds every examples/*.html it finds (public-site), so a page is built without being named there.
+    const scansExamples = /readdirSync\(src\('examples'\)\)[^\n]*\.html/.test(site)
     for (const f of readdirSync(join(root, 'examples')).filter((n) => n.endsWith('.html') && n !== 'index.html')) {
       assert.ok(index.includes(`href="${f}"`), `examples/index.html should link ${f}`)
-      assert.ok(site.includes(`examples/${f}`), `vite.site.config.js should build examples/${f}`)
+      assert.ok(scansExamples || site.includes(`examples/${f}`), `vite.site.config.js should build examples/${f}`)
     }
   })
   test('the README and the guide point at the example, and the guide at its widgets', () => {
