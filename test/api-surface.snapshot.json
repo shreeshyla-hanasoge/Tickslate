@@ -351,6 +351,7 @@
           "density",
           "edit-controls",
           "editing",
+          "hint",
           "hour-cycle",
           "locale",
           "locked",
@@ -363,15 +364,19 @@
           "ts-add-request",
           "ts-columns-change",
           "ts-edit-change",
+          "ts-hint-dismiss",
           "ts-layout-change",
           "ts-layout-issues",
           "ts-profile-change",
           "ts-reading-order-change"
         ],
         "parts": [
+          "badge",
           "board",
           "edit-pill",
           "empty",
+          "hint",
+          "hint-dismiss",
           "placeholder",
           "strip",
           "toast"
