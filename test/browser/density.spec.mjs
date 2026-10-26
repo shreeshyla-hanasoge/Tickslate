@@ -12,7 +12,7 @@ const FIXTURE = '/test/browser/fixtures/widgets.html'
 // a text run whose ink leaves a box that hides overflow, or whose box is squeezed below its own content. A label may be
 // shortened with an ellipsis (that is how a narrow tile says so); a headline or figure may not be cut at all. Text a
 // widget scrolls (a list inside a tile) and text the host slotted in are not the widget's to fit.
-function findClips() {
+function findClips(source) {
   const OWN = ['lb', 'big', 'xbig', 'n', 'nv', 'md']
   const composedParent = (n) => n.assignedSlot || n.parentNode || n.host || null
   const out = []
@@ -26,10 +26,12 @@ function findClips() {
       }
     }
   }
-  for (const el of document.querySelectorAll('figure > [size]')) {
+  // The gallery draws each widget at every size in both themes; the fixture draws all 43 tiles in the one theme its URL names.
+  const tiles = source === 'fixture' ? [...window.__fx.tiles.values()] : document.querySelectorAll('figure > [size]')
+  for (const el of tiles) {
     const set = el.closest('.set')
-    const place = set.classList.contains('phone') ? 'phone' : set.previousElementSibling && set.previousElementSibling.textContent === 'States' ? 'states' : 'desktop'
-    const theme = el.closest('.theme').dataset.theme
+    const place = source === 'fixture' ? 'desktop' : set.classList.contains('phone') ? 'phone' : set.previousElementSibling && set.previousElementSibling.textContent === 'States' ? 'states' : 'desktop'
+    const theme = source === 'fixture' ? window.__fx.theme : el.closest('.theme').dataset.theme
     const texts = []
     visit(el.shadowRoot, texts)
     for (const t of texts) {
@@ -45,8 +47,11 @@ function findClips() {
           break
         }
       }
+      // The fixture pass reads every text run, secondary notes and axis labels included, which the gallery pass leaves out;
+      // a note may end in an ellipsis (that is how it says it is short of room) but may not be cut by the tile.
+      if (!own && source === 'fixture') own = parent
       if (!own) continue
-      const isLabel = own.classList.contains('lb') || own.getAttribute('part') === 'label'
+      const isLabel = own.classList.contains('lb') || own.getAttribute('part') === 'label' || own === parent && !OWN.some((c) => own.classList.contains(c))
       const range = document.createRange()
       range.selectNodeContents(t)
       const rects = [...range.getClientRects()].filter((q) => q.width > 0.5 && q.height > 0.5)
@@ -99,6 +104,19 @@ const KNOWN = new Map([
   ['ts-session-clock Banner phone', 'two px at the right edge of the next-close text; session-clock.js is market-presets-and-breaks'],
 ])
 
+// Tiles the gallery never draws, and so the gallery's checks never looked at: they clip at compact density alone, because the
+// row under their headline is not marked .sec (or .ter). type-scale-rollout converts their files and marks those rows; until
+// it merges, this list names them, and the spec fails the day one stops being cut (shrink the list) or a new one starts.
+// The value is the reason, and a leading "~" marks a tile whose fit depends on the engine's font metrics (WebKit's line boxes
+// leave it whole), which may be cut or not and so is allowed but not required.
+const KNOWN_COMPACT = new Map([
+  ['ts-progress Wide desktop', '~ the "of target" line and the reset line are not marked .sec; progress.js moves with type-scale-rollout'],
+  ['ts-progress S desktop', '~ the "of target" line is squeezed 2px short of its line box (the ink is whole); progress.js moves with type-scale-rollout'],
+  ['ts-capital-funding S desktop', 'the shortfall line under the bar is not marked .sec; capital-funding.js moves with type-scale-rollout'],
+  ['ts-edge-stats Wide desktop', 'the trades and period note is not marked .sec; edge-stats.js moves with type-scale-rollout'],
+  ['ts-pnl-calendar Banner desktop', 'the weekday row is not marked .ter; pnl-calendar.js moves with type-scale-rollout'],
+])
+
 // The gallery asks Google Fonts for its two faces; refuse that, so every run measures the same fallback faces whether or not the machine is online.
 async function open(page, query) {
   await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
@@ -108,11 +126,11 @@ async function open(page, query) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 
-async function clips(page) {
-  const found = await page.evaluate(findClips)
-  const unknown = found.filter((c) => !KNOWN.has(c.tile))
+async function clips(page, known = KNOWN, source = 'gallery') {
+  const found = await page.evaluate(findClips, source)
+  const unknown = found.filter((c) => !known.has(c.tile))
   const tiles = new Set(found.map((c) => c.tile))
-  return { found, unknown, stale: [...KNOWN.keys()].filter((k) => !tiles.has(k)) }
+  return { found, unknown, stale: [...known.keys()].filter((k) => !tiles.has(k)) }
 }
 
 test.describe('compact density and text spacing in the gallery', () => {
@@ -150,7 +168,8 @@ test.describe('compact density and text spacing in the gallery', () => {
     const before = await measure()
     // The label already tracks at .12em, so word spacing and line height tell the overrides apart.
     expect(before.inner[2]).toBe('0px')
-    expect(before.inner[0]).toBe('normal')
+    // The label's own line height (1.2), not the font's 'normal'.
+    expect(parseFloat(before.inner[0])).toBeCloseTo(before.font * 1.2, 1)
     await page.getByRole('checkbox', { name: /WCAG 1.4.12/ }).check()
     expect(page.url()).toContain('spacing=on')
     const on = await measure()
@@ -174,6 +193,34 @@ test.describe('compact density and text spacing in the gallery', () => {
       expect(unknown, JSON.stringify(unknown, null, 1)).toEqual([])
       if (query.includes('density') && query.includes('spacing')) expect(stale, `no longer clips: ${stale.join(', ')}`).toEqual([])
       else if (!query.includes('spacing')) expect(found).toEqual([])
+    })
+  }
+
+  // The gallery has six widgets. The fixture draws every registered widget at every size it supports, so this is the check that
+  // reaches the rest. Compact density alone, no text spacing: the tiles of KNOWN_COMPACT are the only ones cut.
+  for (const theme of ['light', 'dark']) {
+    test(`every fixture tile at compact density alone in ${theme}: only the listed tiles are cut`, async ({ page }) => {
+      await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+      // Tiles are drawn at their desktop column widths, so a phone engine needs a desktop-wide viewport to hold them.
+      await page.setViewportSize({ width: 1400, height: 900 })
+      await page.goto(`${FIXTURE}?theme=${theme}`)
+      await page.waitForFunction(() => window.__ready === true)
+      await page.evaluate(async () => {
+        const { SIZES } = await import('/src/core/index.js')
+        document.documentElement.dataset.tsDensity = 'compact'
+        // A tile is as wide as its columns, set on the figure it sits in (a bare percentage would collapse to the content).
+        for (const el of window.__fx.tiles.values()) {
+          const cols = SIZES[el.getAttribute('size')].cols
+          el.parentElement.style.width = `${cols * 304 + (cols - 1) * 16}px`
+          el.style.width = '100%'
+        }
+        await window.__fx.nextFrame()
+      })
+      expect(await page.evaluate(() => window.__fx.tiles.size)).toBeGreaterThanOrEqual(43)
+      const { unknown, stale } = await clips(page, KNOWN_COMPACT, 'fixture')
+      expect(unknown, JSON.stringify(unknown, null, 1)).toEqual([])
+      const required = stale.filter((tile) => !KNOWN_COMPACT.get(tile).startsWith('~'))
+      expect(required, `no longer clips: ${required.join(', ')}`).toEqual([])
     })
   }
 
@@ -282,9 +329,29 @@ test.describe('<ts-grid density>', () => {
     page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
     await page.goto(GRID)
     await page.waitForFunction(() => window.__ready === true)
+    await settle(page)
   })
 
-  const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+  // The grid measures on a ResizeObserver callback that waits for the next frame, so a read taken right after load or an
+  // attribute change can see the layout from before that measure. Wait on the real condition: every tile's box unchanged
+  // over four consecutive frames.
+  const settle = (page) =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const boxes = () => [...document.querySelectorAll('#g > *')].map((el) => { const r = el.getBoundingClientRect(); return `${r.left},${r.top},${r.width},${r.height}` }).join('|')
+          let last = boxes()
+          let same = 0
+          const step = () => {
+            const now = boxes()
+            same = now === last ? same + 1 : 0
+            last = now
+            if (same >= 4) resolve()
+            else requestAnimationFrame(step)
+          }
+          requestAnimationFrame(step)
+        }),
+    )
   const read = (page) =>
     page.evaluate(() => {
       const grid = document.getElementById('g')
@@ -358,4 +425,67 @@ test.describe('<ts-grid density>', () => {
     // The rows of a phone are --ts-row-compact (150px) whatever the density, so live numbers never resize a tile.
     expect(phone.notes[1]).toBe(150)
   })
+})
+
+// ── a preset never defeats compact density ──────────────────────────────────
+// A preset sets --ts-pad on the element that names it, and a rule in a page's CSS outranks the grid's :host rule, so the
+// presets yield their padding to density (src/themes/presets/*.css). Same element, an ancestor, either spelling.
+
+test.describe('compact density wins over a preset', () => {
+  const GRID = '/test/browser/fixtures/grid.html?mode=explicit&w=1240'
+  const PRESETS = { calm: '18px', graphite: '16px', neutral: '16px', paper: '18px', signal: '16px', terminal: '12px' }
+
+  async function open(page, name) {
+    await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+    await page.goto(GRID)
+    await page.waitForFunction(() => window.__ready === true)
+    await page.addStyleTag({ url: `/src/themes/presets/${name}.css` })
+  }
+  // What the tile really draws: the padding of the tile inside the first card's shadow root, and the tokens on the grid.
+  const read = (page) =>
+    page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const g = document.getElementById('g')
+      const style = getComputedStyle(g)
+      const tile = document.querySelector('#g > [item="notes"]').shadowRoot.querySelector('.tile')
+      return { pad: style.getPropertyValue('--ts-pad').trim(), row: style.getPropertyValue('--ts-row').trim(), gap: style.getPropertyValue('--ts-gap').trim(), drawn: getComputedStyle(tile).paddingLeft }
+    })
+
+  for (const [name, own] of Object.entries(PRESETS)) {
+    test(`${name}: <ts-grid data-ts-theme density="compact"> has compact padding, rows and gap; comfortable keeps the preset's`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => document.getElementById('g').setAttribute('data-ts-theme', n), name)
+      expect(await read(page), 'comfortable').toMatchObject({ pad: own, drawn: own, row: '150px' })
+      await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+      expect(await read(page), 'compact').toEqual({ pad: '12px', drawn: '12px', row: '120px', gap: '10px' })
+      await page.evaluate(() => document.getElementById('g').removeAttribute('density'))
+      expect(await read(page), 'back to comfortable').toMatchObject({ pad: own, drawn: own })
+    })
+
+    test(`${name}: the preset on an ancestor of a compact grid, and data-ts-density on the same element`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => {
+        document.getElementById('wrap').setAttribute('data-ts-theme', n)
+        document.getElementById('g').setAttribute('density', 'compact')
+      }, name)
+      expect(await read(page), 'preset on the wrapper, compact on the grid').toMatchObject({ pad: '12px', drawn: '12px', row: '120px' })
+      await page.evaluate((n) => {
+        document.getElementById('wrap').removeAttribute('data-ts-theme')
+        const g = document.getElementById('g')
+        g.removeAttribute('density')
+        g.setAttribute('data-ts-theme', n)
+        g.setAttribute('data-ts-density', 'compact')
+      }, name)
+      expect(await read(page), 'data-ts-density and the preset on the grid').toMatchObject({ pad: '12px', drawn: '12px' })
+    })
+
+    test(`${name}: a compact ancestor beats the preset on a descendant`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => {
+        document.getElementById('wrap').setAttribute('data-ts-density', 'compact')
+        document.getElementById('g').setAttribute('data-ts-theme', n)
+      }, name)
+      expect(await read(page)).toMatchObject({ pad: '12px', drawn: '12px' })
+    })
+  }
 })

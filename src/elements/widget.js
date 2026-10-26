@@ -421,6 +421,8 @@ export function localeDirection(tag) {
 // the tertiary ones (.ter), so a default dashboard hides nothing, and a compact one, or one at a larger root font size,
 // gives up its secondary rows before anything clips. Each widget marks the rows that are its own. A snug tile also drops the
 // spacer (.f1) that pushes a footer to the bottom, which is a gap and a flex share to give back and hides nothing.
+// The label has its own line height (1.2) because 'normal' is a font's choice and Firefox rounds it up: the 11px label's line box
+// grew 1 to 2px over the 10px one it replaced, enough to push a full funding or edge tile past its bottom edge there.
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -436,6 +438,7 @@ ${standaloneCss()}
 .lb {
   font-size: var(--ts-label-size, max(11px, .6875rem)); text-transform: var(--ts-label-case, uppercase);
   letter-spacing: var(--ts-label-tracking, .12em); font-weight: var(--ts-label-weight, 600); color: var(--ts-muted);
+  line-height: 1.2;
 }
 .n, .big, .xbig {
   font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate; direction: var(--ts-fig-dir, ltr);

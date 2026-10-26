@@ -19,6 +19,9 @@ const TYPE_SCALE = ['2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', '
 // The host's, not a theme's: grid metrics, the type scale and motion.
 const NOT_THEMED = ['--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-strip-top', '--ts-motion', '--ts-ease', ...TYPE_SCALE]
 const GUARD = ':not([data-ts-palette])'
+// Padding is owned by density (RFC 0004 §2.1): the preset's --ts-pad sits in a block that yields to compact on the element,
+// on an ancestor, or on a <ts-grid density="compact">, whose :host rule cannot outrank a page rule.
+const DENSITY_GUARD = ":not([data-ts-density='compact'], [density='compact'], [data-ts-density='compact'] *, [density='compact'] *)"
 
 /**
  * Every rule in a stylesheet as { media, selector, vars }, looking one level
@@ -89,6 +92,7 @@ function expectedRules(name, oneMode) {
   const rules = [
     { kind: 'base', guarded: false, media: null, selector: `:where(${el})` },
     { kind: 'base', guarded: true, media: null, selector: `:where(${el}${GUARD})` },
+    { kind: 'pad', guarded: false, media: null, selector: `:where(${el}${DENSITY_GUARD})` },
   ]
   const MORE = '@media (prefers-contrast: more)'
   if (oneMode) return [...rules, { kind: 'hc', guarded: false, media: MORE, selector: `:where(${el})` }]
@@ -121,7 +125,7 @@ function load(name) {
   const guarded = of('base', true)
   const darkOnly = tagged.filter((r) => r.kind === 'dark')
   const darkAuto = tagged.filter((r) => r.kind === 'auto')
-  const light = { ...merge(plain), ...merge(guarded) }
+  const light = { ...merge(plain), ...merge(guarded), ...merge(of('pad', false)) }
   const hc = merge(tagged.filter((r) => r.kind === 'hc'))
   const hcDark = merge(tagged.filter((r) => r.kind === 'hc-dark'))
   const hcAuto = merge(tagged.filter((r) => r.kind === 'hc-auto'))
@@ -183,6 +187,7 @@ for (const name of NAMES) {
       )
       assert.equal(p.plain.length, 1)
       assert.equal(p.guarded.length, 1)
+      assert.equal(p.rules.filter((r) => r.kind === 'pad').length, 1)
       assert.ok(p.rules.indexOf(p.plain[0]) < p.rules.indexOf(p.guarded[0]), 'the guarded block comes after the plain one')
     })
 
@@ -212,6 +217,13 @@ for (const name of NAMES) {
           assert.match(value, /^(#[0-9a-f]{6}|var\(--ts-[\w-]+\))$/i, `${prop}: ${value}`)
         }
       }
+    })
+
+    test('sets --ts-pad only in the block that yields to compact density, once, and never --ts-row or --ts-gap', () => {
+      const withPad = p.rules.filter((r) => '--ts-pad' in r.vars)
+      assert.deepEqual(withPad.map((r) => r.kind), ['pad'], `${name}: --ts-pad outside the density-guarded block`)
+      assert.deepEqual(withPad[0].props, ['--ts-pad'])
+      assert.ok(withPad[0].selector.includes(DENSITY_GUARD), 'the guard names the element, an ancestor and the grid attribute')
     })
 
     test('leaves the host\'s grid metrics and motion alone', () => {
@@ -348,6 +360,24 @@ for (const name of NAMES) {
 }
 
 // ------------------------------------------- paper and graphite restate the defaults
+
+// Compact density beats a preset's padding wherever the preset is (the browser half is test/browser/density.spec.mjs).
+describe('presets yield their padding to compact density', () => {
+  // The selectors are matched by hand, since node has no DOM: each case lists the element's own attributes and its ancestors'.
+  for (const name of NAMES) {
+    test(`${name}: the pad block does not match a compact element, a compact ancestor or a compact grid`, () => {
+      const rule = load(name).rules.find((r) => r.kind === 'pad')
+      assert.match(rule.selector, new RegExp(`^:where\\(\\[data-ts-theme='${name}'\\]:not\\(`))
+      const excluded = rule.selector.slice(rule.selector.indexOf(':not(') + 5, -2).split(', ')
+      assert.deepEqual(excluded, ["[data-ts-density='compact']", "[density='compact']", "[data-ts-density='compact'] *", "[density='compact'] *"])
+    })
+    test(`${name}: padding is still the preset's when density is not compact`, () => {
+      const p = load(name)
+      assert.match(p.light['--ts-pad'], /^\d+px$/)
+      assert.ok(!p.rules.some((r) => r.kind !== 'pad' && '--ts-pad' in r.vars))
+    })
+  }
+})
 
 describe('paper and graphite restate the default tokens', () => {
   test('paper equals the light defaults of tokens.css, token for token', () => {
