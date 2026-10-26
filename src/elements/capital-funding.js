@@ -151,7 +151,7 @@ const TEMPLATES = {
   <span class="lb ell" data-k="name"></span>
   <div class="rowb">${figure('big nv', 'share', 'value')}<span class="sm mut" data-k="funded"></span></div>
   ${BAR}
-  <span class="sm n ell st" data-k="status"></span>
+  <span class="sm n ell st sec" data-k="status"></span>
 </div>`,
   list: `${head}
 <div class="scroll" data-k="scroll" role="group" tabindex="0">
@@ -169,11 +169,11 @@ const SKELETONS = {
 
 const STYLES = `
 .nv { white-space: nowrap; max-inline-size: 100%; overflow: hidden; text-overflow: clip; unicode-bidi: isolate; }
-.big.nv { font-size: min(34px, 15cqi); }
+.big.nv { font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 15cqi); }
 .one { gap: 6px; }
 .ah { align-items: center; flex-wrap: wrap; gap: 4px 8px; min-inline-size: 0; }
 .ah > .an { flex: 1 1 70px; }
-.ico { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 28px; padding: 0; font-size: 15px; line-height: 1; }
+.ico { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 28px; padding: 0; font-size: var(--ts-text-xl, max(16px, 1rem)); line-height: 1; }
 @media (pointer: coarse) { .ico { min-inline-size: 44px; } }
 /* The synced time gives way to the icon on the narrowest tile, as the watchlist's does to its add button. */
 @container (max-width: 200px) { .tile[data-act] .meta { display: none; } }
@@ -184,15 +184,15 @@ ul { list-style: none; margin: 0; padding: 0; }
 .ac { display: flex; flex-direction: column; gap: 6px; padding-block: 8px 10px; border-block-end: 1px solid var(--ts-line); }
 .ac:first-child { padding-block-start: 2px; }
 .ac:last-child { border-block-end: 0; }
-.an { font-size: 13px; font-weight: 600; color: var(--ts-ink); unicode-bidi: isolate; }
+.an { font-size: var(--ts-text-base, max(13px, .8125rem)); font-weight: 600; color: var(--ts-ink); unicode-bidi: isolate; }
 /* The funded part is solid; what is short is the track showing through, hatched in the loss colour, so a shortfall reads without colour. */
 .fb { display: block; box-sizing: border-box; inline-size: 100%; block-size: 6px; border-radius: 3px; overflow: hidden; background: var(--ts-surface-2); direction: ltr; }
 .fb.short { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ts-loss) 70%, transparent) 0 3px, color-mix(in srgb, var(--ts-loss) 22%, transparent) 3px 6px); }
 .ff { display: block; block-size: 100%; inline-size: calc(var(--f, 0) * 1%); background: var(--ts-accent); }
 .fb[hidden] { display: none; }
-.am { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 11px; min-inline-size: 0; }
+.am { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: var(--ts-text-sm, max(11px, .6875rem)); min-inline-size: 0; }
 .am > * { white-space: nowrap; }
-.am2 { display: none; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; }
+.am2 { display: none; flex-wrap: wrap; gap: 2px 10px; font-size: var(--ts-text-sm, max(11px, .6875rem)); }
 .am2 > * { white-space: nowrap; }
 @container (min-width: 280px) { .am2 { display: flex; } }
 .st { color: var(--ts-ink); }
@@ -203,13 +203,13 @@ ul { list-style: none; margin: 0; padding: 0; }
 .st.neg { color: var(--ts-loss); font-weight: 600; }
 .al-list { display: flex; flex-direction: column; gap: 7px; padding-block-start: 4px; }
 /* The narrowest tile gives each allocation its name, then its amount and what is short under it, then its bar. */
-.al { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 8px; row-gap: 3px; align-items: baseline; font-size: 12px; }
+.al { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 8px; row-gap: 3px; align-items: baseline; font-size: var(--ts-text-md, max(12px, .75rem)); }
 .al .fb { block-size: 4px; }
 .alname { min-inline-size: 0; display: flex; align-items: baseline; gap: 6px; }
 .alname > .ell { min-inline-size: 0; }
-.ad { color: var(--ts-muted); font-size: 10px; }
+.ad { color: var(--ts-muted); font-size: var(--ts-text-xs, max(10px, .625rem)); }
 .ad:empty { display: none; }
-.alsub { min-inline-size: 0; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; font-size: 11px; }
+.alsub { min-inline-size: 0; display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; font-size: var(--ts-text-sm, max(11px, .6875rem)); }
 .alnum { white-space: nowrap; }
 @container (min-width: 221px) {
   .al { grid-template-columns: minmax(0, 1fr) auto; }
@@ -361,7 +361,7 @@ export class TsCapitalFunding extends TsWidget {
     this.flash('share', a.shareNum === null ? NaN : a.shareNum, { goodWhen: 'up' })
     writeBar(this.$('[data-k="bar"]'), a.bar)
     const status = write('status', a.status)
-    setAttr(status, 'class', `sm n ell st${a.hasShort ? ' neg' : ''}`)
+    setAttr(status, 'class', `sm n ell st sec${a.hasShort ? ' neg' : ''}`)
     this._writeReb(this.$('[data-k="reb"]'), a, true)
     this._section.toggleAttribute('data-act', this.actionEnabled(ACTION_REBALANCE))
   }

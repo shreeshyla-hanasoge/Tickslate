@@ -2,7 +2,7 @@
 // and a scan of the files this story converts. The browser half is test/browser/density.spec.mjs.
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { TOKENS_CSS } from '../src/elements/default-tokens.js'
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
@@ -123,19 +123,14 @@ describe('the compact density tokens', () => {
   })
 })
 
-// ── The scan: the converted files only (RFC 0004 §2.3) ──────────────────────────────────────────────────────────────
+// ── The scan: every file that draws text (RFC 0004 §2.3, widened by type-scale-rollout, Decision 73) ───────────────────
 
-// What this story converts. The follow-up that converts the rest widens this list, and nothing else.
-const CONVERTED = [
-  'src/elements/widget.js',
-  'src/elements/grid.js',
-  'src/elements/today-pnl.js',
-  'src/elements/equity-curve.js',
-  'src/themes/presets/terminal.css',
-  'src/themes/presets/graphite.css',
-  'src/themes/presets/paper.css',
-]
-// A px size that is allowed to stay, each with its reason. A glyph or icon box is a size, not a text size.
+// Every element file and the three presets that restate a label size. density-and-text-scaling converted the first
+// seven; type-scale-rollout converted the rest, so nothing is left out and a new file is scanned the day it appears.
+const ELEMENT_FILES = readdirSync(new URL('../src/elements/', import.meta.url)).filter((name) => name.endsWith('.js')).map((name) => `src/elements/${name}`)
+const CONVERTED = [...ELEMENT_FILES, ...readdirSync(new URL('../src/themes/presets/', import.meta.url)).filter((name) => name.endsWith('.css')).map((name) => `src/themes/presets/${name}`)]
+// A px size that is allowed to stay, each with its reason. A glyph or icon box is a size, not a text size. The figures
+// capped by the tile's width (min(<token>, 15cqi)) are not here: their cap is a token, so no px is left in them.
 const ALLOWED = [['calc(8.6cqi - 2px)', 'a 2px offset inside a container-relative size, not a text size']]
 
 /** Source with every var(...) group removed (a fallback is not a declaration), balanced to any depth. */
@@ -157,7 +152,7 @@ function withoutVars(text) {
   return out
 }
 
-describe('the scan of the converted files', () => {
+describe('the scan of every element file and preset', () => {
   for (const path of CONVERTED) {
     test(`${path} declares no font size in px`, () => {
       const source = withoutVars(stripComments(read(path)))
@@ -182,19 +177,53 @@ describe('the scan of the converted files', () => {
     }
   })
 
-  test('the inventory: every size the converted files use maps to a token, and the files read the tokens they should', () => {
+  test('the inventory: every size the files use maps to a token, and each file reads the tokens it should', () => {
     const used = (path) => new Set([...read(path).matchAll(/var\((--ts-(?:text-\w+|label-size))\b/g)].map((m) => m[1]))
-    assert.deepEqual([...used('src/elements/grid.js')].sort(), ['--ts-text-base', '--ts-text-lg', '--ts-text-xl', '--ts-text-xs'])
-    assert.deepEqual([...used('src/elements/today-pnl.js')].sort(), ['--ts-text-big', '--ts-text-xbig'])
-    assert.deepEqual([...used('src/elements/equity-curve.js')].sort(), ['--ts-text-3xl', '--ts-text-big', '--ts-text-md'])
-    assert.deepEqual([...used('src/elements/widget.js')].sort(), ['--ts-label-size', '--ts-text-2xl', '--ts-text-base', '--ts-text-big', '--ts-text-md', '--ts-text-sm', '--ts-text-xbig', '--ts-text-xs'])
+    // The file, then the tokens it reads: the px sizes it drew before, by the table of RFC 0004 §2.3.
+    const INVENTORY = {
+      'widget.js': ['--ts-label-size', '--ts-text-2xl', '--ts-text-base', '--ts-text-big', '--ts-text-md', '--ts-text-sm', '--ts-text-xbig', '--ts-text-xs'],
+      'grid.js': ['--ts-text-base', '--ts-text-lg', '--ts-text-xl', '--ts-text-xs'],
+      'today-pnl.js': ['--ts-text-big', '--ts-text-xbig'],
+      'equity-curve.js': ['--ts-text-3xl', '--ts-text-big', '--ts-text-md'],
+      'card.js': ['--ts-text-big', '--ts-text-sm'],
+      'metric.js': ['--ts-text-md'],
+      'series-chart.js': ['--ts-text-sm', '--ts-text-xs'],
+      'table.js': ['--ts-label-size', '--ts-text-md'],
+      'watchlist.js': ['--ts-text-base', '--ts-text-md', '--ts-text-sm', '--ts-text-xl', '--ts-text-xs'],
+      'open-positions.js': ['--ts-text-base', '--ts-text-md', '--ts-text-xs'],
+      'pnl-calendar.js': ['--ts-text-2xl', '--ts-text-2xs', '--ts-text-md'],
+      'edge-stats.js': ['--ts-text-2xs', '--ts-text-big', '--ts-text-sm'],
+      // 15px snapped to 16px (the one visible change of the rollout, RFC 0004 §2.3).
+      'capital-funding.js': ['--ts-text-base', '--ts-text-big', '--ts-text-md', '--ts-text-sm', '--ts-text-xl', '--ts-text-xs'],
+      'progress.js': ['--ts-text-3xl'],
+      'picker.js': ['--ts-label-size', '--ts-text-2xl', '--ts-text-base', '--ts-text-lg', '--ts-text-xl'],
+      'grid-controls.js': ['--ts-text-base'],
+      // Not in the RFC's list of twelve: the layout list and the scrub read-out drew px too, so the widened scan covers them.
+      'layout-list.js': ['--ts-text-base', '--ts-text-lg'],
+      'scrub.js': ['--ts-text-sm'],
+    }
+    for (const [name, tokensRead] of Object.entries(INVENTORY)) assert.deepEqual([...used(`src/elements/${name}`)].sort(), tokensRead, name)
+    // A file that is not in the table draws no text size of its own: it reads no token.
+    for (const path of ELEMENT_FILES) if (!INVENTORY[path.replace('src/elements/', '')]) assert.deepEqual([...used(path)], [], path)
     // The token names read are all defined.
     for (const path of CONVERTED) for (const name of used(path)) assert.ok(name in tokens, `${path} reads ${name}, which tokens.css does not define`)
   })
 
-  test('the files left for type-scale-rollout are untouched: they still draw px', () => {
-    for (const path of ['capital-funding', 'watchlist', 'open-positions', 'pnl-calendar', 'edge-stats', 'progress', 'card', 'metric', 'series-chart', 'table', 'picker', 'grid-controls']) {
-      assert.ok(!/--ts-text-/.test(read(`src/elements/${path}.js`)), `${path}.js belongs to the follow-up`)
+  test('a figure capped by the tile\'s width takes its cap from a token: min(var(--ts-text-*), <n>cqi)', () => {
+    for (const path of ELEMENT_FILES) {
+      for (const m of read(path).matchAll(/font-size:\s*min\(([^;]*?),\s*(?:calc\([^;]*\)|[\d.]+cqi)\)\s*;/g)) {
+        assert.match(m[1], /^var\(--ts-text-\w+, max\(\d+px, [\d.]+rem\)\)$/, `${path}: ${m[0]}`)
+      }
+    }
+  })
+
+  test('every widget in the widened scan resolves its text at a 62.5% root to the size it drew before (the px floors)', () => {
+    // Each fallback is max(<px>, <rem>): at a 10px root the rem part is smaller, so the px size wins everywhere.
+    for (const path of ELEMENT_FILES) {
+      for (const m of read(path).matchAll(/var\(--ts-(?:text-\w+|label-size),\s*(max\([^)]*\))\)/g)) {
+        assert.ok(resolve(m[1], 10) >= 9, `${path}: ${m[1]}`)
+        assert.equal(resolve(m[1], 10), resolve(m[1], 16) , `${path}: ${m[1]} shrinks with the root`)
+      }
     }
   })
 })
@@ -223,6 +252,29 @@ describe('tiles are size containers (RFC 0004 §2.2)', () => {
     // At a 20px root the same tiles are shorter in rem: compact is tight, comfortable is snug.
     assert.ok(rem(compact, 20) <= tight)
     assert.ok(rem(content(150, 18), 20) <= snug && rem(content(150, 18), 20) > tight)
+  })
+
+  test('every built-in widget marks the row under its headline, so a snug tile gives it up (type-scale-rollout)', async () => {
+    const tag = async (file, name) => (await import(`../src/elements/${file}.js`))[name]
+    const metric = await tag('metric', 'TsMetric')
+    for (const size of ['S', 'Wide', 'M']) assert.match(metric.template(size), /class="delta sec"/, `metric ${size}`)
+    const clock = await tag('session-clock', 'TsSessionClock')
+    assert.match(clock.template('S'), /class="row xs mut ft sec"/)
+    const edge = await tag('edge-stats', 'TsEdgeStats')
+    assert.match(edge.template('S'), /class="n sm sub sec" data-k="s0"/)
+    assert.doesNotMatch(edge.template('M'), /class="[^"]*\bsec\b/)
+    const funding = await tag('capital-funding', 'TsCapitalFunding')
+    assert.match(funding.template('S'), /class="sm n ell st sec" data-k="status"/)
+    const progress = await tag('progress', 'TsProgress')
+    assert.match(progress.template('S'), /class="sm nv mut wrapt sec"/)
+    assert.match(progress.template('Wide'), /class="rowb sec"/)
+    const calendar = await tag('pnl-calendar', 'TsPnlCalendar')
+    assert.match(calendar.template('Banner'), /class="col cell sec"/)
+  })
+
+  test('a widget\'s own display does not outrank the shared snug rule: a row marked .sec that sets display restates the tier', async () => {
+    const { TsMetric } = await import('../src/elements/metric.js')
+    assert.match(TsMetric.styles, /@container ts-tile \(max-height: 6\.5rem\) \{ \.delta\.sec \{ display: none; \} \}/)
   })
 
   test('today\'s P&L and the equity curve mark their secondary rows', async () => {

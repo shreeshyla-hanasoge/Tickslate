@@ -56,7 +56,7 @@ export const SCRUB_CSS = `
 .sc-rule, .sc-dot, .sc-out { position: absolute; inset-block-start: 0; inset-inline-start: 0; }
 .sc-rule { inset-block-end: 0; inline-size: 1px; background: var(--ts-axis); }
 .sc-dot { box-sizing: border-box; inline-size: 10px; block-size: 10px; margin-block-start: -5px; margin-inline-start: -5px; border-radius: 50%; border: 2px solid var(--ts-surface); background: var(--c, var(--ts-ink)); }
-.sc-out { display: flex; flex-direction: column; padding: 4px 6px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line); background: var(--ts-surface-2); color: var(--ts-ink); font-size: 11px; line-height: 1.3; white-space: nowrap; }
+.sc-out { display: flex; flex-direction: column; padding: 4px 6px; border-radius: var(--ts-radius-sm); border: 1px solid var(--ts-line); background: var(--ts-surface-2); color: var(--ts-ink); font-size: var(--ts-text-sm, max(11px, .6875rem)); line-height: 1.3; white-space: nowrap; }
 .sc-lab { font-weight: 600; }
 .sc-out[data-two] { display: grid; grid-template-columns: auto auto; column-gap: 12px; }
 .sc-out[data-two] .sc-lab, .sc-out[data-two] .sc-more { grid-column: 1 / -1; }

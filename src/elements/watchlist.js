@@ -147,7 +147,7 @@ const STYLES = `
 ${PARTS_CSS}
 .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .scroll:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
-table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--ts-text-md, max(12px, .75rem)); }
 /* The header row is for a screen reader: its cells take no room, and their words are visually hidden. */
 thead th { padding: 0; border: 0; block-size: 0; line-height: 0; overflow: hidden; }
 th, td { box-sizing: border-box; padding: 7px 0 3px; text-align: start; vertical-align: top; font-weight: inherit; }
@@ -155,17 +155,17 @@ th, td { box-sizing: border-box; padding: 7px 0 3px; text-align: start; vertical
 .br > td { padding: 2px 6px 9px; border-block-end: 1px solid var(--ts-line); }
 tbody:last-of-type .br > td { border-block-end: 0; padding-block-end: 2px; }
 .id { max-inline-size: 0; inline-size: 100%; overflow: hidden; }
-.sym { display: block; unicode-bidi: isolate; font-size: 13px; font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex { display: block; unicode-bidi: isolate; font-size: 10px; color: var(--ts-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sym { display: block; unicode-bidi: isolate; font-size: var(--ts-text-base, max(13px, .8125rem)); font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex { display: block; unicode-bidi: isolate; font-size: var(--ts-text-xs, max(10px, .625rem)); color: var(--ts-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex:empty { display: none; }
 .fig { inline-size: 1%; padding-inline-start: 10px; text-align: end; white-space: nowrap; }
-.last { display: block; font-size: 13px; }
-.chg { display: flex; justify-content: flex-end; column-gap: 6px; font-size: 11px; }
+.last { display: block; font-size: var(--ts-text-base, max(13px, .8125rem)); }
+.chg { display: flex; justify-content: flex-end; column-gap: 6px; font-size: var(--ts-text-sm, max(11px, .6875rem)); }
 /* On a narrow tile the percent drops under the change rather than squeezing the symbol. */
 @container (max-width: 230px) { .chg { flex-wrap: wrap; } }
 .chg > * { white-space: nowrap; }
 .chg .abs:empty, .chg .pct:empty { display: none; }
-.add { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 28px; padding: 0; font-size: 16px; line-height: 1; }
+.add { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 28px; padding: 0; font-size: var(--ts-text-xl, max(16px, 1rem)); line-height: 1; }
 @media (pointer: coarse) { .add { min-inline-size: 44px; min-block-size: 44px; } }
 .skrow { display: flex; justify-content: space-between; gap: 10px; }
 .skr { align-items: flex-end; }

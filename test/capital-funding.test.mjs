@@ -322,7 +322,7 @@ describe('the element draws in place', () => {
     assert.equal(node('[data-k="shareV"]').textContent, '37%')
     assert.equal(node('[data-k="funded"]').textContent, 'funded')
     assert.equal(node('[data-k="status"]').textContent, 'short ₹31,359.60')
-    assert.equal(node('[data-k="status"]').getAttribute('class'), 'sm n ell st neg')
+    assert.equal(node('[data-k="status"]').getAttribute('class'), 'sm n ell st sec neg')
     assert.equal(node('[data-k="bar"]').getAttribute('class'), 'fb short')
     assert.equal(node('[data-k="bar"]').hasAttribute('hidden'), false)
     view({ accounts: [{ id: 'e', name: 'E', balance: 5, allocations: [] }] }, 'S')
