@@ -582,7 +582,7 @@ const k = (name) => `[data-k="${name}"]`
 // aria-hidden region, where assistive technology cannot reach it. The wrapper's summary is the text route (RFC 0004 §6.5).
 function chartBlock(i, xl) {
   return `<div class="mc">
-<div class="row mh"><span class="n ins ell" data-k="ins${i}"></span><select class="btn lift sel" part="instrument" data-k="sel${i}" data-i="${i}" hidden></select><span class="n sm mut" data-k="tf${i}"></span><span class="f1"></span><span class="n" data-k="last${i}"></span>${figure('n sm', `chg${i}`)}</div>
+<div class="row mh"><span class="n ins ell" data-k="ins${i}"></span><span class="n sm mut" data-k="tf${i}"></span><span class="f1"></span><span class="n" data-k="last${i}"></span>${figure('n sm', `chg${i}`)}</div>
 ${xl ? `<div class="sm mut ell" data-k="note${i}"></div>` : ''}
 <div class="plot lift" part="chart" role="img" data-k="plot${i}" aria-label="">
 <div class="cv" data-k="cv${i}" aria-hidden="true" tabindex="-1"></div>
@@ -616,6 +616,9 @@ export class TsMiniChart extends TsWidget {
 @container (max-width: 520px) { .mcs { flex-direction: column; } }
 .ins { font-weight: 600; }
 .sel { min-width: 0; max-width: 100%; color: var(--ts-ink); background: var(--ts-surface); font-weight: 600; }
+/* WebKit ignores min-height on a native select, so the height is set outright. */
+.sel { block-size: 28px; }
+@media (pointer: coarse) { .sel { block-size: 44px; } }
 .tfs { gap: 4px; }
 /* Time runs left to right in every locale, so the drawing box never mirrors. */
 .plot { position: relative; flex: 1; min-height: 0; min-width: 0; direction: ltr; overflow: hidden; border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm); }
@@ -882,12 +885,19 @@ export class TsMiniChart extends TsWidget {
 
   /** The instrument picker for chart `i`: a native select built with the DOM, in place of the name, only with the opt-in. */
   _updatePicker(i, c, slots) {
-    const sel = this.$(k(`sel${i}`))
-    if (!sel) return
+    let sel = this.$(k(`sel${i}`))
     const show = !!(c && this.actionEnabled('instrument') && c.choices.length)
+    const name = this.$(k(`ins${i}`))
+    if (!sel && !show) return
+    // Built on first use, not in the template: WebKit gives even a hidden <select> a style attribute, which a strict CSP refuses.
+    if (!sel && name) {
+      sel = document.createElement('select')
+      for (const [a, v] of [['class', 'btn lift sel'], ['part', 'instrument'], ['data-k', `sel${i}`], ['data-i', String(i)]]) sel.setAttribute(a, v)
+      name.after(sel)
+    }
+    if (!sel) return
     sel.toggleAttribute('hidden', !show)
     this._lift(sel, show)
-    const name = this.$(k(`ins${i}`))
     if (name) name.toggleAttribute('hidden', show)
     if (!show) {
       sel.removeAttribute('data-sig')

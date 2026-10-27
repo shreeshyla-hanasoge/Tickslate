@@ -202,6 +202,7 @@ The widget does not change its own bars or instrument: replace `bars`, `timefram
 - Entries are circles and exits are diamonds, so a mark is never told apart by colour alone.
 - The timeframe buttons sit in a `role="group"` named "Timeframe", each a toggle with `aria-pressed`, and are at least
   44px on touch screens.
+- WebKit gives every native `<select>` an inline style, which a `style-src` without `'unsafe-inline'` refuses and reports as a `style-src-attr` violation. The select is built only for a chart that shows the picker, so a page under a strict policy that does not opt in to `'instrument'` sees none; one that does allows `style-src-attr 'unsafe-inline'` or keeps the picker out of WebKit.
 - The instrument picker is a native select named "Instrument" ("Instrument, chart 1 of 2" at XL); the Expand button is named "Expand" and the tile's label. Both are at least 44px on touch screens and do nothing while the grid is being edited.
 - In forced colours the canvas keeps Emberwick's colours; the frame and the controls use the system's.
 - Emberwick's animation stops under `prefers-reduced-motion`, also if the setting changes while the page is open.

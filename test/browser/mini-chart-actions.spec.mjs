@@ -88,6 +88,8 @@ test('a coarse pointer gets 44px targets for both', async ({ browser }) => {
   const page = await context.newPage()
   await page.goto(PAGE)
   await page.waitForFunction(() => window.__ready === true)
+  // Only an engine that reports a coarse pointer for a touch context (the mobile projects) can show the floor.
+  test.skip(!(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)), 'this engine reports a fine pointer')
   const sizes = await page.evaluate(async () => {
     const data = window.__mc.dataFor('ts-mini-chart')
     data.charts[0].instruments = [{ id: 'abc', label: 'ABC Corp' }, { id: 'xyz', label: 'XYZ Ltd' }]
