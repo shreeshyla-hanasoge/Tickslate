@@ -31,6 +31,8 @@ reviewer and a user read the same line. The surface itself is pinned by
 | Saved layouts (`LAYOUT_VERSION`) | A change that makes a layout a previous version wrote read differently; a bump without a migration | New optional fields; new issue codes |
 | Package entries and `exports` | Removing or renaming an entry; dropping a condition | A new entry |
 | Browser and Node floors | Raising a floor | Lowering it |
+| Keyboard and accessibility tree | Adding or removing a tab stop in a default widget (0.3.0: one tab stop on every chart that draws a plot); changing a role | Reworded accessible names (Changed); a tab stop that only an opt-in adds |
+| The tile's CSS contract | Changing the tile's container type or name (0.3.0: `container-type: inline-size` became `container: ts-tile / size`); requiring something new of the host's CSS, such as a definite height | A new tier rule inside the widget |
 | Look and layout of widgets | Not API: the visual baselines make changes visible, and the changelog lists them under Changed | |
 | Size budgets, `Internal` modules, tests | Not API: no promise | |
 
