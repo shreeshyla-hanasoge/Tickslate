@@ -6,6 +6,17 @@ All notable changes to Tickslate are recorded here. The format follows
 
 ## Unreleased
 
+## 0.3.1 — 2026-10-27
+
+A patch for the label styling and name of `activatable` tiles, plus test hygiene.
+
+### Changed
+
+- An `activatable` tile's label keeps the label tokens (`--ts-label-case`, `--ts-label-tracking`, size, weight, colour), so it reads like a plain tile's label in every preset.
+- The docs for `activatable` now say that the whole tile is the click target, including a chart or a heatmap cell, and that a host should route `open` to a page other than the one the tile is on. Whether data areas should stay out of the click target is tracked in issue #68.
+- An `activatable` tile's label is cut with an ellipsis when it is too narrow, as a plain label is, instead of being clipped mid-letter.
+- An `activatable` `<ts-session-clock>` is named by the one title it shows ("Open"), not both forms run together.
+
 ## 0.3.0 — 2026-10-26
 
 The second feature release. It adds a mini candlestick chart, three general-purpose widgets (breakdown, status and feed), scrubbing and exact values on the charts, a layout list, a phone top strip, right-to-left grids, compact density and text scaling, resize and profile-switch feedback, session breaks and market presets, colour-vision and high-contrast palettes, strict CSP and Trusted Types support, `createDashboard`, table column widths and a page clock, and it makes the changes listed under Breaking. Read that list before upgrading.
