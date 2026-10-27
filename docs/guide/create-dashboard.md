@@ -68,10 +68,10 @@ widget's `messages`, the grid's, `configure()` and the built-in English, on that
 tile only. A host that translates passes translated titles. It is host data, not
 part of the layout: nothing is saved with it, and it is read once, so changing
 the object later does nothing. Own keys only (`constructor` is an id like any
-other). A value that is not a non-empty string, an empty one included, is
-ignored with one development warning, and the tile keeps its catalog name. An
+other). A value that is not a non-empty string (an empty or blank one included) is
+ignored with one development warning, and the tile keeps its catalog name. A `Map` or an array passed as `labels` is ignored with one warning; it must be a plain object. An
 id no profile holds is kept for a later add request, and warns unless `persist`
-is set, as `data` does. `set()` and `update()` change data, never titles; to
+is set, as `data` does. Each of these warnings fires once per id per page. `set()` and `update()` change data, never titles; to
 retitle a tile later, set `label` on it:
 `dashboard.grid.querySelector('[item="revenue"]').setAttribute('label', 'Revenue')`.
 

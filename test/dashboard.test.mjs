@@ -472,6 +472,21 @@ describe('labels', () => {
     assert.equal(warnings.filter((w) => w.includes('labels')).length, 1)
   })
 
+  test('a whitespace-only label is ignored with one warning', () => {
+    const { grid } = createDashboard(app, { layout: [item('a', { type: 'metric' })], labels: { a: '  \n\t ' } })
+    assert.equal(labelOf(grid, 'a'), null)
+    assert.equal(warnings.filter((w) => w.includes('"a"')).length, 1)
+  })
+
+  test('a Map or an array as labels is ignored, and the warning fires once per page', () => {
+    const m = createDashboard(app, { layout: [item('metric')], labels: new Map([['metric', 'Revenue']]) })
+    assert.equal(labelOf(m.grid, 'metric'), null)
+    assert.equal(warnings.filter((w) => w.includes('labels')).length, 1)
+    const a = createDashboard(new FakeEl('div'), { layout: [item('0', { type: 'metric' })], labels: ['Revenue'] })
+    assert.equal(labelOf(a.grid, '0'), null)
+    assert.equal(warnings.filter((w) => w.includes('labels')).length, 1)
+  })
+
   test('destroy() is unchanged', () => {
     const dash = createDashboard(app, { layout: [item('metric')], labels: { metric: 'Revenue' } })
     dash.destroy()

@@ -81,13 +81,16 @@ export function createDashboard(target, options = {}) {
   // Own keys only, so "__proto__" and "constructor" are ids, never the prototype's members.
   const titles = new Map()
   const given = options.labels
-  if (given && typeof given === 'object') {
+  // A Map or an array is an object but not an id-to-title record; both would be read wrongly (a Map as empty, an array as "0", "1").
+  const plain = given && typeof given === 'object' && !Array.isArray(given) && !(given instanceof Map)
+  if (plain) {
     for (const id of Object.keys(given)) {
       const text = given[id]
-      if (typeof text === 'string' && text) titles.set(id, text)
+      // A blank title would empty the tile's heading and accessible name, so it counts as empty.
+      if (typeof text === 'string' && text.trim()) titles.set(id, text)
       else if (DEV) warnOnce(`dashboard-label-value:${id}`, `createDashboard was given a label for "${id}" that is not a non-empty string, so it is ignored.`)
     }
-  } else if (DEV && given !== undefined) warnOnce('dashboard-labels-shape', 'createDashboard was given labels that is not an object of item id to label, so it is ignored.')
+  } else if (DEV && given !== undefined) warnOnce('dashboard-labels-shape', 'createDashboard was given labels that is not a plain object of item id to label, so it is ignored.')
   let alive = true
 
   const tagFor = (item) => {
