@@ -90,3 +90,12 @@ test('destroy() takes the grid off the page and is safe twice', async ({ page })
   expect(await page.evaluate(() => document.querySelector('ts-grid'))).toBe(null)
   expect(await page.evaluate(() => window.__dashboard.set('revenue', 1))).toBe(false)
 })
+
+test('labels name a tile over a messages entry for its widget, and other tiles keep messages', async ({ page }) => {
+  await load(page, '?labels=on')
+  const heading = (id) => page.evaluate((i) => document.querySelector(`ts-grid > [item="${i}"]`).shadowRoot.querySelector('[part="label"]').textContent.trim(), id)
+  expect(await page.evaluate(() => document.querySelector('[item="revenue"]').getAttribute('label'))).toBe('Net revenue')
+  expect(await heading('revenue')).toBe('Net revenue')
+  expect(await heading('usage')).toBe('From messages (progress)')
+  expect(await page.evaluate(() => document.querySelector('[item="usage"]').hasAttribute('label'))).toBe(false)
+})

@@ -129,6 +129,8 @@ export interface DashboardOptions {
   timeZone?: string
   /** The grid's accessible name (`aria-label`). Say what the dashboard is. Default: the grid's own "Dashboard". */
   label?: string
+  /** A title per item id, written as the tile's `label` attribute whenever the dashboard creates that tile, so it wins over every `messages` source. Never saved in the layout; later changes to the object do nothing. A value that is not a non-empty string is ignored with a development warning. */
+  labels?: Record<string, string>
   /** What the picker offers and `ts-add-request` is answered for: a list of types, '*' or null. Default '*'. */
   addTypes?: readonly string[] | '*' | null
 }
