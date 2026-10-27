@@ -171,7 +171,7 @@ export type TsCommonAction = { action: 'retry' } | TsOpenAction
  * @attr {string} data - JSON (starting with { or [) used as the data until the `data` property is set.
  * @attr {string} heading-level - The aria-level of the label heading, 1 to 6. Default 3.
  * @attr {string} href - Makes the label a link to this URL: http, https, mailto, tel or relative.
- * @attr {boolean} activatable - Makes the label a button that fires `ts-action` with action 'open'.
+ * @attr {boolean} activatable - Makes the whole tile one button: the label is the button and its click area covers the tile, so a click on a chart or heatmap fires `ts-action` with action 'open' too. Route `open` somewhere other than the page the tile is on.
  * @attr {string} stale-after - How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default 120000; falls back to the grid's.
  * @attr {'off'} flash - 'off' stops the brief tint on a headline figure that changed; the grid's `flash` applies too.
  * @attr {'on' | 'off'} scrub - 'off' turns off scrubbing on a chart: hover, touch drag and the keyboard slider. The widget's own, then the grid's, then on. Only the charts act on it.

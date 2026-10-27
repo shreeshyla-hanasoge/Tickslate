@@ -117,7 +117,7 @@ stat as `ctx.stat`.
 { action: 'retry' }
 ```
 
-- **`retry`** is the error view's button, with `actions = ['retry']`. Edge stats offers nothing else, and a tile fires `open` only when `activatable`.
+- **`retry`** is the error view's button, with `actions = ['retry']`. Edge stats offers nothing else, and a tile fires `open` only when `activatable`. On an `activatable` tile the whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
 
 See [Events](../reference/events.md).
 
