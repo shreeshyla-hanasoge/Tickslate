@@ -436,15 +436,17 @@ export function localeDirection(tag) {
 // nowrap and ellipsis.
 // A click on data never opens an href or activatable tile (RFC 0005 §1): each data surface carries .lift and sits above the
 // stretched link's overlay, level with the tile's own buttons; a tile with neither attribute keeps its stacking untouched.
-// The host isolates its stacking, so those z-indexes, and the overlay's, are ordered inside the tile and never against the
-// page's own layers (a sticky app bar, a popover): a tile in a <ts-grid> was isolated already by its transform.
+// Such a tile isolates its stacking, so those z-indexes, and the overlay's, are ordered inside the tile and never against
+// the page's own layers (a sticky app bar, a popover); a tile in a <ts-grid> was isolated already by its transform. A plain
+// tile is left alone, so a host's position: fixed menu slotted into it still stacks against the page as it always did.
 // What is left to open the tile is the strip above the first lifted surface: the padding, the header and the tile's 10px
 // gap. On a touch screen that strip stays a 44px target (ACCESSIBILITY item 8), which compact padding (12px) would leave
-// 3px short, so the header grows by the difference, but only on a tile that lifts something (.lifts, set after each
-// render): one with nothing lifted opens from anywhere, and its rows keep the room they were laid out with. A widget whose
+// 3px short, so the header grows by the difference, but only on a tile that lifts something (.lifts, decided when the
+// view's template is built, so a list that empties and refills does not move its header): one with nothing lifted opens
+// from anywhere, and its rows keep the room they were laid out with. A widget whose
 // lifted surfaces always sit below a headline row has a taller strip anyway, and sets static _liftsUnderHeader = false.
 export const SHARED_CSS = `
-:host { display: block; isolation: isolate; }
+:host { display: block; }
 :host([hidden]) { display: none; }
 ${standaloneCss()}
 .tile {
@@ -514,6 +516,7 @@ button[part~="link"] {
 [part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
 /* Plain slotted content stays under the overlay, so a click on it opens the tile. Only controls, and whatever the host puts in the actions slot, are lifted above it to take their own clicks. */
 ::slotted(:is(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="link"])), ::slotted([slot="actions"]) { position: relative; z-index: 2; }
+:host([activatable]), :host([href]) { isolation: isolate; }
 :host([activatable]) .lift, :host([href]) .lift { position: relative; z-index: 2; }
 @media (pointer: coarse) { :host([activatable]) .lifts .hd, :host([href]) .lifts .hd { min-block-size: max(18px, calc(34px - var(--ts-pad, 18px))); } }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
@@ -1367,7 +1370,7 @@ export class TsWidget extends Base {
   _markLifts(on) {
     if (on === this._lifts) return
     this._lifts = on
-    // The tile's only class is its own, so the attribute is written whole.
+    // Written whole, not with classList.toggle, which the unit tests' stand-in nodes lack; nothing else sets a class on the tile.
     this._section.setAttribute('class', on ? 'tile lifts' : 'tile')
   }
 
@@ -1670,6 +1673,8 @@ export class TsWidget extends Base {
       if (DEV) this._checkDropped(vm)
       if (this._shown !== variant) {
         setHTML(this._section, templateFor(Ctor, variant))
+        // Before update() can drop a class from an empty surface: the floor follows what the view can hold, not this data.
+        this._markLifts(Ctor._liftsUnderHeader !== false && !!this._section.querySelector('.lift'))
         // WebKit's touch adjustment moves a tap on a node that takes no click of its own to the nearest one that does,
         // and over a thin lifted surface (a 10px share bar) that is the stretched link: a listener makes it a target.
         listenAll(this._section, '.lift', 'click', KEEP_TAP)
@@ -1682,7 +1687,6 @@ export class TsWidget extends Base {
       const isStale = isLive && stale
       this._tileName(vm.ariaLabel || label, isLive, isStale)
       this.update(vm, variant)
-      this._markLifts(Ctor._liftsUnderHeader !== false && !!this._section.querySelector('.lift'))
       this._keepFlashes()
       this._updateFreshnessHeader(freshness, isLive, isStale, fmt, t, now, vm)
       this._markHeading(grid, label)

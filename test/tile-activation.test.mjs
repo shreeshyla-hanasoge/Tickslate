@@ -133,8 +133,11 @@ describe('the click target of an href or activatable tile (RFC 0005 §1)', () =>
     assert.match(css, /\.btn \{[^}]*z-index: 2;/)
     // Nothing lifts .lift on a plain tile: every rule that names it is scoped to the two attributes.
     for (const rule of css.match(/[^{}]*\.lift\b(?!s)[^{]*\{/g)) assert.match(rule, /^\s*(?:\/\*[\s\S]*?\*\/\s*)?:host\(\[activatable\]\) \.lift, :host\(\[href\]\) \.lift \{$/)
-    // The host is its own stacking context, so z-index 2 is ordered inside the tile and never against a page's sticky bar or popover.
-    assert.match(css, /:host \{ display: block; isolation: isolate; \}/)
+    // An href or activatable tile is its own stacking context, so z-index 2 is ordered inside it and never against a page's
+    // sticky bar or popover; a plain tile is not isolated, so a host's fixed menu slotted into it stacks as it always did.
+    assert.match(css, /:host\(\[activatable\]\), :host\(\[href\]\) \{ isolation: isolate; \}/)
+    assert.match(css, /:host \{ display: block; \}/)
+    assert.equal(css.match(/isolation/g).length, 1)
   })
 
   test('on a touch screen the header floor applies only to a tile that lifts something', () => {

@@ -248,6 +248,8 @@ const SKELETONS = {
   M: `${header()}<div class="skm"><span class="sk w40 h44"></span><div class="col f1">${sk(90, 10)}${sk(80, 10)}${sk(85, 10)}${sk(70, 10)}</div></div>`,
 }
 
+// The donut is square by width but never taller than the row it sits in (max-block-size): a compact M is shorter than
+// 46cqi is wide, and the ring would run out of the tile. Kept out of STYLES, where a comment ships.
 const STYLES = `
 .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .scroll:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
@@ -285,7 +287,6 @@ const STYLES = `
 .note { margin: 0; }
 .dn { display: flex; flex: 1; min-height: 0; align-items: center; gap: 16px; }
 .dn .scroll { align-self: stretch; }
-/* Square by width, but never taller than the row it sits in: a compact M is shorter than 46cqi is wide, and the ring would run out of the tile. */
 .donut { position: relative; flex: none; inline-size: min(46cqi, 230px); aspect-ratio: 1; max-block-size: 100%; }
 .donut svg { display: block; inline-size: 100%; block-size: 100%; }
 .arc { fill: var(--c); }

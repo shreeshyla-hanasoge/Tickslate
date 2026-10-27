@@ -114,7 +114,7 @@ const TEMPLATES = {
   Wide: `${head}<span class="xbig n nv" data-k="value"></span><span class="f1"></span>
 <div class="row">${change}<span class="f1"></span><span class="sm mut ell" data-k="customers"></span></div>`,
   M: `${head}<div class="rowb"><span class="xbig n nv" data-k="value"></span>${change}</div>
-<div class="spark lift"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="spark lift" data-k="sparkbox"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>
 <div class="row"><span class="sm mut ell f1" data-k="customers"></span>${more}</div>`,
@@ -180,6 +180,8 @@ export class AcmeMrr extends TsWidget {
     if (variant === 'Wide') return
 
     this.$('[data-k="spark"]').toggleAttribute('hidden', !vm.line)
+    // Lifted only while there is a line: an empty box is empty space, and opens an activatable tile.
+    attr('sparkbox', 'class', vm.line ? 'spark lift' : 'spark')
     attr('spark', 'class', vm.tone)
     attr('spark', 'aria-label', vm.sparkLabel)
     attr('line', 'd', vm.line)

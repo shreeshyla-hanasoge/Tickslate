@@ -321,10 +321,10 @@ test.describe('the keyboard path is unchanged', () => {
 })
 
 test.describe('the open target on a touch screen', () => {
-  for (const density of ['comfortable', 'compact']) {
-    test(`${density}: at 390px the strip above the first lifted surface is at least 44px tall`, async ({ page }) => {
+  for (const [width, density] of [[390, 'comfortable'], [390, 'compact'], [320, 'comfortable'], [320, 'compact']]) {
+    test(`${density}: at ${width}px the strip above the first lifted surface is at least 44px tall`, async ({ page }) => {
       test.skip(!(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)), 'the 44px floor is for a coarse pointer (ACCESSIBILITY item 8)')
-      await page.setViewportSize({ width: 390, height: 844 })
+      await page.setViewportSize({ width, height: 844 })
       await page.goto(FIXTURE)
       await page.waitForFunction(() => window.__ready === true)
       if (density === 'compact') await page.evaluate(() => document.documentElement.setAttribute('data-ts-density', 'compact'))
@@ -454,9 +454,64 @@ test.describe('the tile keeps its stacking to itself', () => {
     })
   }
 
-  test('the tile is its own stacking context, so its buttons and the scrub read-out stay in it', async ({ page }) => {
+  test('an href or activatable tile is its own stacking context, and a plain one is not', async ({ page }) => {
     await load(page, 'activatable', ['chart'])
     expect(await page.evaluate(() => getComputedStyle(window.__fx.tiles.get('chart:M')).isolation)).toBe('isolate')
+    expect(await page.evaluate(() => getComputedStyle(window.__fx.tiles.get('metric:M')).isolation)).toBe('auto')
+  })
+
+  // Two standalone cards in a column; the first slots a host's menu over the second, as a host's own code would.
+  const twoCards = (page, mode, menu) => page.evaluate(async ({ mode, menu }) => {
+    document.getElementById('stage').style.display = 'none'
+    const wrap = document.createElement('div')
+    wrap.style.cssText = 'padding: 20px; display: flex; flex-direction: column; gap: 12px; inline-size: 320px'
+    document.body.prepend(wrap)
+    const card = (label) => {
+      const c = document.createElement('ts-card')
+      c.setAttribute('size', 'M')
+      c.setAttribute('label', label)
+      if (mode === 'activatable') c.setAttribute('activatable', '')
+      c.style.cssText = 'display: block; block-size: 200px'
+      wrap.append(c)
+      return c
+    }
+    const one = card('One')
+    const two = card('Two')
+    const m = document.createElement('div')
+    m.id = 'menu'
+    m.textContent = 'Menu'
+    if (menu === 'popover') {
+      m.setAttribute('popover', 'manual')
+      m.style.cssText = 'position: fixed; inset: auto; inset-inline-start: 40px; inset-block-start: 200px; inline-size: 200px; block-size: 100px; margin: 0'
+      m.slot = 'actions'
+    } else {
+      // Where a positioning library with the fixed strategy puts a dropdown opened from the first card's body.
+      m.style.cssText = 'position: fixed; z-index: 10; inset-inline-start: 40px; inset-block-start: 200px; inline-size: 200px; block-size: 100px; background: var(--ts-ink)'
+    }
+    one.append(m)
+    await new Promise((resolve) => { const f = () => (one.shadowRoot.querySelector('.tile').getAttribute('aria-label') && two.shadowRoot.querySelector('.tile').getAttribute('aria-label') ? resolve() : requestAnimationFrame(f)); f() })
+    if (menu === 'popover') m.showPopover()
+    // Over the second card: is the menu on top there?
+    const r = two.getBoundingClientRect()
+    const y = Math.max(r.top + 10, 260)
+    const top = document.elementFromPoint(140, y)
+    return { under: r.top < 300 && r.top + 10 < 300, top: top && (top.id || top.getAttribute('label') || top.localName) }
+  }, { mode, menu })
+
+  test("a host's position: fixed menu slotted into a plain tile stays above the next tile", async ({ page }) => {
+    await page.goto(FIXTURE)
+    await page.waitForFunction(() => window.__ready === true)
+    const r = await twoCards(page, 'plain', 'fixed')
+    expect(r.under).toBe(true)
+    expect(r.top).toBe('menu')
+  })
+
+  test("a popover menu slotted into an activatable tile stays above the next tile", async ({ page }) => {
+    await page.goto(FIXTURE)
+    await page.waitForFunction(() => window.__ready === true)
+    const r = await twoCards(page, 'activatable', 'popover')
+    expect(r.under).toBe(true)
+    expect(r.top).toBe('menu')
   })
 })
 
@@ -487,6 +542,24 @@ test.describe('layout on a phone', () => {
     }
     for (const key of ['edgeStats:Wide', 'capitalFunding:S']) expect(act[key].lifts, key).toBe(false)
     expect(bad).toEqual([])
+  })
+
+  test('compact at 390px: a list that empties and refills keeps its header height', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await load(page, 'activatable', ['table', 'feed'])
+    await page.evaluate(() => document.documentElement.setAttribute('data-ts-density', 'compact'))
+    await rendered(page)
+    for (const key of ['table:M', 'feed:M']) {
+      const height = () => page.evaluate((key) => window.__fx.tiles.get(key).shadowRoot.querySelector('[part~="header"]').getBoundingClientRect().height, key)
+      const lifted = () => page.evaluate((key) => !!window.__fx.tiles.get(key).shadowRoot.querySelector('.lift'), key)
+      const before = await height()
+      await page.evaluate((key) => { const el = window.__fx.tiles.get(key); el.__full = el.data; el.data = { ...el.data, rows: [], items: [] } }, key)
+      await expect.poll(lifted).toBe(false)
+      expect(await height(), `${key} emptied`).toBe(before)
+      await page.evaluate((key) => { const el = window.__fx.tiles.get(key); el.data = el.__full }, key)
+      await expect.poll(lifted).toBe(true)
+      expect(await height(), `${key} refilled`).toBe(before)
+    }
   })
 
   for (const [w, h] of [[1280, 900], [390, 844]]) {

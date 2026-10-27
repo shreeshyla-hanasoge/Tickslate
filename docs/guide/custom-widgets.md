@@ -69,7 +69,7 @@ const TEMPLATES = {
   Wide: `${head}<span class="xbig n nv" data-k="value"></span><span class="f1"></span>
 <div class="row">${change}<span class="f1"></span><span class="sm mut ell" data-k="customers"></span></div>`,
   M: `${head}<div class="rowb"><span class="xbig n nv" data-k="value"></span>${change}</div>
-<div class="spark lift"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="spark lift" data-k="sparkbox"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>
 <div class="row"><span class="sm mut ell f1" data-k="customers"></span>${more}</div>`,
@@ -103,9 +103,10 @@ const TEMPLATES = {
   there scrolls, scrubs or does nothing, and the header, the headline figure
   and the empty space still open the tile. A `.btn` and slotted controls are
   lifted already. The link is made from the label the header marks with
-  `part="label"`, so keep that part, as `head` above does. A surface that is
-  empty for now (a list with no rows) can drop the class in `update()` so a
-  click on its message opens the tile too.
+  `part="label"`, so keep that part, as `head` above does. Lift data only
+  while it exists: drop the class in `update()` for an empty list or a plot
+  with nothing to draw, as `update()` below does for the sparkline, so a click
+  on the empty box or its message opens the tile like the rest of it.
 - **Add only the CSS you need**, again with tokens only:
 
 ```js
@@ -369,6 +370,8 @@ is what lets a test call it directly.
     if (variant === 'Wide') return
 
     this.$('[data-k="spark"]').toggleAttribute('hidden', !vm.line)
+    // Lifted only while there is a line: an empty box is empty space, and opens an activatable tile.
+    attr('sparkbox', 'class', vm.line ? 'spark lift' : 'spark')
     attr('spark', 'class', vm.tone)
     attr('spark', 'aria-label', vm.sparkLabel)
     attr('line', 'd', vm.line)
@@ -658,6 +661,7 @@ page that imports `tickslate/elements`.
 - [ ] No English in the template: every word is a message key with a default of your own
 - [ ] `update` sets text and attributes, and never rebuilds markup
 - [ ] Every data surface (a chart, a scrolling list, a grid of cells) carries `class="lift"`, so a click on it never opens an `activatable` tile
+- [ ] `update()` drops `lift` from a surface while it holds no data, so an empty list or an undrawn chart opens the tile
 - [ ] `static dataShape` and a `widget.<type>.empty` message
 - [ ] No attribute or property named like an `HTMLElement` member (`title`, `hidden`, `scroll`…)
 - [ ] A prefix of your own on the tag and the type, registered with `defineWidget`, guarded against a second evaluation
