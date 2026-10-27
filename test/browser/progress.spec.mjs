@@ -103,6 +103,23 @@ test.describe('the gauge', () => {
     expect(info.group).toBe('Daily loss limit, no target set')
   })
 
+  for (const locale of ['ar-EG', 'fa', 'hi-IN']) {
+    test(`${locale}: digits in another script are still a target, with a meter and a fill`, async ({ page }) => {
+      await open(page, 'size=Wide')
+      await page.evaluate((l) => {
+        document.documentElement.setAttribute('dir', l === 'hi-IN' ? 'ltr' : 'rtl')
+        window.__p.el.setAttribute('locale', l)
+      }, locale)
+      await page.evaluate(() => window.__p.nextFrame())
+      const info = await read(page)
+      expect(info.group).not.toContain('no target set')
+      expect(info.hidden).toBe(false)
+      expect(info.now).toBe('64')
+      expect(info.fill).toBeGreaterThan(0.6)
+      expect(info.fill).toBeLessThan(0.68)
+    })
+  }
+
   test('updates in place: the same nodes, a new fill and state', async ({ page }) => {
     await open(page, 'size=Wide')
     const same = await page.evaluate(async () => {

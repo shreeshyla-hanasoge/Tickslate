@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickslate: plain script tag</title>
+<!--
+  No build step. The one script below registers every element and sets
+  window.Tickslate (used at the bottom for its version). Here it comes from the installed package (npm install, then
+  serve this folder); on a page with no node_modules use the CDN instead:
+    <script src="https://unpkg.com/tickslate"></script>
+  (unpkg serves the package's "unpkg" field, which is this same file).
+-->
+<link rel="stylesheet" href="./node_modules/tickslate/tokens.css">
+<style>
+  body { margin: 0; padding: 24px; font: 14px system-ui, sans-serif; background: var(--ts-bg, #fff); color: var(--ts-ink, #1c1a16); }
+  .page { max-width: 960px; margin: 0 auto; }
+  #last-action { margin: 12px 0 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Plain script tag</h1>
+  <!--
+    persist="..." saves the layout in localStorage under that key, with no code.
+    Each child has an item id, so a saved layout still matches it later.
+    Data is not written here: it is assigned as a property below, which keeps
+    objects out of attributes.
+  -->
+  <ts-grid persist="vanilla-cdn-example" aria-label="Example dashboard">
+    <ts-today-pnl item="pnl" label="Today's P&amp;L" size="S"></ts-today-pnl>
+    <ts-metric item="signups" label="Signups" size="S" activatable></ts-metric>
+    <ts-chart item="revenue" label="Revenue" size="Wide"></ts-chart>
+    <ts-card item="notes" label="Notes" sizes="S Wide M"><p>Deploy freeze from Friday.</p></ts-card>
+  </ts-grid>
+  <p id="last-action" role="status">No action yet.</p>
+  <p id="version"></p>
+</div>
+
+<script src="./node_modules/tickslate/cdn/tickslate.iife.js"></script>
+<script>
+  // Made-up figures.
+  var $ = function (selector) { return document.querySelector(selector) }
+  $('ts-today-pnl').data = { net: 412.5, realized: 380, unrealized: 32.5, fees: 9.75, closedCount: 6, openCount: 2 }
+  $('ts-metric').data = { value: 1204, previous: 1075, compareLabel: 'vs last week' }
+  $('ts-chart').data = {
+    series: [{
+      name: 'Revenue',
+      points: [
+        { x: '2026-09-01', y: 11800 }, { x: '2026-09-02', y: 12400 }, { x: '2026-09-03', y: 12100 },
+        { x: '2026-09-04', y: 13050 }, { x: '2026-09-05', y: 12750 }, { x: '2026-09-06', y: 13600 }
+      ]
+    }]
+  }
+
+  // The script tag also sets window.Tickslate, the same API as the ES module entry.
+  $('#version').textContent = 'Tickslate ' + window.Tickslate.version
+
+  // ts-action bubbles from every tile, so one listener on the grid hears them all.
+  $('ts-grid').addEventListener('ts-action', function (event) {
+    $('#last-action').textContent = 'Last action: ' + event.detail.action + ' ' + event.detail.id
+  })
+</script>
+</body>
+</html>

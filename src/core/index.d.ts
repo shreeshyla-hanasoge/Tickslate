@@ -79,6 +79,9 @@ export declare const WIDGETS: Readonly<{
   chart: WidgetSpec
   table: WidgetSpec
   progress: WidgetSpec
+  breakdown: WidgetSpec
+  status: WidgetSpec
+  feed: WidgetSpec
 }>
 
 /** The profile a layout uses when none is named. */
@@ -117,6 +120,8 @@ export interface LayoutIssue {
     | 'bad-shape'
     | 'top-strip-too-long'
     | 'top-strip-unknown-id'
+    | 'too-many-items'
+    | 'too-many-profiles'
   message: string
   fixed: 'dropped' | 'replaced' | 'migrated' | 'kept'
 }
@@ -133,11 +138,21 @@ export declare function emptyLayout(device?: Device): Layout
 
 /**
  * Reads saved layout JSON. Never throws: it repairs what it can, drops what it
- * can't, and reports each change in `issues`. The result is a fresh copy.
+ * can't, and reports each change in `issues`. The result is a fresh copy, with
+ * the profiles in the input's order. For a value that is not plain data (an
+ * accessor that throws) it returns an empty layout and one `bad-shape` issue.
  */
 export declare function readLayout(
   input: Layout | LayoutItem[] | unknown,
-  options?: { catalog?: Catalog; device?: Device; unknown?: 'drop' | 'keep' },
+  options?: {
+    catalog?: Catalog
+    device?: Device
+    unknown?: 'drop' | 'keep'
+    /** Items read per profile. A positive integer or Infinity; default 100. */
+    maxItems?: number
+    /** Profiles read, the built-in two included. A positive integer or Infinity; default 20. */
+    maxProfiles?: number
+  },
 ): { layout: Layout; issues: LayoutIssue[] }
 
 // ── Placement ──────────────────────────────────────────────────────────
@@ -202,8 +217,11 @@ export declare function dropIndex(
 
 /** A layout with one profile replaced; top strip ids no profile holds any more are dropped. */
 export declare function withProfile(layout: Layout, profile: string, items: LayoutItem[]): Layout
-/** Sets the top strip to at most 3 distinct ids that are in the layout. */
-export declare function setTopStrip(layout: Layout, ids: readonly string[]): Layout
+/**
+ * Sets the top strip to the distinct ids that are in the layout. Only ids `counts` accepts (every id, when it is
+ * omitted) count toward the limit of 3; the others are kept without taking a slot.
+ */
+export declare function setTopStrip(layout: Layout, ids: readonly string[], counts?: (id: string) => boolean): Layout
 
 // ── Formatting ─────────────────────────────────────────────────────────
 
@@ -259,10 +277,16 @@ export interface Formatter {
 
 export declare function createFormatter(options?: FormatOptions): Formatter
 /** Sets defaults for formatters (and widgets) created without their own. `messages` is the table every widget and grid reads; null clears it. */
-export declare function configure(options: FormatOptions & { messages?: MessageOverrides | null }): void
-export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides }
+export declare function configure(options: FormatOptions & {
+  messages?: MessageOverrides | null
+  /** The CSP nonce for the `<style>` element widgets fall back to where constructed sheets are missing (below Safari 16.4). */
+  styleNonce?: string
+  /** The time every grid and widget reads when none is set on the element: ms since the epoch. null clears it; anything but a function is ignored with one development warning. */
+  clock?: (() => number) | null
+}): void
+export declare function currentConfig(): FormatOptions & { messages?: MessageOverrides; styleNonce?: string; clock?: () => number }
 /** Calls `fn` with the new defaults after every configure(); returns a function that stops it. Registers nothing until called. */
-export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides }) => void): () => void
+export declare function onConfigure(fn: (config: FormatOptions & { messages?: MessageOverrides; styleNonce?: string; clock?: () => number }) => void): () => void
 /** A finite number from a number, a decimal string or a decimal-library object; else NaN. */
 export declare function toNumber(v: unknown): number
 
@@ -288,6 +312,9 @@ export interface Messages {
   'widget.chart.label': string
   'widget.table.label': string
   'widget.progress.label': string
+  'widget.breakdown.label': string
+  'widget.status.label': string
+  'widget.feed.label': string
   'widget.todayPnl.description': string
   'widget.equityCurve.description': string
   'widget.pnlCalendar.description': string
@@ -302,6 +329,9 @@ export interface Messages {
   'widget.chart.description': string
   'widget.table.description': string
   'widget.progress.description': string
+  'widget.breakdown.description': string
+  'widget.status.description': string
+  'widget.feed.description': string
   'category.General': string
   'category.Performance': string
   'category.Accounts': string
@@ -318,6 +348,9 @@ export interface Messages {
   'widget.watchlist.empty': string
   'widget.openPositions.empty': string
   'widget.pnlCalendar.empty': string
+  'widget.breakdown.empty': string
+  'widget.status.empty': string
+  'widget.feed.empty': string
   'size.S': string
   'size.Wide': string
   'size.Tall': string
@@ -364,6 +397,20 @@ export interface Messages {
   'grid.add': string
   'grid.added': string
   'grid.addFailed': string
+  'grid.strip': string
+  'grid.pin': string
+  'grid.unpin': string
+  'grid.pinned': string
+  'grid.unpinned': string
+  'grid.stripFull': string
+  'grid.pinUnsupported': string
+  'grid.badge': string
+  'grid.hint.touch': string
+  'grid.hint.pointer': string
+  'grid.hintDismiss': string
+  'grid.profileSwitched': string
+  'grid.keepProfile': string
+  'grid.keptProfile': string
   'picker.title': string
   'picker.search': string
   'picker.close': string
@@ -380,6 +427,23 @@ export interface Messages {
   'controls.market': string
   'controls.closed': string
   'controls.next': string
+  'list.label': string
+  'list.sizes': string
+  'list.moveUp': string
+  'list.moveUpItem': string
+  'list.moveDown': string
+  'list.moveDownItem': string
+  'list.remove': string
+  'list.removeItem': string
+  'list.undo': string
+  'list.undone': string
+  'list.nothingToUndo': string
+  'list.moved': string
+  'list.resized': string
+  'list.removed': string
+  'list.empty': string
+  'list.noGrid': string
+  'list.locked': string
   'pnl.today': string
   'pnl.realised': string
   'pnl.unrealised': string
@@ -462,6 +526,10 @@ export interface Messages {
   'session.legend': string
   'session.legendNext': string
   'session.nextClose': string
+  'session.break': string
+  'session.resumes': string
+  'session.toBreak': string
+  'session.ariaBreak': string
   'metric.target': string
   'metric.up': string
   'metric.down': string
@@ -470,6 +538,19 @@ export interface Messages {
   'chart.series': string
   'chart.last': string
   'chart.noData': string
+  'chart.scrubSlider': string
+  'chart.scrubValue': string
+  'chart.scrubNone': string
+  'chart.scrubNet': string
+  'chart.scrubEquity': string
+  'chart.scrubDay': string
+  'chart.scrubTableX': string
+  'chart.scrubTableDate': string
+  'chart.scrubTableCategory': string
+  'chart.scrubTableNumber': string
+  'chart.scrubCaption.one': string
+  'chart.scrubCaption.other': string
+  'chart.scrubMore': string
   'table.aria': string
   'table.rows.one': string
   'table.rows.other': string
@@ -586,6 +667,56 @@ export interface Messages {
   'calendar.chartNote': string
   'calendar.weekend.one': string
   'calendar.weekend.other': string
+  'miniChart.summary': string
+  'miniChart.head': string
+  'miniChart.last': string
+  'miniChart.summaryEmpty': string
+  'miniChart.bars.one': string
+  'miniChart.bars.other': string
+  'miniChart.marks.one': string
+  'miniChart.marks.other': string
+  'miniChart.entries.one': string
+  'miniChart.entries.other': string
+  'miniChart.exits.one': string
+  'miniChart.exits.other': string
+  'miniChart.pair': string
+  'miniChart.join': string
+  'miniChart.noPeer': string
+  'miniChart.badProfile': string
+  'miniChart.timeframes': string
+  'miniChart.up': string
+  'miniChart.down': string
+  'miniChart.flat': string
+  'widget.miniChart.empty': string
+  'breakdown.other': string
+  'breakdown.total': string
+  'breakdown.item': string
+  'breakdown.share': string
+  'breakdown.excluded.one': string
+  'breakdown.excluded.other': string
+  'breakdown.chartLabel.one': string
+  'breakdown.chartLabel.other': string
+  'breakdown.chartEmpty': string
+  'status.ok': string
+  'status.degraded': string
+  'status.down': string
+  'status.unknown': string
+  'status.summary.one': string
+  'status.summary.other': string
+  'status.since': string
+  'status.rowAria': string
+  'status.aria': string
+  'status.ariaWorst': string
+  'status.colName': string
+  'status.colState': string
+  'status.colSince': string
+  'feed.more.one': string
+  'feed.more.other': string
+  'feed.itemAria': string
+  'feed.itemAriaPlain': string
+  'feed.aria.one': string
+  'feed.aria.other': string
+  'feed.ariaEmpty': string
 }
 
 export type MessageKey = keyof Messages
@@ -604,9 +735,9 @@ export type MessageOverrides = Partial<Messages> & { [K in `${PluralBase}.${Plur
 
 /**
  * `{param}` interpolation and plural forms; a missing key falls back to EN, then to the key itself.
- * A `count` (a number, or a numeric string) selects `key.<category>`, then `key.other`, then `key`; the category comes from the table's locale for text a host supplied, and from English for text that falls back to EN.
+ * A key a custom widget registered with `defineWidget(…, { messages })` is any string. A `count` (a number, or a numeric string) selects `key.<category>`, then `key.other`, then `key`; the category comes from the table's locale for text a host supplied, and from English for text that falls back to EN.
  */
-export type Translate = (key: MessageKey | PluralBase, params?: Record<string, string | number | null | undefined> | null, count?: number | string) => string
+export type Translate = (key: MessageKey | PluralBase | (string & {}), params?: Record<string, string | number | null | undefined> | null, count?: number | string) => string
 
 /** Every key and its English text. Frozen; keys are flat and dotted. */
 export declare const EN: Readonly<Messages>
@@ -639,17 +770,35 @@ export interface SessionSpec {
    */
   close: string | { default: string; ranges: ReadonlyArray<{ from: string; to: string; close: string }> }
   /** Extra sessions keyed by the date they open on, e.g. a weekend session. They beat weekdays and holidays, and may cross midnight too. */
-  specialSessions?: Record<string, { open: string; close: string }>
+  specialSessions?: Record<string, { open: string; close: string; breaks?: ReadonlyArray<{ from: string; to: string }> }>
+  /**
+   * Gaps inside each window, such as a lunch break: 'HH:MM' local, sorted, apart, strictly
+   * inside the window (an overnight window's earlier times are the next morning's), at most
+   * four. The session is closed during one. A holiday removes the window with its breaks, and
+   * a special session has only its own breaks.
+   */
+  breaks?: ReadonlyArray<{ from: string; to: string }>
 }
 
 export interface CalendarInput {
   sessions: readonly SessionSpec[]
   /** Session id → 'YYYY-MM-DD' dates the session would OPEN on, which it skips; '*' applies to every session. */
   holidays?: Record<string, readonly string[]>
+  /** The instant holiday coverage is judged against. Default: the page clock (`configure({ clock })`), else Date.now(), read once when the calendar is created. Pass it in tests and in servers that render at a fixed time. */
+  now?: number
+}
+
+export interface CalendarIssue {
+  session: string
+  code: 'holiday-coverage'
+  /** e.g. 'The holiday list for "nyse" ends on 2026-12-31, 67 days from now.' */
+  message: string
 }
 
 export interface SessionState {
   open: boolean
+  /** True while the session is inside a break. `open` is false then, and `opensAt` is the break's end. */
+  onBreak: boolean
   /** Next open, when closed; null if none within a month. */
   opensAt: number | null
   /** When open: the end of the run of touching windows. Null while open means no close within a month. */
@@ -658,14 +807,16 @@ export interface SessionState {
   startedAt: number | null
   /** 0..1 through the run, when open. Null when `closesAt` or `startedAt` is. */
   progress: number | null
+  /** When open: what happens at `closesAt`. 'break' when the run ends at a break, 'close' when it ends for the day, null while closed or with no end. */
+  ends: 'close' | 'break' | null
 }
 
 export interface Calendar {
   readonly sessions: readonly string[]
   session(id: string): SessionSpec
   isTradingDay(id: string, date: string): boolean
-  /** The window that opens on a date as instants (its close is on the next day for an overnight session), or null if it doesn't open. */
-  hours(id: string, date: string): { open: number; close: number } | null
+  /** The window that opens on a date as instants (its close is on the next day for an overnight session), or null if it doesn't open. It has `breaks` (instants) only when the window has any. */
+  hours(id: string, date: string): { open: number; close: number; breaks?: Array<{ from: number; to: number }> } | null
   /** Windows that touch are one: a session open Sunday evening to Friday evening is open all week. */
   state(id: string, now: number): SessionState
   /** The next open or close, or null when there is none within a month, which includes an open session with no close. */
@@ -673,13 +824,17 @@ export interface Calendar {
   /** The next candle close, aligned to the session open (to the day's window when the session has no known start); null while closed. */
   candleClose(id: string, now: number, timeframeMinutes: number): number | null
   /** Every session window overlapping [from, to), touching windows merged. A run still going a month past `to`, or a month before `from`, is cut there. */
-  windows(id: string, from: number, to: number): Array<{ open: number; close: number }>
+  windows(id: string, from: number, to: number, options?: { throughBreaks?: boolean }): Array<{ open: number; close: number }>
+  /** The last date any holiday list covers for this session: the latest of `holidays['*']` and `holidays[id]`, or null with neither. Throws RangeError for an unknown id. */
+  holidaysThrough(id: string): string | null
+  /** Problems found when the calendar was created (a holiday list that ends within 30 days of `now`). Frozen; [] when there are none. */
+  readonly issues: readonly CalendarIssue[]
 }
 
 /** Throws TypeError on a malformed session or holiday list. The specs and holidays are copied (frozen) here and read once: changing the host's objects later has no effect. */
 export declare function createCalendar(input: CalendarInput): Calendar
 
-/** Ready-made sessions, checked against exchange circulars on 13 Oct 2026. */
+/** Ready-made sessions, each checked against its exchange's own page (the source and date are in the comment above it in calendar.js and in docs/guide/sessions.md). Regular hours only; early closes are the host's `specialSessions`, and no holidays are bundled. */
 export declare const presets: {
   /** 'equity' → id 'nse', 09:15–15:30. 'derivatives' → id 'nse-fo', 09:15–15:40 (15:30 before 3 Aug 2026). */
   nse(options?: { segment?: 'equity' | 'derivatives' }): SessionSpec
@@ -689,13 +844,29 @@ export declare const presets: {
    * 'cotton' → 'mcx-cotton', 09:00–21:00. 'agri' → 'mcx-agri', 09:00–17:00.
    */
   mcx(options?: { segment?: 'international' | 'cotton' | 'agri'; years?: number[] }): SessionSpec
+  /** NYSE, New York time. The 'pre', 'post' and 'extended' segments are NYSE Arca Equities' sessions (04:00 to 09:30, 16:00 to 20:00), not NYSE's own: Tape A has only the core session. On an early-close day override 'nyse-post' and 'nyse-ext' too, and give holidays under each id. 'regular' (the default) → id 'nyse'; 'pre' → 'nyse-pre'; 'post' → 'nyse-post'; 'extended' → 'nyse-ext', pre-market through post-market as one window. */
+  nyse(options?: { segment?: 'regular' | 'pre' | 'post' | 'extended' }): SessionSpec
+  /** Nasdaq, same segments, ids 'nasdaq', 'nasdaq-pre', 'nasdaq-post', 'nasdaq-ext'. */
+  nasdaq(options?: { segment?: 'regular' | 'pre' | 'post' | 'extended' }): SessionSpec
+  /** London Stock Exchange, id 'lse'. */
+  lse(): SessionSpec
+  /** The spot FX week, id 'fx': Sunday evening to Friday evening, New York time. */
+  fx(): SessionSpec
+  /** Tokyo Stock Exchange, id 'tse', with its lunch break. */
+  tse(): SessionSpec
 }
 
 /** The dates New York is on daylight saving in a year. */
 export declare function usDaylightSaving(year: number): { from: string; to: string }
 
 export interface ProfileSchedule {
-  market: { sessions: string[]; leadMinutes?: number; lagMinutes?: number }
+  market: {
+    sessions: string[]
+    leadMinutes?: number
+    lagMinutes?: number
+    /** 'market' (the default) keeps the market profile through a break; 'closed' switches during it. */
+    duringBreaks?: 'market' | 'closed'
+  }
 }
 
 /** 'market' while any listed session is open (widened by lead and lag), else 'closed'. */

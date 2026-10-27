@@ -146,6 +146,60 @@ Every preset is checked against the contrast floors below, in each mode it has
 (`test/presets.test.mjs`), and the widget gallery (`widgets.html`) has a preset
 switcher that shows every widget in each one.
 
+## Palettes
+
+Two opt-in colour choices, each one attribute, built into `tokens.css` and the
+injected defaults (no extra file). Put the attribute on the grid, a widget, or
+any ancestor, including one above a grid that sets its own `data-theme`,
+`.dark` or `data-theme="auto"` (see Through themed islands below).
+
+```html
+<ts-grid data-ts-palette="cvd">...</ts-grid>
+<ts-grid data-ts-palette="red-up">...</ts-grid>
+```
+
+| `data-ts-palette` | Effect |
+|---|---|
+| `cvd` | Profit becomes blue and loss orange (`#1D4ED8` and `#C2410C` in light, `#60A5FA` and `#FB923C` in dark). The accent, `--ts-focus` and the first series move from blue to purple, and series 2, 3 and 4 are re-chosen (terracotta or amber, teal, and a blue-green or cyan) so all six series colours stay at least 30 ΔE apart and the first two stay at least 15 ΔE from profit and loss under deuteranopia and protanopia. |
+| `red-up` | Swaps the values of `--ts-profit` and `--ts-loss`, for markets where red means a rise. Nothing else changes. |
+
+- **One value per element.** There is no combined `cvd red-up`.
+- **Light and dark.** Each palette has a dark variant under the conditions
+  Graphite uses (`data-theme="dark"`, a `.dark` ancestor, or
+  `data-theme="auto"` while the OS prefers dark), with the same island rule as
+  the presets: the nearest `data-theme` decides, with the same one gap (a light
+  island in a dark island in a light page; put `data-theme="light"` on the
+  element itself there).
+- **`red-up` and colour vision.** It is the default pair swapped, so it keeps
+  the default pair's separation: ΔE (CIE76, deuteranopia / protanopia) is 30.0 /
+  12.0 in light and 9.2 / 29.0 in dark. It is a market convention, not a
+  colour-vision aid; use `cvd` for that.
+- **Checked.** `test/palettes.test.mjs` simulates deuteranopia and protanopia
+  with the Machado 2009 matrices and measures CIE76 ΔE: under `cvd`, profit and
+  loss are at least 40 apart in both themes. Text stays at 4.5:1 and the series
+  and focus at 3:1 on `--ts-surface`, as in Contrast floors below.
+- **Through themed islands.** A palette set once on `<body>` still applies to a
+  `<ts-grid data-theme="dark">`, a `.dark` element, a `data-theme="light"`
+  island or a `data-theme="auto"` grid below it: each of those picks the
+  palette's light or dark values for its own mode. The nearest palette wins
+  between `cvd` and `red-up`. An island that carries a `data-ts-theme` preset
+  keeps the preset's colours (a preset beats a palette on an ancestor, as
+  under Presets above); put the palette beside the preset to have it win.
+- **With a preset.** The palette wins when both are on the same element; see
+  Presets above. Palette contrast is tested against the default tokens only.
+- Gains and losses still carry a sign and an arrow, so colour is never the only
+  cue under any palette.
+
+### High contrast preference
+
+Under `@media (prefers-contrast: more)` the default tokens raise `--ts-line`
+to at least 3:1 and `--ts-muted` to at least 7:1 against `--ts-surface`, in
+light (`#8A8374` and `#4A463E`) and dark (`#6B7280` and `#D1D5DB`). It needs no
+attribute. Each theme preset restates a raised pair for its own colours (the
+pairs are specific to the preset, not the two default values above), so the
+preference applies under a preset too; every preset is checked against the
+same 3:1 and 7:1 floors in `test/presets.test.mjs`.
+
 ## Tokens
 
 Each token with its Paper (light) and Graphite (dark) value. "same" means
@@ -176,21 +230,34 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-radius-sm` | Small radius | `6px` | same | Buttons, skeleton blocks |
 | `--ts-shadow` | Tile shadow at rest | `0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25)` | `none` | Tiles |
 | `--ts-fill` | How strongly an area under a line is tinted (a percentage) | `12%` | `16%` | Area fills in curves and charts |
-| `--ts-font-ui` | UI text face | `'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif` | same | Labels, buttons and the grid's controls |
-| `--ts-font-num` | Figures face | `'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif` | same | Headline and small figures; tabular, lining numerals are forced on it |
+| `--ts-font-ui` | UI text face | `'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif` | same | Labels, buttons and the grid's controls |
+| `--ts-font-num` | Figures face | `'Newsreader', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif` | same | Headline and small figures; tabular, lining numerals are forced on it |
 | `--ts-row` | Grid row height | `150px` | same | `<ts-grid>` at 3 and 4 columns, and standalone tile heights. Set in px |
 | `--ts-gap` | Grid gap | `16px` | same | `<ts-grid>` at 3 and 4 columns, and standalone tile heights. Set in px |
 | `--ts-grid-max-width` | Widest the board grows; it is centred when capped | `none` | same | `<ts-grid>`. Set a length such as `1600px`; columns follow the board's own width, so a capped board on a large monitor keeps ordinary tiles |
 | `--ts-pad` | Padding inside a tile | `18px` | `16px` | Every tile |
 | `--ts-row-compact` | Row height at 2 columns (phones) | `150px` | same | `<ts-grid>` at 2 columns. Set in px |
 | `--ts-gap-compact` | Gap at 2 columns (phones) | `10px` | same | `<ts-grid>` at 2 columns. Set in px |
+| `--ts-strip-top` | How far below the top of the page the phone top strip sticks | `0px` | same | `<ts-grid>` at 2 columns, when tiles are pinned. Set it to the height of your own fixed header |
 | `--ts-num-weight` | Weight of figures | `500` | same | Every figure; the headline figures take `--ts-headline-weight`, which follows it |
 | `--ts-num-weight-small` | Weight of small figures | `500` | `600` | Secondary figures; Graphite is heavier because light-on-dark text reads thinner |
-| `--ts-label-size` | Size of a tile's label | `10px` | same | The label in every header, and the small labels beside figures |
+| `--ts-num-width` | Average advance of a figure character, in `em` (a unitless number: `.62`, not `.62em`, which makes the size invalid and logs a warning in development), sign included | `.62` | same | The figures in a tile's stat cells (a row of three, the rail's column) are sized from it so the longest one fits. Set it for a wider `--ts-font-num`: a monospace face is about `.6`, a wide display face more. A preset may set it along with its `--ts-font-num`. It does not touch the `--ts-text-*` sizes or the caps of `.big` and `.xbig`; adjust those with the type scale below |
+| `--ts-label-size` | Size of a tile's label | `max(11px, .6875rem)` | same | The label in every header, and the small labels beside figures. 10px before 0.3.0; the px floor keeps it at 11px or more at any root font size |
 | `--ts-label-case` | Case of a tile's label (`text-transform`) | `uppercase` | same | The same labels; `none` gives sentence case |
 | `--ts-label-tracking` | Letter spacing of a tile's label | `.12em` | same | The same labels |
 | `--ts-label-weight` | Weight of a tile's label | `600` | same | The same labels |
 | `--ts-headline-weight` | Weight of headline figures | `var(--ts-num-weight)` | same | `.big` and `.xbig` figures; follows `--ts-num-weight` until you set it |
+| `--ts-text-2xs` | Type scale step (9px at a 16px root) | `max(9px, .5625rem)` | same | Day numbers in the calendar, histogram labels |
+| `--ts-text-xs` | Type scale step (10px at a 16px root) | `max(10px, .625rem)` | same | Secondary rows and the `.xs` text of a widget |
+| `--ts-text-sm` | Type scale step (11px at a 16px root) | `max(11px, .6875rem)` | same | The `.sm` text: captions, footers, the "synced" meta; small buttons |
+| `--ts-text-md` | Type scale step (12px at a 16px root) | `max(12px, .75rem)` | same | Error messages, empty-chart text |
+| `--ts-text-base` | Type scale step (13px at a 16px root) | `max(13px, .8125rem)` | same | A tile's base text, and the grid's own controls |
+| `--ts-text-lg` | Type scale step (14px at a 16px root) | `max(14px, .875rem)` | same | The grid's empty-board text |
+| `--ts-text-xl` | Type scale step (16px at a 16px root) | `max(16px, 1rem)` | same | The grid's Remove glyph and Add back plus sign |
+| `--ts-text-2xl` | Type scale step (17px at a 16px root) | `max(17px, 1.0625rem)` | same | `.md` figures and the cap of a figure in a cell |
+| `--ts-text-3xl` | Type scale step (26px at a 16px root) | `max(26px, 1.625rem)` | same | The narrow equity-curve headline |
+| `--ts-text-big` | Type scale step (34px at a 16px root) | `max(34px, 2.125rem)` | same | The cap of `.big` headline figures |
+| `--ts-text-xbig` | Type scale step (48px at a 16px root) | `max(48px, 3rem)` | same | The cap of `.xbig` headline figures |
 | `--ts-shadow-lift` | Shadow of a tile picked up while editing | `0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45)` | `0 2px 6px rgba(0, 0, 0, .3), 0 28px 48px -16px rgba(0, 0, 0, .7)` | The lifted tile and the grid's floating pill and toast |
 | `--ts-motion` | Duration of the grid's slide animations | `220ms` | same | Tiles sliding into place |
 | `--ts-ease` | Easing of the grid's slide animations | `cubic-bezier(.2, .8, .2, 1)` | same | Tiles sliding into place |
@@ -209,12 +276,132 @@ replace colours, keep them:
 
 No coloured or muted text is drawn on `--ts-surface-2`, so it needs only ink.
 
+## Density and text size
+
+Two settings change how much fits on a screen without changing a layout: the
+density of the grid, and the text size, which follows the reader's own
+font-size setting.
+
+### Density
+
+```html
+<ts-grid density="compact">...</ts-grid>
+```
+
+`density="compact"` on a `<ts-grid>` sets three tokens on the grid:
+
+| Token | `comfortable` (the default) | `compact` |
+|---|---|---|
+| `--ts-row` | `150px` | `120px` |
+| `--ts-pad` | `18px` (`16px` under Graphite) | `12px` |
+| `--ts-gap` | `16px` | `10px` |
+
+- **A rule on the grid still wins.** The compact values sit on the grid's own
+  `:host`, so `ts-grid { --ts-row: 140px }` in your stylesheet beats them. A
+  value set on `:root` or on a wrapper is only inherited, so `density="compact"`
+  overrides it: to keep your own `--ts-pad` under compact density, set it on the
+  `ts-grid` element.
+- **Density wins over a theme and a preset.** A theme's or preset's `--ts-pad`
+  yields to compact density, on the same element (`<ts-grid data-theme="dark"
+  density="compact">`, `<ts-grid data-ts-theme="paper" density="compact">`) or on
+  an ancestor, so the padding is `12px` whichever theme or preset is loaded. Only
+  a `--ts-pad` of your own on the `ts-grid` element beats it.
+- **A phone keeps its rows.** At 2 columns the grid reads `--ts-row-compact`
+  (150px) and `--ts-gap-compact` (10px), so on a phone `density="compact"`
+  changes only the padding: a phone's rows are fixed so live numbers never
+  resize a tile.
+- **The layout is cells, not pixels.** Placement, drag targets and a saved
+  layout are the same at either density. Changing the attribute (or the
+  `density` property) re-measures. Any value other than `compact` is
+  `comfortable`, with one development warning.
+- **Outside a grid** (a widget in your own CSS grid) put `data-ts-density="compact"`
+  on any ancestor to get the same three tokens, the way `data-ts-theme` works.
+
+### Tiles answer their height
+
+A tile is a size container (`container: ts-tile / size`), so a widget answers its
+height as well as its width. That needs a definite height: a grid sets one, and a
+standalone widget gets `rows × --ts-row` plus the gaps. A host that overrides a
+widget's `height` to `auto` loses the container's height, and the tile collapses.
+
+A height query measures the tile's **content box**: its height less the padding and
+the border. Two tiers use it, and a widget gives up its secondary rows at each,
+so nothing clips:
+
+| Tier | Condition | What goes |
+|---|---|---|
+| snug | content box up to `6.5rem` | The secondary line under the headline (a footer, a note), and the flexible spacer that pushed it to the bottom, so the rows above it keep their room |
+| tight | content box up to `5rem` | Also chart axis labels and the tertiary rows of a list |
+
+At a 16px root a comfortable one-row tile has a content box of 7rem (7.25rem
+under Graphite), so a default dashboard hides nothing; a compact one has 5.875rem,
+so it is snug but not tight. The label, the headline figure with its sign and
+arrow, the state of the data and every control stay at every height, and a hidden
+row's content is still in the tile's accessible name. At a larger root font size
+the same tile is shorter in rem, so it goes snug first: the text grew and the tile
+didn't, and the widget gives up its secondary rows before anything clips.
+
+To mark a row of your own widget for the tiers, give it the shared `sec` class
+(hidden when snug) or `ter` class (hidden when tight).
+
+### The type scale
+
+Font sizes are tokens in rem, so a larger default text size reaches the tiles.
+Each has a px floor, `max(<px>, <rem>)`: the rem value equals the px size at a
+16px root and grows with a larger root, but a smaller root (the `html { font-size: 62.5% }`
+habit) never takes text below the size it was designed at. The height tiers above are in rem too, so a 62.5% page matches a 16px one at
+comfortable density only: at compact density the 94px content box of an S tile is
+9.4rem at a 10px root, not 5.875rem, so it is not snug and keeps its secondary rows.
+
+| Token | At a 16px root | Used for |
+|---|---|---|
+| `--ts-text-2xs` | 9px | Day numbers, histogram labels |
+| `--ts-text-xs` | 10px | Secondary rows |
+| `--ts-text-sm` | 11px | `.sm` text, small buttons |
+| `--ts-text-md` | 12px | Messages |
+| `--ts-text-base` | 13px | A tile's base text |
+| `--ts-text-lg` | 14px | The grid's empty-board text |
+| `--ts-text-xl` | 16px | The grid's glyphs |
+| `--ts-text-2xl` | 17px | `.md` figures |
+| `--ts-text-3xl` | 26px | The narrow equity-curve headline |
+| `--ts-text-big` | 34px | The `.big` cap |
+| `--ts-text-xbig` | 48px | The `.xbig` cap |
+| `--ts-label-size` | 11px | The tile label |
+
+- **Only the label changed size**: from 10px to 11px, so a label is at least 11px
+  at any root size. The three presets that set it to 10px (`terminal`, `graphite`,
+  `paper`) now use the same value.
+- **Figures keep their shape.** A headline is still `min(<cap token>, <share of the tile's width>)`,
+  so it shrinks with the tile first.
+- **Row heights stay in px**, because a layout must not move when a reader changes
+  a font. A host that wants tiles to grow with the text sets `--ts-row` in rem
+  itself, for example `ts-grid { --ts-row: 9.375rem }`.
+- **Every built-in widget follows.** The cards, metrics, charts, lists, calendars,
+  gauges and the grid's own controls all size their text from the scale, so at a
+  larger root font size their small text grows with it. A widget you write yourself
+  uses the same tokens (`font-size: var(--ts-text-sm)`); a px size in it stays a px size.
+- **A tile that cannot fit a row gives it up.** At compact density, or at a larger
+  root font size, a tile hides its secondary rows (the `sec` class) before it cuts
+  a headline or a figure; the words stay in the tile's accessible name.
+
+### Checking text spacing
+
+WCAG 1.4.12 asks that text still fits when a reader sets line height to 1.5,
+paragraph spacing to 2, letter spacing to .12em and word spacing to .16em. The
+widget gallery (`widgets.html`) has a Text spacing switch that applies those four
+overrides to the page and to every widget's shadow root, and a Density control, so
+you can see both together. The library ships no such sheet.
+
 ## Fonts
 
 The tokens name two faces but Tickslate does not load them:
 
-- `--ts-font-ui` starts with **Geist**, then the system UI stack.
-- `--ts-font-num` starts with **Newsreader**, then a **sans** stack, deliberately
+- `--ts-font-ui` starts with **Geist**, then the platform's own UI face (San Francisco, Segoe UI, Roboto),
+  then **Arial**, then `system-ui`. Arial comes before `system-ui` for one reason: on Linux, `system-ui` is
+  often DejaVu Sans, whose digits are 14% wider than Arial's (.636em against .556em), and the layouts here (the label floor,
+  the figure sizes) are fitted to Helvetica-class widths. Linux resolves `Arial` to Liberation Sans, which has
+  Arial's metrics exactly, so a Linux page without Geist measures like a Mac or Windows one.
+- `--ts-font-num` starts with **Newsreader**, then the same sans stack, deliberately
   not Georgia: Georgia's digits are old-style and proportional, so live figures
   would jitter and sit at uneven heights without the web font. System sans
   digits are lining, and the figure classes force `tabular-nums`, so numbers

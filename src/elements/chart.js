@@ -7,6 +7,11 @@
  * with `vector-effect: non-scaling-stroke` keeping lines the same weight.
  */
 
+import { DEV, warnOnce } from './dev.js'
+
+// The fewest points that still hold the first, the last, a low and a high.
+const MIN_POINTS = 4
+
 const round = (v) => Math.round(v * 10) / 10
 
 const finite = (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)
@@ -47,6 +52,40 @@ export function linePath(points, x, y) {
 }
 
 /**
+ * At most `max` of the points, for a line that cannot show more than it has
+ * pixels (RFC 0003 §23). The first and last point stay; the readings between
+ * are cut into equal runs by position and each run keeps its lowest and its
+ * highest, in the order they came, so a spike narrower than a pixel still
+ * shows and the day's low, high and last value are exactly the data's. One
+ * pass, no sort, no copy of the input.
+ */
+export function downsample(points, max) {
+  const n = points.length
+  const cap = Math.max(2, Math.floor(max))
+  if (!(max < n) || n <= cap) return points
+  const buckets = Math.floor((cap - 2) / 2)
+  const out = [points[0]]
+  const inner = n - 2
+  for (let b = 0; b < buckets; b++) {
+    // Integer edges, so the runs tile the interior with no gap and no overlap.
+    const from = 1 + Math.floor((b * inner) / buckets)
+    const to = 1 + Math.floor(((b + 1) * inner) / buckets)
+    if (to <= from) continue
+    let lo = from
+    let hi = from
+    for (let i = from + 1; i < to; i++) {
+      if (points[i].y < points[lo].y) lo = i
+      if (points[i].y > points[hi].y) hi = i
+    }
+    if (lo === hi) out.push(points[lo])
+    else if (lo < hi) out.push(points[lo], points[hi])
+    else out.push(points[hi], points[lo])
+  }
+  out.push(points[n - 1])
+  return out
+}
+
+/**
  * The line, the filled area down to zero and the scales used to make them, so
  * a widget can place marks and extra lines (a peak, a drawdown) on the same
  * axes.
@@ -55,8 +94,11 @@ export function linePath(points, x, y) {
  * inside the box. `zeroY` is where value 0 falls, clamped to the plotted
  * area: a widget clips the profit colour to above it and the loss colour to
  * below it, and when every value is on one side the split falls on an edge.
+ *
+ * The scales and the zero line are measured on every point; only the drawing
+ * is thinned, to `maxPoints` (default 2 × width, Infinity for all of them).
  */
-export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, includeZero = true } = {}) {
+export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, includeZero = true, maxPoints } = {}) {
   const pts = (points || []).filter(finite)
   const [x0, x1] = xDomain || (pts.length ? extent(pts, 'x') : [0, 1])
   let [y0, y1] = yDomain || (pts.length ? extent(pts, 'y') : [0, 1])
@@ -68,11 +110,13 @@ export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, in
   const y = scale(y0, y1, height - pad, pad)
   const zeroY = round(clamp(y(0), pad, height - pad))
 
-  if (!pts.length) return { line: '', area: '', zeroY, x, y }
+  if (!pts.length) return { line: '', area: '', zeroY, x, y, drawn: pts }
 
   let line
   let firstX
   let lastX
+  // The points the line runs through, for a scrubber: its readout never names a point the line skips.
+  let drawn = pts
   if (pts.length === 1) {
     // One reading has no direction; a level line across the chart shows where
     // it sits without implying a trend.
@@ -81,12 +125,20 @@ export function linePaths(points, { width, height, pad = 4, xDomain, yDomain, in
     const py = round(y(pts[0].y))
     line = `M${firstX} ${py} L${lastX} ${py}`
   } else {
-    line = linePath(pts, x, y)
+    // null (a JSON host's "unset") and NaN mean the default. Below four a line keeps neither its low nor its high, so
+    // that is the floor, and a width that gives less (0) gets it too.
+    let cap = maxPoints == null || Number.isNaN(maxPoints) ? 2 * width : maxPoints
+    if (cap < MIN_POINTS) {
+      if (DEV && maxPoints != null && !Number.isNaN(maxPoints)) warnOnce('maxPoints-floor', `linePaths maxPoints is ${maxPoints}; a line needs at least ${MIN_POINTS} points to keep its low and high, so it draws ${MIN_POINTS}. Pass Infinity to draw every point.`)
+      cap = MIN_POINTS
+    }
+    drawn = downsample(pts, cap)
+    line = linePath(drawn, x, y)
     firstX = round(x(pts[0].x))
     lastX = round(x(pts[pts.length - 1].x))
   }
   const area = `${line} L${lastX} ${zeroY} L${firstX} ${zeroY} Z`
-  return { line, area, zeroY, x, y }
+  return { line, area, zeroY, x, y, drawn }
 }
 
 /**
@@ -236,4 +288,84 @@ export function barPaths(groups, { width, height, pad = 4, categories = 0, yDoma
     return d
   })
   return { paths, zeroY, centres, rects }
+}
+
+/**
+ * Ring segments for shares that sum to 1 (a donut): one closed path per share,
+ * 'M … A … L … A … Z', in a viewBox of `size` centred on the middle. The first
+ * segment starts at twelve o'clock and they run clockwise. `gapDeg` is trimmed
+ * between neighbours so adjacent slices are told apart by more than colour; a
+ * segment keeps at least half its own width, so a thin slice never vanishes.
+ * A zero share gives '' (nothing to draw); a share of 1 is a whole ring drawn as
+ * two half arcs, since one arc cannot close on its own start point.
+ */
+export function arcPaths(fractions, { size, radius, inner, gapDeg = 1 } = {}) {
+  const c = size / 2
+  const at = (rad, deg) => `${round(c + rad * Math.cos(deg * RAD))} ${round(c + rad * Math.sin(deg * RAD))}`
+  const out = []
+  let start = -90
+  for (const f of fractions || []) {
+    if (!(f > 0)) {
+      out.push('')
+      continue
+    }
+    if (f >= 1 - 1e-9) {
+      out.push(
+        `M${at(radius, -90)} A${radius} ${radius} 0 1 1 ${at(radius, 90)} A${radius} ${radius} 0 1 1 ${at(radius, 270)} ` +
+          `L${at(inner, 270)} A${inner} ${inner} 0 1 0 ${at(inner, 90)} A${inner} ${inner} 0 1 0 ${at(inner, -90)} Z`,
+      )
+      start += 360
+      continue
+    }
+    const span = f * 360
+    const gap = Math.min(gapDeg, span / 2)
+    const a0 = start + gap / 2
+    const a1 = start + span - gap / 2
+    const large = a1 - a0 > 180 ? 1 : 0
+    out.push(`M${at(radius, a0)} A${radius} ${radius} 0 ${large} 1 ${at(radius, a1)} L${at(inner, a1)} A${inner} ${inner} 0 ${large} 0 ${at(inner, a0)} Z`)
+    start += span
+  }
+  return out
+}
+
+const RAD = Math.PI / 180
+
+/**
+ * The point whose x is nearest a position, for a scrubber (RFC 0004 §1.1), or null for no points or a position
+ * that isn't a number. `xFraction` is a share of the x domain, 0 the domain's start and 1 its end, and a value
+ * outside 0..1 is clamped. `points` are ascending by x, as the charts draw them; a caller on a category axis has
+ * already mapped each category to its band's centre, so one function serves time, number and category axes.
+ * `domain` defaults to the first and last x of `points`; a chart drawn on a window (Today's P&L's session) passes
+ * it, so the right edge of the box is the end of the window and not the last reading. A tie goes to the earlier
+ * point. A binary search over a fixed number of steps: it allocates nothing and cannot loop on unsorted input.
+ */
+export function nearestPoint(points, xFraction, { domain } = {}) {
+  const n = points ? points.length : 0
+  if (!n || typeof xFraction !== 'number' || Number.isNaN(xFraction)) return null
+  const [d0, d1] = domain || [points[0].x, points[n - 1].x]
+  const target = d0 + clamp(xFraction, 0, 1) * (d1 - d0)
+  // The first point at or after the target.
+  let lo = 0
+  let hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (points[mid].x < target) lo = mid + 1
+    else hi = mid
+  }
+  let at = lo
+  if (lo >= n) at = n - 1
+  else if (lo > 0 && target - points[lo - 1].x <= points[lo].x - target) at = lo - 1
+  const p = points[at]
+  return { index: at, x: p.x, y: p.y }
+}
+
+/**
+ * Turns a pointer's share of the drawing box (0 at its start edge, 1 at its end) into a share of the x domain,
+ * undoing the inset `pad` the drawing keeps inside the viewBox (`linePaths`). The result may fall outside 0..1
+ * over the padding; nearestPoint clamps it.
+ */
+export function plotFraction(boxFraction, { width, pad = 0 }) {
+  const inner = width - 2 * pad
+  if (!(inner > 0)) return boxFraction
+  return (boxFraction * width - pad) / inner
 }

@@ -160,6 +160,14 @@ export function dataFor(tag, scale = 1) {
       return equityCurve(scale)
     case 'ts-session-clock':
       return { calendar, sessions: ['nse-fo', 'mcx'], timeframes: [5, 15] }
+    case 'ts-mini-chart':
+      return miniChart(scale)
+    case 'ts-breakdown':
+      return breakdownData({ scale })
+    case 'ts-status':
+      return statusData({ scale })
+    case 'ts-feed':
+      return feedData({ scale })
     default:
       return null
   }
@@ -181,6 +189,51 @@ export function fillCard(el, size) {
 
 /** A tag's label for the tiles that don't set one, so every tile has a name. */
 export const LABELS = { 'ts-card': 'Notes' }
+
+// ── The mini chart ────────────────────────────────────────────────────────
+/** `n` five-minute bars of a random walk ending at the frozen morning, so the last one is still forming. */
+export function miniBars({ seed = 11, n = 30, base = 128, scale = 1 } = {}) {
+  const rng = seeded(seed)
+  const start = zonedTime(TODAY, '09:15', TZ)
+  let close = base
+  return Array.from({ length: n }, (_, i) => {
+    const open = close
+    close = open + (rng() - 0.48) * 1.1
+    const high = Math.max(open, close) + rng() * 0.5
+    const low = Math.min(open, close) - rng() * 0.5
+    return { time: start + i * 300000, open: open * scale, high: high * scale, low: low * scale, close: close * scale, volume: Math.round(900 + rng() * 2600) }
+  })
+}
+
+/** A profile the host would compute from finer data: a bell of volume over the day's range, in Emberwick's contract. */
+export function miniProfile(bars) {
+  const lo = Math.floor(Math.min(...bars.map((b) => b.low)))
+  const hi = Math.ceil(Math.max(...bars.map((b) => b.high)))
+  const step = 0.5
+  const bins = Array.from({ length: Math.round((hi - lo) / step) }, (_, i) => {
+    const mid = (bars.at(-1).close - lo) / step
+    return Math.round(400 * Math.exp(-((i - mid) ** 2) / 40))
+  })
+  return { version: 1, source: 'tick data', step, sessions: [{ start: bars[0].time, end: bars.at(-1).time, lo, bins }] }
+}
+
+function miniChart(scale = 1) {
+  const a = miniBars({ seed: 11, base: 128, scale })
+  const b = miniBars({ seed: 23, base: 412, scale })
+  return {
+    asOf: FROZEN,
+    countdown: true,
+    charts: [
+      {
+        id: 'abc', instrument: 'ABC Corp', timeframe: '5m', timeframes: ['1m', '5m', '15m'], bars: a, changePct: 0.012, note: '2 strategies · 1 in position',
+        marks: [{ t: a[8].time, kind: 'entry', label: 'Long' }, { t: a[19].time, kind: 'exit' }, { t: a[24].time, kind: 'entry' }],
+      },
+      { id: 'xyz', instrument: 'XYZ Ltd', timeframe: '5m', bars: b, changePct: -0.007, note: '1 strategy', marks: [{ t: b[12].time, kind: 'entry' }] },
+    ],
+    // The churn tests scale prices to 1e12, which would make millions of bins.
+    volumeProfile: scale === 1 ? miniProfile(a) : null,
+  }
+}
 
 // ── The two trading lists ─────────────────────────────────────────────────
 // `step` moves the live figures the way a feed would: only some instruments tick at a step, so a test can count the
@@ -297,4 +350,57 @@ export function fundingData(scale = 1) {
     asOf: FROZEN,
     live: true,
   }
+}
+
+// ── Breakdown, status and feed ────────────────────────────────────────────
+const PARTS = ['Equities', 'Bonds', 'Cash', 'Gold', 'Property', 'Commodities', 'Private credit', 'Crypto']
+
+/** An allocation of `n` parts. A negative scale keeps the parts positive: the magnitude is in the first label, so S still shows the data changing. */
+export function breakdownData({ n = 7, scale = 1, negative = false, note = true } = {}) {
+  const k = Math.abs(scale)
+  const m = magnitude(scale)
+  const rng = seeded(31)
+  const slices = Array.from({ length: n }, (_, i) => ({
+    id: `p${i}`,
+    label: i === 0 ? `${PARTS[0]} ${m}` : PARTS[i % PARTS.length],
+    value: Math.round((900 - i * 95 + rng() * 60) * 100) * k,
+    ...(note && i < 4 ? { note: ['Large and mid caps', 'Government and corporate', 'Money market', 'Bullion and funds'][i] } : {}),
+  }))
+  if (negative) slices.push({ id: 'neg', label: 'Short', value: -4000 * k })
+  return { slices, format: 'money', decimals: 0, asOf: FROZEN, live: true }
+}
+
+const SERVICES = ['Orders API', 'Price feed', 'Ledger', 'Email', 'Reports', 'Search', 'Auth', 'Storage']
+
+/** Services in the four states. The count and the number that are OK follow the magnitude, so S (the summary alone) changes with the data. */
+export function statusData({ scale = 1, step = 0 } = {}) {
+  const m = magnitude(scale)
+  const total = 3 + (m % 6)
+  const ok = m % (total + 1)
+  const bad = ['degraded', 'down', 'unknown']
+  const details = { degraded: 'Elevated latency', down: 'Connection refused', unknown: 'No heartbeat' }
+  const rows = Array.from({ length: total }, (_, i) => {
+    const state = i < ok ? 'ok' : bad[(i - ok + step) % 3]
+    return { id: `s${i}`, name: SERVICES[i % SERVICES.length], state, ...(state === 'ok' ? {} : { detail: details[state], since: FROZEN - (7 + i * 13) * 60000 }) }
+  })
+  return { rows, asOf: FROZEN, live: true }
+}
+
+const EVENTS = [['Order filled', 'Fill', 'pos', '50 at 128.00'], ['Latency above limit', 'Alert', 'warn', 'Price feed, 480 ms'], ['Stop hit', 'Exit', 'neg', 'Gap fade, 25 at 94.10'], ['Session opened', '', undefined, ''], ['Margin call cleared', 'Risk', 'pos', 'Account A'], ['Order rejected', 'Reject', 'neg', 'Insufficient funds']]
+
+/** `n` events, newest first. `step` puts that many newer events at the front, with ids that continue the count, so a tick prepends. */
+export function feedData({ n = 14, step = 0, scale = 1 } = {}) {
+  const m = magnitude(scale)
+  const items = Array.from({ length: n + step }, (_, i) => {
+    const id = n + step - i
+    const [text, tag, tone, detail] = EVENTS[id % EVENTS.length]
+    return {
+      id,
+      text: i === 0 ? `${text} ${m}` : text,
+      time: FROZEN - (i * 7 + 1) * 60000 * (i > 9 ? 120 : 1),
+      ...(tag ? { tag, tone } : {}),
+      ...(detail ? { detail } : {}),
+    }
+  })
+  return { items, asOf: FROZEN + step * 1000, live: true }
 }

@@ -41,6 +41,19 @@ const typeEntries = typeFiles.map((n) => n.slice(0, -'.d.ts'.length)).filter((n)
 // widget never means editing a list here or there.
 const base = JSON.parse(await readFile(resolve(root, 'package.lib.json'), 'utf8'))
 
+// Emberwick is an optional peer of tickslate/elements/mini-chart (RFC 0004 §6.1). It must stay a peer, at 0.14.0 or
+// later (the first release with both the countdown and emberwick/profiles), and stay optional, or every host would be
+// told to install a charting library it never imports. It must never become a dependency.
+{
+  const peer = base.peerDependencies && base.peerDependencies.emberwick
+  const optional = base.peerDependenciesMeta && base.peerDependenciesMeta.emberwick && base.peerDependenciesMeta.emberwick.optional
+  const direct = ['dependencies', 'optionalDependencies'].find((f) => base[f] && base[f].emberwick)
+  if (peer !== '>=0.14.0' || optional !== true || direct) {
+    console.error(`package.lib.json must list emberwick as an optional peer at ">=0.14.0" (peerDependencies and peerDependenciesMeta.emberwick.optional), and nowhere else; it has ${JSON.stringify({ peer, optional, direct })}.`)
+    process.exit(1)
+  }
+}
+
 // Every elements entry has all four conditions, in this order: a bundler or
 // Node takes the first that matches, so `development` must come before `import`.
 const conditions = (types, file) => ({
@@ -116,12 +129,17 @@ const types = [
   ['src/elements/widget.d.ts', 'widget.d.ts'],
   ['src/elements/grid.d.ts', 'grid.d.ts'],
   ['src/elements/controls.d.ts', 'controls.d.ts'],
+  ['src/elements/mini-chart.d.ts', 'mini-chart.d.ts'],
 ]
 const shipped = []
 for (const [from, to] of types) {
   const src = resolve(root, from)
   if (!existsSync(src)) continue
-  const text = (await readFile(src, 'utf8')).replace(/(['"])\.\.\/core\/index\.js\1/g, '$1./index.js$1')
+  // mini-chart.d.ts names the shared widget types from './index.js' (the elements declarations in the repo); at the package
+  // root that is elements.d.ts. This runs before the core rewrite below, whose result is also './index.js'.
+  let text = await readFile(src, 'utf8')
+  if (to === 'mini-chart.d.ts') text = text.replace(/(['"])\.\/index\.js\1/g, '$1./elements.js$1')
+  text = text.replace(/(['"])\.\.\/core\/index\.js\1/g, '$1./index.js$1')
   const dest = resolve(out, to)
   await mkdir(dirname(dest), { recursive: true })
   await writeFile(dest, text)
@@ -165,7 +183,7 @@ const SHARED_TYPES = ['WidgetFreshness', 'ViewModelContext', 'WidgetState', 'TsC
 // widget (the layout persistence options go with the grid, and so do the
 // attribute tables the framework typings read). A type that fits neither rule
 // fails the check below, so it is placed on purpose.
-const TYPE_EXTRAS = { grid: ['PersistLayoutOptions', 'TsWidgetAttributes', 'TsElementAttributes'], 'equity-curve': ['EquityRange'], 'open-positions': ['OpenPosition'], 'pnl-calendar': ['CalendarModel'], 'edge-stats': ['EdgeStatName', 'EdgeStatFigure'] }
+const TYPE_EXTRAS = { grid: ['PersistLayoutOptions', 'DashboardOptions', 'Dashboard', 'TsWidgetAttributes', 'TsElementAttributes'], 'equity-curve': ['EquityRange'], 'open-positions': ['OpenPosition'], 'pnl-calendar': ['CalendarModel'], 'edge-stats': ['EdgeStatName', 'EdgeStatFigure'] }
 const stubTypes = new Set()
 for (const entry of entries) {
   const lines = []

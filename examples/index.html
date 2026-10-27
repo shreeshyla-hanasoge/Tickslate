@@ -25,9 +25,10 @@
 </style>
 </head>
 <body>
-<main class="page">
+<!-- site-header -->
+<main class="page" id="main">
   <h1>Examples</h1>
-  <p>Small pages that each show one way to use Tickslate. They run under <code>npm run dev</code> and import the same package names the README does. All figures are made up.</p>
+  <p>Small pages that each show one way to use Tickslate, with the same package names the README imports. Each one is a working page: open it, then view its source. All figures are made up.</p>
   <nav class="more" aria-label="Other pages">
     <a href="../index.html">Playground</a>
     <a href="../widgets.html">Widget gallery</a>
@@ -42,10 +43,19 @@
       <p>A dashboard with nothing to do with trading: metrics, charts and cards of slotted content, with no layout code.</p>
     </li>
     <li>
+      <a href="trading.html">Trading dashboard</a>
+      <p>Every finance widget with a metric, a loss-limit gauge and a table of fills, on one saved grid that switches layout when the market opens and closes, fed by a seeded fake feed, with every action answered.</p>
+    </li>
+    <li>
       <a href="bare.html">Bare install</a>
       <p>The smallest possible install: the elements entry alone, with no stylesheet and no web fonts.</p>
     </li>
+    <li>
+      <a href="vanilla-json.html">Dashboard from JSON</a>
+      <p>No framework and no DOM code: <code>createDashboard()</code> builds the grid and its tiles from a layout and an object of data, and an interval updates them.</p>
+    </li>
   </ul>
 </main>
+<!-- site-footer -->
 </body>
 </html>

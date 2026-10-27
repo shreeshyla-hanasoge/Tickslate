@@ -27,6 +27,14 @@ export function configure(options = {}) {
     if (m && typeof m === 'object') defaults.messages = m
     else delete defaults.messages
   }
+  // The page clock (RFC 0004 §11.4). Only a function counts (anything else is ignored, the prior clock stays); null returns to Date.now(). The core stores it and calls nothing.
+  if (options.clock !== undefined) {
+    const c = options.clock
+    if (typeof c === 'function') defaults.clock = c
+    else if (c === null) delete defaults.clock
+    // Anything else is ignored and the clock already set stays: a typo must not silently put a demo back on real time.
+    else warnBadClock()
+  }
   // A copy, so a listener that subscribes or unsubscribes while being called does not skip another;
   // one that was unsubscribed in the meantime is not called.
   for (const entry of [...listeners]) {
@@ -40,6 +48,20 @@ export function configure(options = {}) {
       })
     }
   }
+}
+
+let warnedClock = false
+function warnBadClock() {
+  // The core has no DOM and no dev module; production builds define __TS_DEV__ false and drop the text.
+  /* global __TS_DEV__ */
+  if (warnedClock || (typeof __TS_DEV__ !== 'undefined' && !__TS_DEV__)) return
+  warnedClock = true
+  console.warn('tickslate: configure({ clock }) takes a function that returns milliseconds since the epoch, or null; anything else is ignored.')
+}
+
+/** The time the page's clock reads: `configure({ clock })` when set, else Date.now(). */
+export function pageNow() {
+  return defaults.clock ? defaults.clock() : Date.now()
 }
 
 /**
@@ -62,7 +84,7 @@ export function currentConfig() {
 
 function pick(o) {
   const out = {}
-  for (const key of ['locale', 'currency', 'timeZone', 'hourCycle']) if (o[key] !== undefined) out[key] = o[key] || undefined
+  for (const key of ['locale', 'currency', 'timeZone', 'hourCycle', 'styleNonce']) if (o[key] !== undefined) out[key] = o[key] || undefined
   return out
 }
 

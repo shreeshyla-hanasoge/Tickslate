@@ -121,7 +121,9 @@ function tokenBlock(css, selector) {
 
 const tokensCss = stripComments(read('src/themes/tokens.css'))
 const paper = tokenBlock(tokensCss, ':where(:root)')
-const graphite = tokenBlock(tokensCss, ':where([data-theme="dark"], .dark)')
+// The dark padding sits in its own block that yields to compact density (RFC 0004 §2.1).
+const compactGuard = ':not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)'
+const graphite = { ...tokenBlock(tokensCss, ':where([data-theme="dark"], .dark)'), ...tokenBlock(tokensCss, `:where([data-theme="dark"]${compactGuard}, .dark${compactGuard})`) }
 
 // ── Self-checks of the parsers, so a quiet regex can't make the rest vacuous ──
 
@@ -287,7 +289,7 @@ describe('docs/guide/your-own-widget.md', () => {
 })
 
 describe('links', () => {
-  const pages = ['docs/theming.md', 'docs/reference/core.md', 'docs/reference/events.md', 'docs/guide/your-own-widget.md']
+  const pages = ['docs/theming.md', 'docs/reference/core.md', 'docs/reference/events.md', 'docs/guide/your-own-widget.md', 'docs/guide/trading-dashboard.md']
   for (const f of readdirSync(join(root, 'docs/widgets'))) if (f.endsWith('.md')) pages.push(`docs/widgets/${f}`)
 
   for (const page of pages) {
@@ -308,4 +310,52 @@ describe('links', () => {
       assert.match(doc, new RegExp(`^## \`${escapeRe(m[1])}\``, 'm'), `no heading for #${m[1]}`)
     }
   })
+})
+
+describe('the trading dashboard example and guide', () => {
+  test('every example page is linked from the examples index and built into the site', () => {
+    const index = read('examples/index.html')
+    const site = read('vite.site.config.js')
+    // The site config builds every examples/*.html it finds (public-site), so a page is built without being named there.
+    const scansExamples = /readdirSync\(src\('examples'\)\)[^\n]*\.html/.test(site)
+    for (const f of readdirSync(join(root, 'examples')).filter((n) => n.endsWith('.html') && n !== 'index.html')) {
+      assert.ok(index.includes(`href="${f}"`), `examples/index.html should link ${f}`)
+      assert.ok(scansExamples || site.includes(`examples/${f}`), `vite.site.config.js should build examples/${f}`)
+    }
+  })
+  test('the README and the guide point at the example, and the guide at its widgets', () => {
+    assert.ok(read('README.md').includes('examples/trading.html'))
+    const guide = read('docs/guide/trading-dashboard.md')
+    assert.ok(guide.includes('examples/trading.html'))
+    for (const tag of ['ts-today-pnl', 'ts-equity-curve', 'ts-session-clock', 'ts-watchlist', 'ts-open-positions', 'ts-pnl-calendar', 'ts-edge-stats', 'ts-capital-funding']) {
+      assert.ok(guide.includes(tag), `the guide should cover <${tag}>`)
+    }
+  })
+  // emittedActions() only sees this.emit('literal'); most actions go through
+  // ACTION_* constants, so the page test reads both. The list is also kept by hand:
+  // a new action fails the first test until it is added here and handled in the page.
+  const ACTIONS = ['add-instrument', 'exit-all', 'exit-position', 'open', 'range', 'rebalance', 'retry', 'select', 'sort', 'timeframe']
+  // <ts-mini-chart> draws with the optional peer Emberwick and has its own entry, so the example (which imports the all-in
+  // entry) has no such tile and nothing to handle (RFC 0004 §6.1).
+  const NOT_IN_THE_EXAMPLE = ['timeframe']
+  const widgetActions = () => {
+    const names = new Set(emittedActions())
+    for (const file of elementFiles()) {
+      for (const m of stripComments(read(file)).matchAll(/\bconst\s+ACTION_\w+\s*=\s*'([\w-]+)'/g)) names.add(m[1])
+    }
+    return [...names].sort()
+  }
+  test('the widgets emit exactly the actions this test lists', () => {
+    assert.deepEqual(widgetActions(), ACTIONS)
+  })
+  test('every action but open is in the events reference (open is only in widget.d.ts and the widget pages)', () => {
+    const events = read('docs/reference/events.md')
+    for (const action of ACTIONS.filter((a) => a !== 'open')) assert.match(events, new RegExp(`\\| \`${action}\` \\|`), `docs/reference/events.md should list ${action}`)
+  })
+  for (const action of ACTIONS.filter((a) => !NOT_IN_THE_EXAMPLE.includes(a))) {
+    test(`the page handles the ${action} action`, () => {
+      const page = stripComments(read('examples/trading.html'))
+      assert.ok(new RegExp(`action === '${action}'`).test(page), `examples/trading.html should handle the ${action} action in its ts-action listener`)
+    })
+  }
 })

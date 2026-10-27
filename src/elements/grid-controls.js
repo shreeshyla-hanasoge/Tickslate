@@ -12,10 +12,9 @@
 
 import { activeProfile, createFormatter, currentConfig, localDate, nextProfileChange } from '../core/index.js'
 import { ensureTokens } from './default-tokens.js'
+import { inertWhenBlocked, mountShadow } from './html.js'
 
-let template = null
-const TEMPLATE = `
-<style>
+const CSS = `
   :host { display: block; }
   :host([hidden]), [hidden] { display: none !important; }
   .switcher {
@@ -24,17 +23,19 @@ const TEMPLATE = `
   }
   .opt {
     min-inline-size: 44px; min-block-size: 44px; box-sizing: border-box; margin: 0; padding: 0 16px; cursor: pointer;
-    border: 0; border-radius: 999px; background: none; color: inherit; font: 600 13px var(--ts-font-ui); white-space: nowrap;
+    border: 0; border-radius: 999px; background: none; color: inherit; font: 600 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); white-space: nowrap;
   }
   .opt:hover { background: var(--ts-surface-2); }
   .opt[aria-pressed="true"] { background: var(--ts-accent); color: var(--ts-surface); }
   .opt:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
-  .next { margin: 6px 0 0; padding-inline: 4px; color: var(--ts-muted); font: 13px var(--ts-font-ui); }
+  .next { margin: 6px 0 0; padding-inline: 4px; color: var(--ts-muted); font: var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); }
   @media (forced-colors: active) {
     .switcher { border-color: CanvasText; }
     .opt[aria-pressed="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
   }
-</style>
+`
+
+const TEMPLATE = `
 <div class="wrap" hidden>
   <div class="switcher" part="switcher" role="group">
     <button class="opt" part="option" type="button" tabindex="0" data-profile="" aria-pressed="false"></button>
@@ -50,12 +51,12 @@ const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 export class TsGridControls extends Base {
   constructor() {
     super()
-    if (!template) {
-      template = document.createElement('template')
-      template.innerHTML = TEMPLATE
-    }
     const root = this.attachShadow({ mode: 'open' })
-    root.appendChild(template.content.cloneNode(true))
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._wrap = root.querySelector('.wrap')
     this._switcher = root.querySelector('.switcher')
     this._options = [...root.querySelectorAll('.opt')]
@@ -250,3 +251,4 @@ export class TsGridControls extends Base {
     return t('controls.next', { profile: t(`controls.${to}`), time })
   }
 }
+inertWhenBlocked(TsGridControls)

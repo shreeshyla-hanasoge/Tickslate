@@ -79,7 +79,8 @@ async function tabOrder(page) {
     await page.keyboard.press('Tab')
     const id = await page.evaluate(() => (document.activeElement.id === 'outside' ? 'outside' : document.activeElement.getAttribute('item')))
     if (id === 'outside') return seen
-    if (id) seen.push(id)
+    // A chart has a stop of its own inside it, its scrubber (RFC 0004 §1.4), which reads as the same tile: one entry per run.
+    if (id && seen[seen.length - 1] !== id) seen.push(id)
   }
   throw new Error(`Tab never left the grid: ${seen}`)
 }

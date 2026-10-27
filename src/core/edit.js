@@ -11,7 +11,7 @@
 
 import { WIDGETS, specFor } from './catalog.js'
 import { checkColumns, footprint, isSize, nearestSize, sizeOrder, snapSize } from './sizes.js'
-import { placeFirst } from './place.js'
+import { createPlacer } from './place.js'
 import { TOP_STRIP_MAX } from './layout.js'
 
 const indexOf = (items, id) => items.findIndex((item) => item.id === id)
@@ -98,13 +98,12 @@ export function dropIndex(items, id, target, columns, catalog = WIDGETS, aspect 
   checkColumns(columns)
   const from = indexOf(items, id)
   if (from === -1) return -1
+  const slots = slotsFor(items, id, columns, catalog)
   let best = from
   let bestDistance = Infinity
-  for (let i = 0; i < items.length; i++) {
-    const order = moveItem(items, id, i)
-    const p = placeFirst(order, columns, catalog, i + 1).placements[i]
-    const dc = (p.col - target.col) * aspect
-    const dr = p.row - target.row
+  for (let i = 0; i < slots.length; i++) {
+    const dc = (slots[i].col - target.col) * aspect
+    const dr = slots[i].row - target.row
     const distance = dc * dc + dr * dr
     if (distance < bestDistance || (distance === bestDistance && Math.abs(i - from) < Math.abs(best - from))) {
       best = i
@@ -114,6 +113,48 @@ export function dropIndex(items, id, target, columns, catalog = WIDGETS, aspect 
   return best
 }
 
+/**
+ * Where the top-left cell of `id` lands at each index, for the tiles as they
+ * are. A tile before index i is placed the same wherever `id` goes after it,
+ * so one sweep lays the other tiles out once and tries `id` at each step:
+ * n placements, not the n²/2 of laying out a prefix per slot.
+ */
+function computeSlots(items, id, columns, catalog) {
+  const moving = items.find((item) => item.id === id)
+  const rest = items.filter((item) => item.id !== id)
+  const placer = createPlacer(columns, catalog)
+  const slots = []
+  for (let i = 0; i <= rest.length; i++) {
+    slots.push(placer.probe(moving))
+    if (i < rest.length) placer.add(rest[i])
+  }
+  return slots
+}
+
+// A drag asks again every frame with a new pointer position and the same
+// tiles, and the slots depend only on the tiles. The last answer is kept per
+// array (a weak map frees it with the array). The tiles are compared again on
+// every call, because an array a host edited in place must not get stale slots.
+const slotCache = new WeakMap()
+
+function slotsFor(items, id, columns, catalog) {
+  const hit = slotCache.get(items)
+  if (hit && hit.id === id && hit.columns === columns && hit.catalog === catalog && hit.refs.length === items.length) {
+    let same = true
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (hit.refs[i] !== item || hit.sizes[i] !== item.size || hit.types[i] !== item.type) {
+        same = false
+        break
+      }
+    }
+    if (same) return hit.slots
+  }
+  const slots = computeSlots(items, id, columns, catalog)
+  slotCache.set(items, { id, columns, catalog, refs: items.slice(), sizes: items.map((item) => item.size), types: items.map((item) => item.type), slots })
+  return slots
+}
+
 /** A layout with one profile replaced. Top strip ids no profile holds any more are dropped. */
 export function withProfile(layout, name, items) {
   const next = { ...layout, profiles: { ...layout.profiles, [name]: items } }
@@ -121,11 +162,21 @@ export function withProfile(layout, name, items) {
   return next
 }
 
-export function setTopStrip(layout, ids) {
+/**
+ * The top strip set to `ids`, in order. `counts(id)` says whether an id is one the grid shows, and only those
+ * count toward TOP_STRIP_MAX: an id it can't show (another profile's, or a tile with no small size) is kept
+ * but never takes a pin slot. Without `counts` every id counts.
+ */
+export function setTopStrip(layout, ids, counts) {
   const strip = []
+  let shown = 0
   for (const id of ids) {
-    if (strip.length === TOP_STRIP_MAX) break
-    if (typeof id === 'string' && !strip.includes(id) && holds(layout, id)) strip.push(id)
+    if (typeof id !== 'string' || strip.includes(id) || !holds(layout, id)) continue
+    if (!counts || counts(id)) {
+      if (shown === TOP_STRIP_MAX) continue
+      shown++
+    }
+    strip.push(id)
   }
   return { ...layout, topStrip: strip }
 }

@@ -14,15 +14,16 @@
  * so the edit-mode wiggle and the lift turn around the tile's own centre.
  *
  * In edit mode a transparent "chrome" covers each tile: a plain container of
- * three sibling buttons (RFC 0002 §5.9). The handle covers the tile, catches
+ * four sibling buttons (RFC 0002 §5.9, RFC 0003 §19; the fourth, pin, only at 2 columns). The handle covers the tile, catches
  * every pointer, so a drag can never press a button inside a widget, and is
- * the one Tab stop; remove and resize sit beside it, reachable by assistive
+ * the one Tab stop; remove, resize and pin sit beside it, reachable by assistive
  * technology. Nothing interactive is nested inside anything interactive.
  */
 
 import {
   DEFAULT_PROFILE,
   EN,
+  TOP_STRIP_MAX,
   WIDGETS,
   addItem,
   activeProfile,
@@ -39,6 +40,7 @@ import {
   readLayout,
   removeItem,
   resizeItem,
+  setTopStrip,
   sizeForExtent,
   snapSize,
   stepSize,
@@ -53,19 +55,26 @@ import {
   cellAt,
   elementSpec,
   extentOf,
+  hasSmall,
   hostResizes,
   itemsFromChildren,
   keepInPlace,
   mergeOrder,
+  mergeStrip,
   metrics,
   px,
   reconcile,
   specResolver,
+  splitStrip,
+  stripBoxes,
+  stripSlotAt,
   visualOrder,
 } from './grid-geometry.js'
 import { ensureTokens } from './default-tokens.js'
+import { inertWhenBlocked, mountShadow, setHTML } from './html.js'
 import { DEV, warnOnce } from './dev.js'
 import { createHistory } from './grid-history.js'
+import { BADGE_FADE_MS, DEFAULT_MOTION_MS, badgeText, createBadgeLife, createHintState, hintKey, parseMs, planSwitch, profileName } from './grid-feedback.js'
 import { isOutside, pickFocusTarget } from './grid-focus.js'
 import { keyAction, tapAction } from './grid-input.js'
 import { translator } from './messages-cache.js'
@@ -103,6 +112,7 @@ const TOAST_MS = 6000
 // A developer's warning, not interface text, so it stays out of the messages.
 const LOCKED_WARNING = '<ts-grid> is locked, so editing = true was ignored. Remove the locked attribute to allow editing.'
 const EMPTY_PERSIST_WARNING = '<ts-grid> persist attribute is empty, so saving is off. Give it a key, for example persist="my-dashboard".'
+const DENSITY_WARNING = '<ts-grid> density must be "comfortable" or "compact", so it was treated as "comfortable".'
 const NAMED_ROOT_WARNING = '<ts-grid> reused a shadow root that assigns slots by name, so reading and Tab order follow the DOM order, not the layout. Add shadowrootslotassignment="manual" to its <template shadowrootmode>, or leave the declarative shadow root out.'
 // Wording and link are fixed by RFC 0003 §4.3.
 const UNSAVED_WARNING = '<ts-grid> edits will be lost on reload: add a persist attribute, or call persistLayout(). See docs/guide/saving-layouts.md'
@@ -122,13 +132,24 @@ function registered(item) {
 
 // Built on first use, so importing this module where there is no DOM (Node,
 // server-side rendering) doesn't throw.
-let template = null
-const TEMPLATE = `
-<style>
+//
+// The phone top strip's CSS (RFC 0003 §19), explained here because a comment inside the stylesheet ships to every page:
+// - .strip holds the pinned tiles in one row above the board, stuck below a host's own header. It is opaque, so tiles
+//   scrolling beneath don't show through its gaps.
+// - Focus and scrolling to a tile must not leave it under the strip (WCAG 2.4.11), hence the scroll margin.
+// - The pin button is the fourth chrome button, top-end opposite remove, and shares remove's box. Its arrow is drawn
+//   with ::before, not written, so it is not text the grid owns: up pins, down unpins.
+// - The strip sits at the top of the page when stuck, so a strip tile's buttons are drawn inside its corner.
+// - The compact tokens sit on :host, so a rule on the ts-grid element in the page's CSS still wins, while a value on :root or a
+//   wrapper is only inherited and loses (RFC 0004 §2.1).
+const CSS = `
   :host { display: block; position: relative; inline-size: 100%; max-inline-size: var(--ts-grid-max-width, none); margin-inline: auto; -webkit-tap-highlight-color: transparent; }
   :host([hidden]) { display: none; }
+  :host([density="compact"]) { --ts-row: 120px; --ts-pad: 12px; --ts-gap: 10px; }
   :host([dragging]) { cursor: grabbing; }
   .board { position: relative; transition: height ${SLIDE}; }
+  .strip { position: sticky; inset-block-start: var(--ts-strip-top, 0px); z-index: 7; background: var(--ts-bg); transition: height ${SLIDE}; }
+  .board ::slotted(*), .board .handle { scroll-margin-block-start: var(--_strip-clear, 0px); }
   /* Focus lands here when a removed tile leaves nothing else to take it. */
   .board:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   /* A long press must never start a text selection on a touch screen, but a
@@ -156,46 +177,78 @@ const TEMPLATE = `
     position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; border-radius: inherit;
     background: none; pointer-events: none; cursor: grab; -webkit-tap-highlight-color: transparent;
   }
-  :host([editing]) .handle, :host([editing]) .remove, :host([editing]) .resize { pointer-events: auto; }
+  :host([editing]) .handle, :host([editing]) .remove, :host([editing]) .resize, :host([editing]) .chrome.pinnable .pin { pointer-events: auto; }
   :host([locked]) .chrome button { pointer-events: none; }
-  .chrome.removing .handle, .chrome.removing .remove, .chrome.removing .resize { pointer-events: none; }
+  .chrome.removing .handle, .chrome.removing .remove, .chrome.removing .resize, .chrome.removing .pin { pointer-events: none; }
   .chrome.removing .remove { display: none; }
   :host([dragging]) .handle { cursor: grabbing; }
   /* An outline, not a shadow, so the ring survives forced colours. */
   .handle:focus-visible, .resize:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .chrome.held .handle { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
-  .remove, .resize { display: none; }
-  :host([editing]) .remove, :host([editing]) .resize { display: flex; }
-  .chrome.lifted .remove, .chrome.lifted .resize, .chrome.fixed .resize { display: none; }
-  .remove {
-    position: absolute; top: -16px; left: -16px; width: 44px; height: 44px; padding: 0; margin: 0;
+  .remove, .resize, .pin { display: none; }
+  :host([editing]) .remove, :host([editing]) .resize, :host([editing]) .chrome.pinnable .pin { display: flex; }
+  .chrome.lifted .remove, .chrome.lifted .resize, .chrome.fixed .resize, :host([editing]) .chrome.lifted .pin { display: none; }
+  .remove, .pin {
+    position: absolute; inset-block-start: -16px; width: 44px; height: 44px; padding: 0; margin: 0;
     border: 0; background: none; align-items: center; justify-content: center; cursor: pointer;
     animation: pop 160ms var(--ts-ease, ease-out);
   }
-  .remove span {
+  .remove { inset-inline-start: -16px; }
+  .pin { inset-inline-end: -16px; }
+  .remove span, .pin span {
     width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
     background: var(--ts-surface-2); color: var(--ts-ink);
     border: 1px solid var(--ts-line); box-shadow: var(--ts-shadow, none);
-    font: 600 16px/1 var(--ts-font-ui, system-ui, sans-serif);
+    font: 600 var(--ts-text-xl, max(16px, 1rem))/1 var(--ts-font-ui, system-ui, sans-serif);
   }
-  .remove:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
+  .remove:focus-visible span, .pin:focus-visible span { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
+  .pin span { font-size: var(--ts-text-base, max(13px, .8125rem)); }
+  .pin span::before { content: '\\2191'; }
+  .chrome.in-strip .pin span::before { content: '\\2193'; }
+  .chrome.in-strip .remove, .chrome.in-strip .pin { inset-block-start: -10px; }
+  .chrome.in-strip .remove { inset-inline-start: -10px; }
+  .chrome.in-strip .pin { inset-inline-end: -10px; }
   .resize {
-    position: absolute; right: -6px; bottom: -6px; width: 44px; height: 44px; margin: 0; padding: 0; border: 0;
+    position: absolute; inset-inline-end: -6px; bottom: -6px; width: 44px; height: 44px; margin: 0; padding: 0; border: 0;
     background: none; cursor: nwse-resize; touch-action: none; animation: pop 160ms var(--ts-ease, ease-out);
   }
   .resize::after {
-    content: ''; position: absolute; right: 12px; bottom: 12px; width: 12px; height: 12px;
-    border-right: 3px solid var(--ts-muted); border-bottom: 3px solid var(--ts-muted);
-    border-bottom-right-radius: 6px;
+    content: ''; position: absolute; inset-inline-end: 12px; bottom: 12px; width: 12px; height: 12px;
+    border-inline-end: 3px solid var(--ts-muted); border-bottom: 3px solid var(--ts-muted);
+    border-end-end-radius: 6px;
   }
+  /* The handle sits bottom-left under dir=rtl, so the drag cursor mirrors with it. */
+  .board.rtl .resize { cursor: nesw-resize; }
   @keyframes pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
   @media (prefers-reduced-motion: reduce) {
     /* The wiggle is gone, so this outline alone says "editing". The RFC's 45% mix is
        2.8:1 against Paper's --ts-bg, under the 3:1 it asks for; 50% clears it in both themes. */
     :host([editing]) .chrome { outline: 2px dashed color-mix(in srgb, var(--ts-ink) 50%, transparent); outline-offset: -1px; }
-    .remove, .resize { animation: none; }
+    .remove, .resize, .pin { animation: none; }
   }
+  /* The size badge: decorative, on the side away from the handle, so it never sits under a finger on it and mirrors under rtl. */
+  .badge {
+    position: absolute; inset-block-end: 8px; inset-inline-start: 8px; max-inline-size: calc(100% - 16px); box-sizing: border-box;
+    padding: 3px 8px; border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm, 6px);
+    background: var(--ts-surface-2); color: var(--ts-ink); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font: 600 var(--ts-text-base, max(13px, .8125rem))/1.3 var(--ts-font-ui, system-ui, sans-serif); font-variant-numeric: tabular-nums;
+  }
+  /* The first-run coach mark; its position is written with element.style. */
+  .coach {
+    position: absolute; z-index: 8; box-sizing: border-box; display: flex; align-items: center; gap: 4px;
+    inline-size: max-content; max-inline-size: min(320px, 100%); padding-block: 4px; padding-inline: 16px 4px;
+    border: 1px solid transparent; border-radius: var(--ts-radius, 10px); background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
+    font: 500 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui);
+  }
+  .coach .coach-text { margin: 0; flex: 1 1 auto; padding-block: 8px; }
+  .coach .arrow { position: absolute; inset-block-start: -5px; inset-inline-start: 24px; inline-size: 12px; block-size: 12px; border-start-start-radius: 2px; background: inherit; rotate: 45deg; }
+  .coach.over .arrow { display: none; }
+  .coach-ok {
+    flex: none; min-inline-size: 44px; min-block-size: 44px; margin: 0; padding: 0 16px; border: 1px solid transparent; border-radius: 999px; cursor: pointer;
+    background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
+  }
+  .coach-ok:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
   [hidden] { display: none !important; }
   /* The dock holds the pill and, above it, the undo toast, so they never overlap.
      It has no height of its own until the pill shows, then it reserves the pill's
@@ -207,17 +260,17 @@ const TEMPLATE = `
     gap: 10px; pointer-events: none;
   }
   .toast {
-    position: relative; display: inline-flex; align-items: center; gap: 0; padding: 4px 4px 4px 20px;
+    position: relative; display: inline-flex; align-items: center; gap: 0; padding-block: 4px; padding-inline: 20px 4px;
     border-radius: 999px; box-sizing: border-box; max-width: calc(100% - 32px); white-space: nowrap;
     background: var(--ts-ink); color: var(--ts-surface); box-shadow: var(--ts-shadow-lift);
-    font: 500 13px var(--ts-font-ui); pointer-events: auto;
+    font: 500 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); pointer-events: auto;
   }
   /* Kept in the tree while off, so the status region announces the next text put in it. */
   .toast:not(.on) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; opacity: 0; pointer-events: none; }
   .toast .msg { overflow: hidden; text-overflow: ellipsis; }
   .toast .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .toast .undo {
-    min-width: 44px; min-height: 44px; margin: 0 0 0 16px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
+    min-width: 44px; min-height: 44px; margin: 0; margin-inline-start: 16px; padding: 0 18px; border: 0; border-radius: 999px; cursor: pointer;
     background: color-mix(in srgb, var(--ts-surface) 14%, transparent); color: inherit; font: inherit; font-weight: 600;
   }
   .toast .undo:focus-visible { outline: 2px solid var(--ts-surface); outline-offset: 2px; }
@@ -229,13 +282,13 @@ const TEMPLATE = `
   .pb {
     min-width: 44px; min-height: 44px; margin: 0; padding: 0 20px; border: 0; border-radius: 999px; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
-    background: none; color: var(--ts-ink); font: 600 13px var(--ts-font-ui);
+    background: none; color: var(--ts-ink); font: 600 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui);
   }
   .pb:focus-visible, .mi:focus-visible, .edit-btn:focus-visible { outline: 2px solid var(--ts-focus); outline-offset: 2px; }
   .pb[aria-expanded="true"] { background: var(--ts-surface-2); }
   .pb.done { padding-inline: 24px; background: var(--ts-accent); color: var(--ts-surface); }
   .pb.ghost { border: 1px solid var(--ts-line); background: var(--ts-surface); }
-  .pb .plus { color: var(--ts-accent); font-size: 16px; line-height: 1; }
+  .pb .plus { color: var(--ts-accent); font-size: var(--ts-text-xl, max(16px, 1rem)); line-height: 1; }
   .menu {
     position: absolute; bottom: calc(100% + 8px); inset-inline-start: 0; z-index: 3; box-sizing: border-box;
     width: 250px; max-width: calc(100vw - 32px); max-height: 50vh; overflow-y: auto; padding: 6px;
@@ -243,37 +296,43 @@ const TEMPLATE = `
     background: var(--ts-surface); color: var(--ts-ink); border: 1px solid var(--ts-line);
     border-radius: var(--ts-radius); box-shadow: var(--ts-shadow-lift); pointer-events: auto;
   }
-  .menu-h { padding: 8px 10px 6px; font: 600 10px var(--ts-font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
+  .menu-h { padding: 8px 10px 6px; font: 600 var(--ts-text-xs, max(10px, .625rem)) var(--ts-font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--ts-muted); }
   .mi {
     display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px;
     margin: 0; padding: 0 10px; border: 0; border-radius: var(--ts-radius-sm); cursor: pointer; text-align: start;
-    background: none; color: inherit; font: 13px var(--ts-font-ui);
+    background: none; color: inherit; font: var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui);
   }
   .mi:hover { background: var(--ts-surface-2); }
-  .mi .plus { color: var(--ts-accent); font-size: 16px; }
+  .mi .plus { color: var(--ts-accent); font-size: var(--ts-text-xl, max(16px, 1rem)); }
   /* Visually hidden until a keyboard user reaches it, so it is the first Tab stop without crowding the dashboard. */
   .edit-btn {
-    position: absolute; top: 12px; left: 12px; z-index: 8; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    position: absolute; top: 12px; inset-inline-start: 12px; z-index: 8; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
   }
   .edit-btn:focus-visible {
     width: auto; height: auto; min-height: 44px; margin: 0; padding: 0 18px; overflow: visible; clip-path: none;
     border: 1px solid var(--ts-line); border-radius: 999px; cursor: pointer;
-    background: var(--ts-surface); color: var(--ts-ink); font: 600 13px var(--ts-font-ui); box-shadow: var(--ts-shadow-lift);
+    background: var(--ts-surface); color: var(--ts-ink); font: 600 var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); box-shadow: var(--ts-shadow-lift);
   }
   .empty {
     position: absolute; inset: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 12px; padding: 16px; text-align: center; color: var(--ts-ink); font: 500 14px var(--ts-font-ui);
+    justify-content: center; gap: 12px; padding: 16px; text-align: center; color: var(--ts-ink); font: 500 var(--ts-text-lg, max(14px, .875rem)) var(--ts-font-ui);
     border: 1.5px dashed color-mix(in srgb, var(--ts-ink) 22%, transparent); border-radius: var(--ts-radius);
     background: color-mix(in srgb, var(--ts-ink) 4%, transparent);
   }
   .empty .note { margin: 0; }
   .empty .anchor { position: relative; }
-  .empty .menu { bottom: auto; top: calc(100% + 8px); inset-inline-start: 50%; transform: translateX(-50%); }
+  /* Centring is symmetric, so a physical left is right in both directions; an inline start of 50% would hang the menu off-centre in RTL. */
+  .empty .menu { bottom: auto; top: calc(100% + 8px); left: 50%; right: auto; translate: -50% 0; }
   .hint { display: none; }
   .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-</style>
+`
+
+const TEMPLATE = `
 <button class="edit-btn" type="button" hidden></button>
+<div class="strip" part="strip" role="region" hidden>
+  <div class="chromes"></div>
+</div>
 <div class="board" part="board" role="region">
   <div class="placeholder" part="placeholder"></div>
   <slot></slot>
@@ -297,17 +356,22 @@ const TEMPLATE = `
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
+const CHROME_HTML = '<button class="handle" type="button" aria-describedby="hint" aria-pressed="false"></button>' +
+  '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button>' +
+  '<button class="resize" type="button" tabindex="-1"></button>' +
+  '<button class="pin" type="button" tabindex="-1"><span aria-hidden="true"></span></button>' +
+  '<span class="badge" part="badge" aria-hidden="true" hidden></span>'
+
+// The coach mark's markup, a constant like every template (RFC 0003 §14); its words and position are written after.
+const COACH_HTML = '<span class="arrow" aria-hidden="true"></span><p class="coach-text"></p><button class="coach-ok" part="hint-dismiss" type="button"></button>'
+
 export class TsGrid extends Base {
   static get observedAttributes() {
-    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'aria-label']
+    return ['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'scrub', 'hint', 'aria-label']
   }
 
   constructor() {
     super()
-    if (!template) {
-      template = document.createElement('template')
-      template.innerHTML = TEMPLATE
-    }
     // Decided at attach time, since a root can't change how it assigns later.
     // Where `assign` is missing the root is made as before, with one default
     // slot, and Tab and reading order follow the host's DOM order (RFC 0003 Decision 27).
@@ -316,10 +380,18 @@ export class TsGrid extends Base {
     // Asked of the root, not assumed: a declarative shadow root without shadowrootslotassignment="manual" is reused as it is, and assigns by name.
     this._manual = root.slotAssignment === 'manual'
     if (DEV && canAssign && !this._manual) warnOnce('grid-slot-assignment', NAMED_ROOT_WARNING)
-    root.appendChild(template.content.cloneNode(true))
+    // The page's trusted-types directive refused the markup (html.js warned): stay empty, and inert, rather than throw.
+    if (!mountShadow(root, CSS, TEMPLATE)) {
+      this._blocked = true
+      return
+    }
     this._board = root.querySelector('.board')
-    this._placeholder = root.querySelector('.placeholder')
-    this._chromeLayer = root.querySelector('.chromes')
+    this._placeholder = root.querySelector('.board .placeholder')
+    this._chromeLayer = root.querySelector('.board .chromes')
+    // The phone top strip (RFC 0003 §19): its own sticky container, with its own placeholder and chrome layer.
+    this._stripEl = root.querySelector('.strip')
+    this._stripPlaceholder = null // made when a strip tile is first lifted, so the board's is the only one until then
+    this._stripLayer = root.querySelector('.strip .chromes')
     // Manual mode only. The default slot keeps what isn't a tile; each visible tile gets a slot of its own.
     this._restSlot = root.querySelector('.board > slot:not([name])')
     this._emptySlot = root.querySelector('slot[name="empty"]')
@@ -348,6 +420,7 @@ export class TsGrid extends Base {
     this._persistOn = false // true from the first measure on connect to disconnect, when the persist attribute may attach
     this._persistKey = null // the key persistLayout is attached with
     this._persistHandle = null
+    this._layoutWatchers = new Set()
     this._persistBase = null // the layout a device with nothing saved falls back to
     // Each place Add back appears: its button, its list, and what counts as inside it.
     this._addBack = {
@@ -358,7 +431,27 @@ export class TsGrid extends Base {
     this._menuSig = ''
     this._editOrigin = null // the element that started editing, for the focus return
     this._toastState = null // { remaining, started, timer, hover, focus } while the toast shows
+    this._toastRun = null // what the toast's button does until the toast is gone; null is Undo
+    this._toastWords = null // for a profile toast: its words from a translate function, so a locale change can redo them
+    this._keeping = null // the profile name a Keep press is switching to, so the status region says it in the words of the toast
+    this._fade = null // { run, anims, applied } while a scheduled switch is crossfading
+    // The resize badge (RFC 0004 §3.1): up while a tile is resized, gone a second after the last release.
+    this._badgeAnims = new WeakMap()
+    this._badge = createBadgeLife({
+      show: (id, text) => this._badgeShow(id, text),
+      fade: (id) => this._badgeFade(id),
+      hide: (id) => this._badgeHide(id),
+    })
+    // The first-run hint (§3.2): its card is built the first time the attribute is set. Nothing is stored.
+    this._hintState = createHintState()
+    this._coach = null
     this._history = createHistory()
+    this._stripSteps = new WeakSet() // the layouts undo returns to for a step that changed the strip, so other steps leave it alone
+    // Only a tile the grid shows and can draw at S takes a pin slot; any other saved id is kept but never blocks a pin.
+    this._pinSlot = (id) => {
+      const item = this._tiles.has(id) && this._profileItems().find((it) => it.id === id)
+      return !!item && this._canPin(item)
+    }
     this._removing = new Set() // ids fading out, so a second click or Delete does nothing
     this._removedAt = -Infinity // when a remove last began, for the double-click guard
     this._inertWas = new Map() // tile → whether the host had set inert, restored exactly when editing ends
@@ -381,7 +474,9 @@ export class TsGrid extends Base {
     this._setCatalog(WIDGETS)
     this._columns = 0
     this._m = null
-    this._order = [] // the visible items, in the order being shown
+    this._order = [] // the visible board items, in the order being shown; the strip's tiles are in _strip
+    this._strip = [] // the visible items pinned to the top strip, in strip order (always empty outside 2 columns)
+    this._wasStrip = new Set() // who was in the strip at the last render, so a tile changing zone appears in place
     this._tiles = new Map() // id → host element
     this._chromes = new Map() // id → chrome element
     this._boxes = new Map() // id → last pixel box
@@ -400,8 +495,14 @@ export class TsGrid extends Base {
     this._stateListeners = new Set() // <ts-grid-controls>, which redraw when the schedule or an override changes
     this._offCatalog = null
     this._profileTimer = 0
-    this._clock = () => Date.now()
+    // null follows configure({ clock }) (RFC 0004 §11.4); the getter returns a function either way.
+    this._clock = null
+    this._pageClock = () => {
+      const page = currentConfig().clock
+      return page ? page() : Date.now()
+    }
     this._onVisibility = () => {
+      this._syncHint()
       if (document.visibilityState === 'visible') this._reschedule(true)
     }
 
@@ -460,11 +561,13 @@ export class TsGrid extends Base {
       const button = target.closest('.remove')
       const handle = target.closest('.handle')
       const resize = target.closest('.resize')
-      if (button) this._remove(button.parentElement.dataset.id)
+      const pin = target.closest('.pin')
+      if (pin) this._togglePin(pin.parentElement.dataset.id)
+      else if (button) this._remove(button.parentElement.dataset.id)
       else if (handle) this._tap(handle.parentElement.dataset.id)
       else if (resize) this._resizeClick(resize.parentElement.dataset.id)
-      else if (target === this._board) this._tap(null)
-      else if (target.closest('.undo')) this._undoFromToast()
+      else if (target === this._board || target === this._stripEl) this._tap(null)
+      else if (target.closest('.undo')) this._toastPress()
       else if (target.closest('.edit-btn')) {
         if (this.locked) return
         this._editOrigin = this._editBtn
@@ -525,6 +628,16 @@ export class TsGrid extends Base {
     } finally {
       this._quietOrder = false
     }
+    // Before the first edit the host's layout is also what a device with nothing saved falls back to (RFC 0004 §11.2),
+    // and persistLayout hears of it to capture it for the device on show.
+    if (this._persistHandle && !this._edited && !this._persistWriting) this._persistBase = this._layout
+    for (const fn of [...this._layoutWatchers]) fn()
+  }
+
+  /** For persistLayout: `fn()` runs after each assignment of `layout`, including its own. Returns the function that stops it. */
+  _watchLayout(fn) {
+    this._layoutWatchers.add(fn)
+    return () => this._layoutWatchers.delete(fn)
   }
 
   /** Column thresholds in px of the grid's own width; defaults to { tablet: 700, desktop: 1200 }. Setting it re-measures. */
@@ -598,12 +711,18 @@ export class TsGrid extends Base {
     const t = this.t
     if (t === this._tText) return
     this._tText = t
-    this._toastUndo.textContent = t('grid.undo')
+    if (this._toastState && this._toastState.profile && this._toastWords) {
+      const w = this._toastWords(t)
+      this._toastUndo.textContent = w.label
+      this._toastText.textContent = w.text
+      this._toast.setAttribute('aria-label', w.text)
+    } else this._toastUndo.textContent = t('grid.undo')
     this._editBtn.textContent = t('grid.editLayout')
     this._pill.setAttribute('aria-label', t('grid.editingGroup'))
     this._pill.querySelector('.done').textContent = t('grid.done')
     this._emptyPanel.querySelector('.note').textContent = t('grid.emptyBoard')
     this._hint.textContent = t('grid.instructions')
+    this._stripEl.setAttribute('aria-label', t('grid.strip'))
     this._nameBoard()
     // The Add back list and each tile's chrome names were built from the old table.
     this._menuSig = ''
@@ -661,6 +780,15 @@ export class TsGrid extends Base {
     this.toggleAttribute('editing', !!value)
   }
 
+  /** A coach mark points at the first tile until it is dismissed or edit mode starts (RFC 0004 §3.2). */
+  get hint() {
+    return this.hasAttribute('hint')
+  }
+
+  set hint(value) {
+    this.toggleAttribute('hint', !!value)
+  }
+
   /** Read-only dashboard: no long press, no edit mode, no chromes. */
   get locked() {
     return this.hasAttribute('locked')
@@ -672,6 +800,16 @@ export class TsGrid extends Base {
 
   get columns() {
     return this._columns
+  }
+
+  /** 'comfortable' (the default) or 'compact', which shortens the rows and tightens the padding and gaps. Anything else is 'comfortable'. Reflects the `density` attribute. */
+  get density() {
+    return this.getAttribute('density') === 'compact' ? 'compact' : 'comfortable'
+  }
+
+  set density(value) {
+    if (value == null || value === '') this.removeAttribute('density')
+    else this.setAttribute('density', String(value))
   }
 
   /** A key that saves this grid's layout to localStorage per device; null, or no attribute, turns saving off. Reflects the `persist` attribute. */
@@ -720,6 +858,12 @@ export class TsGrid extends Base {
     for (const id of now) removed.delete(id)
     const previous = this._layout
     this._layout = withProfile(this._layout, profile, items)
+    // The strip is shared by every profile, so only a step that changed it (a pin, an unpin, the removal of a pinned tile)
+    // puts it back; undoing a move in one profile must not undo pins made in another.
+    if (this._stripSteps.has(snapshot)) {
+      if (Array.isArray(snapshot.topStrip)) this._layout = setTopStrip(this._layout, snapshot.topStrip, () => false)
+      else delete this._layout.topStrip
+    }
     this._sync(true)
     this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'undo', id: '' })
     return true
@@ -853,17 +997,18 @@ export class TsGrid extends Base {
     const previous = this._layout
     // Read before the edit: a removed tile has no label afterwards.
     const label = this._label(id)
+    const next = withProfile(previous, profile, items)
     this._cancelGesture()
-    this._history.push(profile, previous)
+    this._record(profile, previous, next)
     this._hideToast(false)
     // Children can't bring a removed tile back; only a restore can.
     if (reason === 'remove') this._removedFor(profile).add(id)
-    this._layout = withProfile(previous, profile, items)
+    this._layout = next
     this._sync(true)
     this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason, id, ...extra })
     // The words a drag or a key would have said, for a listener who can't see the board change.
     const t = this.t
-    if (reason === 'move') this._announce(t('grid.moved', { label, position: this._position(id), total: this._order.length }))
+    if (reason === 'move') this._announce(t('grid.moved', { label, position: this._position(id), total: this._zone(id).length }))
     else if (reason === 'resize') this._announce(t('grid.resized', { label, size: this._item(id) ? this._item(id).size : '' }))
     else if (reason === 'remove') this._announce(t('grid.removedSaid', { label }))
   }
@@ -896,6 +1041,91 @@ export class TsGrid extends Base {
     if (index < 0) return false
     this._edit('remove', id, removeItem(items, id), { index, item: items[index] })
     return true
+  }
+
+  /**
+   * Pins `ids` (at most 3 the grid shows, in order) to the phone top strip, or unpins by leaving them out. False
+   * when nothing changed. Ids this grid doesn't show (another profile's) are kept and take no slot, and a widget
+   * with no S size is ignored. The strip is drawn at 2 columns only; the saved list is kept at any width (RFC 0003 §19).
+   */
+  setTopStrip(ids) {
+    const saved = this._layout.topStrip || []
+    const want = (Array.isArray(ids) ? ids : []).filter((id) => {
+      const item = this._tiles.has(id) && this._profileItems().find((it) => it.id === id)
+      const refused = item && !this._canPin(item)
+      if (DEV && refused) warnOnce(`grid-strip-small:${id}`, `<ts-grid>.setTopStrip() ignored '${id}': its widget has no small (S) size, and the strip draws tiles at S.`)
+      return !refused
+    })
+    const next = setTopStrip(this._layout, want.concat(saved.filter((id) => !this._pinSlot(id) && !want.includes(id))), this._pinSlot)
+    if (sameIds(saved, next.topStrip)) return false
+    this._commitStrip(next, '')
+    return true
+  }
+
+  _canPin(item) {
+    const spec = this._resolve(item)
+    return hasSmall(spec && spec.sizes)
+  }
+
+  /** The history step for a change from `previous` to `next`, marked when it changed the strip. */
+  _record(profile, previous, next) {
+    this._history.push(profile, previous)
+    if (!sameIds(previous.topStrip || [], next.topStrip || [])) this._stripSteps.add(previous)
+  }
+
+  /** The commit of a strip change: record the step, redraw (unless a drop already has) and report it with reason 'strip'. */
+  _commitStrip(next, id, dropped) {
+    const previous = this._layout
+    const profile = this.profile
+    if (!dropped) {
+      this._cancelGesture()
+      this._hideToast(false)
+    }
+    this._record(profile, previous, next)
+    this._layout = next
+    if (!dropped) this._sync(true)
+    this._emit('ts-layout-change', { layout: next, items: this._profileItems(), previous, profile, reason: 'strip', id })
+  }
+
+  /** The pin button or the P key: pin the tile to the end of the strip, or unpin it. A fourth pin is refused out loud. */
+  _togglePin(id) {
+    if (!this._editing || (this._gesture && this._heldId() !== id) || !this._placements.has(id) || this._columns !== 2 || !this._manual) return
+    const chrome = this._chromes.get(id)
+    const active = this.shadowRoot.activeElement
+    const had = active && chrome && chrome.contains(active) ? active : null
+    const saved = this._layout.topStrip || []
+    const shown = this._strip.map((item) => item.id)
+    const t = this.t
+    const label = this._label(id)
+    if (this._inStrip(id)) {
+      this._commitStrip(setTopStrip(this._layout, saved.filter((x) => x !== id), this._pinSlot), id)
+      this._announce(t('grid.unpinned', { label }))
+    } else if (!this._canPin(this._item(id))) {
+      this._announce(t('grid.pinUnsupported'))
+      return
+    } else if (shown.length >= TOP_STRIP_MAX) {
+      this._announce(t('grid.stripFull'))
+      return
+    } else {
+      this._commitStrip(setTopStrip(this._layout, [...shown, id, ...saved.filter((x) => x !== id && !shown.includes(x))], this._pinSlot), id)
+      this._announce(t('grid.pinned', { label }))
+    }
+    // The chrome moved between containers, which drops focus where moveBefore is missing.
+    if (had && had.isConnected && this.shadowRoot.activeElement !== had) had.focus({ preventScroll: true })
+  }
+
+  _inStrip(id) {
+    return this._strip.some((item) => item.id === id)
+  }
+
+  /** The tiles `id` is ordered among: the strip's, or the board's. */
+  _zone(id) {
+    return this._inStrip(id) ? this._strip : this._order
+  }
+
+  _setZone(id, items) {
+    if (this._inStrip(id)) this._strip = items
+    else this._order = items
   }
 
   /** The profile an override shows, or null when the schedule (or the `profile` attribute) decides. */
@@ -942,11 +1172,11 @@ export class TsGrid extends Base {
 
   /** What the grid takes the time to be. Tests and demos can replace it. */
   get clock() {
-    return this._clock
+    return this._clock || this._pageClock
   }
 
   set clock(fn) {
-    this._clock = typeof fn === 'function' ? fn : () => Date.now()
+    this._clock = typeof fn === 'function' ? fn : null
     this._reschedule(true, 'schedule', true)
   }
 
@@ -961,11 +1191,12 @@ export class TsGrid extends Base {
       const before = this.profile
       this._override = null
       this._reschedule(false)
-      this._profileChanged(before, 'override-ended')
+      // A user clearing their own override applies at once; only the scheduler's lapse is calm (RFC 0004 §3.3).
+      this._profileChanged(before, 'override-ended', false, true)
       this._stateChanged()
       return
     }
-    const now = this._clock()
+    const now = this.clock()
     const until = this._schedule ? nextProfileChange(this._schedule.calendar, this._schedule, now) : null
     const before = this.profile
     this._override = { profile, until: until === null ? Infinity : until }
@@ -987,6 +1218,12 @@ export class TsGrid extends Base {
       delete this.messages
       this.messages = value
     }
+    // Likewise a density property set before upgrade.
+    if (Object.prototype.hasOwnProperty.call(this, 'density')) {
+      const value = this.density
+      delete this.density
+      this.density = value
+    }
     // Likewise a persist property set before upgrade: it becomes the attribute.
     if (Object.prototype.hasOwnProperty.call(this, 'persist')) {
       const value = this.persist
@@ -994,7 +1231,12 @@ export class TsGrid extends Base {
       this.persist = value
     }
     // configure() may change the messages or the locale while the grid is on the page; the widgets hear of it themselves.
-    this._offConfigure = onConfigure(() => this._refreshText())
+    this._offConfigure = onConfigure(() => {
+      this._refreshText()
+      // A new page clock moves a schedule that has no clock of its own, quietly, as setting grid.clock does.
+      // Any configure() re-runs it: a schedule is cheap and an unchanged time changes nothing.
+      if (this._schedule && !this._clock) this._reschedule(true, 'schedule', true)
+    })
     // A widget registered after the grid rendered may be the type of a tile it could not draw.
     this._offCatalog = onCatalogChange(() => {
       this._setCatalog(this._catalog)
@@ -1008,21 +1250,36 @@ export class TsGrid extends Base {
     // Measuring renders, and rendering changes the grid's own height, which the
     // observer reports again within the same frame. WebKit raises that as an
     // uncaught "ResizeObserver loop" error, so the work waits for the next frame.
-    this._resizeObserver = new ResizeObserver(() => {
+    // Each observer is optional (RFC 0003 §23): jsdom and happy-dom have none. A grid that cannot watch its own width
+    // still measures again on a window resize, and one that cannot watch its children takes them when the host sets
+    // layout. A guard, not a polyfill.
+    const onResize = () => {
       cancelAnimationFrame(this._measureFrame)
       this._measureFrame = requestAnimationFrame(() => this._measure(false))
-    })
-    this._resizeObserver.observe(this)
-    this._mutationObserver = new MutationObserver((records) => {
-      if (!records.some((r) => this._concerns(r))) return
-      this._cancelGesture()
-      // A host answering ts-add-request renders its child here; the layout before it came is what Undo goes back to.
-      const arrived = this._arrivedAdds()
-      const before = this._layout
-      this._sync(true)
-      if (arrived.length) this._finishAdds(arrived, before)
-    })
-    this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
+    }
+    if (typeof ResizeObserver === 'function') {
+      this._resizeObserver = new ResizeObserver(onResize)
+      this._resizeObserver.observe(this)
+    } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      this._onWindowResize = onResize
+      window.addEventListener('resize', onResize)
+    }
+    if (typeof MutationObserver === 'function') {
+      // A dir attribute flipped on the grid or an ancestor changes no size, so the observer above never hears of it.
+      this._dirObserver = new MutationObserver(() => this._measure(false))
+      // Through a slot to the shadow tree the grid is slotted into: that wrapper's dir is what the grid inherits.
+      for (let node = this; node; node = node.assignedSlot || node.parentNode || node.host) this._dirObserver.observe(node, { attributes: true, attributeFilter: ['dir'] })
+      this._mutationObserver = new MutationObserver((records) => {
+        if (!records.some((r) => this._concerns(r))) return
+        this._cancelGesture()
+        // A host answering ts-add-request renders its child here; the layout before it came is what Undo goes back to.
+        const arrived = this._arrivedAdds()
+        const before = this._layout
+        this._sync(true)
+        if (arrived.length) this._finishAdds(arrived, before)
+      })
+      this._mutationObserver.observe(this, { childList: true, subtree: true, attributeFilter: ['item', 'size'] })
+    }
     if (!this._explicit) this._reconcile()
     this._measure(true)
     // After the first measure, so the device is known and the layout on show is the defaults.
@@ -1043,12 +1300,20 @@ export class TsGrid extends Base {
     this._offCatalog = null
     for (const pending of this._pendingAdds.values()) clearTimeout(pending.timer)
     this._pendingAdds.clear()
-    this._resizeObserver.disconnect()
+    if (this._resizeObserver) this._resizeObserver.disconnect()
+    this._resizeObserver = null
+    if (this._onWindowResize) window.removeEventListener('resize', this._onWindowResize)
+    this._onWindowResize = null
+    if (this._dirObserver) this._dirObserver.disconnect()
+    this._dirObserver = null
     cancelAnimationFrame(this._measureFrame)
-    this._mutationObserver.disconnect()
+    if (this._mutationObserver) this._mutationObserver.disconnect()
+    this._mutationObserver = null
     this._cancelGesture()
     this._stopEditing()
     this._hideToast(false)
+    this._endFade()
+    this._badge.clear()
     document.removeEventListener('visibilitychange', this._onVisibility)
     clearTimeout(this._profileTimer)
     for (const timer of this._watching) clearTimeout(timer)
@@ -1097,9 +1362,19 @@ export class TsGrid extends Base {
     } else if (name === 'profile') {
       this._cancelGesture()
       this._sync(false)
-      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: this.profile }))
+      if (this._rendered && old !== value) this._announce(this.t('grid.profile', { profile: profileName(this.t, this.profile) }))
     } else if (['locale', 'currency', 'time-zone', 'hour-cycle'].includes(name)) {
       this._refreshText()
+      this._invalidateWidgets()
+    } else if (name === 'density') {
+      if (DEV && value !== null && value !== 'comfortable' && value !== 'compact') warnOnce('grid-density', DENSITY_WARNING)
+      // The rows and gaps are read from the tokens, so a change re-measures; a layout is cells, so nothing else moves.
+      if (this.isConnected && this._m && !this._blocked) this._measure(true)
+    } else if (name === 'hint') {
+      this._hintState.attribute(this.hasAttribute('hint'))
+      this._syncHint()
+    } else if (name === 'scrub') {
+      // A tile reads the grid's value when it renders, so it draws again to drop or restore its tab stop at once.
       this._invalidateWidgets()
     } else if (name === 'persist') {
       // Upgrade reports the attribute before connectedCallback has measured; it attaches then.
@@ -1150,7 +1425,7 @@ export class TsGrid extends Base {
       return
     } else {
       this._deferred = false
-      const now = this._clock()
+      const now = this.clock()
       if (this._override && now >= this._override.until) {
         this._override = null
         reason = 'override-ended'
@@ -1165,14 +1440,235 @@ export class TsGrid extends Base {
     this._stateChanged()
   }
 
-  _profileChanged(before, reason, quiet = false) {
+  _profileChanged(before, reason, quiet = false, instant = false) {
     const profile = this.profile
     if (profile === before) return
     this._cancelGesture()
-    this._sync(false)
-    // Not on load, when nothing has changed from the user's point of view.
-    if (!quiet) this._announce(this.t('grid.profile', { profile }))
-    this._emit('ts-profile-change', { profile, reason })
+    this._endFade()
+    const t = this.t
+    const plan = planSwitch({ reason, quiet, rendered: this._rendered })
+    // A Keep offered for an earlier switch no longer says what it did.
+    if (!plan.toast && this._toastState && this._toastState.profile) this._hideToast(false)
+    // The event rides the apply step, so a handler reading readingOrder sees the layout it was told about, not the one fading out.
+    const apply = () => {
+      this._sync(false)
+      this._emit('ts-profile-change', { profile, reason })
+    }
+    if (plan.crossfade && !instant) this._crossfade(apply)
+    else apply()
+    // Not on load, when nothing has changed from the user's point of view. A scheduled switch is spoken here, once;
+    // the toast is a labelled group, not a live region (docs/ACCESSIBILITY.md item 18).
+    if (!quiet) {
+      const said = this._keeping ? t('grid.keptProfile', { profile: this._keeping }) : t('grid.profile', { profile: profileName(t, profile) })
+      this._announce(said)
+    }
+    if (plan.toast) {
+      this._showToast(t('grid.profileSwitched', { profile: profileName(t, profile) }), {
+        label: t('grid.keepProfile', { previous: profileName(t, before) }),
+        run: () => this._keepPrevious(before),
+        // A locale change inside the toast's six seconds rewords it too.
+        words: (tt) => ({ text: tt('grid.profileSwitched', { profile: profileName(tt, profile) }), label: tt('grid.keepProfile', { previous: profileName(tt, before) }) }),
+        profile: true,
+      })
+    }
+  }
+
+  // ── The calm profile switch (RFC 0004 §3.3) ────────────────────────────
+
+  /**
+   * Fade the tiles out, apply while the board is clear, fade them in: half of --ts-motion each way, through the Web
+   * Animations API, so no transition and no style string is involved. Without animate, or under reduced motion, it just applies.
+   */
+  _crossfade(apply) {
+    this._endFade()
+    const board = this._board
+    const half = parseMs(getComputedStyle(this).getPropertyValue('--ts-motion'), DEFAULT_MOTION_MS) / 2
+    if (!this._motion() || typeof board.animate !== 'function' || !(half > 0)) return apply()
+    // The pinned strip is the board's twin on a phone, so it fades with it.
+    const targets = this._stripEl.hidden ? [board] : [board, this._stripEl]
+    const fade = { applied: false, anims: [], run: () => {
+      if (fade.applied) return
+      fade.applied = true
+      apply()
+    } }
+    const play = (from, to, fill) => targets.map((el) => el.animate([{ opacity: from }, { opacity: to }], { duration: half, easing: 'ease-in-out', fill }))
+    this._fade = fade
+    const out = play(1, 0, 'forwards')
+    fade.anims = out
+    out[0].finished.then(() => {
+      if (this._fade !== fade) return
+      fade.run()
+      const back = play(0, 1, 'none')
+      fade.anims = back
+      // The back fade now owns opacity; the held fill of the first can go.
+      for (const a of out) a.cancel()
+      const end = () => {
+        if (this._fade === fade) this._fade = null
+      }
+      back[0].finished.then(end, end)
+    }, () => {
+      // Cancelled by _endFade, which applies.
+    })
+  }
+
+  /** A crossfade in flight is cancelled and what it was waiting to apply is applied now. */
+  _endFade() {
+    const fade = this._fade
+    if (!fade) return
+    this._fade = null
+    for (const a of fade.anims) a.cancel()
+    fade.run()
+  }
+
+  /** The toast's Keep: the previous profile stays until the schedule next changes (Decision 47), said in the toast's own words. */
+  _keepPrevious(previous) {
+    const had = this.shadowRoot.activeElement === this._toastUndo
+    this._hideToast(false)
+    this._keeping = profileName(this.t, previous)
+    try {
+      this.override(previous)
+    } finally {
+      this._keeping = null
+    }
+    // The button went with the toast, and focus with it.
+    if (had) this._focusAfterNote()
+  }
+
+  /** Where focus goes when the button it was on is gone: the Edit layout button if there is one, else the grid. */
+  _focusAfterNote() {
+    if (!this._editBtn.hidden && !this._editing) this._editBtn.focus()
+    else this._focus(this)
+  }
+
+  // ── The first-run hint (RFC 0004 §3.2) ─────────────────────────────────
+
+  /** Show, move or hide the coach mark to match the attribute, the dismissal and what the grid is doing. */
+  _syncHint() {
+    const state = this._hintState
+    const populated = this._rendered && !!this._m && this._order.length + this._strip.length > 0
+    state.eligible(this.isConnected && populated && !this.locked && !this._editing && document.visibilityState !== 'hidden')
+    if (state.visible) this._placeHint()
+    else this._hideHint()
+  }
+
+  _makeCoach() {
+    const el = document.createElement('div')
+    el.className = 'coach'
+    el.setAttribute('part', 'hint')
+    // A note, not a live region: speaking at page load would interrupt, and Edit layout is already the first Tab stop.
+    el.setAttribute('role', 'note')
+    el.hidden = true
+    setHTML(el, COACH_HTML)
+    // After the board and the dock, so it follows the tiles in Tab order and moves none of them.
+    this.shadowRoot.insertBefore(el, this._status)
+    el.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('.coach-ok')) this._dismissHint()
+    })
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      this._dismissHint()
+    })
+    this._coach = { el, text: el.querySelector('.coach-text'), ok: el.querySelector('.coach-ok'), arrow: el.querySelector('.arrow') }
+    return this._coach
+  }
+
+  _placeHint() {
+    const id = visualOrder([...this._placements.values()])[0]
+    const box = id !== undefined && this._boxes.get(id)
+    if (!box) return this._hideHint()
+    const coach = this._coach || this._makeCoach()
+    const t = this.t
+    const text = t(hintKey(typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches))
+    if (coach.text.textContent !== text) coach.text.textContent = text
+    const ok = t('grid.hintDismiss')
+    if (coach.ok.textContent !== ok) coach.ok.textContent = ok
+    const appearing = coach.el.hidden
+    coach.el.hidden = false
+    // Written with element.style, which a strict style-src leaves alone; logical insets so it mirrors under rtl.
+    const home = this._inStrip(id) ? this._stripEl : this._board
+    const width = this._board.clientWidth
+    const wide = coach.el.offsetWidth
+    const high = coach.el.offsetHeight
+    const start = this._rtl ? width - (box.x + box.w) : box.x
+    const inline = Math.min(Math.max(0, start), Math.max(0, width - wide))
+    let block = home.offsetTop + box.y + box.h + 10
+    // With no room below the first tile it sits over the tile's lower part instead, and the arrow goes.
+    const over = block + high > this.offsetHeight
+    if (over) block = home.offsetTop + box.y + Math.max(0, box.h - high - 8)
+    coach.el.classList.toggle('over', over)
+    coach.el.style.insetInlineStart = `${inline}px`
+    coach.el.style.insetBlockStart = `${block}px`
+    coach.arrow.style.insetInlineStart = `${Math.max(12, Math.min(wide - 24, start + Math.min(box.w / 2, 36) - inline))}px`
+    if (appearing && this._motion() && coach.el.animate) {
+      coach.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' })
+      coach.arrow.animate([{ translate: '0 5px' }, { translate: '0 0' }], { duration: 480, easing: 'ease-out' })
+    }
+  }
+
+  _hideHint() {
+    if (this._coach && !this._coach.el.hidden) this._coach.el.hidden = true
+  }
+
+  /** The user pressed Got it or Escape. */
+  _dismissHint() {
+    const coach = this._coach
+    const focused = !!coach && this.shadowRoot.activeElement && coach.el.contains(this.shadowRoot.activeElement)
+    if (!this._hintEnd('dismiss')) return
+    this._syncHint()
+    if (focused) this._focusAfterNote()
+  }
+
+  /** End the hint for `reason` and tell the host, once. Removing the attribute is the host's own and fires nothing. */
+  _hintEnd(reason) {
+    const said = reason === 'edit' ? this._hintState.edit() : this._hintState.dismiss()
+    if (said) this._emit('ts-hint-dismiss', { reason: said })
+    return said
+  }
+
+  // ── The resize badge (RFC 0004 §3.1) ───────────────────────────────────
+
+  _badgeEl(id) {
+    const chrome = this._chromes.get(id)
+    return chrome ? chrome.querySelector('.badge') : null
+  }
+
+  _badgeStop(el) {
+    const running = this._badgeAnims.get(el)
+    if (!running) return
+    this._badgeAnims.delete(el)
+    running.cancel()
+  }
+
+  _badgeShow(id, text) {
+    const el = this._badgeEl(id)
+    if (!el) return
+    this._badgeStop(el)
+    if (el.textContent !== text) el.textContent = text
+    el.hidden = false
+  }
+
+  _badgeHide(id) {
+    const el = this._badgeEl(id)
+    if (!el) return
+    this._badgeStop(el)
+    el.hidden = true
+    el.textContent = ''
+  }
+
+  /** A second after release: it fades and leaves layout, or under reduced motion simply goes. */
+  _badgeFade(id) {
+    const el = this._badgeEl(id)
+    if (!el || el.hidden) return
+    if (!this._motion() || typeof el.animate !== 'function') return this._badgeHide(id)
+    const running = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: BADGE_FADE_MS, easing: 'ease-in', fill: 'forwards' })
+    this._badgeAnims.set(el, running)
+    const end = () => {
+      if (this._badgeAnims.get(el) !== running) return
+      this._badgeHide(id)
+    }
+    running.finished.then(end, () => {})
   }
 
   /** Apply a scheduled change that fell due while the user was editing or dragging. */
@@ -1186,11 +1682,16 @@ export class TsGrid extends Base {
     if (!this.isConnected) return
     const width = this.clientWidth
     // The board's own height changes fire the observer too; only width matters.
-    if (!force && width === this._width) return
+    const rtl = getComputedStyle(this).direction === 'rtl'
+    // A change of direction re-measures even at the same width, because every box mirrors.
+    if (!force && width === this._width && rtl === this._rtl) return
     this._width = width
+    const flipped = rtl !== this._rtl
+    this._rtl = rtl
+    this._board.classList.toggle('rtl', rtl)
     const columns = columnsFor(width, this._breakpoints)
     const changed = columns !== this._columns
-    if (changed && this._gesture) this._cancelGesture()
+    if ((changed || flipped) && this._gesture) this._cancelGesture()
     const style = getComputedStyle(this)
     const compact = columns === 2
     const row = px(style.getPropertyValue(compact ? '--ts-row-compact' : '--ts-row'), 0) || px(style.getPropertyValue('--ts-row'), 150)
@@ -1269,9 +1770,12 @@ export class TsGrid extends Base {
     if (!this._m) return
     const before = new Set(this._tiles.keys())
     if (!keepTiles) this._matchChildren(true)
-    const items = this._profileItems()
-    this._order = items.filter((item) => this._tiles.has(item.id))
-    const shown = new Set(this._order.map((item) => item.id))
+    const visible = this._profileItems().filter((item) => this._tiles.has(item.id))
+    // The strip needs manual slot assignment, which keeps each pinned tile's slot inside the sticky container.
+    const { strip, board } = this._manual ? splitStrip(visible, this._layout.topStrip, this._columns, (item) => this._canPin(item)) : { strip: [], board: visible }
+    this._order = board
+    this._strip = strip
+    const shown = new Set(visible.map((item) => item.id))
     for (const [id, el] of this._tiles) if (!shown.has(id)) el.style.display = 'none'
     for (const id of this._chromes.keys()) if (!shown.has(id)) this._dropChrome(id)
 
@@ -1356,18 +1860,26 @@ export class TsGrid extends Base {
     const m = this._m
     if (!m) return
     animate = animate && this._motion()
-    const { placements, rows } = place(this._order, this._columns, this._resolve)
+    const { placements: boardPlaced, rows } = place(this._order, this._columns, this._resolve)
+    // Strip tiles sit above row 0, in strip order, each at its S variant.
+    const stripPlaced = this._strip.map((item, i) => {
+      const spec = this._resolve(item)
+      return { id: item.id, col: i, row: -1, cols: 1, rows: 1, variant: footprint('S', 2, spec ? spec.sizes : null, spec ? spec.phoneRows : null).variant }
+    })
+    const stripAt = stripPlaced.length ? stripBoxes(stripPlaced.length, m, { rtl: this._rtl }) : []
+    const placements = stripPlaced.concat(boardPlaced)
     this._placements = new Map(placements.map((p) => [p.id, p]))
     // Slots move before the boxes are written, with a style flush between. WebKit drops a tile's slide when its slot
     // moves, but only if the move comes after the new box: moved first, the tile has a computed "before" style again
     // by the time its box changes, so it slides there like the rest.
     if (animate && this._manual && this._slotTiles(visualOrder(placements), this._editing && this._orderKnown)) void this._board.offsetWidth
     for (const p of placements) {
-      const box = boxOf(p, m)
+      const inStrip = p.row < 0
+      const box = inStrip ? stripAt[p.col] : boxOf(p, m, { rtl: this._rtl })
       const el = this._tiles.get(p.id)
       // A tile that wasn't on screen appears in place rather than sliding in
-      // from wherever it last was.
-      const slide = animate && this._boxes.has(p.id) && el.style.display !== 'none'
+      // from wherever it last was, and one changing between strip and board has no common frame to slide in.
+      const slide = animate && this._boxes.has(p.id) && el.style.display !== 'none' && this._wasStrip.has(p.id) === inStrip
       this._boxes.set(p.id, box)
       if (el.getAttribute('size') !== p.variant) el.setAttribute('size', p.variant)
       this._written.set(el, p.variant)
@@ -1379,11 +1891,21 @@ export class TsGrid extends Base {
       if (this._editing && !held && !this._wiggles.has(p.id)) this._wiggle(p.id)
       if (this._editing) this._makeInert(el)
     }
+    if (stripPlaced.length || this._wasStrip.size) this._wasStrip = new Set(stripPlaced.map((p) => p.id))
     this._orderChromes(placements)
     this._assignSlots(placements)
     this._board.style.transition = animate ? '' : 'none'
     // An empty board keeps one row, so its message and Add back have somewhere to sit.
     this._board.style.height = `${boardHeight(rows || 1, m)}px`
+    // One compact row and a gap, which is also the room between the strip and the board.
+    // Nothing to write while there is no strip and there was none, which is every render at 3 or 4 columns.
+    if (stripPlaced.length || !this._stripEl.hidden) {
+      const stripHeight = stripPlaced.length ? m.rowHeight + m.gap : 0
+      this._stripEl.hidden = !stripPlaced.length
+      this._stripEl.style.transition = animate ? '' : 'none'
+      this._stripEl.style.height = `${stripHeight}px`
+      this._board.style.setProperty('--_strip-clear', stripHeight ? `calc(var(--ts-strip-top, 0px) + ${stripHeight}px)` : '0px')
+    }
   }
 
   /**
@@ -1429,8 +1951,10 @@ export class TsGrid extends Base {
       if (!slot) {
         slot = document.createElement('slot')
         this._tileSlots.set(id, slot)
-        board.insertBefore(slot, this._chromeLayer)
       }
+      // A pinned tile's slot lives in the sticky strip, which comes before the board in the flat tree: first in Tab and reading order.
+      const home = this._inStrip(id) ? this._stripEl : board
+      if (slot.parentNode !== home) home.insertBefore(slot, home === board ? this._chromeLayer : this._stripLayer)
       const el = this._tiles.get(id)
       if (this._slotted.get(slot) !== el) {
         slot.assign(el)
@@ -1440,19 +1964,22 @@ export class TsGrid extends Base {
     })
     let moved = false
     if (!frozen) {
-      // Moving a slot reattaches its tile, and some engines (WebKit, Firefox) drop that tile's slide when it is
-      // reattached, so only the slots outside the longest run already in order move: one for "last goes first".
-      const current = [...board.children].filter((child) => this._slotted.has(child))
-      const keep = keepInPlace(current, slots)
       const active = this._deepActive()
-      let next = this._chromeLayer
-      for (let i = slots.length - 1; i >= 0; i--) {
-        if (!keep.has(slots[i])) {
-          if (typeof board.moveBefore === 'function') board.moveBefore(slots[i], next)
-          else board.insertBefore(slots[i], next)
-          moved = true
+      for (const [home, end] of [[this._stripEl, this._stripLayer], [board, this._chromeLayer]]) {
+        const mine = slots.filter((slot) => slot.parentNode === home)
+        // Moving a slot reattaches its tile, and some engines (WebKit, Firefox) drop that tile's slide when it is
+        // reattached, so only the slots outside the longest run already in order move: one for "last goes first".
+        const current = [...home.children].filter((child) => this._slotted.has(child))
+        const keep = keepInPlace(current, mine)
+        let next = end
+        for (let i = mine.length - 1; i >= 0; i--) {
+          if (!keep.has(mine[i])) {
+            if (typeof home.moveBefore === 'function') home.moveBefore(mine[i], next)
+            else home.insertBefore(mine[i], next)
+            moved = true
+          }
+          next = mine[i]
         }
-        next = slots[i]
       }
       // Without moveBefore, a tile whose slot moved may lose focus.
       if (moved && active && active.isConnected && this._deepActive() !== active) active.focus({ preventScroll: true })
@@ -1493,7 +2020,7 @@ export class TsGrid extends Base {
     if (changed && !first && !quiet) this._emit('ts-reading-order-change', { order: [...order] })
   }
 
-  /** The visible tiles' ids in visual order, row by row and left to right by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
+  /** The visible tiles' ids in visual order, row by row, in the page's inline direction (so right to left under dir=rtl), by each tile's top-left cell. It holds still while editing, and takes the new order at Done. */
   get readingOrder() {
     return this._readingOrder
   }
@@ -1506,26 +2033,32 @@ export class TsGrid extends Base {
       chrome.dataset.id = id
       // Three siblings, never a button inside a button: the handle takes focus and
       // keys, remove and resize are named for assistive technology but not Tab stops.
-      chrome.innerHTML = '<button class="handle" type="button" aria-describedby="hint" aria-pressed="false"></button>' +
-        '<button class="remove" type="button" tabindex="-1"><span aria-hidden="true">−</span></button>' +
-        '<button class="resize" type="button" tabindex="-1"></button>'
-      this._chromeLayer.appendChild(chrome)
+      setHTML(chrome, CHROME_HTML)
       this._chromes.set(id, chrome)
     }
+    const stripped = this._inStrip(id)
+    const layer = stripped ? this._stripLayer : this._chromeLayer
+    if (chrome.parentNode !== layer) layer.appendChild(chrome)
     const label = this._label(id)
     const item = this._item(id)
     // The size is read as its token ("M") for now, which keeps what a screen reader says the same as before messages; size.name gives a full name when the picker needs one.
     const size = item ? item.size : ''
     const t = this.t
     const handle = chrome.querySelector('.handle')
-    setAttr(handle, 'aria-label', t('grid.handle', { label, size, position: this._position(id), total: this._order.length }))
+    setAttr(handle, 'aria-label', t('grid.handle', { label, size, position: this._position(id), total: this._zone(id).length }))
     setAttr(chrome.querySelector('.remove'), 'aria-label', t('grid.remove', { label }))
     setAttr(chrome.querySelector('.resize'), 'aria-label', t('grid.resize', { label, size }))
+    // Pin to top / Unpin exists at 2 columns only; elsewhere it is display:none, so it is not in the accessibility tree either.
+    const pin = chrome.querySelector('.pin')
+    setAttr(pin, 'aria-label', t(stripped ? 'grid.unpin' : 'grid.pin', { label }))
+    chrome.classList.toggle('pinnable', this._columns === 2 && this._manual && !!item && this._canPin(item))
+    chrome.classList.toggle('in-strip', stripped)
     handle.tabIndex = this._editing ? 0 : -1
     if (this._editing) chrome.removeAttribute('aria-hidden')
     else chrome.setAttribute('aria-hidden', 'true')
     const spec = this._spec(id)
-    chrome.classList.toggle('fixed', !spec || spec.sizes.length < 2)
+    // A strip tile is always its S variant, so there is nothing to resize.
+    chrome.classList.toggle('fixed', stripped || !spec || spec.sizes.length < 2)
     return chrome
   }
 
@@ -1535,18 +2068,21 @@ export class TsGrid extends Base {
    * moved node loses both, so the focused handle is refocused and the wiggle restarted.
    */
   _orderChromes(placements) {
-    const layer = this._chromeLayer
-    const want = visualOrder(placements).map((id) => this._chromes.get(id))
+    const ids = visualOrder(placements)
     const active = this.shadowRoot.activeElement
     const moved = []
-    for (let i = 0; i < want.length; i++) {
-      const at = layer.children[i]
-      if (at === want[i]) continue
-      if (typeof layer.moveBefore === 'function') layer.moveBefore(want[i], at || null)
-      else layer.insertBefore(want[i], at || null)
-      moved.push(want[i])
+    // The strip's chromes come first, as its tiles do.
+    for (const [layer, mine] of [[this._stripLayer, ids.filter((id) => this._inStrip(id))], [this._chromeLayer, ids.filter((id) => !this._inStrip(id))]]) {
+      const want = mine.map((id) => this._chromes.get(id))
+      for (let i = 0; i < want.length; i++) {
+        const at = layer.children[i]
+        if (at === want[i]) continue
+        if (typeof layer.moveBefore === 'function') layer.moveBefore(want[i], at || null)
+        else layer.insertBefore(want[i], at || null)
+        moved.push(want[i])
+      }
     }
-    if (!moved.length || typeof layer.moveBefore === 'function') return
+    if (!moved.length || typeof this._chromeLayer.moveBefore === 'function') return
     if (active && active.isConnected && this.shadowRoot.activeElement !== active) active.focus({ preventScroll: true })
     if (this._editing) for (const chrome of moved) if (!(this._gesture && this._gesture.id === chrome.dataset.id)) this._wiggle(chrome.dataset.id)
   }
@@ -1564,6 +2100,7 @@ export class TsGrid extends Base {
   }
 
   _dropChrome(id) {
+    if (this._badge.tile === id) this._badge.clear()
     this._unwiggle(id)
     const chrome = this._chromes.get(id)
     if (chrome) chrome.remove()
@@ -1571,7 +2108,7 @@ export class TsGrid extends Base {
   }
 
   _item(id) {
-    return this._order.find((item) => item.id === id)
+    return this._order.find((item) => item.id === id) || this._strip.find((item) => item.id === id)
   }
 
   _spec(id) {
@@ -1609,6 +2146,13 @@ export class TsGrid extends Base {
 
   _startEditing() {
     if (!this.isConnected) return
+    // Tiles are about to be handled: a crossfade in flight lands first, so nothing is left half-faded.
+    this._endFade()
+    // Read before the hint ends: hiding the card would drop focus to the body.
+    const onHint = !!this._coach && !!this.shadowRoot.activeElement && this._coach.el.contains(this.shadowRoot.activeElement)
+    // Edit mode ends the hint by whatever route it began, and the profile toast's Keep would change the board under a hand.
+    this._hintEnd('edit')
+    if (this._toastState && this._toastState.profile) this._hideToast(false)
     // Focus inside a tile would be dropped by inert; its handle is the same place in edit mode.
     const inside = document.activeElement && document.activeElement !== this && this.contains(document.activeElement) ? document.activeElement : null
     const focusId = inside && [...this._tiles].find(([, el]) => el.contains(inside))
@@ -1619,14 +2163,20 @@ export class TsGrid extends Base {
       this._wiggle(id)
     }
     if (focusId && this._chromes.has(focusId[0])) this._chromes.get(focusId[0]).querySelector('.handle').focus({ preventScroll: true })
+    else if (onHint) {
+      // Got it is about to be hidden; its tile's handle is where focus goes, never the body.
+      const first = this._chromes.get(visualOrder([...this._placements.values()])[0])
+      if (first) first.querySelector('.handle').focus({ preventScroll: true })
+    }
     document.addEventListener('keydown', this._onDocKeyDown)
     document.addEventListener('pointerdown', this._onDocPointerDown, true)
     this._syncControls()
-    this._announce(this.t('grid.editStart', {}, this._order.length))
+    this._announce(this.t('grid.editStart', {}, this._order.length + this._strip.length))
   }
 
   _stopEditing() {
     if (this._gesture) this._cancelGesture()
+    this._badge.clear()
     // Tiles can take focus again before it is returned, or the origin tile would refuse it.
     this._restoreInert()
     // The order the user made is the one read from here on.
@@ -1709,7 +2259,7 @@ export class TsGrid extends Base {
     this._editBtn.tabIndex = editing ? -1 : 0
     this._pill.hidden = !pillOn
     this._dock.classList.toggle('has-pill', pillOn)
-    const empty = this._rendered && !!this._m && this._order.length === 0
+    const empty = this._rendered && !!this._m && this._order.length + this._strip.length === 0
     this._emptyPanel.hidden = !empty
     const hidden = this.hiddenItems
     // With a picker linked, Add opens it (and it lists the hidden children first), so the Add back list isn't needed.
@@ -1756,6 +2306,7 @@ export class TsGrid extends Base {
         }
       }
     }
+    this._syncHint()
   }
 
   /** Open the linked picker, which returns focus to `opener` when it closes. */
@@ -1854,10 +2405,11 @@ export class TsGrid extends Base {
       if (node.getRootNode() === root) {
         if (node.classList.contains('remove')) return { kind: 'remove', id: node.parentElement.dataset.id }
         if (node.classList.contains('resize')) return { kind: 'resize', id: node.parentElement.dataset.id }
+        if (node.classList.contains('pin')) return { kind: 'pin', id: node.parentElement.dataset.id }
         if (node.classList.contains('handle')) return { kind: 'chrome', id: node.parentElement.dataset.id }
         // The empty panel sits inside the board, but its Add back button and list are controls: a press on them is not a tap on the bare board, which would end editing on pointerup and drop or move the click that opens the list.
         if (node.classList.contains('anchor')) return { kind: 'none' }
-        if (node === this._board) return { kind: 'board' }
+        if (node === this._board || node === this._stripEl) return { kind: 'board' }
       } else if (node.parentElement === this && node.hasAttribute('item')) {
         const id = node.getAttribute('item')
         return this._placements.has(id) ? { kind: 'tile', id } : { kind: 'none' }
@@ -1977,7 +2529,9 @@ export class TsGrid extends Base {
     const chrome = this._chromes.get(g.id)
     const box = this._boxes.get(g.id)
     if (!el || !chrome || !box) return this._end()
-    const rect = this._board.getBoundingClientRect()
+    // A strip tile is placed in the sticky strip, whose rect moves with the page not at all, so scrolling never shifts it.
+    g.strip = this._inStrip(g.id)
+    const rect = (g.strip ? this._stripEl : this._board).getBoundingClientRect()
     g.kind = 'drag'
     g.scroller = scrollParent(this)
     g.scroll0 = scrollPos(g.scroller)
@@ -1986,10 +2540,11 @@ export class TsGrid extends Base {
     g.offsetX = g.x - (rect.left + box.x)
     g.offsetY = g.y - (rect.top + box.y)
     g.from = this._order.slice()
+    g.fromStrip = this._strip.slice()
     g.pending = -1
     const item = this._item(g.id)
     const spec = this._spec(g.id)
-    g.cols = footprint(item.size, this._columns, spec ? spec.sizes : null, spec ? spec.phoneRows : null).cols
+    g.cols = g.strip ? 1 : footprint(item.size, this._columns, spec ? spec.sizes : null, spec ? spec.phoneRows : null).cols
     this.setAttribute('dragging', '')
     if (g.pointerType !== 'keyboard') {
       try {
@@ -2006,7 +2561,7 @@ export class TsGrid extends Base {
       chrome.querySelector('.handle').setAttribute('aria-pressed', 'true')
       chrome.classList.add('held')
     }
-    this._showPlaceholder(box, false)
+    this._showPlaceholder(box, false, g.id)
     if (navigator.vibrate) navigator.vibrate(8)
     if (g.pointerType !== 'keyboard') g.raf = requestAnimationFrame(this._frame)
   }
@@ -2022,15 +2577,18 @@ export class TsGrid extends Base {
     const dt = Math.min(50, now - (g.lastFrame || now)) / 1000
     g.lastFrame = now
     const step = MAX_SCROLL * dt
-    if (g.y < g.view.top + EDGE) scrollBy(g.scroller, -step * Math.min(1, (g.view.top + EDGE - g.y) / EDGE))
-    else if (g.y > g.view.bottom - EDGE) scrollBy(g.scroller, step * Math.min(1, (g.y - (g.view.bottom - EDGE)) / EDGE))
+    // The strip is stuck to the top of the view, so a drag in it never scrolls the page.
+    if (!g.strip) {
+      if (g.y < g.view.top + EDGE) scrollBy(g.scroller, -step * Math.min(1, (g.view.top + EDGE - g.y) / EDGE))
+      else if (g.y > g.view.bottom - EDGE) scrollBy(g.scroller, step * Math.min(1, (g.y - (g.view.bottom - EDGE)) / EDGE))
+    }
 
     const { x, y, target } = this._track(g)
     const translate = `${x}px ${y}px`
     this._tiles.get(g.id).style.translate = translate
     this._chromes.get(g.id).style.translate = translate
 
-    const current = this._order.findIndex((item) => item.id === g.id)
+    const current = this._zone(g.id).findIndex((item) => item.id === g.id)
     if (target === current) {
       clearTimeout(g.settle)
       g.pending = -1
@@ -2045,10 +2603,23 @@ export class TsGrid extends Base {
   /** Where the lifted tile is, relative to the board, and the slot under it. */
   _track(g) {
     const m = this._m
-    const scroll = scrollPos(g.scroller)
+    const scroll = g.strip ? g.scroll0 : scrollPos(g.scroller)
     const x = g.x - g.offsetX - (g.board0.left - (scroll.x - g.scroll0.x))
     const y = g.y - g.offsetY - (g.board0.top - (scroll.y - g.scroll0.y))
-    const target = dropIndex(this._order, g.id, cellAt(x, y, g.cols, m), this._columns, this._resolve, m.pitchX / m.pitchY)
+    if (g.strip) return { x, y, target: stripSlotAt(x, this._strip.length, m, { rtl: this._rtl }) }
+    // The slot under the tile depends on the whole cell it is over, the order and the column count, and every frame of
+    // a drag asks again whether or not the pointer crossed into another cell. The pointer's cell is floored to the
+    // cell it is in, as the drop slot always was (rounding moved touch drops), and asked again with the same cell the answer is the last one.
+    const at = cellAt(x, y, g.cols, m, { rtl: this._rtl })
+    const cell = { col: Math.floor(at.col), row: Math.floor(at.row) }
+    const memo = g.memo
+    let target
+    if (memo && memo.order === this._order && memo.columns === this._columns && memo.pitchX === m.pitchX && memo.pitchY === m.pitchY && memo.col === cell.col && memo.row === cell.row && memo.rtl === this._rtl) {
+      target = memo.target
+    } else {
+      target = dropIndex(this._order, g.id, cell, this._columns, this._resolve, m.pitchX / m.pitchY)
+      g.memo = { order: this._order, columns: this._columns, pitchX: m.pitchX, pitchY: m.pitchY, col: cell.col, row: cell.row, rtl: this._rtl, target }
+    }
     return { x, y, target }
   }
 
@@ -2056,9 +2627,9 @@ export class TsGrid extends Base {
   _reorder(g, index) {
     if (this._gesture !== g || index < 0) return
     g.pending = -1
-    this._order = moveItem(this._order, g.id, index)
+    this._setZone(g.id, moveItem(this._zone(g.id), g.id, index))
     this._render(true, g.kind === 'drag' ? g.id : undefined)
-    this._showPlaceholder(this._boxes.get(g.id), true)
+    this._showPlaceholder(this._boxes.get(g.id), true, g.id)
   }
 
   _drop(g, placed) {
@@ -2066,14 +2637,17 @@ export class TsGrid extends Base {
     // Release decides, even for a flick that ended before the slot settled.
     if (g.pointerType !== 'keyboard') {
       const { target } = this._track(g)
-      if (target !== this._order.findIndex((item) => item.id === g.id)) this._reorder(g, target)
+      if (target !== this._zone(g.id).findIndex((item) => item.id === g.id)) this._reorder(g, target)
     }
     this._settle(g)
-    const moved = !sameOrder(g.from, this._order)
-    if (moved) this._commit('move', g.id)
+    const moved = g.strip ? !sameOrder(g.fromStrip, this._strip) : !sameOrder(g.from, this._order)
+    if (moved) {
+      if (g.strip) this._commitStrip({ ...this._layout, topStrip: mergeStrip(this._layout.topStrip || [], this._strip.map((item) => item.id)) }, g.id, true)
+      else this._commit('move', g.id)
+    }
     const t = this.t
     const label = this._label(g.id)
-    const at = { label, position: this._position(g.id), total: this._order.length }
+    const at = { label, position: this._position(g.id), total: this._zone(g.id).length }
     if (g.pointerType !== 'keyboard') {
       if (moved) this._announce(t('grid.moved', at))
     } else if (placed && moved) {
@@ -2119,7 +2693,9 @@ export class TsGrid extends Base {
     if (!g) return
     if (g.kind === 'drag' || g.kind === 'resize') {
       clearTimeout(g.settle)
+      if (g.kind === 'resize') this._badge.clear()
       this._order = g.from
+      if (g.fromStrip) this._strip = g.fromStrip
       this._render(true, g.id)
       this._settle(g)
       if (g.pointerType === 'keyboard') this._announce(this.t('grid.cancelled', { label: this._label(g.id) }))
@@ -2128,14 +2704,24 @@ export class TsGrid extends Base {
     }
   }
 
-  _showPlaceholder(box, animate) {
-    const ph = this._placeholder
+  _showPlaceholder(box, animate, id) {
+    let ph = this._placeholder
+    if (id !== undefined && this._inStrip(id)) {
+      if (!this._stripPlaceholder) {
+        this._stripPlaceholder = document.createElement('div')
+        this._stripPlaceholder.className = 'placeholder'
+        this._stripPlaceholder.setAttribute('part', 'placeholder')
+        this._stripEl.insertBefore(this._stripPlaceholder, this._stripEl.firstChild)
+      }
+      ph = this._stripPlaceholder
+    }
     setBox(ph, box, animate && this._motion())
     ph.classList.add('on')
   }
 
   _hidePlaceholder() {
     this._placeholder.classList.remove('on')
+    if (this._stripPlaceholder) this._stripPlaceholder.classList.remove('on')
   }
 
   // ── Resizing ───────────────────────────────────────────────────────────
@@ -2182,13 +2768,18 @@ export class TsGrid extends Base {
     }
     const spec = this._spec(g.id)
     if (!spec) return
-    const w = Math.max(this._m.colWidth, g.box0.w + dx)
+    // The handle is bottom-left under rtl, so dragging left widens and the box's far edge stays put.
+    const w = Math.max(this._m.colWidth, g.box0.w + (this._rtl ? -dx : dx))
     const h = Math.max(this._m.rowHeight, g.box0.h + dy)
     // The outline stretches with the pointer; the tile snaps between sizes.
-    this._showPlaceholder({ x: g.box0.x, y: g.box0.y, w, h }, false)
-    const extent = extentOf(w, h, this._m)
+    this._showPlaceholder({ x: this._rtl ? g.box0.x + g.box0.w - w : g.box0.x, y: g.box0.y, w, h }, false)
+    const extent = extentOf(w, h, this._m, { rtl: this._rtl })
     const item = this._item(g.id)
     const size = sizeForExtent(spec, extent.cols, extent.rows, this._columns, item.size)
+    if (g.badged !== size) {
+      g.badged = size
+      this._badge.show(g.id, badgeText(this.t, size))
+    }
     if (size !== item.size) {
       this._order = resizeItem(this._order, g.id, size, this._resolve)
       this._render(true)
@@ -2220,6 +2811,11 @@ export class TsGrid extends Base {
       if (this._editing && this._placements.has(g.id)) this._wiggle(g.id)
     }, this._motion() ? 240 : 0)
     const size = this._item(g.id).size
+    // The last pointer-up starts the badge's second; a tap that stepped the size shows it too.
+    if (g.moved || size !== g.size0) {
+      this._badge.show(g.id, badgeText(this.t, size))
+      this._badge.release()
+    }
     if (size !== g.size0) {
       this._commit('resize', g.id)
       this._announce(this.t('grid.resized', { label: this._label(g.id), size }))
@@ -2247,6 +2843,7 @@ export class TsGrid extends Base {
       // Read now, not when the removal began: the user may have moved on during the fade.
       const hadFocus = chrome.contains(this.shadowRoot.activeElement)
       this._order = removeItem(this._order, id)
+      this._strip = removeItem(this._strip, id)
       el.style.display = 'none'
       this._dropChrome(id)
       this._placements.delete(id)
@@ -2255,10 +2852,11 @@ export class TsGrid extends Base {
       const previous = this._layout
       const list = this._profileItems()
       const index = list.findIndex((item) => item.id === id)
-      this._history.push(profile, previous)
+      const next = withProfile(previous, profile, removeItem(list, id))
+      this._record(profile, previous, next)
       // Children can't bring a removed tile back; only a restore can.
       this._removedFor(profile).add(id)
-      this._layout = withProfile(this._layout, profile, removeItem(list, id))
+      this._layout = next
       this._emit('ts-layout-change', { layout: this._layout, items: this._profileItems(), previous, profile, reason: 'remove', id, index, item: list[index] })
       this._syncControls()
       if (hadFocus) this._focusAfterRemove(near)
@@ -2291,13 +2889,25 @@ export class TsGrid extends Base {
 
   // ── The undo toast ─────────────────────────────────────────────────────
 
-  /** Show the toast; false when the host turned it off, so the caller announces instead. */
-  _showToast(text) {
+  /**
+   * Show the toast; false when the host turned it off, so the caller announces instead. `action` is the button's
+   * `label` and `run`; without it the button is Undo. `profile: true` is a scheduled switch: a labelled group, not a
+   * live region, because the status region has already said it.
+   */
+  _showToast(text, action) {
     if (this.getAttribute('undo-toast') === 'off') return false
     const toast = this._toast
     const wasOn = !!this._toastState
     if (this._toastState) clearTimeout(this._toastState.timer)
-    this._toastState = { remaining: TOAST_MS, started: 0, timer: 0, hover: false, focus: false }
+    const group = !!(action && action.profile)
+    this._toastState = { remaining: TOAST_MS, started: 0, timer: 0, hover: false, focus: false, profile: group }
+    this._toastRun = action ? action.run : null
+    this._toastWords = group ? action.words : null
+    this._toastUndo.textContent = action ? action.label : this.t('grid.undo')
+    // The role before the text, so the words are never put into a live region that is about to stop being one.
+    toast.setAttribute('role', group ? 'group' : 'status')
+    if (group) toast.setAttribute('aria-label', text)
+    else toast.removeAttribute('aria-label')
     this._toastText.textContent = text
     this._toastUndo.tabIndex = 0
     toast.classList.add('on')
@@ -2332,11 +2942,23 @@ export class TsGrid extends Base {
       toast.classList.remove('on')
       this._toastText.textContent = ''
       this._toastUndo.tabIndex = -1
+      // Back to what it is when idle: the status region the next removal's words are put into.
+      toast.setAttribute('role', 'status')
+      toast.removeAttribute('aria-label')
+      this._toastRun = null
+      this._toastUndo.textContent = this.t('grid.undo')
     }
     // Focus on the button would be lost with it; hand it back to the grid.
     if (this.shadowRoot.activeElement === this._toastUndo) this._toastUndo.blur()
     if (animate && this._motion() && toast.animate) toast.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: 'ease-in' }).finished.then(off, off)
     else off()
+  }
+
+  /** The toast's button: Keep for a profile switch, Undo otherwise. */
+  _toastPress() {
+    const run = this._toastRun
+    if (run) run()
+    else this._undoFromToast()
   }
 
   _undoFromToast() {
@@ -2394,7 +3016,9 @@ export class TsGrid extends Base {
     const held = this._heldId()
     // A pointer drag owns the tiles until it ends.
     if (this._gesture && !held) return
-    const action = keyAction(e.key, handle.parentElement.dataset.id, { held })
+    // The cells run right to left under rtl, so the arrows swap to keep ArrowRight moving a tile visually right.
+    const key = this._rtl ? { ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft' }[e.key] || e.key : e.key
+    const action = keyAction(key, handle.parentElement.dataset.id, { held })
     if (!action) return
     e.preventDefault()
     this._perform(action)
@@ -2430,15 +3054,22 @@ export class TsGrid extends Base {
       if (!g) this._resizeStep(id, a.dir)
     } else if (a.type === 'remove') {
       if (!g) this._remove(id)
+    } else if (a.type === 'togglePin') {
+      this._togglePin(id)
     }
   }
 
   /** Move the held tile to the target's slot and drop it there. */
   _placeAt(g, targetId) {
-    const to = this._order.findIndex((item) => item.id === targetId)
-    if (to < 0) return
-    if (to !== this._order.findIndex((item) => item.id === g.id)) {
-      this._order = moveItem(this._order, g.id, to)
+    const zone = this._zone(g.id)
+    const to = zone.findIndex((item) => item.id === targetId)
+    // The strip and the board are ordered apart: pin and unpin move a tile between them.
+    if (to < 0) {
+      if (this._item(targetId)) this._announce(this.t('grid.blocked'))
+      return
+    }
+    if (to !== zone.findIndex((item) => item.id === g.id)) {
+      this._setZone(g.id, moveItem(zone, g.id, to))
       this._render(true)
     }
     this._drop(g, true)
@@ -2447,7 +3078,7 @@ export class TsGrid extends Base {
 
   /** The resize button's click: a tap on it steps to the next size, wrapping, like the pointer's tap. */
   _resizeClick(id) {
-    if (!this._editing || this._gesture) return
+    if (!this._editing || this._gesture || this._inStrip(id)) return
     const spec = this._spec(id)
     const item = this._item(id)
     if (!spec || !item) return
@@ -2457,6 +3088,7 @@ export class TsGrid extends Base {
   }
 
   _resizeStep(id, dir) {
+    if (this._inStrip(id)) return
     const spec = this._spec(id)
     const item = this._item(id)
     if (!spec || !item) return
@@ -2465,7 +3097,11 @@ export class TsGrid extends Base {
 
   _applyResize(id, size) {
     const item = this._item(id)
-    if (!item || size === item.size) return
+    if (!item) return
+    // Also at the end of the range, where the key changes nothing but the badge still says where the tile stands.
+    this._badge.show(id, badgeText(this.t, size))
+    this._badge.release()
+    if (size === item.size) return
     this._order = resizeItem(this._order, id, size, this._resolve)
     this._render(true)
     this._commit('resize', id)
@@ -2487,6 +3123,7 @@ export class TsGrid extends Base {
 
   /** Move a held tile one cell, going further if that cell can't hold it. */
   _keyMove(g, dCol, dRow) {
+    if (g.strip) return this._keyMoveStrip(g, dCol, dRow)
     const p = this._placements.get(g.id)
     const current = this._order.findIndex((item) => item.id === g.id)
     const limit = Math.max(this._columns, this._order.length * 2)
@@ -2507,6 +3144,21 @@ export class TsGrid extends Base {
     this._announce(this.t('grid.blocked'))
   }
 
+  /** The strip is one row: left and right step along it, up and down have nowhere to go. */
+  _keyMoveStrip(g, dCol, dRow) {
+    const at = this._strip.findIndex((item) => item.id === g.id)
+    const to = at + dCol
+    if (dRow !== 0 || to < 0 || to >= this._strip.length) {
+      this._announce(this.t('grid.blocked'))
+      return
+    }
+    this._strip = moveItem(this._strip, g.id, to)
+    this._render(true)
+    this._showPlaceholder(this._boxes.get(g.id), true, g.id)
+    this._announce(this.t('grid.moved', { label: this._label(g.id), position: this._position(g.id), total: this._strip.length }))
+    this._reveal(g.id)
+  }
+
   // ── Output ─────────────────────────────────────────────────────────────
 
   _commit(reason, id) {
@@ -2517,8 +3169,10 @@ export class TsGrid extends Base {
     this._emit('ts-layout-change', { layout: this._layout, items, previous, profile: this.profile, reason, id })
   }
 
+  /** 1-based, among the strip's tiles or the board's. */
   _position(id) {
-    const sorted = [...this._placements.values()].sort((a, b) => a.row - b.row || a.col - b.col)
+    if (this._inStrip(id)) return this._strip.findIndex((item) => item.id === id) + 1
+    const sorted = [...this._placements.values()].filter((p) => p.row >= 0).sort((a, b) => a.row - b.row || a.col - b.col)
     return sorted.findIndex((p) => p.id === id) + 1
   }
 
@@ -2555,6 +3209,7 @@ export class TsGrid extends Base {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }))
   }
 }
+inertWhenBlocked(TsGrid, ['_link', '_unlink', '_announce'])
 
 /** Anything but the grid's own furniture: scripts, styles and the empty-board slot are never tiles. */
 function isTile(el) {

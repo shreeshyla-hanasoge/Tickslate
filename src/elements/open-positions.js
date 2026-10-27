@@ -165,7 +165,7 @@ ${PARTS_CSS}
 .sum > .f1 { flex: 1 1 0; }
 .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .scroll:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
-table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+table { inline-size: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--ts-text-md, max(12px, .75rem)); }
 thead th { padding: 0; border: 0; block-size: 0; line-height: 0; overflow: hidden; }
 th, td { box-sizing: border-box; padding: 7px 0 5px; text-align: start; vertical-align: top; font-weight: inherit; }
 /* Without a bar row, the row itself closes the position. */
@@ -174,12 +174,12 @@ tbody:last-of-type > tr:last-child > * { border-block-end: 0; }
 .br > td { padding: 2px 6px 9px; }
 tbody:last-of-type .br > td { padding-block-end: 2px; }
 .id { max-inline-size: 0; inline-size: 100%; overflow: hidden; }
-.sym { display: block; unicode-bidi: isolate; font-size: 13px; font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sub { display: flex; align-items: baseline; gap: 6px; min-inline-size: 0; font-size: 10px; color: var(--ts-muted); white-space: nowrap; }
+.sym { display: block; unicode-bidi: isolate; font-size: var(--ts-text-base, max(13px, .8125rem)); font-weight: 600; color: var(--ts-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub { display: flex; align-items: baseline; gap: 6px; min-inline-size: 0; font-size: var(--ts-text-xs, max(10px, .625rem)); color: var(--ts-muted); white-space: nowrap; }
 .sub > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .side { font-weight: var(--ts-label-weight, 600); text-transform: var(--ts-label-case, uppercase); letter-spacing: var(--ts-label-tracking, .12em); color: var(--ts-ink); }
 .side:empty, .sub:empty { display: none; }
-.last, .pnl { text-align: end; white-space: nowrap; font-size: 13px; padding-inline-start: 10px; }
+.last, .pnl { text-align: end; white-space: nowrap; font-size: var(--ts-text-base, max(13px, .8125rem)); padding-inline-start: 10px; }
 .pnl { font-weight: var(--ts-num-weight, 500); }
 .act { text-align: end; padding-inline-start: 10px; vertical-align: middle; }
 .act .btn { min-block-size: 28px; white-space: nowrap; }

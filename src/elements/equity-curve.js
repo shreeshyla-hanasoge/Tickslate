@@ -14,6 +14,7 @@
 
 import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { linePath, linePaths, bandPath } from './chart.js'
+import { Scrubber, SCRUB_CSS, lineScrub, scrubMarkup } from './scrub.js'
 import { EN, equitySeries, equityStats, toDay, toNumber } from '../core/index.js'
 
 export const RANGES = ['1W', '1M', '3M', 'YTD', 'All']
@@ -170,6 +171,24 @@ export function equityCurveModel(data, variant, ctx) {
 
   const points = series.map((s, i) => ({ x: i, y: s.equity }))
   const geo = linePaths(points, { width, height })
+  // What the scrubber reads (RFC 0004 §1.2): the drawn points as numbers. x is the trading-day index, so a day's own
+  // result is its equity less the day before's, whichever points the drawing thinned out.
+  let scrub = null
+  if (n > 1) {
+    const labels = geo.drawn.map((p) => series[p.x].date)
+    scrub = lineScrub(
+      'day',
+      { width, height, pad: 4 },
+      geo.drawn,
+      geo.x,
+      geo.y,
+      [
+        { name: t('chart.scrubEquity'), ys: (p) => p.y, mark: true },
+        { name: t('chart.scrubDay'), ys: (p) => p.y - (p.x > 0 ? series[p.x - 1].equity : 0) },
+      ],
+      { labels },
+    )
+  }
   let peakLine = ''
   let band = ''
   if (v === 'XL' && n > 1) {
@@ -205,6 +224,8 @@ export function equityCurveModel(data, variant, ctx) {
     // The short word fits Wide's 170px column; a host's own label is used as given.
     label: v === 'Wide' ? t('equity.wide', { label: label === t('widget.equityCurve.label') ? t('equity.short') : label, days: dayWord }) : label,
     headline,
+    // The full figure, for the pointer, when fit() made the headline compact (RFC 0004 §1.5).
+    headlineTitle: headline !== net ? net : '',
     // ▲ or ▼ beside each coloured figure, read from the sign the reader sees (RFC 0003 §5.5).
     headlineArrow: arrowFor(headline),
     net,
@@ -226,6 +247,7 @@ export function equityCurveModel(data, variant, ctx) {
     axis,
     chart: { width, height, line: geo.line, area: geo.area, zeroY: geo.zeroY, peakLine, band },
     chartLabel,
+    scrub,
     netNum: stats.net,
     ariaLabel: empty ? t('equity.ariaEmpty', { label }) : t('equity.aria', { label, net, days: tradingDays }),
   }
@@ -238,7 +260,7 @@ const k = (name) => `[data-k="${name}"]`
 function chartMarkup(v) {
   const [w, h] = DIMS[v]
   const xl = v === 'XL'
-  return `<div class="plot" part="chart">
+  return `<div class="plot sc" part="chart" data-k="plot">
 <svg data-k="svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="">
 <defs><clipPath id="cu"><rect data-k="clipUp" x="0" y="0" width="${w}" height="0"></rect></clipPath><clipPath id="cd"><rect data-k="clipDn" x="0" y="0" width="${w}" height="0"></rect></clipPath></defs>
 ${xl ? '<path class="dd" data-k="band" d=""></path>' : ''}
@@ -247,6 +269,7 @@ ${xl ? '<path class="lz" data-k="peakLine" fill="none" d=""></path>' : '<path cl
 <path class="lp" data-k="lineUp" d="" clip-path="url(#cu)"></path><path class="ln" data-k="lineDn" d="" clip-path="url(#cd)"></path>
 </svg>
 <div class="empty" part="empty" data-k="empty" hidden></div>
+${scrubMarkup(1, 2)}
 </div>`
 }
 
@@ -278,7 +301,13 @@ export class TsEquityCurve extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `${FIGURE_CSS}
+  // Density and text size (RFC 0004 §2), kept out of the stylesheet because a comment in it ships to every page:
+  // - The side column and the rail have a min-width, not a width, so a figure that grows (letter spacing, a larger root font
+  //   size) widens its column instead of running into the chart or past the tile. The side's header and note are inline-size
+  //   contained, so only the figure counts and a long label still ellipsizes.
+  // - A compact two-row tile is 14rem of content, 3rem short of a comfortable one (17rem), so at 15rem and below the rail's
+  //   four stats give up their note and tighten before the last one is cut.
+  static styles = `${FIGURE_CSS}${SCRUB_CSS}
 [hidden] { display: none !important; }
 .rowl { flex: 1; min-height: 0; display: flex; flex-direction: row; align-items: stretch; gap: 20px; }
 .rowl.xl { gap: 24px; }
@@ -287,20 +316,22 @@ export class TsEquityCurve extends TsWidget {
 .ax > span { unicode-bidi: plaintext; }
 .plot { position: relative; flex: 1; min-height: 0; min-width: 0; }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.plot .empty { position: absolute; inset: 0; font-size: 12px; unicode-bidi: plaintext; }
+.plot .empty { position: absolute; inset: 0; font-size: var(--ts-text-md, max(12px, .75rem)); unicode-bidi: plaintext; }
 .plot .sk { position: absolute; inset: 0; width: auto; }
 .dd { fill: color-mix(in srgb, var(--ts-loss) 22%, transparent); }
-.side { width: 170px; flex: none; justify-content: space-between; }
+.side { min-width: 170px; flex: none; justify-content: space-between; }
+.side > .hd, .side > .sec { contain: inline-size; }
 .chartcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .rng { gap: 4px; }
-.rail { width: 220px; flex: none; gap: 16px; }
+.rail { min-width: 220px; flex: none; gap: 16px; }
 .rail.sep { border-top: 0; border-inline-start: 1px solid var(--ts-line); padding-inline-start: 24px; }
 .stats { padding-block-start: 10px; }
 /* The net figure and its arrow fill the Wide side column: 10 characters of a monospace face (0.6em each) and the arrow
    (0.4em) are 6.4em. A narrow tile keeps the 170px column and sizes the figure to it; a roomy one widens the column and
-   keeps the 34px headline. The size is in px because the column's width is, and the figure never wraps or clips. */
-.side .big { font-size: 26px; }
-@container (min-width: 420px) { .side { width: 220px; } .side .big { font-size: 34px; } }
+   keeps the 34px headline. The column is a minimum, so a larger figure widens it, and the figure never wraps or clips. */
+.side .big { font-size: var(--ts-text-3xl, max(26px, 1.625rem)); }
+@container ts-tile (max-height: 15rem) { .rail { gap: 6px; } .shd { display: none; } }
+@container (min-width: 420px) { .side { min-width: 220px; } .side .big { font-size: var(--ts-text-big, max(34px, 2.125rem)); } }
 `
 
   static get observedAttributes() {
@@ -310,7 +341,7 @@ export class TsEquityCurve extends TsWidget {
   static template(variant) {
     if (variant === 'Wide') {
       return `<div class="rowl">
-<div class="col side">${header({ dot: true, meta: true })}${figure('big', 'net', 'value')}<span class="sm mut" data-k="peakNote"></span></div>
+<div class="col side">${header({ dot: true, meta: true })}${figure('big', 'net', 'value')}<span class="sm mut sec" data-k="peakNote"></span></div>
 ${chartMarkup('Wide')}
 </div>`
     }
@@ -319,20 +350,20 @@ ${chartMarkup('Wide')}
 <div class="chartcol">
 ${header({ dot: true, meta: true, extra: rangeButtons() })}
 ${chartMarkup('XL')}
-<div class="row sm mut ax"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span><span class="f1"></span><span data-k="ax2"></span></div>
+<div class="row sm mut ax ter"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span><span class="f1"></span><span data-k="ax2"></span></div>
 </div>
 <div class="col sep rail">
 <div class="col"><span class="lb" data-k="lbNet"></span>${figure('big', 'net', 'value')}</div>
 <div class="col cell"><span class="lb" data-k="lbPeak"></span>${figure('n md', 'peak')}</div>
-<div class="col cell"><span class="lb" data-k="lbDrawdown"></span>${figure('n md', 'maxDrawdown')}<span class="sm mut" data-k="shaded"></span></div>
+<div class="col cell"><span class="lb" data-k="lbDrawdown"></span>${figure('n md', 'maxDrawdown')}<span class="sm mut shd" data-k="shaded"></span></div>
 <div class="col"><span class="lb" data-k="lbDays"></span><span class="n md" data-k="daysLine"></span></div>
 </div>
 </div>`
     }
     return `${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="fees" hidden></span>' })}
-<div class="rowb">${figure('big', 'net', 'value')}<span class="sm mut" data-k="sub"></span></div>
+<div class="rowb">${figure('big', 'net', 'value')}<span class="sm mut sec" data-k="sub"></span></div>
 ${chartMarkup('M')}
-<div class="row sm mut ax"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span></div>
+<div class="row sm mut ax ter"><span data-k="ax0"></span><span class="f1"></span><span data-k="ax1"></span></div>
 <div class="g3 sep stats">
 <div class="col cell"><span class="lb" data-k="lbPeak"></span>${figure('n md', 'peak')}</div>
 <div class="col cell"><span class="lb" data-k="lbDrawdown"></span>${figure('n md', 'maxDrawdown')}</div>
@@ -365,6 +396,7 @@ ${chartMarkup('M')}
 
   constructor() {
     super()
+    this._scrubber = new Scrubber(this)
     // One listener on the tile: the buttons are rebuilt when the variant changes.
     this._section.addEventListener('click', (e) => {
       const button = e.target && e.target.closest ? e.target.closest('button[data-range]') : null
@@ -405,6 +437,8 @@ ${chartMarkup('M')}
     }
     text('label', vm.label)
     fig('net', 'big', vm.headline, vm.headlineArrow, vm.netClass)
+    // The title goes on the headline value (part="value"), so the tooltip is over the number alone (RFC 0004 §1.5).
+    this._setAttr(this.$(k('net')), 'title', vm.headlineTitle || null)
     this.flash('net', vm.netNum)
     text('empty', t('equity.noDays'))
 
@@ -463,5 +497,6 @@ ${chartMarkup('M')}
       attr('areaUp', 'd', c.area)
       attr('areaDn', 'd', c.area)
     }
+    this._scrubber?.sync(vm.scrub, vm.ariaLabel)
   }
 }

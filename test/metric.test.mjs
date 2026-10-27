@@ -467,3 +467,39 @@ describe('metricModel valueNum', () => {
     assert.ok(Number.isNaN(model({ value: 'n/a' }).valueNum))
   })
 })
+
+describe('the full headline as a title (RFC 0004 §1.5)', () => {
+  const de = createFormatter({ locale: 'de-DE', currency: 'EUR', timeZone: 'Europe/Berlin' })
+  const modelIn = (f, data, variant = 'S') => metricModel(data, variant, { ...ctx, fmt: f })
+
+  test('is empty for a figure that fits', () => {
+    assert.equal(model({ value: 1204 }).valueTitle, '')
+    assert.equal(model({ value: 1204, format: 'money' }).valueTitle, '')
+    assert.equal(model({ value: 1204 }, 'M').valueTitle, '')
+  })
+
+  test('is the full figure where fit() made the S headline compact', () => {
+    const vm = model({ value: 1234567890, format: 'money' })
+    assert.equal(vm.value, '$1.2B')
+    assert.equal(vm.valueTitle, '$1,234,567,890.00')
+    assert.equal(model({ value: 1234567890 }).valueTitle, '1,234,567,890')
+    assert.equal(model({ value: -0.123456789, format: 'percent', decimals: 9 }).valueTitle, '−12.345678900%', 'with the decimals the host set')
+  })
+
+  test('follows the locale', () => {
+    assert.match(modelIn(de, { value: 1234567890, format: 'money' }).valueTitle, /^1\.234\.567\.890,00\s€$/)
+    assert.equal(modelIn(de, { value: 1234567890 }).valueTitle, '1.234.567.890')
+  })
+
+  test('Wide and M keep the figure whole, so they have no title', () => {
+    for (const v of ['Wide', 'M']) assert.equal(model({ value: 1234567890 }, v).valueTitle, '')
+  })
+
+  test('the accessible name never compacts, even where the host asked for a compact headline', () => {
+    const vm = model({ value: 1234567, compact: true })
+    assert.equal(vm.value, '1.2M')
+    assert.equal(vm.valueTitle, '1,234,567')
+    assert.equal(vm.ariaLabel, 'Signups, 1,234,567')
+    for (const v of ['S', 'Wide', 'M']) assert.ok(!model({ value: 1234567890, format: 'money' }, v).ariaLabel.includes('B'), v)
+  })
+})

@@ -4,6 +4,7 @@
 // covers what a browser makes of them.
 import { test, expect } from '@playwright/test'
 import { SIZES } from '../../src/core/index.js'
+import { drawn } from './drawn.mjs'
 
 const PAGE = '/test/browser/fixtures/widgets.html'
 
@@ -18,6 +19,7 @@ function guard(page, errors) {
 async function open(page, query = '') {
   await page.goto(`${PAGE}?theme=light${query}`)
   await page.waitForFunction(() => window.__ready === true)
+  await drawn(page)
   await page.evaluate((sizes) => {
     for (const el of window.__fx.tiles.values()) {
       const { cols } = sizes[el.dataset.size]
@@ -372,6 +374,7 @@ test.describe('signed figures on a phone', () => {
         guard(page, errors)
         await page.goto(`${PAGE}?theme=${theme}&preset=${preset}`)
         await page.waitForFunction(() => window.__ready === true)
+        await drawn(page)
         const found = await page.evaluate(async ({ tiles, phone }) => {
           const out = []
           for (const key of tiles) {

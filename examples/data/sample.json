@@ -1,0 +1,165 @@
+{
+  "layout": [
+    {
+      "id": "metric",
+      "size": "Wide"
+    },
+    {
+      "id": "progress",
+      "size": "Wide"
+    },
+    {
+      "id": "chart",
+      "size": "M"
+    },
+    {
+      "id": "table",
+      "size": "M"
+    }
+  ],
+  "data": {
+    "metric": {
+      "value": 4820,
+      "previous": 4510,
+      "compareLabel": "vs last week",
+      "series": [
+        4210,
+        4290,
+        4180,
+        4350,
+        4410,
+        4390,
+        4520,
+        4610,
+        4570,
+        4700,
+        4760,
+        4820
+      ],
+      "target": 6000,
+      "caption": "Target 6,000 signups"
+    },
+    "chart": {
+      "xType": "time",
+      "series": [
+        {
+          "name": "Requests per minute",
+          "kind": "area",
+          "points": [
+            {
+              "x": "2026-10-12",
+              "y": 310
+            },
+            {
+              "x": "2026-10-13",
+              "y": 325
+            },
+            {
+              "x": "2026-10-14",
+              "y": 318
+            },
+            {
+              "x": "2026-10-15",
+              "y": 340
+            },
+            {
+              "x": "2026-10-16",
+              "y": 352
+            },
+            {
+              "x": "2026-10-17",
+              "y": 349
+            },
+            {
+              "x": "2026-10-18",
+              "y": 361
+            },
+            {
+              "x": "2026-10-19",
+              "y": 372
+            },
+            {
+              "x": "2026-10-20",
+              "y": 368
+            },
+            {
+              "x": "2026-10-21",
+              "y": 385
+            },
+            {
+              "x": "2026-10-22",
+              "y": 391
+            },
+            {
+              "x": "2026-10-23",
+              "y": 388
+            },
+            {
+              "x": "2026-10-24",
+              "y": 402
+            },
+            {
+              "x": "2026-10-25",
+              "y": 410
+            }
+          ]
+        }
+      ]
+    },
+    "progress": {
+      "value": 68,
+      "target": 100,
+      "unit": " GB",
+      "caption": "Storage used this month"
+    },
+    "table": {
+      "columns": [
+        {
+          "key": "name",
+          "label": "Region"
+        },
+        {
+          "key": "latency",
+          "label": "p95 ms",
+          "format": "number"
+        },
+        {
+          "key": "errors",
+          "label": "Errors",
+          "format": "percent",
+          "decimals": 2
+        }
+      ],
+      "rows": [
+        {
+          "id": "eu",
+          "name": "Frankfurt",
+          "latency": 182,
+          "errors": 0.0031
+        },
+        {
+          "id": "us",
+          "name": "Virginia",
+          "latency": 141,
+          "errors": 0.0018
+        },
+        {
+          "id": "ap",
+          "name": "Singapore",
+          "latency": 236,
+          "errors": 0.0052
+        },
+        {
+          "id": "sa",
+          "name": "Sao Paulo",
+          "latency": 274,
+          "errors": 0.0044
+        }
+      ],
+      "sort": {
+        "key": "latency",
+        "dir": "desc"
+      }
+    }
+  }
+}

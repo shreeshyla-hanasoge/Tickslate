@@ -15,7 +15,8 @@ describe('EN', () => {
   test('is frozen, with flat dotted keys whose values are text', () => {
     assert.ok(Object.isFrozen(EN))
     for (const [key, value] of Object.entries(EN)) {
-      assert.match(key, /^[a-z]+(\.[A-Za-z0-9]+)+$/, key)
+      // The family may be camelCase (miniChart.*, RFC 0004 §6.6), as the segments after it already are.
+      assert.match(key, /^[a-zA-Z]+(\.[A-Za-z0-9]+)+$/, key)
       assert.equal(typeof value, 'string', key)
       assert.ok(value.length > 0, key)
     }
@@ -280,6 +281,16 @@ describe('layers merge as strings only', () => {
     assert.notEqual(translator(cfg, null, own, 'en'), translator(cfg, null, { ...own }, 'en'))
     assert.notEqual(translator(cfg, null, own, 'en'), translator(cfg, own, null, 'en'))
     assert.equal(translator(null, null, null, 'en'), translator(undefined, undefined, undefined, 'en'))
+  })
+
+  test('a widget\'s defaults are one more layer of the key: same table, same function; no table, the plain one', () => {
+    const defaults = Object.freeze({ 'acme.x': 'default' })
+    assert.equal(translator(null, null, null, 'en', defaults), translator(null, null, null, 'en', defaults))
+    assert.notEqual(translator(null, null, null, 'en', defaults), translator(null, null, null, 'en'))
+    assert.notEqual(translator(null, null, null, 'en', defaults), translator(null, null, null, 'en', { ...defaults }))
+    assert.equal(translator(null, null, null, 'en', undefined), translator(null, null, null, 'en'))
+    assert.equal(translator(null, null, null, 'en', defaults)('acme.x'), 'default')
+    assert.equal(translator({ 'acme.x': 'host' }, null, null, 'en', defaults)('acme.x'), 'host')
   })
 })
 
@@ -671,7 +682,7 @@ describe('every widget and the grid, in the pseudo-locale', () => {
       g._order = [{ id: 'pnl', type: 'todayPnl', size: 'M' }]
       g._chrome('pnl')
       const names = stringsOf(...g._chromes.values())
-      assert.equal(names.length, 3)
+      assert.equal(names.length, 4)
       for (const text of names) assert.equal(leaks(text), '', text)
       // No label attribute and the catalog entry's English default: the message wins.
       assert.ok(names.every((s) => s.includes("⟦Today's P&L⟧") || s.includes('⟦')), JSON.stringify(names))
@@ -685,7 +696,7 @@ describe('every widget and the grid, in the pseudo-locale', () => {
       const calls = [...source.matchAll(/_(?:announce|showToast)\((.*)\)/g)].map((m) => m[1])
       assert.ok(calls.length >= 12, `found ${calls.length}`)
       for (const arg of calls) {
-        if (arg === 'text' || arg === 'message' || arg === 'said') continue // the methods' own parameters
+        if (arg === 'text' || arg === 'text, action' || arg === 'message' || arg === 'said') continue // the methods' own parameters
         assert.match(arg, /^(this\.)?t\(/, arg)
       }
     })
@@ -1160,7 +1171,7 @@ describe('a grid tells the widgets under it', () => {
 
 describe('the source', () => {
   const files = readdirSync(new URL('../src/elements/', import.meta.url)).filter((f) => f.endsWith('.js'))
-  const FAMILY = /^(widget|action|size|time|grid|pnl|equity|session|metric|chart|table|progress|funding|calendar|edge|watchlist|positions|picker|controls|list|category)\./
+  const FAMILY = /^(widget|action|size|time|grid|pnl|equity|session|metric|chart|table|progress|funding|calendar|edge|watchlist|positions|picker|controls|list|category|miniChart|breakdown|status|feed)\./
 
   // Every string literal in the elements' source that is shaped like a key of one of the families, in single or double quotes or backticks.
   // A template literal with a ${…} in it is not a literal key; those are covered below, from the lists they are built from.

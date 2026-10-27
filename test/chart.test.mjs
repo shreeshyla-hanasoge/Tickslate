@@ -1,6 +1,10 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths } from '../src/elements/chart.js'
+import { todayPnlModel, CHART_BOX } from '../src/elements/today-pnl.js'
+import { createFormatter, createMessages } from '../src/core/index.js'
+import { resetWarnings } from '../src/elements/dev.js'
+import { readsOf } from './ops.mjs'
+import { downsample, scale, linePath, linePaths, bandPath, seriesDomain, areaPaths, bandScale, bandGeometry, barPaths, nearestPoint, plotFraction } from '../src/elements/chart.js'
 
 describe('scale', () => {
   test('maps linearly, including to a reversed range', () => {
@@ -113,7 +117,8 @@ describe('large inputs', () => {
     // 7919 is coprime with 2001, so the values visit every whole number from
     // -1000 to 1000 and the extremes are known without scanning.
     const points = Array.from({ length: n }, (_, i) => ({ x: i, y: ((i * 7919) % 2001) - 1000 }))
-    const { line, area, zeroY } = linePaths(points, { width: 900, height: 220, pad: 4 })
+    // Downsampling is off here: this test is about the full series reaching the line.
+    const { line, area, zeroY } = linePaths(points, { width: 900, height: 220, pad: 4, maxPoints: Infinity })
     const drawn = line.slice(1).split(' L').map((p) => p.split(' ').map(Number))
     assert.equal(drawn.length, n)
     // The first point is the lowest value, at the left edge; the last is at the right.
@@ -312,5 +317,324 @@ describe('barPaths minimums and boxes', () => {
   test('a runaway band count lists a bounded number of centres and does not throw', () => {
     const r = barPaths([[{ x: 0, y: 1 }]], { ...box, categories: 1e9, yDomain: [0, 1] })
     assert.ok(r.centres.length <= 1024)
+  })
+})
+
+describe('downsampling (RFC 0003 §23)', () => {
+  // Made-up readings: a slow wave with a one-reading spike and a one-reading dip that a pixel could hide.
+  const wave = (n) => Array.from({ length: n }, (_, i) => ({ x: i, y: Math.round(Math.sin(i / 500) * 300) }))
+  const series = wave(50000)
+  series[12345] = { x: 12345, y: 999 }
+  series[40001] = { x: 40001, y: -777 }
+  const points = (line) => line.slice(1).split(' L').map((p) => p.split(' ').map(Number))
+
+  test('keeps at most 2 × the viewBox width by default', () => {
+    const { line } = linePaths(series, { width: 375, height: 100, pad: 4 })
+    const drawn = points(line)
+    assert.ok(drawn.length <= 750, `${drawn.length} points`)
+    assert.ok(drawn.length > 700, 'and uses the budget, not a fraction of it')
+  })
+
+  test('maxPoints sets the limit, and Infinity turns downsampling off', () => {
+    assert.ok(points(linePaths(series, { width: 375, height: 100, maxPoints: 100 }).line).length <= 100)
+    assert.equal(points(linePaths(series, { width: 375, height: 100, maxPoints: Infinity }).line).length, 50000)
+    assert.equal(linePaths(series, { width: 375, height: 100, maxPoints: 100 }).line.length < linePaths(series, { width: 375, height: 100, maxPoints: Infinity }).line.length, true)
+  })
+
+  test('a series within the limit is drawn point for point', () => {
+    const few = wave(600)
+    const a = linePaths(few, { width: 375, height: 100 })
+    const b = linePaths(few, { width: 375, height: 100, maxPoints: Infinity })
+    assert.equal(a.line, b.line)
+    assert.equal(a.area, b.area)
+  })
+
+  test('the low, the high and the last value are exact, and the scales are the full series’', () => {
+    const full = linePaths(series, { width: 375, height: 100, maxPoints: Infinity })
+    const thin = linePaths(series, { width: 375, height: 100 })
+    const drawn = points(thin.line)
+    const ys = drawn.map(([, y]) => y)
+    // Higher values are higher on screen, so the spike is the smallest y and the dip the largest.
+    assert.equal(Math.min(...ys), Math.min(...points(full.line).map(([, y]) => y)))
+    assert.equal(Math.max(...ys), Math.max(...points(full.line).map(([, y]) => y)))
+    assert.equal(drawn[0][0], 4)
+    assert.deepEqual(drawn[drawn.length - 1], points(full.line).pop())
+    assert.equal(thin.zeroY, full.zeroY)
+    assert.equal(thin.y(999), full.y(999))
+    assert.ok(thin.area.startsWith(thin.line))
+  })
+
+  test('downsample keeps the first and last points and each run’s extremes in order', () => {
+    const pts = [5, 1, 9, 2, 8, 3, 7, 4, 6, 0].map((y, x) => ({ x, y }))
+    // Four points: the first, the last and the one run's low and high.
+    const out = downsample(pts, 4)
+    assert.deepEqual(out.map((p) => p.x), [0, 1, 2, 9])
+    assert.equal(out.length, 4)
+    // The run's low (y 1, x 1) comes before its high (y 9, x 2) because x 1 came first.
+    assert.deepEqual(out.slice(1, 3).map((p) => p.y), [1, 9])
+  })
+
+  test('downsample hands back the input when nothing needs cutting, and never exceeds the limit', () => {
+    const few = wave(10)
+    assert.equal(downsample(few, 10), few)
+    assert.equal(downsample(few, Infinity), few)
+    for (const max of [2, 3, 4, 5, 7, 20, 99]) {
+      const out = downsample(series, max)
+      assert.ok(out.length <= Math.max(2, max), `${out.length} for ${max}`)
+      assert.equal(out[0], series[0])
+      assert.equal(out[out.length - 1], series[series.length - 1])
+    }
+  })
+
+  test('flat and equal readings do not break the buckets', () => {
+    const flat = Array.from({ length: 5000 }, (_, i) => ({ x: i, y: 7 }))
+    const out = downsample(flat, 100)
+    assert.ok(out.length <= 100 && out.length >= 3)
+  })
+
+  // Readings whose fields count every read, so a test can say how much work a long series costs without a clock: time
+  // under load says nothing about the algorithm (a bound of 100 ms failed once at 133 ms on a busy runner).
+  const counted = (n, make) => {
+    const reads = { n: 0 }
+    const list = Array.from({ length: n }, (_, i) => {
+      const v = make(i)
+      const o = {}
+      for (const key of Object.keys(v)) Object.defineProperty(o, key, { enumerable: true, get: () => (reads.n++, v[key]) })
+      return o
+    })
+    return { list, reads }
+  }
+
+  test('a long series is read a bounded number of times per reading, and draws at most 2 × the width', () => {
+    const wave = (i) => ({ x: i, y: Math.sin(i / 9000) * 900 + ((i * 7919) % 101) })
+    // The cost is linear: ten times the readings is about ten times the reads, so nothing in the thinning is quadratic.
+    const reads = []
+    for (const n of [5000, 50000]) {
+      const { list, reads: r } = counted(n, wave)
+      const drawn = linePaths(list, { width: 375, height: 100, pad: 4 })
+      assert.ok(points(drawn.line).length <= 750, `${points(drawn.line).length} points`)
+      assert.ok(r.n <= 20 * n, `${r.n} reads for ${n} readings`)
+      reads.push(r.n / n)
+    }
+    assert.ok(reads[1] <= reads[0] * 1.5, `reads per reading grew from ${reads[0]} to ${reads[1]}`)
+    // Asked for every point, it draws every point.
+    const { list } = counted(3000, wave)
+    assert.equal(points(linePaths(list, { width: 375, height: 100, pad: 4, maxPoints: Infinity }).line).length, 3000)
+  })
+
+  test("Today's P&L reads a long series a bounded number of times per reading, drawing at most 2 × the box width", () => {
+    const fmt = createFormatter({ locale: 'en-IN', currency: 'INR', timeZone: 'Asia/Kolkata' })
+    const ctx = { fmt, t: createMessages(), now: 0, label: "Today's P&L" }
+    const from = Date.UTC(2026, 2, 2, 3, 45)
+    const perReading = []
+    let vm
+    let intraday
+    for (const n of [5000, 50000]) {
+      const made = counted(n, (i) => ({ t: from + i * 40, v: Math.round(Math.sin(i / 9000) * 900 + ((i * 7919) % 101)) }))
+      intraday = made.list
+      const data = { net: 1200, intraday, window: { from, to: from + n * 40 }, live: true }
+      vm = todayPnlModel(data, 'M', ctx)
+      assert.ok(made.reads.n <= 40 * n, `${made.reads.n} reads for ${n} readings`)
+      perReading.push(made.reads.n / n)
+    }
+    assert.ok(perReading[1] <= perReading[0] * 1.5, `reads per reading grew from ${perReading[0]} to ${perReading[1]}`)
+    const drawn = points(vm.chart.line)
+    assert.ok(drawn.length <= 2 * CHART_BOX.width && drawn.length > CHART_BOX.width, `${drawn.length} points`)
+    assert.equal(vm.dropped, 0)
+    // The label states the day's true low and the last reading, whatever was cut from the drawing.
+    let low = Infinity
+    for (const r of intraday) low = Math.min(low, r.v)
+    assert.ok(vm.chart.ariaLabel.includes(fmt.money(low, { decimals: 0 })))
+  })
+})
+
+describe('maxPoints edge cases (RFC 0003 §23)', () => {
+  const pts = Array.from({ length: 2000 }, (_, i) => ({ x: i, y: i === 700 ? 500 : i === 1300 ? -400 : Math.round(Math.sin(i / 90) * 100) }))
+  const drawn = (opts) => linePaths(pts, { width: 300, height: 100, pad: 4, ...opts }).line.slice(1).split(' L').map((p) => p.split(' ').map(Number))
+  const every = drawn({ maxPoints: Infinity })
+
+  test('null means the default, as an unset option from a JSON host', () => {
+    assert.equal(linePaths(pts, { width: 300, height: 100, maxPoints: null }).line, linePaths(pts, { width: 300, height: 100 }).line)
+    assert.ok(drawn({ maxPoints: null }).length > 4)
+  })
+
+  test('a cap below four, and a zero width, floor at four points that keep the low and the high', () => {
+    const warn = console.warn
+    console.warn = () => {}
+    try {
+      const ys = every.map(([, y]) => y)
+      for (const maxPoints of [0, 1, 2, 3, -5, -Infinity]) {
+        const d = drawn({ maxPoints })
+        assert.equal(d.length, 4, `maxPoints ${maxPoints}`)
+        assert.deepEqual(d[0], every[0])
+        assert.deepEqual(d[3], every[every.length - 1])
+        assert.equal(Math.min(...d.map(([, y]) => y)), Math.min(...ys))
+        assert.equal(Math.max(...d.map(([, y]) => y)), Math.max(...ys))
+      }
+      assert.equal(linePaths(pts, { width: 0, height: 100 }).line.split(' L').length, 4)
+    } finally {
+      console.warn = warn
+    }
+  })
+
+  test('a cap below four warns once in development; null, NaN, the default and Infinity do not', () => {
+    const warn = console.warn
+    const seen = []
+    console.warn = (m) => seen.push(m)
+    try {
+      resetWarnings()
+      drawn({ maxPoints: null })
+      drawn({ maxPoints: NaN })
+      drawn({ maxPoints: Infinity })
+      drawn({})
+      linePaths(pts, { width: 0, height: 100 })
+      assert.deepEqual(seen, [])
+      drawn({ maxPoints: 2 })
+      drawn({ maxPoints: 0 })
+      assert.equal(seen.length, 1)
+      assert.match(seen[0], /maxPoints is 2.*at least 4/)
+    } finally {
+      console.warn = warn
+      resetWarnings()
+    }
+  })
+})
+
+describe('nearestPoint (RFC 0004 §1.1)', () => {
+  const pts = [{ x: 0, y: 5 }, { x: 10, y: 6 }, { x: 40, y: 7 }, { x: 100, y: 8 }]
+
+  test('the first and the last point sit at the two ends of the domain', () => {
+    assert.deepEqual(nearestPoint(pts, 0), { index: 0, x: 0, y: 5 })
+    assert.deepEqual(nearestPoint(pts, 1), { index: 3, x: 100, y: 8 })
+  })
+
+  test('a position between two points takes the nearer one', () => {
+    assert.equal(nearestPoint(pts, 0.1).index, 1)
+    assert.equal(nearestPoint(pts, 0.24).index, 1)
+    assert.equal(nearestPoint(pts, 0.26).index, 2)
+    assert.equal(nearestPoint(pts, 0.8).index, 3)
+  })
+
+  test('a tie goes to the earlier point', () => {
+    assert.equal(nearestPoint([{ x: 0, y: 0 }, { x: 10, y: 0 }], 0.5).index, 0)
+    assert.equal(nearestPoint(pts, 0.25).index, 1, '25 is as far from 10 as from 40')
+  })
+
+  test('a position outside 0..1 is clamped', () => {
+    assert.equal(nearestPoint(pts, -3).index, 0)
+    assert.equal(nearestPoint(pts, 7).index, 3)
+    assert.equal(nearestPoint(pts, Infinity).index, 3)
+    assert.equal(nearestPoint(pts, -Infinity).index, 0)
+  })
+
+  test('one point is every position, and no points or a position that is not a number is null', () => {
+    for (const f of [0, 0.5, 1]) assert.deepEqual(nearestPoint([{ x: 7, y: 1 }], f), { index: 0, x: 7, y: 1 })
+    assert.equal(nearestPoint([], 0.5), null)
+    assert.equal(nearestPoint(null, 0.5), null)
+    assert.equal(nearestPoint(pts, NaN), null)
+    assert.equal(nearestPoint(pts, undefined), null)
+    assert.equal(nearestPoint(pts, '0.5'), null)
+  })
+
+  test('input that is not sorted never loops, and still names one of the points', () => {
+    const mess = [{ x: 50, y: 1 }, { x: 0, y: 2 }, { x: 90, y: 3 }, { x: 10, y: 4 }, { x: 30, y: 5 }]
+    for (const f of [0, 0.2, 0.5, 0.9, 1]) {
+      const hit = nearestPoint(mess, f)
+      assert.ok(hit && mess[hit.index].x === hit.x)
+    }
+  })
+
+  test('a window domain makes the right edge the end of the window, not the last reading', () => {
+    const early = [{ x: 0, y: 1 }, { x: 10, y: 2 }, { x: 20, y: 3 }]
+    assert.equal(nearestPoint(early, 1).index, 2)
+    assert.equal(nearestPoint(early, 0.1, { domain: [0, 100] }).index, 1, 'x = 10')
+    assert.equal(nearestPoint(early, 0.9, { domain: [0, 100] }).index, 2, 'past the last reading, the last one')
+    assert.equal(nearestPoint(early, 0, { domain: [-50, 50] }).index, 0, 'before the first reading, the first one')
+  })
+
+  test('a flat or reversed domain still answers', () => {
+    assert.equal(nearestPoint(pts, 0.5, { domain: [40, 40] }).index, 2)
+    assert.ok(nearestPoint(pts, 0.5, { domain: [100, 0] }))
+  })
+
+  test('a category axis is read at the bands\' centres, so each pointer position names one category', () => {
+    const bands = bandScale(['Jan', 'Feb', 'Mar', 'Apr'], 0, 400)
+    const centres = [0, 1, 2, 3].map((i) => ({ x: bands.centre(i), y: 0 }))
+    const domain = [0, 400]
+    assert.equal(nearestPoint(centres, 0.12, { domain }).index, 0)
+    assert.equal(nearestPoint(centres, 0.3, { domain }).index, 1)
+    assert.equal(nearestPoint(centres, 0.62, { domain }).index, 2)
+    assert.equal(nearestPoint(centres, 0.99, { domain }).index, 3)
+  })
+
+  test('a downsampled set answers with a point the line was drawn through, spikes included', () => {
+    const raw = Array.from({ length: 5000 }, (_, i) => ({ x: i, y: i === 2500 ? 900 : Math.sin(i / 50) }))
+    const drawn = downsample(raw, 100)
+    assert.ok(drawn.length <= 100 && drawn.length < raw.length)
+    for (const f of [0, 0.13, 0.5, 0.77, 1]) {
+      const hit = nearestPoint(drawn, f)
+      assert.ok(drawn.includes(drawn[hit.index]) && drawn[hit.index].x === hit.x)
+    }
+    const spike = nearestPoint(drawn, 2500 / 4999)
+    assert.ok(Math.abs(spike.x - 2500) < 100)
+    assert.equal(nearestPoint(drawn, 0).x, 0)
+    assert.equal(nearestPoint(drawn, 1).x, 4999)
+  })
+
+  test('is a binary search: a lookup reads a handful of points, however long the series', () => {
+    // Counts reads of the points instead of timing a loop: time under load says nothing about the algorithm.
+    // A scan would read ten thousand times as many points at 100,000 as at 10; a bisection reads about twice as many.
+    const lookups = (n) => {
+      const big = Array.from({ length: n }, (_, i) => ({ x: i * 3, y: i }))
+      return readsOf(big, (points) => {
+        for (let i = 0; i < 100; i++) nearestPoint(points, i / 99)
+      }) / 100
+    }
+    const small = lookups(10)
+    const large = lookups(100000)
+    assert.ok(large <= 100, `${large} reads per lookup in 100,000 points`)
+    assert.ok(large <= small * 8, `${small} reads per lookup in 10 points, ${large} in 100,000`)
+  })
+})
+
+describe('plotFraction (RFC 0004 §1.1)', () => {
+  test('undoes the inset the drawing keeps inside its viewBox', () => {
+    assert.equal(plotFraction(0.5, { width: 400, pad: 4 }), 0.5)
+    assert.equal(plotFraction(0, { width: 400, pad: 4 }), -4 / 392)
+    assert.ok(plotFraction(1, { width: 400, pad: 4 }) > 1)
+    // The pointer at the first point's own place gives the domain's start, and at the last point's the end.
+    assert.ok(Math.abs(plotFraction(4 / 400, { width: 400, pad: 4 })) < 1e-12)
+    assert.ok(Math.abs(plotFraction(396 / 400, { width: 400, pad: 4 }) - 1) < 1e-12)
+  })
+
+  test('with no pad, or no room inside it, the box fraction is the answer', () => {
+    assert.equal(plotFraction(0.3, { width: 100, pad: 0 }), 0.3)
+    assert.equal(plotFraction(0.3, { width: 8, pad: 4 }), 0.3)
+    assert.equal(plotFraction(0.3, { width: 0, pad: 4 }), 0.3)
+    assert.ok(Number.isNaN(plotFraction(NaN, { width: 100, pad: 4 })))
+  })
+
+  test('hands nearestPoint the point under the pointer, end to end', () => {
+    const drawn = linePaths([{ x: 0, y: 1 }, { x: 10, y: 5 }, { x: 20, y: 2 }], { width: 200, height: 50, pad: 10 }).drawn
+    assert.equal(drawn.length, 3)
+    const x = scale(0, 20, 10, 190)
+    const points = drawn.map((p) => ({ x: x(p.x), y: 0 }))
+    for (const [px, want] of [[10, 0], [100, 1], [190, 2], [54, 0], [146, 2]]) {
+      const hit = nearestPoint(points, plotFraction(px / 200, { width: 200, pad: 10 }), { domain: [10, 190] })
+      assert.equal(hit.index, want, `${px}px`)
+    }
+  })
+})
+
+describe('linePaths drawn', () => {
+  test('lists the points the line runs through, and all of them when nothing is thinned', () => {
+    const pts = [{ x: 0, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 3 }]
+    assert.deepEqual(linePaths(pts, { width: 100, height: 50 }).drawn, pts)
+    assert.deepEqual(linePaths([], { width: 100, height: 50 }).drawn, [])
+    const many = Array.from({ length: 1000 }, (_, i) => ({ x: i, y: i % 7 }))
+    const drawn = linePaths(many, { width: 50, height: 50, maxPoints: 40 }).drawn
+    assert.ok(drawn.length <= 40)
+    assert.equal(drawn[0], many[0])
+    assert.equal(drawn[drawn.length - 1], many[999])
   })
 })

@@ -24,8 +24,8 @@ export interface TsLayoutChangeDetail {
   /** The layout before the edit. */
   previous: Layout
   profile: string
-  reason: 'move' | 'resize' | 'remove' | 'add' | 'undo'
-  /** The item that was moved, resized, removed or added back. Empty for 'undo', which restores a whole profile: compare `previous` and `layout`. */
+  reason: 'move' | 'resize' | 'remove' | 'add' | 'undo' | 'strip'
+  /** The item that was moved, resized, removed or added back. For 'strip', the tile pinned, unpinned or dragged in the strip; empty when `setTopStrip()` made the change. Empty for 'undo', which restores a whole profile: compare `previous` and `layout`. */
   id: string
   /** On 'remove': the item's index in the profile before it went. On 'add': its index after it came back. */
   index?: number
@@ -41,6 +41,11 @@ export interface TsAddRequestDetail {
   id: string
   /** The size the grid will place it at. */
   size: SizeName
+}
+
+export interface TsHintDismissDetail {
+  /** `'dismiss'` when the user pressed Got it; `'edit'` when edit mode started by any route. */
+  reason: 'dismiss' | 'edit'
 }
 
 export interface TsReadingOrderChangeDetail {
@@ -73,10 +78,19 @@ export interface TsReadingOrderChangeDetail {
  * editing, and the grid's polite status region announces each step. A
  * scheduled profile change that falls due while editing applies after Done.
  *
- * Attributes: `editing`, `profile`, `locked`, `undo-toast="off"`,
+ * Feedback (RFC 0004 §3): while a tile is resized, by pointer or keys, a badge in its chrome
+ * (`part="badge"`, "Medium · 2×2", decorative) shows the size it will have and fades a second
+ * after release. The `hint` attribute shows a coach mark (`part="hint"`, with a `part="hint-dismiss"`
+ * button) at the first tile until it is dismissed or edit mode starts; `ts-hint-dismiss` tells the
+ * host, which remembers it (the library stores nothing). A profile change made by the schedule
+ * crossfades the tiles (none under reduced motion) and the toast offers "Keep <previous profile>",
+ * which calls `override(previous)`; `undo-toast="off"` suppresses that toast too. The switch is
+ * announced once by the grid's polite status region.
+ *
+ * Attributes: `editing`, `profile`, `locked`, `density="compact"`, `undo-toast="off"`,
  * `edit-controls="off"`, `locale` (for plural forms in its messages),
  * `persist="my-dash"` (saves the layout to `localStorage` per device, with no script).
- * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`.
+ * Parts: `board`, `placeholder`, `toast`, `edit-pill`, `empty`, `badge`, `hint`, `hint-dismiss`.
  * Slots: the default one for tiles, and `empty`. The grid assigns tiles to its
  * own slots itself, so a tile's `slot` attribute is not used, except
  * `slot="empty"` on the content that replaces the empty board's text.
@@ -128,6 +142,22 @@ export declare class TsGrid extends HTMLElement {
    * the `persist` attribute.
    */
   persist: string | null
+  /**
+   * `'comfortable'` (the default) or `'compact'`. Compact sets `--ts-row` to 120px, `--ts-pad` to 12px and `--ts-gap`
+   * to 10px on the grid, so tiles are shorter and tighter and more fit on screen; a rule on the `ts-grid` element in
+   * your own CSS, such as `ts-grid { --ts-row: 140px }`, still wins. At 2 columns (phones) the rows stay at
+   * `--ts-row-compact`, so only the padding changes. Anything else is `'comfortable'`, with one development warning.
+   * Setting it re-measures; a saved layout is cells, so it is unchanged. Reflects the `density` attribute.
+   */
+  density: 'comfortable' | 'compact'
+  /**
+   * When set, a coach mark points at the first tile until it is dismissed or edit mode starts, and
+   * `ts-hint-dismiss` fires with `reason` `'dismiss'` or `'edit'`. Removing the attribute fires nothing.
+   * The library stores nothing: the host remembers the event and stops setting `hint`. If it does not, the
+   * mark stays hidden for the rest of the element's life; removing and re-adding the attribute shows it again.
+   * Not shown on a locked or empty grid, while editing, or while the page is hidden. Reflects the `hint` attribute.
+   */
+  hint: boolean
   /** Children whose item id isn't in the active profile, which includes tiles the user removed. */
   readonly hiddenItems: ReadonlyArray<{ id: string; type: string; label: string }>
   /**
@@ -160,6 +190,13 @@ export declare class TsGrid extends HTMLElement {
   resize(id: string, size: SizeName): boolean
   /** Removes the item, which becomes a hidden child. False for an unknown id. Commits with reason 'remove'. */
   remove(id: string): boolean
+  /**
+   * Pins `ids` (at most 3 the grid shows, in order) to the phone top strip, or unpins by leaving them out. The strip
+   * shows at 2 columns only; the saved list is kept at any width. Ids this profile does not show are kept and take
+   * no slot; a widget with no S size is ignored. Commits with reason 'strip' and records an undo step.
+   * Returns false when nothing changed.
+   */
+  setTopStrip(ids: readonly string[]): boolean
   /** The DOM's own `remove()`, which the grid keeps: it takes the grid off the page. TypeScript needs it declared, because `remove(id)` alone is not assignable to `Element.remove()`. */
   remove(): void
   /** The profile `override()` is showing, or null when the schedule (or the `profile` attribute) decides. */
@@ -167,8 +204,8 @@ export declare class TsGrid extends HTMLElement {
   /** Set by `<ts-grid-controls>` while a picker is linked: the edit pill then shows Add, which calls this. */
   openPicker: (() => void) | null
   /**
-   * The visible tiles' ids in visual order: row by row, left to right by each
-   * tile's top-left cell. Where the browser has manual slot assignment (Safari
+   * The visible tiles' ids in visual order: row by row, in the page's inline
+   * direction (right to left under dir=rtl), by each tile's top-left cell. Where the browser has manual slot assignment (Safari
    * 16.4, Chrome 86, Firefox 92), the grid slots its tiles in this order, so
    * reading and Tab order follow the layout outside edit mode while the host's
    * DOM order stays as it is; elsewhere they follow the DOM order. While
@@ -197,6 +234,7 @@ declare global {
     'ts-layout-issues': CustomEvent<{ issues: LayoutIssue[] }>
     'ts-edit-change': CustomEvent<{ editing: boolean }>
     'ts-reading-order-change': CustomEvent<TsReadingOrderChangeDetail>
+    'ts-hint-dismiss': CustomEvent<TsHintDismissDetail>
     'ts-columns-change': CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone'; initial: boolean }>
     'ts-profile-change': CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>
   }

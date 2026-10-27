@@ -78,6 +78,13 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   href: string | null
   /** Attribute and property. Fires ts-action { action: 'open', id }. */
   activatable: boolean
+  /**
+   * Attribute and property: `'off'` turns scrubbing off on a chart (hover, touch drag and the keyboard slider),
+   * `'on'` turns it on. Resolved as `flash` is: the widget's own, then the nearest `<ts-grid>`'s, then on; anything
+   * other than `'off'` is on. Null when the widget sets none. Only the charts (`<ts-chart>`, `<ts-equity-curve>`,
+   * `<ts-today-pnl>`) act on it. The overlay parts are `scrub`, `scrub-rule`, `scrub-dot` and `scrub-readout`.
+   */
+  scrub: 'on' | 'off' | null
   /** Attribute and property, snapped to the widget's supported sizes; defaults to the first supported size. */
   size: SizeName
   /** The size actually rendered. */

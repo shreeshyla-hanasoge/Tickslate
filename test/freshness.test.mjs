@@ -203,14 +203,19 @@ describe('freshness and flash', () => {
   })
 
   describe('the shared ticker', () => {
-    // Counts the intervals the code under test starts and stops, so a test sees how many are live.
+    // Counts the timers the ticker keeps alive: its intervals, and the wait for the next second boundary (a
+    // timeout of a second or less; the other timeouts in play are 10 s long or run only after a change).
     let live
     let realSet
     let realClear
+    let realTimeout
+    let realClearTimeout
     beforeEach(() => {
       live = new Set()
       realSet = globalThis.setInterval
       realClear = globalThis.clearInterval
+      realTimeout = globalThis.setTimeout
+      realClearTimeout = globalThis.clearTimeout
       globalThis.setInterval = (fn, ms) => {
         const id = realSet(fn, ms)
         live.add(id)
@@ -220,11 +225,33 @@ describe('freshness and flash', () => {
         live.delete(id)
         realClear(id)
       }
+      globalThis.setTimeout = (fn, ms, ...rest) => {
+        if (!(ms > 0 && ms <= 1000)) return realTimeout(fn, ms, ...rest)
+        const id = realTimeout(
+          (...args) => {
+            live.delete(id)
+            fn(...args)
+          },
+          ms,
+          ...rest,
+        )
+        live.add(id)
+        return id
+      }
+      globalThis.clearTimeout = (id) => {
+        live.delete(id)
+        realClearTimeout(id)
+      }
     })
     afterEach(() => {
-      for (const id of live) realClear(id)
+      for (const id of live) {
+        realClear(id)
+        realClearTimeout(id)
+      }
       globalThis.setInterval = realSet
       globalThis.clearInterval = realClear
+      globalThis.setTimeout = realTimeout
+      globalThis.clearTimeout = realClearTimeout
     })
 
     const NOW = 1760000120000

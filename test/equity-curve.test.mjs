@@ -424,7 +424,9 @@ describe('large inputs', () => {
       const vm = equityCurveModel({ days }, v, ctx('All'))
       assert.equal(vm.tradingDays, n)
       assert.equal(vm.chartLabel, `Equity curve: peak ${fmt.money(5e6)}, lowest ${fmt.money(-25e6)}, ends at ${fmt.money(5e6)}`)
-      assert.equal(vm.chart.line.split(' L').length, n)
+      // The line is thinned to 2 × the box width (RFC 0003 §23); the peak line and band below still cover every day.
+      const drawn = vm.chart.line.split(' L').length
+      assert.ok(drawn <= 2 * vm.chart.width && drawn > 2, `${drawn} points`)
     }
   })
 
@@ -468,5 +470,32 @@ describe('data shapes (RFC 0002 §4)', () => {
 
   test('dropped does not count rows a range merely leaves out', () => {
     assert.equal(equityCurveModel({ days: OCT }, 'M', ctx('1W')).dropped, 0)
+  })
+})
+
+describe('the full headline as a title (RFC 0004 §1.5)', () => {
+  const de = createFormatter({ locale: 'de-DE', currency: 'EUR', timeZone: 'Europe/Berlin' })
+  const model = (days, variant = 'M', f = fmt) => equityCurveModel({ days }, variant, { ...ctx(), fmt: f })
+  const huge = [d('2026-10-01', 12345678.9), d('2026-10-02', 100)]
+
+  test('is empty for a figure that fits, at every size', () => {
+    for (const v of ['Wide', 'M', 'XL']) assert.equal(model(OCT, v).headlineTitle, '', v)
+  })
+
+  test('is the full figure where fit() made the headline compact', () => {
+    for (const v of ['Wide', 'M', 'XL']) {
+      const vm = model(huge, v)
+      assert.notEqual(vm.headline, vm.net, v)
+      assert.equal(vm.headlineTitle, '+₹1,23,45,778.90', v)
+      assert.ok(vm.ariaLabel.includes(vm.headlineTitle), 'the accessible name has the full figure')
+    }
+  })
+
+  test('follows the locale', () => {
+    assert.match(model(huge, 'M', de).headlineTitle, /^\+12\.345\.778,90\s€$/)
+  })
+
+  test('an empty range has no title', () => {
+    assert.equal(model([], 'M').headlineTitle, '')
   })
 })

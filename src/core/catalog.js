@@ -38,6 +38,9 @@ export const WIDGETS = Object.freeze({
   chart: widget('ts-chart', 'Chart', ['Wide', 'M', 'L', 'XL'], 'General', 'A line, area or bar chart of any series.'),
   table: widget('ts-table', 'Table', ['Tall', 'M', 'L', 'XL'], 'General', 'A sortable table of rows with typed columns.'),
   progress: widget('ts-progress', 'Progress', ['S', 'Wide'], 'General', 'Progress toward a goal, or use of a limit, with warning and danger states.'),
+  breakdown: widget('ts-breakdown', 'Breakdown', ['S', 'Wide', 'Tall', 'M'], 'General', 'Parts of a whole, as a share bar, stacked bar or donut.'),
+  status: widget('ts-status', 'Status', ['S', 'Tall', 'M'], 'General', 'Whether each service or system is working.'),
+  feed: widget('ts-feed', 'Feed', ['Tall', 'M', 'L'], 'General', 'The latest events, newest first.'),
 })
 
 /** The item's widget type: `type` when given, else its `id`. */

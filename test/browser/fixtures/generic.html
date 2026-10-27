@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- One <ts-breakdown>, <ts-status> or <ts-feed> for the generic-widgets spec. ?kind=breakdown|status|feed, ?size=S|Wide|Tall|M|L,
+     ?width=px (the tile's width), ?n=parts or events, ?negative adds a negative part, ?theme=light|dark, ?preset=terminal (or calm, signal...),
+     ?wide uses wide fonts, ?rtl sets the page right to left. The spec drives it through window.__g: set(data) replaces the data,
+     tick(k) sends the same feed with k newer events in front, and events collects every ts-action. The numbers are made up and
+     nothing is loaded from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generic widgets fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <div id="wrap"></div>
+</main>
+<script type="module">
+  import '/src/elements/index.js'
+  import { setup, frozenClock, breakdownData, statusData, feedData } from './data.js'
+
+  setup()
+  const params = new URLSearchParams(location.search)
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const preset = params.get('preset')
+  if (/^[a-z]+$/.test(preset || '')) {
+    await new Promise((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = `/src/themes/presets/${preset}.css`
+      link.onload = link.onerror = resolve
+      document.head.append(link)
+    })
+    document.documentElement.dataset.tsTheme = preset
+  }
+  // ?wide stands in for a runner whose fallback fonts are wider than ours: a wide family, and tracking on top.
+  if (params.has('wide')) {
+    const st = document.createElement('style')
+    st.textContent = ":root { --ts-font-ui: Verdana, 'DejaVu Sans', sans-serif; --ts-font-num: Verdana, 'DejaVu Sans', sans-serif; } body { letter-spacing: .05em; }"
+    document.head.append(st)
+  }
+  if (params.has('rtl')) document.documentElement.dir = 'rtl'
+
+  const asked = params.get('kind')
+  const kind = asked === 'status' ? 'status' : asked === 'feed' ? 'feed' : 'breakdown'
+  const el = document.createElement(`ts-${kind}`)
+  const size = params.get('size') || (kind === 'feed' ? 'M' : kind === 'status' ? 'Tall' : 'M')
+  el.setAttribute('size', size)
+  // The grid gives a tile one row (150px) or two (316px, with the gap), so the fixture does too.
+  el.style.height = size === 'S' || size === 'Wide' ? '150px' : '316px'
+  el.setAttribute('label', { breakdown: 'Allocation', status: 'Services', feed: 'Activity' }[kind])
+  el.clock = frozenClock
+  document.getElementById('wrap').append(el)
+  document.getElementById('wrap').style.width = `${params.get('width') || 640}px`
+  const events = []
+  el.addEventListener('ts-action', (e) => events.push(e.detail))
+  const n = params.get('n') ? Number(params.get('n')) : undefined
+  const data = (step) => {
+    if (kind === 'status') return statusData({ step })
+    if (kind === 'feed') return feedData({ n, step })
+    return breakdownData({ n, negative: params.has('negative') })
+  }
+  el.data = data(0)
+
+  window.__g = {
+    el,
+    events,
+    kind,
+    set: (d) => { el.data = d },
+    tick: (step) => { el.data = data(step) },
+    width: (px) => { document.getElementById('wrap').style.width = `${px}px` },
+    nextFrame: () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

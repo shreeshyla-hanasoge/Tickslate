@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege: every job here only reads the repository.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -21,20 +25,35 @@ jobs:
         # 20 is the floor the published manifest advertises in "engines".
         node: ['20', '22', '24']
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ matrix.node }}
       # No install on purpose: the suite imports nothing outside src/ and node:*.
       # Includes the worked example of docs/guide/custom-widgets.md (examples/custom-widget/).
       - run: npm test
 
+  # ESLint over src/ (eslint.config.js): a non-constant innerHTML, outerHTML, insertAdjacentHTML or document.write
+  # in src/elements, and eval, implied eval and new Function anywhere in src. Needs the devDependencies, so it
+  # is apart from the install-free unit job.
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+
   build:
     name: build & package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '20'
           cache: npm
@@ -52,7 +71,7 @@ jobs:
         run: npm pack --dry-run ./dist-lib
       # The exact files a release would publish, kept for inspection or a
       # by-hand check of a PR's build.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dist-lib
           path: dist-lib/
@@ -67,8 +86,8 @@ jobs:
     name: browser (chromium, webkit, firefox, mobile-safari, mobile-chrome)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '20'
           cache: npm
@@ -77,21 +96,108 @@ jobs:
         id: playwright
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       # The browsers are the slow part, so they are cached by Playwright version.
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: browsers
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       # With a warm cache this only fetches the system libraries.
       - run: npx playwright install --with-deps chromium webkit firefox
+      # Every spec but visual.spec.mjs: its baselines are the pinned container's, in the visual job below.
       - run: npm run test:browser
       # Traces are kept for failures only (playwright.config.mjs), so a green run uploads nothing.
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: playwright-report
           path: |
             node_modules/.playwright/report/
             node_modules/.playwright/results/
+          # Both sit under .playwright, a hidden directory that upload-artifact skips unless told otherwise.
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
+
+  # The framework examples, built the way a consumer would: the packed tarball of
+  # this very commit installed into a copy of each example (examples/vanilla-cdn,
+  # react-vite, vue-vite, svelte-vite), built, and smoke-tested in Chromium. It
+  # runs `npm run release` itself rather than downloading the build job's
+  # artifact, so the tarball it installs is the one this job built, and it needs
+  # the build job green first so a broken package fails there, once. Installing
+  # the frameworks needs the network, which a hosted runner has.
+  examples:
+    name: examples (react, vue, svelte, script tag)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run release
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:consumers
+
+  # Screenshots of every widget, size and theme at a desktop and a phone width
+  # (test/browser/visual.spec.mjs). Text renders differently per OS, so this runs
+  # in the pinned Playwright image, whose tag must equal the exact
+  # @playwright/test version in package.json (test/visual-pin.test.mjs checks it).
+  # Baselines live in test/browser/visual.spec.mjs-snapshots/. A run on Linux that
+  # finds none writes them: the job fails, and the linux set is uploaded as the
+  # visual-baselines artifact for the maintainer to commit.
+  visual:
+    name: visual (chromium, pinned container)
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: npm ci
+      # Tells playwright.config.mjs to run the screenshot spec, which the unpinned browser job skips.
+      - run: npm run test:visual
+        env:
+          TS_VISUAL: '1'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: visual-baselines
+          path: test/browser/visual.spec.mjs-snapshots/*-linux.png
+          if-no-files-found: ignore
+          retention-days: 14
+      # expected, actual and diff images of a failure.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: failure()
+        with:
+          name: visual-diff
+          path: node_modules/.playwright/results/
+          # The results sit under .playwright, a hidden directory that upload-artifact skips unless told otherwise.
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Line coverage of the unit suite under Node's own coverage, no install. The
+  # coverage flags (--test-coverage-include, --test-coverage-exclude and
+  # --test-coverage-lines) exist only from Node 22; Node 20 rejects them, so this
+  # sets Node 22 rather than the test job's 20. The thresholds are 90 % for
+  # src/core and 80 % for the view models, with the DOM-bound infrastructure
+  # files left out (see package.json). A miss fails the build.
+  coverage:
+    name: coverage (node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      - run: npm run coverage

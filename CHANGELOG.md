@@ -6,6 +6,111 @@ All notable changes to Tickslate are recorded here. The format follows
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-26
+
+The second feature release. It adds a mini candlestick chart, three general-purpose widgets (breakdown, status and feed), scrubbing and exact values on the charts, a layout list, a phone top strip, right-to-left grids, compact density and text scaling, resize and profile-switch feedback, session breaks and market presets, colour-vision and high-contrast palettes, strict CSP and Trusted Types support, `createDashboard`, table column widths and a page clock, and it makes the changes listed under Breaking. Read that list before upgrading.
+
+### Breaking
+
+- **`widget.clock` and `grid.clock` return a function, never `null`.** Read without a clock of their own they return the page clock (`configure({ clock })`, or `Date.now()`); they returned `null` before. Do this instead: to find out whether a clock was set on the element, keep your own reference to what you assigned rather than testing for `null`.
+- **Every chart that draws a plot has one tab stop.** `<ts-today-pnl>` (`M`), `<ts-equity-curve>` and `<ts-chart>` each gain a slider that reads the chart point by point, so Tab stops once more on each, and a `<ts-chart>` with `actions` including `'select'` needs one more Tab to reach its points. Do this instead: set `scrub="off"` on the widget or the grid to remove the stop; a test that counts tab stops needs the extra ones.
+- **A tile's container is `container: ts-tile / size`**, where it was `container-type: inline-size`, so tiles answer their height as well as their width. Unnamed `@container` width rules keep working. Do this instead: if you set a widget's `height: auto`, give it a definite height. A default tile loses no line.
+- **A layout is read with a cap.** `readLayout`, and so `<ts-grid>` and `persistLayout`, keep at most 100 items per profile, 20 profiles (the built-in `market` and `closed` count) and ids of 128 characters; the excess is dropped and reported in `ts-layout-issues` as `too-many-items`, `too-many-profiles` or `bad-shape`. Do this instead: split a layout that needs more across profiles; a direct `readLayout` call can pass `maxItems` and `maxProfiles`.
+
+### Added
+
+New widgets and controls
+
+- `<ts-mini-chart>` (sizes M, L, XL): a small candlestick chart with entry and exit marks and a candle-close countdown, drawn by Emberwick and imported from `tickslate/elements/mini-chart`; `tickslate/elements` and the CDN files never load it. `emberwick` (0.14.0 or later) is an optional peer dependency, loaded the first time the chart has bars, and without it the tile says so and the page is untouched.
+- `<ts-mini-chart>` follows your theme (candles from `--ts-profit` and `--ts-loss`, re-read when a token changes), updates in place, takes Emberwick's own volume profile in `volumeProfile` at `L`, and fires a `timeframe` action (`ts-action` with `id` and `value`) for the timeframe buttons when `actions` includes `'timeframe'`. CSS parts `tile`, `header`, `label`, `chart`, `timeframes`, `empty`, `error` and `skeleton`; class `TsMiniChart`; types: `TsMiniChart`, `MiniChartData`, `MiniChartBar`, `MiniChartProfile`, `MiniChartModel` and `TsMiniChartAction`.
+- `<ts-breakdown>`: parts of a whole as a share bar (S), a stacked bar (Wide, Tall) or a donut (M), with percentages that sum to 100.0%, more than six parts folded into "Other", and negative values left out and reported. CSS parts `bar`, `legend` and `item` beside the common ones.
+- `<ts-status>`: one row per service with its state in words beside a dot whose shape differs for `ok`, `degraded`, `down` and `unknown`, at S, Tall and M. CSS parts `table`, `row`, `cell`, `dot` and `bar`.
+- `<ts-feed>`: the latest events, newest first, keyed by `id`, so a new item prepends without moving the tile or the reader's place, and nothing is announced. CSS parts `list`, `item` and `bar`.
+- `<ts-breakdown>`, `<ts-status>`, `<ts-feed>` and `<ts-mini-chart>` take the common attributes (`label`, `size`, `data`, `state`, `href`, `activatable`, `scrub`, `locale`, `currency`, `time-zone`, `hour-cycle`, `stale-after`, `flash`, `heading-level`) and fire `ts-action` with `open` and `retry` like the other widgets. Classes `TsBreakdown`, `TsStatus` and `TsFeed`, the `breakdown`, `status` and `feed` entries in `WIDGETS` (General category) and `tickslate/elements/breakdown`, `status` and `feed`.
+- `<ts-layout-list for="grid-id">` (from `tickslate/elements/layout-list`): edit a grid's layout as a list, with a size button for each supported size, Move up, Move down, Remove and Undo on every row. It edits through the grid's `move`, `resize` and `remove`, fires the same `ts-layout-change` events as dragging, needs no pointer, and is read-only on a `locked` grid. CSS parts `rows`, `row`, `name`, `list`, `status`, `undo`, `empty` and `locked`; class `TsLayoutList`.
+- `createDashboard(target, options)` in `tickslate/elements`: builds a `<ts-grid>` and a tile for every item from a layout and an object of data, answers `ts-add-request` itself, and returns `{ grid, set, update, destroy }`, for hosts with no framework. The `DashboardOptions` and `Dashboard` types.
+
+Charts
+
+- Charts can be scrubbed. Hover a mouse, or drag a finger, along `<ts-today-pnl>` (`M`), `<ts-equity-curve>` or `<ts-chart>` and a rule, a dot per series and a small label show the nearest point and its values. A vertical swipe still scrolls the page, and a read-out too tall for a short plot shows the series that fit and a "+N more" line.
+- Each of those charts has one keyboard tab stop, a `role="slider"` named "…, read point by point": Left and Right move one point, Page Up and Page Down ten, Home and End jump to the ends and Escape hides the label. Its `aria-valuetext` names the point and its values, so a screen reader speaks each point as the keys move; nothing is `aria-live`.
+- `scrub="off"` (the `scrub` attribute and property, `'on'`, `'off'` or null) on any widget or `<ts-grid>` turns scrubbing off, with no read-out and no tab stop. A widget's own value wins over its grid's, and scrubbing is inert while the grid is editing.
+- A visually hidden table of the last 12 points, with a caption and column and row headers, on `<ts-equity-curve>`, `<ts-today-pnl>` at `M` and `<ts-chart>`. It updates in place, so a new reading adds one row.
+- The CSS parts `scrub`, `scrub-rule`, `scrub-dot` and `scrub-readout` on the three charts.
+
+Layouts and editing
+
+- `<ts-grid>` pins up to three tiles above the board at 2 columns (phones): one sticky row, equal in width, each tile at its `S` variant. `grid.setTopStrip(ids)` pins or unpins from code, `ts-layout-change` gains the reason `'strip'`, and in edit mode every tile gets a **Pin to top** / **Unpin** button and the **P** key does the same. The strip is CSS part `strip`. A widget with no `S` size cannot be pinned. `--ts-strip-top` (default `0px`) sets how far below the top of the page the strip sticks.
+- `<ts-grid>` mirrors under `dir="rtl"` (the attribute or CSS `direction`, on the grid or an ancestor): the first tile sits top-right, drag, resize, tap-to-place and the arrow keys follow the reading direction, and the remove button and resize handle swap sides. Time-series charts stay left to right.
+- A size badge on a tile while it is resized, such as "Medium · 2×2", fading a second after the last release or key press (CSS part `badge`).
+- The `hint` attribute on `<ts-grid>`: a first-run coach mark (`part="hint"`, with a 44 px **Got it** button, `part="hint-dismiss"`) pointing at the first tile until it is dismissed or edit mode starts, and the `ts-hint-dismiss` event (`detail: { reason: 'dismiss' | 'edit' }`). The library stores nothing: you remember it and stop setting `hint`.
+- A scheduled profile change shows a toast, "Switched to After close", with a **Keep Market hours** button that keeps the previous profile until the schedule next changes. `undo-toast="off"` suppresses it.
+- `density="compact"` on `<ts-grid>` (and the `density` property): `--ts-row` becomes `120px`, `--ts-pad` `12px` and `--ts-gap` `10px`, so more tiles fit on screen. `data-ts-density="compact"` on any element sets the same three tokens for a widget outside a grid.
+- Tiles answer their height as well as their width: below a content-box height of `6.5rem` a widget hides its secondary line, and below `5rem` also its chart axis labels, so nothing clips; the shared `sec` and `ter` classes do it for your own widgets. A default dashboard hides nothing.
+- Eleven type tokens, `--ts-text-2xs` to `--ts-text-xbig`, in rem with a px floor, so a reader's larger default text size reaches every built-in widget and control, and a page with `html { font-size: 62.5% }` is unchanged.
+- The widget gallery has a Density control, a Text spacing switch (the four WCAG 1.4.12 overrides) and a Palette switcher.
+
+Saving layouts and tables
+
+- `width` on a `<ts-table>` column: `'content'` (as wide as its widest text, up to half the table, a cut cell ending in an ellipsis with its text as its `title`), `'fill'`, or a number of CSS pixels (at least 40). A table that sets none renders as before.
+- `configure({ clock })`: one clock for the page. Every grid and widget without a `clock` of its own reads it, `null` returns to `Date.now()`, and `currentConfig()` returns it. `createCalendar` takes its default `now` from it, so a pretend clock also makes `calendar.issues` deterministic.
+- `readLayout` never throws for input that is not JSON: a throwing getter or Proxy gives an empty layout and one `bad-shape` issue. `topStrip` is read up to 32 entries.
+
+Sessions
+
+- `SessionSpec.breaks` (and `breaks` on a special session): gaps such as a lunch break. The session is closed during one, `calendar.state()` gains `onBreak` and `ends`, and `<ts-session-clock>` reads "Break" and "resumes 12:30", counts "to break", draws the gap and names itself "on break".
+- `presets.nyse()`, `presets.nasdaq()` (each with `pre`, `post` and `extended` segments), `presets.lse()`, `presets.fx()` and `presets.tse()` (with a lunch break), each citing the exchange page and the date its hours were read; `presets.nse()` and `presets.mcx()` now cite theirs too.
+- `calendar.holidaysThrough(id)`, `calendar.issues` and the `now` option of `createCalendar`: a holiday list that ends less than 30 days ahead is a `'holiday-coverage'` issue, and `<ts-session-clock>` logs it once in development. Tickslate still fetches no holidays.
+- `calendar.windows(id, from, to, { throughBreaks })` and `duringBreaks: 'closed'` on a profile schedule: a lunch break does not change the layout profile unless the schedule asks.
+
+Themes and accessibility
+
+- `data-ts-palette="cvd"` re-colours profit and loss as blue and orange and moves the accent off blue, so they stay apart under deuteranopia and protanopia, in light and dark; the six series colours stay at least 30 ΔE apart.
+- `data-ts-palette="red-up"` swaps `--ts-profit` and `--ts-loss` for markets where red means a rise.
+- `@media (prefers-contrast: more)` raises `--ts-line` to 3:1 and `--ts-muted` to 7:1 on `--ts-surface`, with no attribute needed, in the default tokens and in every theme preset.
+- `--ts-num-width`: the average advance of a figure character in `em` (default `.62`), for a host with a wider `--ts-font-num`; the figures in a tile's stat cells shrink to fit.
+
+Security
+
+- Strict CSP and Trusted Types: widgets, the grid, the picker and the grid controls render styled and edit under `default-src 'self'; style-src 'self'; script-src 'self'` and under `require-trusted-types-for 'script'; trusted-types tickslate`, with no exception. See docs/guide/security.md.
+- `configure({ styleNonce })`: the nonce for the `<style>` fallback below Safari 16.4, where constructed stylesheets are missing. A development warning when the page's `trusted-types` directive does not allow the `tickslate` policy; a second copy of Tickslate on a page needs `'allow-duplicates'`.
+
+Building your own widgets
+
+- `defineWidget(tag, Ctor, { type, messages })`: a custom widget can ship its own English strings, as flat dotted keys starting with `widget.<type>.` or `<type>.`. A host's translation always wins, and the widget needs no `configure()` call to read well.
+
+Messages
+
+- New keys to translate: `chart.scrub*` (and `chart.scrubMore`), `grid.badge`, `grid.hint.touch`, `grid.hint.pointer`, `grid.hintDismiss`, `grid.profileSwitched`, `grid.keepProfile`, `grid.keptProfile`, `grid.strip`, `grid.pin`, `grid.unpin`, `grid.pinned`, `grid.unpinned`, `grid.stripFull`, `grid.pinUnsupported`, `list.*`, `miniChart.*`, `breakdown.*`, `status.*`, `feed.*`, `widget.breakdown.*`, `widget.status.*`, `widget.feed.*`, `session.break`, `session.resumes`, `session.toBreak` and `session.ariaBreak`. `grid.instructions` gains a sentence about **P**.
+
+Guides and examples
+
+- A trading dashboard example (`examples/trading.html`) and a guide for trading apps (`docs/guide/trading-dashboard.md`); a sessions guide (`docs/guide/sessions.md`); guides for server-side rendering, with recipes for Next.js and Nuxt; working example apps for `vanilla-cdn`, `react-vite`, `vue-vite` and `svelte-vite`; and `docs/VERSIONING.md`, which says what counts as a breaking change for each public surface.
+- A public site: a landing page with a live, editable board, a docs hub, the changelog, the playground, the gallery and the examples.
+
+### Changed
+
+- The tile label is 11px, not 10px (`--ts-label-size` is now `max(11px, .6875rem)`), and the `terminal`, `graphite` and `paper` presets take the same value. Every built-in widget and control now sizes its text from the rem type tokens; at a 16px root nothing else changes size, except the rebalance glyph of `<ts-capital-funding>` (15px, now 16px).
+- At compact density, or a larger root font size, a tile that cannot fit the row under its headline hides that row instead of cutting the headline; the words stay in the tile's accessible name. A `<ts-pnl-calendar>` `Banner` narrower than 700px on a 150px row also drops the Best and Worst stats and the weekday names.
+- Under a reader's text spacing, the figure columns of `<ts-today-pnl>` and `<ts-equity-curve>` widen when their figure does, the next close of the `<ts-session-clock>` `Banner` header gives way with an ellipsis before the clock does, and the words under the bar of `<ts-progress>` `S` are no longer squeezed.
+- When a headline goes compact ("1.2M"), the headline value (`part="value"`) of `<ts-metric>`, `<ts-today-pnl>` and `<ts-equity-curve>` carries the full figure as its `title`. `<ts-metric>`'s accessible name now always has the full figure, also where `compact` is set.
+- When the schedule changes the profile (`reason: 'schedule'`) or a kept override lapses (`'override-ended'`), the tiles crossfade instead of swapping in one frame; your own `override()`, the `profile` attribute, the first render and every edit still apply at once, and nothing animates under `prefers-reduced-motion`. The switch is announced once, as "Showing the After close layout.", naming the built-in profiles as the controls do (it used the profile's id, "closed", before). `ts-profile-change` fires once the new layout is on the board.
+- With `persist` (or `persistLayout()`), a layout you assign to `grid.layout` after the grid connects, and before the user's first edit on that device, is now the device's defaults: a saved layout still wins over it, and `reset()` returns to it. `persistLayout()` with no `defaults` takes the grid's layout at attach.
+- The default font stacks (`--ts-font-ui`, `--ts-font-num`, and the presets that restate them) put `Arial` before `system-ui`, so a Linux page without Geist or Newsreader falls back to Liberation Sans (Arial's metrics) rather than DejaVu Sans, whose digits are 14% wider. Platforms with their own UI face are unchanged. A tile heading's label floor is `max(6ch, 4.2em)`, so it keeps about five letters in a narrow tile whatever the face's digit width.
+- When a tile is under 7rem wide and its header meta ("just now", "synced 11:42", "stale 5 min") is dropped, the tile's `aria-description` and the dot's `title` carry that text, so neither the age nor the sync time is lost.
+- A tile heading too narrow for its label ends in an ellipsis and carries the full label as its `title`; the header's meta shrinks first, so a label keeps about six characters at 320px.
+- `linePaths` draws at most `maxPoints` points, `2 × width` by default, keeping each run's lowest and highest, so a long series gets a line with fewer points; pass `maxPoints: Infinity` to draw them all.
+- Widgets that are `display: none`, or more than one screen from the viewport, skip their later renders and draw once, with the latest data, when they can be seen again. A tile always draws its first content, and a printout draws every tile first. Every whole-second widget timer runs on one shared timer, which sleeps while the page is hidden.
+- `Translate` (the type of `t`) accepts any string key, so a custom widget's own keys type-check, and `defineWidget`'s class parameter accepts any `TsWidget` subclass with its own data type.
+- Widget CSS is one constructed stylesheet per widget class, adopted by each instance, rather than a `<style>` element in every shadow root. When the page's `trusted-types` directive refuses the `tickslate` policy, no element throws: they stay empty.
+- The bundles grew with the new features and messages. The core UMD is 18,623 B min+gz, up from 14,977 B, and the `grid` entry is 39,477 B. Import per-widget entries rather than `tickslate/elements` if size matters. Each widget adds at most 15 kB to the grid; eleven of them are over it today and the size check reports them.
+
+### Fixed
+
+- A `data-ts-palette` on `<body>` or any ancestor now reaches a `<ts-grid data-theme="dark">`, a `.dark` element, a `data-theme="light"` island and a `data-theme="auto"` grid, instead of falling back to the default red and green. A preset on the island still beats an ancestor palette.
+- A `<ts-table>` far down the page draws its first fit even before it is near the viewport, so a full-page screenshot or a find in the page no longer reads it with columns it had already measured to be too many.
+- A `<ts-table>` counts an overflow once, so a render deferred by the time-slicer no longer makes it drop a second column that fits.
+
 ## 0.2.0 — 2026-10-17
 
 The first feature release. It adds a table, a watchlist and open positions, a

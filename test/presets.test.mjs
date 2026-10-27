@@ -14,9 +14,17 @@ const NAMES = ['calm', 'graphite', 'neutral', 'paper', 'signal', 'terminal']
 const ONE_MODE = ['paper', 'graphite']
 // Declared in the guarded block, so a palette on the same element wins (Decision 35).
 const OWNED = ['--ts-profit', '--ts-loss', '--ts-accent', '--ts-focus', ...[1, 2, 3, 4, 5, 6].map((n) => `--ts-series-${n}`)]
-// The host's, not a theme's: grid metrics and motion.
-const NOT_THEMED = ['--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-motion', '--ts-ease']
+// The type scale is the host's (RFC 0004 §2.3), like the grid metrics: a preset sets the label size and nothing else of it.
+const TYPE_SCALE = ['2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', 'big', 'xbig'].map((n) => `--ts-text-${n}`)
+// Typography a preset may tune but need not restate: the figure width follows the face a preset picks (a monospace
+// --ts-font-num is wider than .62em), like --ts-label-size (RFC 0004 §10.3).
+const OPTIONAL = ['--ts-num-width']
+// The host's, not a theme's: grid metrics, the type scale and motion.
+const NOT_THEMED = ['--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-strip-top', '--ts-motion', '--ts-ease', ...TYPE_SCALE]
 const GUARD = ':not([data-ts-palette])'
+// Padding is owned by density (RFC 0004 §2.1): the preset's --ts-pad sits in a block that yields to compact on the element,
+// on an ancestor, or on a <ts-grid density="compact">, whose :host rule cannot outrank a page rule.
+const DENSITY_GUARD = ":not([data-ts-density='compact'], [density='compact'], [data-ts-density='compact'] *, [density='compact'] *)"
 
 /**
  * Every rule in a stylesheet as { media, selector, vars }, looking one level
@@ -61,7 +69,8 @@ const ruleOf = (selector) => {
   return rule.vars
 }
 const defaultLight = ruleOf(':where(:root)')
-const defaultDark = ruleOf(':where([data-theme="dark"], .dark)')
+// The dark padding sits in its own block that yields to compact density (RFC 0004 §2.1).
+const defaultDark = { ...ruleOf(':where([data-theme="dark"], .dark)'), ...ruleOf(`:where([data-theme="dark"]${DENSITY_GUARD.replaceAll("'", '"')}, .dark${DENSITY_GUARD.replaceAll("'", '"')})`) }
 
 const files = readdirSync(new URL('../src/themes/presets/', import.meta.url)).filter((n) => n.endsWith('.css')).sort()
 
@@ -87,14 +96,20 @@ function expectedRules(name, oneMode) {
   const rules = [
     { kind: 'base', guarded: false, media: null, selector: `:where(${el})` },
     { kind: 'base', guarded: true, media: null, selector: `:where(${el}${GUARD})` },
+    { kind: 'pad', guarded: false, media: null, selector: `:where(${el}${DENSITY_GUARD})` },
   ]
-  if (oneMode) return rules
+  const MORE = '@media (prefers-contrast: more)'
+  if (oneMode) return [...rules, { kind: 'hc', guarded: false, media: MORE, selector: `:where(${el})` }]
   const dark = modeAlternatives(DARK_ANCESTOR, ":is([data-theme='dark'], .dark)")
   const auto = modeAlternatives(AUTO_ANCESTOR, "[data-theme='auto']")
   for (const guarded of [false, true]) rules.push({ kind: 'dark', guarded, media: null, selector: where(dark, guarded ? GUARD : '') })
   for (const guarded of [false, true]) {
     rules.push({ kind: 'auto', guarded, media: '@media (prefers-color-scheme: dark)', selector: where(auto, guarded ? GUARD : '') })
   }
+  // The high contrast preference (RFC 0003 §13.3), last so it beats the preset's own line and muted.
+  rules.push({ kind: 'hc', guarded: false, media: MORE, selector: `:where(${el})` })
+  rules.push({ kind: 'hc-dark', guarded: false, media: MORE, selector: where(dark, '') })
+  rules.push({ kind: 'hc-auto', guarded: false, media: `${MORE} and (prefers-color-scheme: dark)`, selector: where(auto, '') })
   return rules
 }
 
@@ -114,8 +129,11 @@ function load(name) {
   const guarded = of('base', true)
   const darkOnly = tagged.filter((r) => r.kind === 'dark')
   const darkAuto = tagged.filter((r) => r.kind === 'auto')
-  const light = { ...merge(plain), ...merge(guarded) }
-  return { rules: tagged, plain, guarded, darkRules: [...darkOnly, ...darkAuto], darkOnly, darkAuto, light, dark: { ...light, ...merge(darkOnly) }, darkVars: merge(darkOnly), autoVars: merge(darkAuto) }
+  const light = { ...merge(plain), ...merge(guarded), ...merge(of('pad', false)) }
+  const hc = merge(tagged.filter((r) => r.kind === 'hc'))
+  const hcDark = merge(tagged.filter((r) => r.kind === 'hc-dark'))
+  const hcAuto = merge(tagged.filter((r) => r.kind === 'hc-auto'))
+  return { hc, hcDark, hcAuto, rules: tagged, plain, guarded, darkRules: [...darkOnly, ...darkAuto], darkOnly, darkAuto, light, dark: { ...light, ...merge(darkOnly) }, darkVars: merge(darkOnly), autoVars: merge(darkAuto) }
 }
 
 // ------------------------------------------------------------- the contrast helper, copied from tokens.test.mjs
@@ -173,6 +191,7 @@ for (const name of NAMES) {
       )
       assert.equal(p.plain.length, 1)
       assert.equal(p.guarded.length, 1)
+      assert.equal(p.rules.filter((r) => r.kind === 'pad').length, 1)
       assert.ok(p.rules.indexOf(p.plain[0]) < p.rules.indexOf(p.guarded[0]), 'the guarded block comes after the plain one')
     })
 
@@ -202,6 +221,13 @@ for (const name of NAMES) {
           assert.match(value, /^(#[0-9a-f]{6}|var\(--ts-[\w-]+\))$/i, `${prop}: ${value}`)
         }
       }
+    })
+
+    test('sets --ts-pad only in the block that yields to compact density, once, and never --ts-row or --ts-gap', () => {
+      const withPad = p.rules.filter((r) => '--ts-pad' in r.vars)
+      assert.deepEqual(withPad.map((r) => r.kind), ['pad'], `${name}: --ts-pad outside the density-guarded block`)
+      assert.deepEqual(withPad[0].props, ['--ts-pad'])
+      assert.ok(withPad[0].selector.includes(DENSITY_GUARD), 'the guard names the element, an ancestor and the grid attribute')
     })
 
     test('leaves the host\'s grid metrics and motion alone', () => {
@@ -248,7 +274,7 @@ for (const name of NAMES) {
     if (oneMode) {
       test('is one-mode: it has no dark rules and never reads data-theme', () => {
         assert.equal(p.darkRules.length, 0)
-        assert.ok(!p.rules.some((r) => r.media || r.selector.includes('data-theme') || r.selector.includes('.dark')))
+        assert.ok(!p.rules.some((r) => r.kind !== 'hc' && (r.media || r.selector.includes('data-theme') || r.selector.includes('.dark'))))
       })
     } else {
       test('has a dark mode: the expected dark and data-theme="auto" blocks, the latter only in prefers-color-scheme: dark', () => {
@@ -268,9 +294,27 @@ for (const name of NAMES) {
       })
     }
 
+    test('restates line and muted under prefers-contrast: more, after every other block, and only those', () => {
+      const last = p.rules.slice(-(oneMode ? 1 : 3))
+      assert.ok(last.every((r) => r.kind.startsWith('hc')), 'the high contrast blocks come last')
+      for (const r of last) assert.deepEqual([...r.props].sort(), ['--ts-line', '--ts-muted'])
+      if (!oneMode) assert.deepEqual(p.hcAuto, p.hcDark)
+    })
+
+    test('the raised line and muted meet the high contrast floors in each mode (3:1 and 7:1 on the surface and the page)', () => {
+      const cases = oneMode ? [[p.light, p.hc]] : [[p.light, p.hc], [p.dark, p.hcDark]]
+      for (const [base, hc] of cases) {
+        for (const against of ['--ts-surface', '--ts-bg']) {
+          assert.ok(contrast(hc['--ts-line'], base[against]) >= 3, `line on ${against}`)
+          assert.ok(contrast(hc['--ts-muted'], base[against]) >= 7, `muted on ${against}`)
+        }
+        assert.ok(contrast(hc['--ts-line'], base['--ts-surface']) > contrast(base['--ts-line'], base['--ts-surface']), 'line is stronger than without the preference')
+      }
+    })
+
     test('defines every themed token in its base mode, so it does not inherit a host\'s mode', () => {
       for (const prop of Object.keys(defaultLight)) {
-        if (NOT_THEMED.includes(prop)) continue
+        if (NOT_THEMED.includes(prop) || OPTIONAL.includes(prop)) continue
         assert.ok(prop in p.light, `${name} does not set ${prop}`)
       }
     })
@@ -321,19 +365,37 @@ for (const name of NAMES) {
 
 // ------------------------------------------- paper and graphite restate the defaults
 
+// Compact density beats a preset's padding wherever the preset is (the browser half is test/browser/density.spec.mjs).
+describe('presets yield their padding to compact density', () => {
+  // The selectors are matched by hand, since node has no DOM: each case lists the element's own attributes and its ancestors'.
+  for (const name of NAMES) {
+    test(`${name}: the pad block does not match a compact element, a compact ancestor or a compact grid`, () => {
+      const rule = load(name).rules.find((r) => r.kind === 'pad')
+      assert.match(rule.selector, new RegExp(`^:where\\(\\[data-ts-theme='${name}'\\]:not\\(`))
+      const excluded = rule.selector.slice(rule.selector.indexOf(':not(') + 5, -2).split(', ')
+      assert.deepEqual(excluded, ["[data-ts-density='compact']", "[density='compact']", "[data-ts-density='compact'] *", "[density='compact'] *"])
+    })
+    test(`${name}: padding is still the preset's when density is not compact`, () => {
+      const p = load(name)
+      assert.match(p.light['--ts-pad'], /^\d+px$/)
+      assert.ok(!p.rules.some((r) => r.kind !== 'pad' && '--ts-pad' in r.vars))
+    })
+  }
+})
+
 describe('paper and graphite restate the default tokens', () => {
   test('paper equals the light defaults of tokens.css, token for token', () => {
     const { light } = load('paper')
     for (const [prop, value] of Object.entries(light)) assert.equal(value, defaultLight[prop], `paper ${prop}`)
     // And it restates every one that matters, so a dark host page cannot leak through.
-    for (const prop of Object.keys(defaultLight)) if (!NOT_THEMED.includes(prop)) assert.ok(prop in light, `paper omits ${prop}`)
+    for (const prop of Object.keys(defaultLight)) if (!NOT_THEMED.includes(prop) && !OPTIONAL.includes(prop)) assert.ok(prop in light, `paper omits ${prop}`)
   })
 
   test('graphite equals the light defaults with the dark block of tokens.css over them', () => {
     const { light } = load('graphite')
     const expected = { ...defaultLight, ...defaultDark }
     for (const [prop, value] of Object.entries(light)) assert.equal(value, expected[prop], `graphite ${prop}`)
-    for (const prop of Object.keys(expected)) if (!NOT_THEMED.includes(prop)) assert.ok(prop in light, `graphite omits ${prop}`)
+    for (const prop of Object.keys(expected)) if (!NOT_THEMED.includes(prop) && !OPTIONAL.includes(prop)) assert.ok(prop in light, `graphite omits ${prop}`)
   })
 })
 

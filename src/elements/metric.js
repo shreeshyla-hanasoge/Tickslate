@@ -104,13 +104,12 @@ export function metricModel(data, variant, ctx) {
   let headline = '—'
   let spoken = ''
   if (known) {
-    spoken = show(value, 'negative', compact)
-    headline = spoken
+    // The spoken name never compacts, and the full form is what the pointer gets as a title (RFC 0004 §1.5).
+    spoken = show(value, 'negative', false)
+    headline = compact ? show(value, 'negative', true) : spoken
     if (variant === 'S' && !compact) {
       if (format === 'money' || format === 'percent' || (format === 'number' && !unit)) {
         headline = fmt.fit(value, HEADLINE_CHARS.S, { style: format, decimals, sign: 'negative' })
-        // The spoken name keeps the full form unless the tile itself went compact.
-        spoken = show(value, 'negative', false)
       } else if (headline.length > HEADLINE_CHARS.S) {
         const short = show(value, 'negative', true)
         if (short.length < headline.length) headline = short
@@ -167,6 +166,7 @@ export function metricModel(data, variant, ctx) {
     time: '',
     synced: syncedParts(t),
     value: headline,
+    valueTitle: known && headline !== spoken ? spoken : '',
     valueNum: known ? value : NaN,
     delta,
     arrow,
@@ -211,7 +211,7 @@ export function metricModel(data, variant, ctx) {
   return vm
 }
 
-const delta = `<span class="delta" data-k="deltabox" hidden><span class="n" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span class="nv" data-k="delta"></span></span><span class="mut ell" data-k="compare"></span></span>`
+const delta = `<span class="delta sec" data-k="deltabox" hidden><span class="n" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span class="nv" data-k="delta"></span></span><span class="mut ell" data-k="compare"></span></span>`
 const head = header({ dot: true, meta: true })
 const spark = (cls) => `
 <div class="${cls}" part="chart"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
@@ -282,7 +282,9 @@ export class TsMetric extends TsWidget {
 [hidden] { display: none; }
 /* A value too wide for its slot clips rather than running into its neighbour, and keeps its sign beside its digits in right-to-left pages. */
 .nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; unicode-bidi: isolate; direction: var(--ts-fig-dir, ltr); }
-.delta { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; font-size: 12px; }
+.delta { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; font-size: var(--ts-text-md, max(12px, .75rem)); }
+/* The widget's own display outranks the shared .sec (it comes later), so the snug tier is restated for this row. */
+@container ts-tile (max-height: 6.5rem) { .delta.sec { display: none; } }
 .delta .n { font-weight: var(--ts-num-weight-small, 500); flex: none; }
 .wrap { flex-wrap: wrap; gap: 2px 20px; }
 .cols { flex: 1; display: flex; gap: 24px; min-height: 0; }
@@ -341,7 +343,7 @@ svg.mut { color: var(--ts-muted); }
     text('pre', vm.synced.pre)
     text('time', vm.time)
     text('post', vm.synced.post)
-    text('value', vm.value)
+    this._setAttr(text('value', vm.value), 'title', vm.valueTitle || null)
     this.flash('value', vm.valueNum, { goodWhen: this.data && this.data.goodWhen })
 
     const box = this.$('[data-k="deltabox"]')

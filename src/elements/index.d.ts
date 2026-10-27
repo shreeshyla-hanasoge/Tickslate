@@ -1,4 +1,4 @@
-import type { Calendar, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
+import type { Calendar, Catalog, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
 import { TsWidget } from './widget.js'
 import type { ViewModelContext, TsOpenAction, TsChartSelectAction } from './widget.js'
 
@@ -12,6 +12,8 @@ export * from './grid.js'
 // controls.d.ts (the picker and the grid controls) ships beside this file too.
 export * from './controls.js'
 import type { TsGrid, LayoutAdapter } from './grid.js'
+// Declared in mini-chart.d.ts, not here: the class ships only at tickslate/elements/mini-chart (RFC 0004 §6.1).
+import type { TsMiniChart } from './mini-chart.js'
 
 export interface PersistLayoutOptions {
   /** Each device is stored under `${key}:${device}`. Required unless `adapter` is given. */
@@ -51,9 +53,25 @@ export declare function persistLayout(
  * - a class already recorded under another type, or the same class and type under a second tag;
  * - a spec with no valid size.
  *
+ * `messages` is the widget's own English, by flat dotted key. Every key starts with `widget.<type>.` or
+ * `<type>.` (plural suffixes such as `.few` are fine), and none may be a key Tickslate already has: a
+ * widget adds strings, and a host rewords built-in ones with `configure({ messages })`. The table is copied
+ * and frozen. `t` answers from it after the element's, the grid's and `configure()`'s tables and before
+ * EN, so a host's text always wins; `widget.<type>.label` and `.description` also fill a spec that has none.
+ * A repeat call with different `messages` warns once in development and keeps the first. It throws a
+ * `TypeError` for a key outside the prefix, a built-in key or a value that is not a string.
+ *
  * A failed call records and defines nothing, and notifies no one.
  */
-export declare function defineWidget(tag: string, Ctor: typeof TsWidget, options: { type: string }): void
+export declare function defineWidget(
+  tag: string,
+  // Any widget class, whatever its data and view model: `typeof TsWidget` alone admits only the base's own type arguments.
+  Ctor: new (...args: any[]) => TsWidget<any, any>,
+  options: {
+    type: string
+    messages?: Readonly<Record<string, string>>
+  },
+): void
 
 /** A frozen merge of the built-in `WIDGETS` and every `defineWidget` spec: the same object until the next registration. */
 export declare function widgetCatalog(): WidgetCatalog
@@ -96,6 +114,43 @@ export declare function linePaths(
 /** Stable for 0.x. Escapes `& < > " '` in `String(s)`, for text a template writes into markup. */
 export declare function escapeHtml(s: unknown): string
 
+export interface DashboardOptions {
+  /** The layout to show: a Layout or a bare item array. The grid reads it with readLayout. */
+  layout: Layout | LayoutItem[]
+  /** Data by item id. An id with no item in any profile warns in development and is ignored. */
+  data?: Record<string, unknown>
+  /** The widget catalog. Default: `widgetCatalog()`, which includes the built-ins and every `defineWidget` type; those are also tried after a catalog you pass. */
+  catalog?: Catalog
+  /** The grid's `persist` key (saves the layout per device). Off by default. */
+  persist?: string
+  locale?: string
+  currency?: string
+  /** An IANA time zone, set as the grid's `time-zone`. */
+  timeZone?: string
+  /** The grid's accessible name (`aria-label`). Say what the dashboard is. Default: the grid's own "Dashboard". */
+  label?: string
+  /** What the picker offers and `ts-add-request` is answered for: a list of types, '*' or null. Default '*'. */
+  addTypes?: readonly string[] | '*' | null
+}
+
+export interface Dashboard {
+  readonly grid: TsGrid
+  /** Sets one tile's data, hidden tiles included. Returns false, and warns in development, for an id with no tile. */
+  set(id: string, data: unknown): boolean
+  /** Sets the tiles named in the object and no others; unknown ids warn in development. */
+  update(dataById: Record<string, unknown>): void
+  /** Removes the grid and its listeners. Idempotent. After it, `set` returns false and `update` does nothing. */
+  destroy(): void
+}
+
+/**
+ * A <ts-grid> and one tile per item of every profile, made from the catalog's tags, with `data`
+ * assigned. It answers `ts-add-request` itself, so the picker and `grid.add()` need no host code.
+ * `target` is the element to put the grid in, or a CSS selector for it (no match throws a TypeError).
+ * It does not fetch: the host loads the data and passes it.
+ */
+export declare function createDashboard(target: Element | string, options: DashboardOptions): Dashboard
+
 /** The `ts-action` detail every widget can send: the error view's Retry and tile activation (RFC 0003 §7, §22.2). */
 export type TsCommonAction = { action: 'retry' } | TsOpenAction
 
@@ -119,6 +174,7 @@ export type TsCommonAction = { action: 'retry' } | TsOpenAction
  * @attr {boolean} activatable - Makes the label a button that fires `ts-action` with action 'open'.
  * @attr {string} stale-after - How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default 120000; falls back to the grid's.
  * @attr {'off'} flash - 'off' stops the brief tint on a headline figure that changed; the grid's `flash` applies too.
+ * @attr {'on' | 'off'} scrub - 'off' turns off scrubbing on a chart: hover, touch drag and the keyboard slider. The widget's own, then the grid's, then on. Only the charts act on it.
  * @attr {string} item - The id the grid matches this tile to, and the `id` of an 'open' action.
  * @csspart tile - The tile: a role="group" box named by the widget's result.
  * @csspart header - The row holding the live dot, the label and the meta.
@@ -286,6 +342,10 @@ export interface ChartModel {
  * @element ts-chart
  * @fires {CustomEvent<TsChartAction>} ts-action - Retry, 'open', and 'select' for a point when `actions` includes 'select'.
  * @csspart chart - The drawing box.
+ * @csspart scrub - The overlay laid over the plot while a point is read; hidden otherwise.
+ * @csspart scrub-rule - The vertical rule at the point.
+ * @csspart scrub-dot - A dot on the point, in its series' colour.
+ * @csspart scrub-readout - The label naming the point and its values.
  */
 export declare class TsChart extends TsWidget<ChartData> {
   addEventListener(type: 'ts-action', listener: (this: TsChart, ev: CustomEvent<TsChartAction>) => any, options?: boolean | AddEventListenerOptions): void
@@ -303,6 +363,11 @@ export interface TableColumn {
   decimals?: number
   /** Default 'end' for number, money, percent and duration, else 'start'. */
   align?: 'start' | 'end' | 'center'
+  /**
+   * 'content': as wide as its widest text, up to half the table. 'fill' and 'shared' (the default) share what is left.
+   * A number: that many CSS pixels, at least 40.
+   */
+  width?: 'content' | 'fill' | 'shared' | number
   /** '+' or '−' with the pos or neg colour and an arrow. */
   tone?: 'sign'
   /** Lower stays longer when columns must hide. Default: the column's position. */
@@ -819,6 +884,10 @@ export interface TodayPnlData extends WidgetFreshness {
  * @element ts-today-pnl
  * @fires {CustomEvent<TsTodayPnlAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
  * @csspart chart - The intraday curve's box.
+ * @csspart scrub - The overlay laid over the plot while a point is read; hidden otherwise.
+ * @csspart scrub-rule - The vertical rule at the point.
+ * @csspart scrub-dot - A dot on the point, in its series' colour.
+ * @csspart scrub-readout - The label naming the point and its values.
  */
 export declare class TsTodayPnl extends TsWidget<TodayPnlData> {
   addEventListener(type: 'ts-action', listener: (this: TsTodayPnl, ev: CustomEvent<TsTodayPnlAction>) => any, options?: boolean | AddEventListenerOptions): void
@@ -844,6 +913,10 @@ export interface EquityCurveData extends WidgetFreshness {
  * @attr {'1W' | '1M' | '3M' | 'YTD' | 'All'} range - The range shown. Reflects `range`; an unknown value reads as 'All'.
  * @fires {CustomEvent<TsEquityCurveAction>} ts-action - Retry, 'open', and 'range' when a range button is pressed.
  * @csspart chart - The curve's box.
+ * @csspart scrub - The overlay laid over the plot while a point is read; hidden otherwise.
+ * @csspart scrub-rule - The vertical rule at the point.
+ * @csspart scrub-dot - A dot on the point, in its series' colour.
+ * @csspart scrub-readout - The label naming the point and its values.
  */
 export declare class TsEquityCurve extends TsWidget<EquityCurveData> {
   addEventListener(type: 'ts-action', listener: (this: TsEquityCurve, ev: CustomEvent<TsEquityCurveAction>) => any, options?: boolean | AddEventListenerOptions): void
@@ -874,6 +947,211 @@ export declare class TsSessionClock extends TsWidget<SessionClockData> {
   addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
 }
 
+export interface BreakdownSlice {
+  /** A stable key for the legend row. Defaults to the label. */
+  id?: string | number
+  label: string
+  /** A non-negative amount. A negative value is left out and reported; one that is not a number is dropped. */
+  value: Numeric
+  /** M and Tall: a short second line. */
+  note?: string
+}
+
+export interface BreakdownData extends WidgetFreshness {
+  slices: BreakdownSlice[]
+  /** How a slice's value is shown. Default 'number'. */
+  format?: 'number' | 'money' | 'percent' | 'duration'
+  decimals?: number
+  /** Formatted with fmt.unit: '182 ms'. */
+  unit?: string
+}
+
+export interface BreakdownModel {
+  /** 'Allocation: 5 parts, largest Equities 41.2%', or 'Allocation: nothing to break down'. */
+  ariaLabel: string
+  /** S draws a share bar, Wide and Tall a stacked bar, M a donut. */
+  kind: 'share' | 'stacked' | 'donut'
+  /** The sum of the kept values, formatted; '' with nothing to show. */
+  total: string
+  /** 'Total 1,00,000', the text in the donut's middle; '' with nothing to show. */
+  totalText: string
+  /** Largest first. More than six parts are the largest five and one folded 'Other'. */
+  slices: Array<{
+    key: string
+    label: string
+    value: string
+    /** One decimal; the percentages of all slices sum to 100.0. */
+    pct: string
+    /** 0..1, the true share, for drawing. */
+    fraction: number
+    /** 1 to 6 picks --ts-series-<n>; 0 is the folded 'Other' (--ts-axis). */
+    index: number
+    other: boolean
+    note: string
+    /** 'Equities, 41.2%': the spoken name of the legend item. */
+    aria: string
+  }>
+  /** Donut only: one ring segment for each slice with a positive share. */
+  arcs: Array<{ key: string; d: string; index: number }>
+  /** Negative values left out. */
+  excluded: number
+  /** '1 negative value left out', or ''. */
+  note: string
+  /** Slices that could not be read: not an object, or a value that is not a number. */
+  dropped: number
+  /** Whether there is anything to draw. */
+  drawn: boolean
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-breakdown>, sizes S · Wide · Tall · M. Parts of a whole, as a share bar, a stacked bar or a donut, each part with its label and percentage in text.
+ *
+ * @element ts-breakdown
+ * @fires {CustomEvent<TsBreakdownAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart bar - The share bar or the stacked bar.
+ * @csspart chart - The donut.
+ * @csspart legend - The list of parts.
+ * @csspart item - One part of the legend.
+ */
+export declare class TsBreakdown extends TsWidget<BreakdownData> {
+  addEventListener(type: 'ts-action', listener: (this: TsBreakdown, ev: CustomEvent<TsBreakdownAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsBreakdown, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: shares that sum to 100.0%, the folded Other, the arcs and the accessible name. */
+  static breakdownModel(data: BreakdownData, variant: SizeName, ctx: ViewModelContext): BreakdownModel
+}
+
+export type StatusState = 'ok' | 'degraded' | 'down' | 'unknown'
+
+export interface StatusRow {
+  /** Matched by `id`, so a change of state writes that row's cells and nothing else. */
+  id: string | number
+  name: string
+  state: StatusState
+  /** M: a short sentence, 'Elevated latency'. */
+  detail?: string
+  /** M: when it entered this state. */
+  since?: Time
+}
+
+export interface StatusData extends WidgetFreshness {
+  /** Shown in the host's order; the widget does not sort. */
+  rows: StatusRow[]
+}
+
+export interface StatusModel {
+  /** 'Services, 3 of 4 OK, Degraded'; the state is left off when everything is OK. */
+  ariaLabel: string
+  /** The worst state present: down, then degraded, then unknown, then ok. 'unknown' with no rows. */
+  overall: StatusState
+  /** The overall state in words, or '' with no rows. */
+  overallText: string
+  /** '3 of 4 OK'. */
+  summary: string
+  counts: { ok: number; degraded: number; down: number; unknown: number }
+  rows: Array<{
+    id: string | number
+    name: string
+    state: StatusState
+    /** 'OK', 'Degraded', 'Down' or 'Unknown'. */
+    stateText: string
+    detail: string
+    /** The age, '12 min ago', or ''. */
+    since: string
+    /** 'since 12 min ago', or ''. */
+    sinceText: string
+    /** 'Price feed, Degraded', the row's name. */
+    aria: string
+  }>
+  /** Rows that can be read. */
+  total: number
+  /** Rows that could not be read: no id, no name, a repeated id or a state that is not one of the four. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-status>, sizes S · Tall · M. Whether each service is working: a dot whose shape differs by state, and the state in words.
+ *
+ * @element ts-status
+ * @fires {CustomEvent<TsStatusAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart table - The table of services.
+ * @csspart row - One service.
+ * @csspart cell - A cell of a service's row.
+ * @csspart dot - The state's mark.
+ */
+export declare class TsStatus extends TsWidget<StatusData> {
+  addEventListener(type: 'ts-action', listener: (this: TsStatus, ev: CustomEvent<TsStatusAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsStatus, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: the states in words, the overall state and the accessible name. */
+  static statusModel(data: StatusData, variant: SizeName, ctx: ViewModelContext): StatusModel
+}
+
+export interface FeedItem {
+  /** Matched by `id`, so a new item inserts one row and the rest are untouched. */
+  id: string | number
+  /** The event, in the host's words. */
+  text: string
+  time?: Time
+  /** A short word beside it: 'Fill', 'Alert'. */
+  tag?: string
+  /** Colours the tag; the tag's own text carries the meaning. Ignored without a tag. */
+  tone?: 'pos' | 'neg' | 'warn'
+  /** M and L: a second line. */
+  detail?: string
+}
+
+export interface FeedData extends WidgetFreshness {
+  /** Newest first, as the host keeps them. */
+  items: FeedItem[]
+  /** How many to show. Default 50, at least 1. */
+  max?: number
+}
+
+export interface FeedModel {
+  /** 'Activity, 12 events, latest: Order filled'. */
+  ariaLabel: string
+  items: Array<{
+    id: string | number
+    text: string
+    /** The clock for today, else the day and the clock; '' without a time. */
+    time: string
+    tag: string
+    tone: 'pos' | 'neg' | 'warn' | 'mut'
+    detail: string
+    /** '11:40, Fill: Order filled'; '' without a time. */
+    aria: string
+  }>
+  /** Items beyond `max`, not shown. */
+  hidden: number
+  /** '12 older events not shown', or ''. */
+  more: string
+  /** Items that could not be read: no id, no text or a repeated id. */
+  dropped: number
+  live: boolean
+  time: string
+}
+
+/**
+ * <ts-feed>, sizes Tall · M · L. The latest events, newest first. It never announces an arrival.
+ *
+ * @element ts-feed
+ * @fires {CustomEvent<TsFeedAction>} ts-action - The error view's Retry, and 'open' when `activatable`.
+ * @csspart list - The list of events.
+ * @csspart item - One event.
+ */
+export declare class TsFeed extends TsWidget<FeedData> {
+  addEventListener(type: 'ts-action', listener: (this: TsFeed, ev: CustomEvent<TsFeedAction>) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: TsFeed, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void
+  /** Pure: the items shown, those beyond `max`, and the accessible name. */
+  static feedModel(data: FeedData, variant: SizeName, ctx: ViewModelContext): FeedModel
+}
+
 export type TsCardAction = TsCommonAction
 export type TsMetricAction = TsCommonAction
 export type TsProgressAction = TsCommonAction
@@ -892,6 +1170,9 @@ export type TsCapitalFundingAction = TsCommonAction | { action: 'rebalance'; id:
 export type TsTodayPnlAction = TsCommonAction
 export type TsEquityCurveAction = TsCommonAction | { action: 'range'; value: EquityRange }
 export type TsSessionClockAction = TsCommonAction
+export type TsBreakdownAction = TsCommonAction
+export type TsStatusAction = TsCommonAction
+export type TsFeedAction = TsCommonAction
 
 /**
  * The markup of <ts-grid>, for the manifest. Its class, with the prose above its members, is in
@@ -906,16 +1187,20 @@ export type TsSessionClockAction = TsCommonAction
  * @attr {'off'} undo-toast - 'off' suppresses the undo toast after a remove.
  * @attr {string} stale-after - The `stale-after` its tiles use unless they set their own.
  * @attr {'off'} flash - 'off' stops every tile's change flash.
+ * @attr {'on' | 'off'} scrub - 'off' turns off scrubbing on every chart in the grid, unless a chart sets its own `scrub`.
  * @attr {string} locale - BCP 47 tag for the grid's strings and its tiles' formatting.
  * @attr {string} currency - ISO 4217 code its tiles format money with.
  * @attr {string} time-zone - IANA zone its tiles format times with.
  * @attr {string} hour-cycle - The hour cycle its tiles use.
  * @attr {string} persist - A key that saves the layout to localStorage per device.
+ * @attr {'comfortable' | 'compact'} density - 'compact' sets --ts-row to 120px, --ts-pad to 12px and --ts-gap to 10px. Default 'comfortable'.
+ * @attr {boolean} hint - A coach mark points at the first tile until it is dismissed or edit mode starts; the host remembers `ts-hint-dismiss`.
  * @attr {string} aria-label - The name of the grid's region.
  * @fires {CustomEvent<TsLayoutChangeDetail>} ts-layout-change - A move, resize, remove, add or undo; save `detail.layout`.
  * @fires {CustomEvent<{ issues: LayoutIssue[] }>} ts-layout-issues - A layout was repaired when read.
  * @fires {CustomEvent<{ editing: boolean }>} ts-edit-change - Edit mode started or ended.
  * @fires {CustomEvent<TsReadingOrderChangeDetail>} ts-reading-order-change - The order of the visible tiles changed.
+ * @fires {CustomEvent<TsHintDismissDetail>} ts-hint-dismiss - The hint was dismissed ('dismiss') or edit mode started ('edit').
  * @fires {CustomEvent<{ columns: 2 | 3 | 4; device: 'desktop' | 'phone'; initial: boolean }>} ts-columns-change - The grid's column count changed.
  * @fires {CustomEvent<{ profile: string; reason: 'schedule' | 'override' | 'override-ended' }>} ts-profile-change - The shown profile changed.
  * @csspart board - The box the tiles sit in.
@@ -923,6 +1208,9 @@ export type TsSessionClockAction = TsCommonAction
  * @csspart toast - The undo toast.
  * @csspart edit-pill - The floating Done and Add back controls.
  * @csspart empty - The panel shown when no tile is visible.
+ * @csspart badge - The size badge in a tile's edit chrome while it is resized.
+ * @csspart hint - The first-run coach mark.
+ * @csspart hint-dismiss - The coach mark's Got it button.
  * @slot - The tiles.
  * @slot empty - Content that replaces the empty board's text.
  */
@@ -955,6 +1243,24 @@ export type TsSessionClockAction = TsCommonAction
  * @csspart next - The line naming the next scheduled switch.
  */
 
+/**
+ * The markup of <ts-layout-list>, for the manifest. Its class is in controls.d.ts. It fires no event of its own:
+ * an edit it makes reaches the host as the grid's `ts-layout-change`.
+ *
+ * @element ts-layout-list
+ * @attr {string} for - The id of the <ts-grid> it edits.
+ * @csspart list - The labelled region around the list.
+ * @csspart rows - The ordered list of tiles.
+ * @csspart row - One tile.
+ * @csspart name - The tile's name.
+ * @csspart size - A size button on a row.
+ * @csspart move - A Move up or Move down button.
+ * @csspart remove - A row's Remove button.
+ * @csspart undo - The Undo button.
+ * @csspart status - The line that says what changed.
+ * @csspart empty - The text shown when the layout has no tile.
+ */
+
 /** The attributes of the TsWidget base, as the framework typings (`tickslate/jsx`, `vue`, `svelte`) offer them. Kept in step with the `@base` block above by test/manifest.test.mjs. */
 export interface TsWidgetAttributes {
   size?: SizeName | undefined
@@ -969,6 +1275,7 @@ export interface TsWidgetAttributes {
   activatable?: boolean | undefined
   'stale-after'?: number | string | undefined
   flash?: 'off' | undefined
+  scrub?: 'on' | 'off' | undefined
   item?: string | undefined
 }
 
@@ -984,6 +1291,7 @@ export interface TsElementAttributes {
   'ts-edge-stats': { stat?: EdgeStatName | undefined }
   'ts-widget-picker': { for?: string | undefined }
   'ts-grid-controls': { for?: string | undefined; picker?: string | undefined }
+  'ts-layout-list': { for?: string | undefined }
   'ts-grid': {
     editing?: boolean | undefined
     profile?: string | undefined
@@ -995,8 +1303,11 @@ export interface TsElementAttributes {
     'time-zone'?: string | undefined
     'hour-cycle'?: string | undefined
     persist?: string | undefined
+    density?: 'comfortable' | 'compact' | undefined
     'stale-after'?: number | string | undefined
     flash?: 'off' | undefined
+    scrub?: 'on' | 'off' | undefined
+    hint?: boolean | undefined
     'aria-label'?: string | undefined
   }
 }
@@ -1015,5 +1326,9 @@ declare global {
     'ts-today-pnl': TsTodayPnl
     'ts-equity-curve': TsEquityCurve
     'ts-session-clock': TsSessionClock
+    'ts-mini-chart': TsMiniChart
+    'ts-breakdown': TsBreakdown
+    'ts-status': TsStatus
+    'ts-feed': TsFeed
   }
 }

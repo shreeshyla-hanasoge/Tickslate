@@ -1,0 +1,851 @@
+{
+  "core": {
+    "exports": [
+      "BREAKPOINTS",
+      "BUILT_IN_PROFILES",
+      "DEFAULT_PROFILE",
+      "EN",
+      "LAYOUT_VERSION",
+      "SIZES",
+      "SIZE_NAMES",
+      "TOP_STRIP_MAX",
+      "WIDGETS",
+      "activeProfile",
+      "addItem",
+      "columnsFor",
+      "configure",
+      "createCalendar",
+      "createFormatter",
+      "createMessages",
+      "currentConfig",
+      "dayStats",
+      "deviceFor",
+      "dropIndex",
+      "edgeStats",
+      "emptyLayout",
+      "equitySeries",
+      "equityStats",
+      "footprint",
+      "funding",
+      "histogram",
+      "isSize",
+      "localDate",
+      "moveItem",
+      "nextProfileChange",
+      "onConfigure",
+      "place",
+      "presets",
+      "readLayout",
+      "removeItem",
+      "resizeItem",
+      "setTopStrip",
+      "sizeForExtent",
+      "snapSize",
+      "stepSize",
+      "toDay",
+      "toNumber",
+      "toTime",
+      "typeForTag",
+      "typeOf",
+      "usDaylightSaving",
+      "version",
+      "withProfile",
+      "zonedTime"
+    ]
+  },
+  "elements": {
+    "exports": [
+      "TsBreakdown",
+      "TsCapitalFunding",
+      "TsCard",
+      "TsChart",
+      "TsEdgeStats",
+      "TsEquityCurve",
+      "TsFeed",
+      "TsGrid",
+      "TsGridControls",
+      "TsLayoutList",
+      "TsMetric",
+      "TsOpenPositions",
+      "TsPnlCalendar",
+      "TsProgress",
+      "TsSessionClock",
+      "TsStatus",
+      "TsTable",
+      "TsTodayPnl",
+      "TsWatchlist",
+      "TsWidget",
+      "TsWidgetPicker",
+      "createDashboard",
+      "defineWidget",
+      "escapeHtml",
+      "linePaths",
+      "onCatalogChange",
+      "persistLayout",
+      "scale",
+      "version",
+      "widgetCatalog"
+    ],
+    "tags": {
+      "ts-breakdown": {
+        "class": "TsBreakdown",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "item",
+          "label",
+          "legend",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-capital-funding": {
+        "class": "TsCapitalFunding",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:rebalance",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-card": {
+        "class": "TsCard",
+        "attributes": [
+          "activatable",
+          "as-of",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "live",
+          "locale",
+          "scrollable",
+          "scrub",
+          "size",
+          "sizes",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "body",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile",
+          "value"
+        ]
+      },
+      "ts-chart": {
+        "class": "TsChart",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry",
+          "ts-action:select"
+        ],
+        "parts": [
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "scrub",
+          "scrub-dot",
+          "scrub-readout",
+          "scrub-rule",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-edge-stats": {
+        "class": "TsEdgeStats",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "stat",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-equity-curve": {
+        "class": "TsEquityCurve",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "range",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:range",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "scrub",
+          "scrub-dot",
+          "scrub-readout",
+          "scrub-rule",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-feed": {
+        "class": "TsFeed",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "item",
+          "label",
+          "list",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-grid": {
+        "class": "TsGrid",
+        "attributes": [
+          "aria-label",
+          "currency",
+          "density",
+          "edit-controls",
+          "editing",
+          "hint",
+          "hour-cycle",
+          "locale",
+          "locked",
+          "persist",
+          "profile",
+          "scrub",
+          "time-zone"
+        ],
+        "events": [
+          "ts-add-request",
+          "ts-columns-change",
+          "ts-edit-change",
+          "ts-hint-dismiss",
+          "ts-layout-change",
+          "ts-layout-issues",
+          "ts-profile-change",
+          "ts-reading-order-change"
+        ],
+        "parts": [
+          "badge",
+          "board",
+          "edit-pill",
+          "empty",
+          "hint",
+          "hint-dismiss",
+          "placeholder",
+          "strip",
+          "toast"
+        ]
+      },
+      "ts-grid-controls": {
+        "class": "TsGridControls",
+        "attributes": [
+          "for",
+          "picker"
+        ],
+        "events": [],
+        "parts": [
+          "next",
+          "option",
+          "switcher"
+        ]
+      },
+      "ts-layout-list": {
+        "class": "TsLayoutList",
+        "attributes": [
+          "for"
+        ],
+        "events": [],
+        "parts": [
+          "empty",
+          "list",
+          "locked",
+          "name",
+          "row",
+          "rows",
+          "status",
+          "undo"
+        ]
+      },
+      "ts-metric": {
+        "class": "TsMetric",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile",
+          "value"
+        ]
+      },
+      "ts-mini-chart": {
+        "class": "TsMiniChart",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry",
+          "ts-action:timeframe"
+        ],
+        "parts": [
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile",
+          "timeframes"
+        ]
+      },
+      "ts-open-positions": {
+        "class": "TsOpenPositions",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:exit-all",
+          "ts-action:exit-position",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "cell",
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "row",
+          "skeleton",
+          "table",
+          "tile"
+        ]
+      },
+      "ts-pnl-calendar": {
+        "class": "TsPnlCalendar",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-progress": {
+        "class": "TsProgress",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile",
+          "value"
+        ]
+      },
+      "ts-session-clock": {
+        "class": "TsSessionClock",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "empty",
+          "error",
+          "header",
+          "label",
+          "skeleton",
+          "tile",
+          "value"
+        ]
+      },
+      "ts-status": {
+        "class": "TsStatus",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "cell",
+          "chart",
+          "dot",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "row",
+          "skeleton",
+          "table",
+          "tile"
+        ]
+      },
+      "ts-table": {
+        "class": "TsTable",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry",
+          "ts-action:select",
+          "ts-action:sort"
+        ],
+        "parts": [
+          "cell",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "row",
+          "skeleton",
+          "table",
+          "tile"
+        ]
+      },
+      "ts-today-pnl": {
+        "class": "TsTodayPnl",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "scrub",
+          "scrub-dot",
+          "scrub-readout",
+          "scrub-rule",
+          "skeleton",
+          "tile"
+        ]
+      },
+      "ts-watchlist": {
+        "class": "TsWatchlist",
+        "attributes": [
+          "activatable",
+          "currency",
+          "data",
+          "flash",
+          "heading-level",
+          "hour-cycle",
+          "href",
+          "label",
+          "locale",
+          "scrub",
+          "size",
+          "stale-after",
+          "state",
+          "time-zone"
+        ],
+        "events": [
+          "ts-action",
+          "ts-action:add-instrument",
+          "ts-action:open",
+          "ts-action:retry"
+        ],
+        "parts": [
+          "bar",
+          "cell",
+          "chart",
+          "empty",
+          "error",
+          "header",
+          "label",
+          "row",
+          "skeleton",
+          "table",
+          "tile"
+        ]
+      },
+      "ts-widget-picker": {
+        "class": "TsWidgetPicker",
+        "attributes": [],
+        "events": [],
+        "parts": [
+          "chip",
+          "close",
+          "empty",
+          "group",
+          "row",
+          "search",
+          "sheet"
+        ]
+      }
+    }
+  },
+  "tokens": [
+    "--ts-accent",
+    "--ts-axis",
+    "--ts-bg",
+    "--ts-ease",
+    "--ts-fill",
+    "--ts-focus",
+    "--ts-font-num",
+    "--ts-font-ui",
+    "--ts-gap",
+    "--ts-gap-compact",
+    "--ts-grid-max-width",
+    "--ts-headline-weight",
+    "--ts-ink",
+    "--ts-label-case",
+    "--ts-label-size",
+    "--ts-label-tracking",
+    "--ts-label-weight",
+    "--ts-line",
+    "--ts-loss",
+    "--ts-motion",
+    "--ts-muted",
+    "--ts-num-weight",
+    "--ts-num-weight-small",
+    "--ts-num-width",
+    "--ts-pad",
+    "--ts-profit",
+    "--ts-radius",
+    "--ts-radius-sm",
+    "--ts-row",
+    "--ts-row-compact",
+    "--ts-series-1",
+    "--ts-series-2",
+    "--ts-series-3",
+    "--ts-series-4",
+    "--ts-series-5",
+    "--ts-series-6",
+    "--ts-shadow",
+    "--ts-shadow-lift",
+    "--ts-strip-top",
+    "--ts-surface",
+    "--ts-surface-2",
+    "--ts-text-2xl",
+    "--ts-text-2xs",
+    "--ts-text-3xl",
+    "--ts-text-base",
+    "--ts-text-big",
+    "--ts-text-lg",
+    "--ts-text-md",
+    "--ts-text-sm",
+    "--ts-text-xbig",
+    "--ts-text-xl",
+    "--ts-text-xs",
+    "--ts-warn"
+  ],
+  "entries": [
+    ".",
+    "./custom-elements.json",
+    "./package.json",
+    "./themes/*.css",
+    "./tokens.css",
+    "./vscode.html-custom-data.json"
+  ]
+}

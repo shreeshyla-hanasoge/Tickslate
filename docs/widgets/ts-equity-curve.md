@@ -74,6 +74,7 @@ curve.addEventListener('ts-action', (e) => {
 | `label` | attribute and property | The tile's name and heading. Defaults to "Equity curve"; `Wide` shortens that default to "Equity" and adds the day count |
 | `heading-level` | attribute | The `aria-level` of the tile's heading, 1 to 6. Falls back to the nearest `<ts-grid>`'s `heading-level`, then 3 |
 | `stale-after` | attribute | How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default `120000`. Falls back to the nearest `<ts-grid>`'s `stale-after`; an unreadable value falls back to the default with one development warning |
+| `scrub` | attribute and property | `off` turns scrubbing off: no hover or drag read-out and no keyboard slider. `on` turns it on where the nearest `<ts-grid>` says `off`. Falls back to the nearest `<ts-grid>`'s `scrub`, then on |
 | `flash` | attribute | `off` stops the brief tint on a headline figure that changed. The nearest `<ts-grid>`'s `flash` applies too |
 | `size` | attribute and property | `Wide`, `M` or `XL`; others snap. A grid sets it |
 | `range` | attribute and property | `'1W'`, `'1M'`, `'3M'`, `'YTD'` or `'All'`. Matched without regard to case; anything else reads as `'All'`. Reads back normalised |
@@ -85,6 +86,27 @@ curve.addEventListener('ts-action', (e) => {
 | `item` | attribute | The id a grid matches this child by |
 
 The base members are listed in [Your own widget](../guide/your-own-widget.md).
+
+## Scrubbing and the data table
+
+Hover a mouse over the plot, or drag a finger along it, and a rule, a dot and a small label show the point
+nearest the pointer: its date, and `Equity` (the running total) and `Day` (that day's own result), both signed. A vertical swipe still scrolls the page; only a horizontal drag
+scrubs. The label stays inside the plot at both edges. Scrubbing only changes what the tile shows, so it fires no event.
+
+For the keyboard the plot has one tab stop, a `role="slider"` named "Equity curve, read point by point". Left and
+Right move one point earlier or later (time runs left to right in every language, so the arrows never swap), Page Up
+and Page Down move ten, Home and End jump to the first and last point, and Escape hides the label and keeps focus.
+Focus starts on the newest point. The slider's `aria-valuetext` is the label's text, so a screen reader speaks each
+point as the keys move, and nothing in the tile is `aria-live`.
+
+The plot has a visually hidden table of its last 12 drawn points, newest last, with a caption, column headers and
+row headers. It is the screen-reader route to the data, and it is not announced. Rows are updated in place, so a
+tick adds a row and drops the oldest rather than rebuilding the table.
+
+Every size that draws the curve scrubs and has the table. Where the net figure goes compact ("+₹1.2L") its full value is the `title` of the headline, and the tile's accessible name always has the full figure.
+
+Set `scrub="off"` on a tile, or on the `<ts-grid>`, to turn it off. The table stays. Scrubbing is also off while
+the grid is in edit mode.
 
 ## Freshness and change flashes
 
@@ -114,6 +136,10 @@ only lets your app know, for instance to save the choice. See
 | `label` | The label, a `role="heading"` whose level comes from `heading-level` |
 | `value` | The net figure, with its ▲ or ▼ |
 | `chart` | The box around the curve |
+| `scrub` | The overlay over the curve while a point is read (hidden otherwise) |
+| `scrub-rule` | The vertical rule at the point |
+| `scrub-dot` | The dot on the curve at the point |
+| `scrub-readout` | The label with the point's date, its equity and the day's result |
 | `empty` | The empty view's container, and the "No trading days in this range" message inside the chart |
 | `error` | The error view's container (only while the error view shows) |
 | `skeleton` | The loading view's container, around the skeleton blocks |
@@ -137,6 +163,8 @@ only lets your app know, for instance to save the choice. See
 - The range buttons sit in a `role="group"` named "Range", each a toggle with
   `aria-pressed`. A hidden expansion makes "1W" read as "1W, 1 week". The pressed one also has an underline, so it is not shown by
   tint alone. On touch screens each is at least 44px.
+- The curve has one tab stop, a `role="slider"` with a value text such as
+  "Mon 12 Oct: Equity +$785.65 and Day −$120.00", and a visually hidden table of the last 12 days. Nothing is `aria-live`.
 - Gains and losses carry a sign, colour and an `aria-hidden` ▲ or ▼; a drawdown is
   shown as a negative amount.
 - The loading shimmer and the live pulse stop under `prefers-reduced-motion`.

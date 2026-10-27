@@ -1,0 +1,124 @@
+<!doctype html>
+<!-- The layout list editor (RFC 0003 §20). A grid of five tiles with a <ts-layout-list> beside it. Every layout
+     change and profile change is recorded in window.__events.
+       ?theme=dark       dark theme
+       ?profiles         two profiles on a schedule, market (five tiles) and closed (two), and a button that overrides to closed and back
+       ?late             the grid is taken out of the page and window.__addGrid() puts it back, so a test decides when it arrives
+       ?implicit         no layout is set: the tiles in the markup are the layout, as for a host that never calls layout
+       ?locked           the grid has the locked attribute
+       ?lang=de          the grid's locale and a small German table
+       ?many             twelve tiles, for the phone's long list -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout list fixture</title>
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  main { padding: 16px; }
+  h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+  .bar button { min-height: 44px; padding: 0 16px; font: inherit; }
+  .split { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 900px) { .split { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+</style>
+<script>
+  window.__events = []
+  for (const name of ['ts-layout-change', 'ts-profile-change']) {
+    document.addEventListener(name, (e) => {
+      const d = e.detail
+      window.__events.push({
+        type: name,
+        reason: d.reason,
+        id: d.id,
+        profile: d.profile,
+        order: d.items ? d.items.map((item) => item.id) : undefined,
+        sizes: d.items ? d.items.map((item) => item.size) : undefined,
+      })
+    })
+  }
+</script>
+<script type="module" src="/src/elements/index.js"></script>
+</head>
+<body>
+<main>
+  <h1>Layout list fixture</h1>
+  <div class="bar">
+    <button id="before" type="button">Before the list</button>
+    <button id="switch" type="button">Switch layout</button>
+  </div>
+  <div class="split">
+    <div id="host">
+      <ts-grid id="g" aria-label="Dashboard">
+        <ts-metric item="sales" label="Sales" size="Wide"></ts-metric>
+        <ts-card item="notes" label="Notes" size="S"><span slot="value">42</span></ts-card>
+        <ts-card item="tasks" label="Tasks" size="S"><span slot="value">7</span></ts-card>
+        <ts-chart item="traffic" label="Traffic" size="M"></ts-chart>
+        <ts-card item="queue" label="Queue" size="Wide"><span slot="value">3</span></ts-card>
+      </ts-grid>
+    </div>
+    <ts-layout-list id="l" for="g"></ts-layout-list>
+  </div>
+  <button id="after" type="button">After the list</button>
+</main>
+<script type="module">
+  const params = new URLSearchParams(location.search)
+  const { setup, frozenClock, calendar } = await import('./data.js')
+  await Promise.all([customElements.whenDefined('ts-grid'), customElements.whenDefined('ts-layout-list')])
+  setup()
+  document.documentElement.dataset.theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  const host = document.getElementById('host')
+  const g = document.getElementById('g')
+  if (params.get('lang') === 'de') {
+    g.setAttribute('locale', 'de-DE')
+    g.messages = {
+      'list.undo': 'Rückgängig',
+      'list.undone': 'Rückgängig gemacht',
+      'list.moveDown': 'Nach unten',
+      'list.moveDownItem': 'Nach unten: {label}',
+      'list.moved': '{label} ist jetzt an Position {position} von {total}',
+      'size.M': 'Mittel',
+      'size.name': '{name}, {cols} mal {rows}',
+    }
+  }
+  if (params.has('many')) {
+    for (let i = 1; i <= 7; i++) {
+      const el = document.createElement('ts-card')
+      el.setAttribute('item', `extra${i}`)
+      el.setAttribute('label', `Extra tile number ${i}, with a long name that has to wrap`)
+      el.setAttribute('size', i % 2 ? 'S' : 'Wide')
+      g.append(el)
+    }
+  }
+  for (const el of g.children) el.clock = frozenClock
+  const tiles = [
+    { id: 'sales', type: 'metric', size: 'Wide' },
+    { id: 'notes', type: 'card', size: 'S' },
+    { id: 'tasks', type: 'card', size: 'S' },
+    { id: 'traffic', type: 'chart', size: 'M' },
+    { id: 'queue', type: 'card', size: 'Wide' },
+  ]
+  if (params.has('many')) for (let i = 1; i <= 7; i++) tiles.push({ id: `extra${i}`, type: 'card', size: i % 2 ? 'S' : 'Wide' })
+  if (params.has('locked')) g.setAttribute('locked', '')
+  if (params.has('implicit')) {
+    document.getElementById('switch').remove()
+  } else if (params.has('profiles')) {
+    g.layout = { profiles: { market: tiles, closed: [tiles[2], tiles[0]] } }
+    // The schedule decides (open at the frozen 11:42), and the button overrides it, which is what fires ts-profile-change.
+    g.clock = frozenClock
+    g.schedule = { calendar, market: { sessions: ['nse-fo'] } }
+    document.getElementById('switch').addEventListener('click', () => g.override(g.profileOverride ? null : 'closed'))
+  } else {
+    g.layout = tiles
+    document.getElementById('switch').remove()
+  }
+  if (params.has('late')) {
+    host.removeChild(g)
+    window.__addGrid = () => host.append(g)
+  }
+  window.__fx = { grid: g, list: document.getElementById('l') }
+  window.__ready = true
+</script>
+</body>
+</html>

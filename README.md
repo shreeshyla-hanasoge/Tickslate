@@ -13,8 +13,9 @@ fetches anything.
   move, drag the corner to resize, and Undo or Add back after a removal.
 - **Generic widgets.** `<ts-metric>` (a KPI tile with change, sparkline and
   target), `<ts-chart>` (line, area and bar trends), `<ts-progress>` (a value
-  against a goal or limit) and `<ts-card>` (a themed tile
-  for any content, such as your own Chart.js or ECharts chart).
+  against a goal or limit), `<ts-breakdown>` (parts of a whole), `<ts-status>`
+  (service health), `<ts-feed>` (the latest events) and `<ts-card>` (a themed
+  tile for any content, such as your own Chart.js or ECharts chart).
 - **A finance set.** Today's P&L, an equity curve, an exchange session clock,
   a watchlist and open positions, a P&L calendar, edge stats and capital
   funding, plus a sortable `<ts-table>`.
@@ -36,11 +37,11 @@ Without a bundler, load it from jsDelivr. Pin an exact version so a release
 can never change your page.
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.2.0/elements.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.3.0/elements.js"></script>
 ```
 
 To use a named export from a page script, import it from the same URL:
-`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.2.0/elements.js'`.
+`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.3.0/elements.js'`.
 
 Pay only for the widgets you use: each one has its own entry, which registers
 just that tag.
@@ -51,16 +52,17 @@ import 'tickslate/elements/metric'
 ```
 
 The entries are `grid`, `card`, `metric`, `chart`, `today-pnl`, `equity-curve`,
-`session-clock`, `table`, `progress`, `watchlist`, `open-positions`,
-`pnl-calendar`, `edge-stats`, `capital-funding` and `controls`
-(`<ts-widget-picker>` and `<ts-grid-controls>`). The development builds, with
+`session-clock`, `table`, `progress`, `breakdown`, `status`, `feed`,
+`watchlist`, `open-positions`,
+`pnl-calendar`, `edge-stats`, `capital-funding`, `controls`
+(`<ts-widget-picker>` and `<ts-grid-controls>`) and `layout-list`. The development builds, with
 their warnings, load through the `development` export condition.
 
 Or, with no build step at all, one script tag loads the core and every element
 and sets `window.Tickslate`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/tickslate@0.2.0/cdn/tickslate.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tickslate@0.3.0/cdn/tickslate.iife.js"></script>
 ```
 
 `cdn/tickslate.js` is the same code as a minified ES module. The `unpkg` and
@@ -108,7 +110,7 @@ stylesheet at all. Linking `tokens.css` is still the clearest way to see and
 override every variable, and it always beats the built-in defaults:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.2.0/tokens.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.3.0/tokens.css">
 ```
 
 ```js
@@ -259,12 +261,16 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
   [Vue](docs/guide/frameworks/vue.md),
   [Svelte](docs/guide/frameworks/svelte.md),
   [Angular](docs/guide/frameworks/angular.md)
+- [A trading dashboard](docs/guide/trading-dashboard.md), with the page it follows,
+  [examples/trading.html](examples/trading.html)
 - [Saving layouts](docs/guide/saving-layouts.md)
+- [Strict CSP and Trusted Types](docs/guide/security.md)
 - [Your own widget](docs/guide/your-own-widget.md)
 - Reference: [widgets](docs/widgets/), [core](docs/reference/core.md),
   [events](docs/reference/events.md), [theming](docs/theming.md)
 - [Server templates](docs/guide/server-templates.md) (Blade, Django)
 - [Bring your own chart](docs/guide/bring-your-own-chart.md) (Chart.js, ECharts)
+- [The public site](docs/site.md): how the website is built and deployed
 - The contract: [RFC 0001](docs/rfc/0001-api.md) and
   [RFC 0002](docs/rfc/0002-integration-and-ux.md). Data shapes are in the
   `.d.ts` files: [elements](src/elements/index.d.ts),
@@ -282,11 +288,15 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 | `<ts-session-clock>` | S, Banner | Exchange session status |
 | `<ts-table>` | Tall, M, L, XL | Typed, sortable columns |
 | `<ts-progress>` | S, Wide | A value against a goal or a limit |
+| `<ts-breakdown>` | S, Wide, Tall, M | Parts of a whole as a share bar, stacked bar or donut |
+| `<ts-status>` | S, Tall, M | Whether each service is working, in words and a dot |
+| `<ts-feed>` | Tall, M, L | The latest events, newest first |
 | `<ts-watchlist>` | S, Tall, M | Instruments with price, change and day range |
 | `<ts-open-positions>` | Wide, M, L | Open positions, profit or loss and stop-to-target bar |
 | `<ts-pnl-calendar>` | Tall, M, Banner | Heat map of daily profit and loss |
 | `<ts-edge-stats>` | S, Wide, M | Win rate, profit factor, average win and loss, expectancy |
 | `<ts-capital-funding>` | S, Tall, L | Account balances against their allocations |
+| `<ts-mini-chart>` | M, L, XL | A small candlestick chart with marks and a countdown; import `tickslate/elements/mini-chart`, with the optional peer `emberwick` |
 
 ## Development
 

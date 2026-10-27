@@ -1,0 +1,558 @@
+// Narrow tiles and the trading example's tables (RFC 0004 §11.1 and §11.3): a heading that cannot fit its label ends in
+// an ellipsis and keeps the whole text in the DOM, its title and its accessible name; and the trading example's fills table
+// is readable at 390 px, with a content column that takes only its text at 1280.
+import { test, expect } from '@playwright/test'
+import { gridDrawn } from './drawn.mjs'
+
+const PAGE = '/examples/trading.html'
+
+// Two Tall tiles side by side on the phone grid, in both profiles so the test does not depend on the hour.
+const TALL_PAIR = {
+  version: 1,
+  device: 'phone',
+  profiles: {
+    market: [{ id: 'capitalFunding', size: 'Tall' }, { id: 'watchlist', size: 'Tall' }, { id: 'todayPnl', size: 'M' }],
+    closed: [{ id: 'capitalFunding', size: 'Tall' }, { id: 'watchlist', size: 'Tall' }, { id: 'todayPnl', size: 'M' }],
+  },
+}
+
+test.beforeEach(async ({ page }) => {
+  // Network off: only the dev server answers.
+  await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+})
+
+async function open(page, width, scheme = 'light') {
+  await page.emulateMedia({ colorScheme: scheme })
+  await page.setViewportSize({ width, height: 900 })
+  await page.goto(PAGE)
+  await page.waitForFunction(() => document.querySelector('ts-table')?.shadowRoot?.querySelector('tbody tr'))
+  // The first renders of the board are time-sliced over several tasks (RFC 0003 §23): the table can have rows while the
+  // session clock or a Tall tile's heading is still being drawn. Read nothing before every tile has drawn.
+  await gridDrawn(page, '#board > *')
+  // For the specs that change data or the clock and read the result: resolves once no widget owes a render. A widget keeps
+  // _queued set from the request until it has drawn, so this waits for the condition itself, not for a guessed delay.
+  await page.evaluate(() => {
+    const owing = (root) => [...root.querySelectorAll('*')].some((el) => el._queued === true || (el.shadowRoot && owing(el.shadowRoot)))
+    window.__settled = async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+      while (owing(document)) await new Promise((r) => requestAnimationFrame(r))
+    }
+  })
+}
+
+// What a heading shows and what it is called, read in the page: the visible text, whether CSS is cutting it, its name, its title.
+const headingOf = (page, selector) =>
+  page.evaluate((sel) => {
+    const tile = document.querySelector(sel)
+    const heading = tile.shadowRoot.querySelector('[part="label"]')
+    const style = getComputedStyle(heading)
+    const box = heading.getBoundingClientRect()
+    const outer = tile.getBoundingClientRect()
+    return {
+      text: heading.textContent,
+      name: heading.getAttribute('aria-label') ?? heading.textContent,
+      title: heading.getAttribute('title'),
+      tileName: tile.shadowRoot.querySelector('.tile').getAttribute('aria-label'),
+      cut: heading.scrollWidth > heading.clientWidth + 0.5,
+      textOverflow: style.textOverflow,
+      overflow: style.overflowX,
+      whiteSpace: style.whiteSpace,
+      dir: style.direction,
+      inside: box.left >= outer.left - 0.5 && box.right <= outer.right + 0.5,
+      tileWidth: Math.round(outer.width),
+    }
+  }, selector)
+
+test.describe('two Tall tiles side by side at 390 px', () => {
+  for (const scheme of ['light', 'dark']) {
+    test(`no heading is clipped, and the full label is the name (${scheme})`, async ({ page }) => {
+      await open(page, 390, scheme)
+      await page.evaluate((layout) => {
+        document.getElementById('board').layout = layout
+      }, TALL_PAIR)
+      await page.waitForFunction(() => document.querySelector('[item="watchlist"]').getBoundingClientRect().width > 0)
+      const funding = await headingOf(page, '[item="capitalFunding"]')
+      const watch = await headingOf(page, '[item="watchlist"]')
+      // Side by side: both are half the grid, well under 200 px.
+      expect(funding.tileWidth).toBeLessThan(200)
+      expect(watch.tileWidth).toBeLessThan(200)
+      for (const [h, label] of [[funding, 'Funding'], [watch, 'Watchlist']]) {
+        expect(h.text).toBe(label)
+        expect(h.name).toBe(label)
+        expect(h.title).toBe(label)
+        expect(h.tileName).toContain(label)
+        expect(h.inside).toBe(true)
+        // On a touch screen the Watchlist's + button is 44 px, which can leave the label short of room: it then ends in an
+        // ellipsis (never clips), and its text, title and name are still whole.
+        if (h.cut) {
+          expect(h.textOverflow).toBe('ellipsis')
+          expect(h.overflow).toBe('hidden')
+        }
+      }
+      await expect(page.getByRole('heading', { name: 'Funding', exact: true })).toHaveCount(1)
+      await expect(page.getByRole('heading', { name: 'Watchlist', exact: true })).toHaveCount(1)
+    })
+  }
+
+  test('a longer label ends in an ellipsis, keeps its whole text, and is still the name', async ({ page }) => {
+    await open(page, 390)
+    await page.evaluate((layout) => {
+      const grid = document.getElementById('board')
+      grid.layout = layout
+      document.querySelector('[item="capitalFunding"]').setAttribute('label', 'Capital funding and margin')
+      document.querySelector('[item="watchlist"]').setAttribute('label', 'Watchlist: banks and metals')
+    }, TALL_PAIR)
+    await page.waitForFunction(() => document.querySelector('[item="watchlist"]').shadowRoot.querySelector('[part="label"]').textContent === 'Watchlist: banks and metals')
+    for (const [item, label] of [['capitalFunding', 'Capital funding and margin'], ['watchlist', 'Watchlist: banks and metals']]) {
+      const h = await headingOf(page, `[item="${item}"]`)
+      expect(h.cut, 'the label is wider than the room it gets').toBe(true)
+      expect(h.textOverflow).toBe('ellipsis')
+      expect(h.overflow).toBe('hidden')
+      expect(h.whiteSpace).toBe('nowrap')
+      expect(h.inside).toBe(true)
+      expect(h.text).toBe(label)
+      expect(h.name).toBe(label)
+      expect(h.title).toBe(label)
+      await expect(page.getByRole('heading', { name: label, exact: true })).toHaveCount(1)
+    }
+  })
+})
+
+// A tile of a chosen width, so the 11.25 rem rule is read at 150 and 179 px and left alone at 260.
+async function tileAt(page, width, dir = 'ltr', label = 'Open positions and exits', data = null) {
+  return page.evaluate(
+    ({ width, dir, label, data }) => {
+      document.getElementById('probe')?.remove()
+      const host = document.createElement('div')
+      host.id = 'probe'
+      host.setAttribute('dir', dir)
+      host.style.cssText = `position: fixed; inset-block-start: 0; inset-inline-start: 0; inline-size: ${width}px; block-size: 160px; z-index: 9`
+      const card = document.createElement('ts-card')
+      card.setAttribute('label', label)
+      card.setAttribute('size', 'M')
+      card.style.cssText = 'display: block; block-size: 100%'
+      host.append(card)
+      document.body.append(host)
+      if (data) card.data = typeof data === 'function' ? data() : data
+      return null
+    },
+    { width, dir, label, data },
+  )
+}
+
+test.describe('the heading at chosen tile widths', () => {
+  for (const width of [150, 179]) {
+    test(`at ${width} px the label ends in an ellipsis and never clips mid-glyph`, async ({ page }) => {
+      await open(page, 390)
+      await tileAt(page, width)
+      await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[part="label"]')?.textContent)
+      const h = await headingOf(page, '#probe ts-card')
+      expect(h.tileWidth).toBe(width)
+      expect(h.cut).toBe(true)
+      expect(h.textOverflow).toBe('ellipsis')
+      expect(h.overflow).toBe('hidden')
+      expect(h.text).toBe('Open positions and exits')
+      expect(h.name).toBe('Open positions and exits')
+      expect(h.title).toBe('Open positions and exits')
+      expect(h.inside).toBe(true)
+    })
+  }
+
+  test('at 260 px a label that fits is whole', async ({ page }) => {
+    await open(page, 390)
+    await tileAt(page, 260, 'ltr', 'Open positions')
+    await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[part="label"]')?.textContent)
+    const h = await headingOf(page, '#probe ts-card')
+    expect(h.cut).toBe(false)
+    expect(h.text).toBe('Open positions')
+  })
+
+  test('in a right-to-left grid the heading is cut at its end and stays inside the tile', async ({ page }) => {
+    await open(page, 390)
+    await tileAt(page, 150, 'rtl')
+    await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[part="label"]')?.textContent)
+    const h = await headingOf(page, '#probe ts-card')
+    expect(h.dir).toBe('rtl')
+    expect(h.cut).toBe(true)
+    expect(h.textOverflow).toBe('ellipsis')
+    expect(h.inside).toBe(true)
+    expect(h.text).toBe('Open positions and exits')
+  })
+
+  test('the title follows the label when it changes, and is written only then', async ({ page }) => {
+    await open(page, 390)
+    await tileAt(page, 150)
+    await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[part="label"]')?.textContent)
+    const writes = await page.evaluate(async () => {
+      const card = document.querySelector('#probe ts-card')
+      const heading = card.shadowRoot.querySelector('[part="label"]')
+      let count = 0
+      new MutationObserver((records) => {
+        count += records.filter((r) => r.attributeName === 'title').length
+      }).observe(heading, { attributes: true, attributeFilter: ['title'] })
+      card.data = { live: true }
+      card.data = { live: true, asOf: Date.now() }
+      await new Promise((r) => setTimeout(r, 100))
+      const same = count
+      card.setAttribute('label', 'Another long label here')
+      await new Promise((r) => setTimeout(r, 100))
+      return { same, after: count, title: card.shadowRoot.querySelector('[part="label"]').getAttribute('title') }
+    })
+    expect(writes.same).toBe(0)
+    expect(writes.after).toBe(1)
+    expect(writes.title).toBe('Another long label here')
+  })
+})
+
+// Every cell of the fills table, read against the tile that holds it.
+const fillsOf = (page) =>
+  page.evaluate(() => {
+    const el = document.querySelector('ts-table')
+    const root = el.shadowRoot
+    const scroll = root.querySelector('[data-k="scroll"]')
+    const tile = root.querySelector('.tile').getBoundingClientRect()
+    const cells = [...root.querySelectorAll('th, td')].map((cell) => {
+      const box = cell.getBoundingClientRect()
+      const value = cell.querySelector('.sort > span, td > span:last-child, th > span') || cell
+      return {
+        text: cell.textContent.trim(),
+        // Cut by its own cell: a figure or a symbol the cell is too narrow for.
+        cut: cell.scrollWidth > cell.clientWidth + 1,
+        inside: box.left >= tile.left - 0.5 && box.right <= tile.right + 0.5,
+        width: Math.round(box.width),
+        tag: cell.localName,
+        key: cell.getAttribute('data-key'),
+        value: value.textContent,
+      }
+    })
+    return {
+      heads: [...root.querySelectorAll('thead th')].map((th) => th.getAttribute('data-key')),
+      scrolls: scroll.scrollWidth > scroll.clientWidth + 1,
+      clientWidth: scroll.clientWidth,
+      tile: Math.round(tile.width),
+      cells,
+    }
+  })
+
+test.describe('the fills table in the trading example', () => {
+  test('at 390 px every cell is whole and inside its tile, with the full instrument shown', async ({ page }) => {
+    await open(page, 390)
+    await page.locator('ts-table').scrollIntoViewIfNeeded()
+    await page.waitForFunction(() => {
+      const scroll = document.querySelector('ts-table').shadowRoot.querySelector('[data-k="scroll"]')
+      return scroll.scrollWidth <= scroll.clientWidth + 1
+    })
+    const f = await fillsOf(page)
+    expect(f.scrolls).toBe(false)
+    expect(f.heads[0]).toBe('sym')
+    expect(f.heads).toContain('pnl')
+    expect(f.cells.length).toBeGreaterThan(f.heads.length)
+    for (const cell of f.cells) {
+      expect(cell.inside, `${cell.text} is inside the tile`).toBe(true)
+      expect(cell.cut, `${cell.text} is not cut`).toBe(false)
+    }
+    // Instruments are the long text; none ends in an ellipsis.
+    const symbols = f.cells.filter((c) => c.tag === 'td').slice(0, 1)
+    expect(symbols[0].text).toMatch(/^[A-Z0-9 ]{8,}$/)
+  })
+
+  test('at 390 px the table is already fitted when it has not been scrolled to (a full-page screenshot reads it so)', async ({ page }) => {
+    await open(page, 390)
+    // Not scrolled to, not nearby: the first fit is still owed, and drawn.
+    await page.waitForFunction(() => {
+      const scroll = document.querySelector('ts-table').shadowRoot.querySelector('[data-k="scroll"]')
+      return scroll.scrollWidth <= scroll.clientWidth + 1
+    })
+    const f = await fillsOf(page)
+    expect(f.scrolls).toBe(false)
+    expect(f.heads).toContain('pnl')
+  })
+
+  test('at 1280 px the instrument column takes only its text, and the other columns share the rest', async ({ page }) => {
+    await open(page, 1280)
+    await page.locator('ts-table').scrollIntoViewIfNeeded()
+    await page.waitForFunction(() => document.querySelector('ts-table').shadowRoot.querySelectorAll('thead th').length === 6)
+    const f = await fillsOf(page)
+    const width = (key) => f.cells.find((c) => c.tag === 'th' && c.key === key).width
+    expect(f.scrolls).toBe(false)
+    expect(width('sym')).toBeLessThan(f.clientWidth / 4)
+    // The full instrument is there, whole.
+    expect(f.cells.filter((c) => c.tag === 'td' && c.cut)).toEqual([])
+    // The figures share what is left: each takes more than the 56 px floor.
+    for (const key of ['qty', 'price', 'pnl']) expect(width(key)).toBeGreaterThan(100)
+  })
+
+  test('a fixed width is a number of CSS pixels, written on the <col>, and a long symbol is whole at L', async ({ page }) => {
+    await open(page, 1280)
+    await page.locator('ts-table').scrollIntoViewIfNeeded()
+    const info = await page.evaluate(async () => {
+      const el = document.querySelector('ts-table')
+      el.data = {
+        columns: [
+          { key: 'sym', label: 'Instrument', width: 'content' },
+          { key: 'qty', label: 'Qty', format: 'number', width: 96 },
+          { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign' },
+        ],
+        rows: [{ id: 1, sym: 'ALPHA 24300 PE WEEKLY 03 NOV', qty: 75, pnl: 1250.5 }],
+      }
+      // The table draws, measures, and draws again with the columns that fit (RFC 0003 §23); its own columns are the
+      // condition, so wait for the three this data has instead of for a guessed delay.
+      while (el.shadowRoot.querySelectorAll('col').length !== 3) await new Promise((r) => requestAnimationFrame(r))
+      const root = el.shadowRoot
+      const th = [...root.querySelectorAll('thead th')].map((h) => Math.round(h.getBoundingClientRect().width))
+      const sym = root.querySelector('tbody td')
+      return { cols: [...root.querySelectorAll('col')].map((c) => c.style.inlineSize), th, symCut: sym.scrollWidth > sym.clientWidth + 1, tableWidth: root.querySelector('table').getBoundingClientRect().width }
+    })
+    expect(info.cols).toEqual(['', '96px', ''])
+    expect(info.th[1]).toBe(96)
+    expect(info.symCut).toBe(false)
+    expect(info.th[0]).toBeLessThan(info.tableWidth / 2 + 1)
+  })
+})
+
+// A table of its own, in a tile of a chosen width, so the widths are read where a phone would put them.
+async function tableAt(page, width, columns, rows) {
+  await page.evaluate(
+    ({ width, columns, rows }) => {
+      document.getElementById('tprobe')?.remove()
+      const host = document.createElement('div')
+      host.id = 'tprobe'
+      host.style.cssText = `position: fixed; inset-block-start: 0; inset-inline-start: 0; inline-size: ${width}px; block-size: 300px; z-index: 9`
+      const el = document.createElement('ts-table')
+      el.setAttribute('label', 'Probe')
+      el.setAttribute('size', 'M')
+      el.style.cssText = 'display: block; block-size: 100%'
+      host.append(el)
+      document.body.append(host)
+      el.data = { columns, rows }
+    },
+    { width, columns, rows },
+  )
+  await page.waitForFunction(() => document.querySelector('#tprobe ts-table')?.shadowRoot?.querySelector('tbody tr'))
+  await page.waitForTimeout(300)
+  return page.evaluate(() => {
+    const root = document.querySelector('#tprobe ts-table').shadowRoot
+    const scroll = root.querySelector('[data-k="scroll"]')
+    return {
+      clientWidth: scroll.clientWidth,
+      overflows: scroll.scrollWidth > scroll.clientWidth + 1,
+      heads: [...root.querySelectorAll('thead th')].map((th) => [th.getAttribute('data-key'), Math.round(th.getBoundingClientRect().width)]),
+    }
+  })
+}
+
+test.describe('column widths in a real table', () => {
+  const SYMBOL = 'ALPHA 24300 PE WEEKLY EXP 03 NOV'
+  const rows = [{ id: 1, sym: SYMBOL, time: Date.UTC(2026, 9, 26, 5), side: 'Buy', qty: 75, pnl: 1250.5 }]
+
+  test('a fixed width holds although Time and Side are left unset (a text column beside it does not win)', async ({ page }) => {
+    await open(page, 1280)
+    const columns = [
+      { key: 'sym', label: 'Instrument', width: 'content' },
+      { key: 'time', label: 'Time', format: 'time' },
+      { key: 'side', label: 'Side' },
+      { key: 'qty', label: 'Qty', format: 'number', width: 120 },
+      { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign' },
+    ]
+    const t = await tableAt(page, 700, columns, rows)
+    const width = Object.fromEntries(t.heads)
+    expect(width.qty).toBe(120)
+    expect(t.overflows).toBe(false)
+    // The other columns are not squeezed to the floor by it.
+    expect(width.pnl).toBeGreaterThan(56)
+  })
+
+  test('the reviewed case: sym 120 and pnl 90 beside unset Time and qty render at 120 and 90 pixels, figures whole', async ({ page }) => {
+    await open(page, 1280)
+    const columns = [
+      { key: 'sym', label: 'Instrument', width: 120 },
+      { key: 'time', label: 'Time', format: 'time' },
+      { key: 'qty', label: 'Qty', format: 'number', decimals: 2 },
+      { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', width: 90 },
+    ]
+    const t = await tableAt(page, 1240, columns, [{ id: 1, sym: 'ALPHA 50', time: Date.UTC(2026, 9, 26, 5), qty: 2450.5, pnl: 8765.43 }])
+    const width = Object.fromEntries(t.heads)
+    expect(width.sym).toBe(120)
+    expect(width.pnl).toBe(90)
+    expect(width.time).toBeGreaterThan(56)
+    const cut = await page.evaluate(() => [...document.querySelectorAll('#tprobe ts-table')[0].shadowRoot.querySelectorAll('td')].filter((td) => td.scrollWidth > td.clientWidth + 1).map((td) => td.textContent))
+    expect(cut).toEqual([])
+  })
+
+  test('a content column is capped at half the table, so a long symbol does not push the figures out', async ({ page }) => {
+    await open(page, 1280)
+    const columns = [
+      { key: 'sym', label: 'Instrument', width: 'content', priority: 0 },
+      { key: 'side', label: 'Side', priority: 3, width: 'content' },
+      { key: 'qty', label: 'Qty', format: 'number', priority: 2 },
+      { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', priority: 1 },
+    ]
+    // 390 px tile: 352 px of table.
+    const t = await tableAt(page, 390, columns, rows)
+    const width = Object.fromEntries(t.heads)
+    expect(t.clientWidth).toBe(352)
+    expect(width.sym).toBeLessThanOrEqual(t.clientWidth / 2 + 1)
+    expect(width.sym).toBeGreaterThan(100)
+    expect(t.overflows).toBe(false)
+    // What was dropped before the cap (Qty, Side and P&L) is mostly back: P&L and Qty stay.
+    expect(Object.keys(width)).toEqual(expect.arrayContaining(['sym', 'qty', 'pnl']))
+    const cell = await page.evaluate(() => {
+      const td = document.querySelector('#tprobe ts-table').shadowRoot.querySelector('tbody td')
+      return { title: td.getAttribute('title'), text: td.textContent }
+    })
+    expect(cell.title).toBe(SYMBOL)
+    expect(cell.text).toBe(SYMBOL)
+  })
+})
+
+test.describe('the heading at 320 px and at large text', () => {
+  const cases = [['320 px', 320, null], ['root 24 px', 390, '24px']]
+  for (const [name, width, root] of cases) {
+    test(`${name}: the label keeps at least five visible characters beside the meta`, async ({ page }) => {
+      await open(page, width)
+      if (root) await page.evaluate((px) => { document.documentElement.style.fontSize = px }, root)
+      await page.evaluate((layout) => {
+        document.getElementById('board').layout = layout
+      }, TALL_PAIR)
+      await page.waitForFunction(() => document.querySelector('[item="watchlist"]').getBoundingClientRect().width > 0)
+      for (const item of ['capitalFunding', 'watchlist']) {
+        const h = await page.evaluate((item) => {
+          const tile = document.querySelector(`[item="${item}"]`)
+          const label = tile.shadowRoot.querySelector('[part="label"]')
+          const text = label.textContent
+          const visible = label.scrollWidth > label.clientWidth + 0.5 ? Math.floor((label.clientWidth / label.scrollWidth) * text.length) : text.length
+          const meta = tile.shadowRoot.querySelector('[data-k="meta"]')
+          return { text, visible, title: label.getAttribute('title'), tile: Math.round(tile.getBoundingClientRect().width), meta: meta && !meta.hidden ? Math.round(meta.getBoundingClientRect().width) : 0 }
+        }, item)
+        expect(h.visible, `${h.text} shows ${h.visible} characters in a ${h.tile} px tile`).toBeGreaterThanOrEqual(5)
+        expect(h.title).toBe(h.text)
+      }
+    })
+  }
+})
+
+// The page clock and the far-table first fit, in every engine (RFC 0004 §11.4, and the owed first fit of a table).
+test.describe('in every engine', () => {
+  test('configure({ clock }) drives a grid and a widget that have no clock of their own, and null puts them back', async ({ page }) => {
+    await open(page, 1280)
+    const out = await page.evaluate(async () => {
+      const { configure } = await import('/src/core/index.js')
+      const grid = document.getElementById('board')
+      const sessions = document.querySelector('ts-session-clock')
+      const read = () => sessions.shadowRoot.textContent.replace(/\s+/g, ' ')
+      // The example set its own page clock; take it over with a frozen one and look at the widget and the grid.
+      const noon = Date.UTC(2026, 9, 26, 6, 30)
+      configure({ clock: () => noon })
+      await window.__settled()
+      const frozen = { grid: grid.clock(), sessions: read(), profile: grid.profile }
+      configure({ clock: () => Date.UTC(2026, 9, 26, 17, 30) })
+      await window.__settled()
+      const later = { grid: grid.clock(), sessions: read(), profile: grid.profile }
+      grid.clock = () => noon
+      configure({ clock: () => 5 })
+      const own = grid.clock()
+      grid.clock = null
+      const back = grid.clock()
+      return { frozen, later, own, back, noon }
+    })
+    expect(out.frozen.grid).toBe(out.noon)
+    expect(out.frozen.sessions).toContain('12:00')
+    expect(out.frozen.profile).toBe('market')
+    expect(out.later.profile).toBe('closed')
+    expect(out.later.sessions).not.toBe(out.frozen.sessions)
+    expect(out.own).toBe(out.noon)
+    expect(out.back).toBe(5)
+  })
+
+  test('a table far down the page has its first fit before anyone scrolls to it', async ({ page }) => {
+    await open(page, 390)
+    const f = await page.evaluate(async () => {
+      const scroll = document.querySelector('ts-table').shadowRoot.querySelector('[data-k="scroll"]')
+      await new Promise((r) => setTimeout(r, 500))
+      return { y: document.querySelector('ts-table').getBoundingClientRect().top, vh: innerHeight, overflow: scroll.scrollWidth > scroll.clientWidth + 1 }
+    })
+    expect(f.y).toBeGreaterThan(f.vh * 2)
+    expect(f.overflow).toBe(false)
+  })
+})
+
+// The floor and the meta rule, each on its own (a tile with a live, stale meta so there is something to drop).
+const visibleOf = (page) =>
+  page.evaluate(() => {
+    const root = document.querySelector('#probe ts-card').shadowRoot
+    const label = root.querySelector('[part="label"]')
+    const meta = root.querySelector('[data-k="meta"]')
+    const text = label.textContent
+    return {
+      visible: label.scrollWidth > label.clientWidth + 0.5 ? Math.floor((label.clientWidth / label.scrollWidth) * text.length) : text.length,
+      metaShown: !!meta && !meta.hidden && meta.getClientRects().length > 0,
+      description: root.querySelector('.tile').getAttribute('aria-description'),
+      dotTitle: root.querySelector('[data-k="dot"]')?.getAttribute('title') ?? null,
+      metaText: meta ? meta.textContent.trim() : '',
+    }
+  })
+const STALE = { live: true, asOf: 0 }
+
+test.describe('the label floor and the meta rule', () => {
+  test('at 152 px (meta kept) the label still keeps five characters beside a stale meta', async ({ page }) => {
+    await open(page, 390)
+    await tileAt(page, 152, 'ltr', 'Open positions and exits', STALE)
+    await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[data-k="meta"]')?.textContent)
+    const v = await visibleOf(page)
+    expect(v.metaShown, 'the meta is still there above 7rem').toBe(true)
+    expect(v.visible).toBeGreaterThanOrEqual(5)
+  })
+
+  test('at 130 px the meta is dropped whole, the tile is described by it, and the dot carries it as a title', async ({ page }) => {
+    await open(page, 390)
+    await tileAt(page, 130, 'ltr', 'Open positions and exits', STALE)
+    await page.waitForFunction(() => document.querySelector('#probe ts-card')?.shadowRoot?.querySelector('[data-k="meta"]')?.textContent)
+    // Drawn once more now that the box is known, as a live tick does.
+    await page.evaluate(() => { document.querySelector('#probe ts-card').data = { live: true, asOf: 0 } })
+    await page.waitForFunction(() => document.querySelector('#probe ts-card').shadowRoot.querySelector('.tile').hasAttribute('aria-description'))
+    const v = await visibleOf(page)
+    expect(v.metaShown).toBe(false)
+    expect(v.metaText).not.toBe('')
+    expect(v.description).toBe(v.metaText)
+    expect(v.dotTitle).toBe(v.metaText)
+    expect(v.visible).toBeGreaterThanOrEqual(5)
+  })
+
+  test('two Tall tiles at 320 px: the sync text is in each tile\u2019s description', async ({ page }) => {
+    await open(page, 320)
+    await page.evaluate((layout) => { document.getElementById('board').layout = layout }, TALL_PAIR)
+    await page.waitForFunction(() => document.querySelector('[item="watchlist"]').getBoundingClientRect().width > 0)
+    // A render after the layout, as the feed's own ticks make.
+    await page.waitForTimeout(2500)
+    for (const item of ['capitalFunding', 'watchlist']) {
+      const d = await page.evaluate((item) => {
+        const root = document.querySelector(`[item="${item}"]`).shadowRoot
+        const meta = root.querySelector('[data-k="meta"]')
+        return { shown: !!meta && meta.getClientRects().length > 0, text: meta ? meta.textContent.trim() : '', description: root.querySelector('.tile').getAttribute('aria-description') }
+      }, item)
+      expect(d.shown).toBe(false)
+      expect(d.text).not.toBe('')
+      expect(d.description).toBe(d.text)
+    }
+  })
+
+  test('a signed content column stays on one line, and its row is as tall as an unset column\u2019s', async ({ page }) => {
+    await open(page, 1280)
+    const rows = [{ id: 1, sym: 'ALPHA 24300 PE', pnl: 1250.5 }]
+    const heightOf = async (width) => {
+      await tableAt(page, 700, [{ key: 'sym', label: 'Instrument' }, { key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', ...(width ? { width } : {}) }], rows)
+      return page.evaluate(() => Math.round(document.querySelector('#tprobe ts-table').shadowRoot.querySelector('tbody tr').getBoundingClientRect().height))
+    }
+    const unset = await heightOf(null)
+    const signed = await heightOf('content')
+    expect(signed).toBe(unset)
+    // And with a long symbol the signed figure beside it keeps its arrow on its line.
+    await tableAt(page, 700, [{ key: 'pnl', label: 'P&L', format: 'money', tone: 'sign', width: 'content' }, { key: 'sym', label: 'Instrument' }], [{ id: 1, sym: 'X', pnl: 1250.5 }])
+    const one = await page.evaluate(() => {
+      const td = document.querySelector('#tprobe ts-table').shadowRoot.querySelector('tbody td')
+      const [arrow, text] = td.children
+      return { sameLine: Math.abs(arrow.getBoundingClientRect().top - text.getBoundingClientRect().top) < 8 }
+    })
+    expect(one.sameLine).toBe(true)
+  })
+})

@@ -116,6 +116,10 @@
  *                   and the tile is named by the tag.
  *   heading-level   Attribute, 1 to 6: the aria-level of the tile's heading.
  *                   The widget's own, else the nearest <ts-grid>'s, else 3.
+ *   scrub           Attribute and property, 'on' or 'off' (RFC 0004 §1.4). Only
+ *                   the charts act on it: 'off' stops hover, touch and keyboard
+ *                   scrubbing. The widget's own, else the nearest <ts-grid>'s,
+ *                   else on.
  *   locale, currency, time-zone
  *                   Attributes. Each resolves: own attribute → nearest
  *                   ancestor <ts-grid>'s attribute → configure() defaults.
@@ -123,18 +127,23 @@
  *                   inputs change.
  *   messages        Property. Overrides for this widget's strings; null clears.
  *   t               The translate function: messages on this element, then the
- *                   nearest <ts-grid>'s, then configure(), then EN. Cached like
+ *                   nearest <ts-grid>'s, then configure(), then the English the
+ *                   class registered with defineWidget, then EN. Cached like
  *                   the formatter. Static template text is never written
  *                   here: put it in a `data-k` node and fill it in update()
  *                   with this.t, so a template stays a pure function of its variant.
  *   clock           Settable `() => number`; tests and demos freeze time.
- *   now()           clock() or Date.now().
+ *   now()           clock(), else configure({ clock }), else Date.now().
  *   $(selector)     querySelector in the shadow root, cached until the
  *                   template is rebuilt.
- *   requestRender() Schedule a render (coalesced per microtask).
+ *   requestRender() Schedule a render (coalesced per microtask). A widget that
+ *                   is display: none, or more than a screen from the viewport,
+ *                   waits and renders once when it comes back (RFC 0003 §23).
  *   every(ms)       Re-render every `ms` while connected and the page is
  *                   visible; every(0) stops. Re-renders at once when the page
  *                   becomes visible again. Call it again to change the period.
+ *                   A whole number of seconds shares one ticker with the other
+ *                   widgets, aligned to the second.
  *   emit(action, detail)
  *                   Dispatch a bubbling, composed 'ts-action' CustomEvent
  *                   with detail `{ action, ...detail }` (RFC §8.3).
@@ -167,8 +176,9 @@
 import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isSize, SIZES, SIZE_NAMES, toTime, toNumber } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
-import { translator } from './messages-cache.js'
-import { subscribe } from './ticker.js'
+import { escapeHtml, markupAllowed, mountShadow, setHTML, setNodes, setText } from './html.js'
+import { translator, classDefaultsOf } from './messages-cache.js'
+import { subscribe, shareable } from './ticker.js'
 
 const Base = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
@@ -285,9 +295,7 @@ export function syncedParts(t) {
   return { pre, post: rest.join('') }
 }
 
-export function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
-}
+export { escapeHtml }
 
 // Skeleton block sizes are classes, not inline styles, so a host's strict
 // style-src CSP can't blank them. Widths snap to 5% steps, heights to the few
@@ -359,12 +367,12 @@ export function arrowFor(text) {
 
 // The rules of the signed figures, for the widgets that draw them. `.fg` keeps the arrow, sign and digits on one line.
 // A figure cell (.cell: a stat in a row of three, or the rail's column) is its own size container, and the figure in it
-// is sized to the cell's width and its own length (--fc, set by update()). 0.62em a character is wider than any
-// proportional face and covers a monospace one; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
+// is sized to the cell's width and its own length (--fc, set by update()). --ts-num-width (.62em a character) is wider
+// than any proportional face and covers a monospace one, and a host with a wider face sets it; the arrow and its gap take 0.65em. A roomy cell keeps the 17px cap.
 export const FIGURE_CSS = `
 .fg { white-space: nowrap; }
 .cell { container-type: inline-size; }
-.cell .md { font-size: min(17px, calc(100cqi / (var(--fc, 10) * .62 + .65))); }
+.cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * var(--ts-num-width, .62) + .65))); }
 `
 
 /**
@@ -408,6 +416,19 @@ export function localeDirection(tag) {
   }
 }
 
+// Height tiers (RFC 0004 §2.2), kept out of the stylesheet because a comment in it ships to every page. The tile is a size
+// container, and a height query measures its content box: the row less the padding and border, which is 7rem on a
+// comfortable tile and 5.875rem on a compact one at a 16px root. Snug (6.5rem) hides the secondary rows (.sec) and tight (5rem)
+// the tertiary ones (.ter), so a default dashboard hides nothing, and a compact one, or one at a larger root font size,
+// gives up its secondary rows before anything clips. Each widget marks the rows that are its own. A snug tile also drops the
+// spacer (.f1) that pushes a footer to the bottom, which is a gap and a flex share to give back and hides nothing.
+// The label has its own line height (1.2) because 'normal' is a font's choice and Firefox rounds it up: the 11px label's line box
+// grew 1 to 2px over the 10px one it replaced, enough to push a full funding or edge tile past its bottom edge there.
+// Narrow tiles (RFC 0004 §11.3): under 11.25rem (180px at a 16px root, so it follows the reader's text size) the label is the one
+// flex item that gives way, but only down to about six characters. Below 7rem (112px at a 16px root, so at 320px, or at a larger text
+// size where the room shrinks in rem) there is no room for a label and its meta ("just now") together, and the meta is dropped
+// whole rather than clipped: the dot and the tile's name still say live or stale. `.ell` on the label supplies the overflow,
+// nowrap and ellipsis.
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -416,23 +437,24 @@ ${standaloneCss()}
   box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 10px;
   padding: var(--ts-pad, 18px); background: var(--ts-surface); border: 1px solid var(--ts-line);
   border-radius: var(--ts-radius); box-shadow: var(--ts-shadow); color: var(--ts-ink);
-  font: 13px var(--ts-font-ui); overflow: hidden; position: relative;
-  container-type: inline-size;
+  font: var(--ts-text-base, max(13px, .8125rem)) var(--ts-font-ui); overflow: hidden; position: relative;
+  container: ts-tile / size;
 }
 .hd { display: flex; align-items: center; gap: 8px; min-height: 18px; }
 .lb {
-  font-size: var(--ts-label-size, 10px); text-transform: var(--ts-label-case, uppercase);
+  font-size: var(--ts-label-size, max(11px, .6875rem)); text-transform: var(--ts-label-case, uppercase);
   letter-spacing: var(--ts-label-tracking, .12em); font-weight: var(--ts-label-weight, 600); color: var(--ts-muted);
+  line-height: 1.2;
 }
 .n, .big, .xbig {
   font-family: var(--ts-font-num); font-variant-numeric: tabular-nums lining-nums; font-weight: var(--ts-num-weight, 500); unicode-bidi: isolate; direction: var(--ts-fig-dir, ltr);
 }
 .big, .xbig { font-weight: var(--ts-headline-weight, var(--ts-num-weight, 500)); }
-.big { font-size: min(34px, 19cqi); line-height: 1; letter-spacing: -.01em; }
-.xbig { font-size: min(48px, 9cqi); line-height: 1; letter-spacing: -.02em; }
-.md { font-size: min(17px, 12cqi); }
-.sm { font-size: 11px; }
-.xs { font-size: 10px; }
+.big { font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 19cqi); line-height: 1; letter-spacing: -.01em; }
+.xbig { font-size: min(var(--ts-text-xbig, max(48px, 3rem)), 9cqi); line-height: 1; letter-spacing: -.02em; }
+.md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), 12cqi); }
+.sm { font-size: var(--ts-text-sm, max(11px, .6875rem)); }
+.xs { font-size: var(--ts-text-xs, max(10px, .625rem)); }
 .n.sm, .n.xs { font-weight: var(--ts-num-weight-small, 500); }
 /* The arrow beside a signed figure (arrowFor): a small mark raised to the digits' middle, and no room taken when it is empty. */
 .ar:empty { display: none; }
@@ -454,7 +476,7 @@ ${standaloneCss()}
 .sep { border-top: 1px solid var(--ts-line); }
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .btn {
-  font: 500 11px var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
+  font: 500 var(--ts-text-sm, max(11px, .6875rem)) var(--ts-font-ui); min-height: 28px; padding: 0 9px; border-radius: var(--ts-radius-sm);
   border: 1px solid var(--ts-line); background: transparent; color: var(--ts-muted); cursor: pointer; position: relative; z-index: 2;
 }
 .btn.on { background: var(--ts-surface-2); color: var(--ts-ink); box-shadow: inset 0 -2px 0 var(--ts-accent); }
@@ -484,6 +506,10 @@ ${standaloneCss()}
 /* The header's meta says 'synced 11:42', and on a tile narrower than 200px just '14:05', so the label keeps its room. */
 .meta { flex: none; white-space: nowrap; }
 @container (max-width: 200px) { .pre { display: none; } }
+@container ts-tile (max-width: 11.25rem) { .hd > .lb { flex: 0 1 auto; min-inline-size: max(6ch, 4.2em); } }
+@container ts-tile (max-width: 7rem) { .hd > .meta { display: none; } }
+@container ts-tile (max-height: 6.5rem) { .sec, .tile > .f1 { display: none; } }
+@container ts-tile (max-height: 5rem) { .ter { display: none; } }
 @keyframes ts-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ts-profit) 55%, transparent); }
   70% { box-shadow: 0 0 0 7px transparent; }
@@ -493,7 +519,7 @@ ${standaloneCss()}
 @media (prefers-reduced-motion: reduce) { .flash-up, .flash-down, .flash-neither { background-color: transparent; } }
 .empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ts-muted); text-align: center; }
 .err { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
-.err-msg { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; font-size: 12px; font-weight: 500; color: var(--ts-ink); text-align: start; }
+.err-msg { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; font-size: var(--ts-text-md, max(12px, .75rem)); font-weight: 500; color: var(--ts-ink); text-align: start; }
 .err-msg svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--ts-warn); }
 .btn.retry { color: var(--ts-ink); }
 .sk { display: block; flex: none; position: relative; overflow: hidden; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); }
@@ -605,9 +631,92 @@ function unmount(widget) {
 const ACTION_OPEN = 'open'
 const findLink = (t) => t?.closest ? t.closest('[part~="link"]') : (t?.getAttribute?.('part') === 'link' ? t : null)
 
+// Time-slicing the renders of one burst (RFC 0003 §23). The microtasks of a tick all run in the same task, so the time
+// they spend adds up; past SLICE_MS the next render waits for a new task, and the browser can paint and take input
+// between the slices. Only in a real page, which has requestAnimationFrame.
+const SLICE_MS = 12
+let spent = 0
+let sliceOpen = false
+
+const sliceClock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+// A page that paints frames. A test's fake DOM has none, and there a render must land in its microtask however long a
+// busy machine takes over it.
+const sliceLive = () => typeof requestAnimationFrame === 'function'
+
+// While the page is printing, a render must land in its microtask: the browser takes its snapshot as the beforeprint
+// handlers return, and a timer would run after it.
+let printing = false
+
+function sliceSpent() {
+  return !printing && sliceLive() && spent > SLICE_MS
+}
+
+function sliced(ms) {
+  if (!sliceLive()) return
+  spent += ms
+  if (!sliceOpen) {
+    sliceOpen = true
+    // The timer fires in a later task than every microtask queued so far, and before any timer set after it.
+    setTimeout(() => {
+      spent = 0
+      sliceOpen = false
+    }, 0)
+  }
+}
+
+// One observer for every widget on the page, with a margin of a screen on each side: a widget that is display: none,
+// or further than that from the viewport, skips its renders until it comes back (RFC 0003 §23). It reports a box-less
+// element (display: none) as not intersecting, which is the case we want. Absent in Node and old engines, where every
+// widget simply stays "in view". Its margin reaches only past the viewport, not past an overflow: auto ancestor (the
+// observer has one root, and a root per scroll container would cost more than the lead is worth): inside a scrolled
+// panel a tile draws when it first intersects the panel, which is a frame later, never later than that.
+let viewObserver = null
+const watched = new Set()
+
+function watchView(el) {
+  if (typeof IntersectionObserver === 'undefined') return
+  if (!viewObserver) {
+    viewObserver = new IntersectionObserver(
+      (entries) => {
+        // Entries queue per target; the last one for an element is where it is now.
+        const latest = new Map()
+        for (const entry of entries) latest.set(entry.target, entry.isIntersecting)
+        for (const [target, on] of latest) if (target._setInView) target._setInView(on)
+      },
+      { rootMargin: '100% 100% 100% 100%' },
+    )
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      // A printout is of the whole page, whatever was in view: draw everything first, then go back to watching.
+      window.addEventListener('beforeprint', () => {
+        printing = true
+        watched.forEach((el) => el._setInView(true))
+        // The microtasks of this handler run before the snapshot; the time-slicer would put them after it. Drawn here,
+        // not queued, so nothing depends on when they run.
+        watched.forEach((el) => el._drawNow())
+      })
+      window.addEventListener('afterprint', () => {
+        printing = false
+        watched.forEach((el) => {
+          viewObserver.unobserve(el)
+          viewObserver.observe(el)
+        })
+      })
+    }
+  }
+  watched.add(el)
+  viewObserver.observe(el)
+}
+
+const boxless = (el) => typeof getComputedStyle === 'function' && getComputedStyle(el).display === 'contents'
+
+function unwatchView(el) {
+  watched.delete(el)
+  if (viewObserver) viewObserver.unobserve(el)
+}
+
 export class TsWidget extends Base {
   static get observedAttributes() {
-    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level', 'href', 'activatable', 'stale-after', 'flash']
+    return ['size', 'label', 'locale', 'currency', 'time-zone', 'hour-cycle', 'state', 'data', 'heading-level', 'href', 'activatable', 'stale-after', 'flash', 'scrub']
   }
 
   constructor() {
@@ -627,6 +736,15 @@ export class TsWidget extends Base {
     this._grid = null // the grid this widget has told about itself, so it hears when the grid's messages or locale change
     this._every = 0
     this._timer = 0
+    // False once the viewport observer has seen this widget hidden or far off-screen (RFC 0003 §23). True until
+    // then, so a widget renders on connect and never stays blank where there is no observer.
+    this._inView = true
+    this._skipped = false
+    // A widget sets this while a draw it asked for must not wait for the viewport (<ts-table>'s first fit, so a table
+    // far down the page is not left holding columns it has already measured to be too many).
+    this._drawOwed = false
+    // True once the widget has drawn something other than its loading skeleton; only then may a render wait.
+    this._drawn = false
     this._unsubFresh = null
     this._flashes = new Map()
     this._failed = false
@@ -649,8 +767,15 @@ export class TsWidget extends Base {
       }
     }
     const root = this.attachShadow({ mode: 'open' })
-    root.innerHTML = `<style>${cssFor(this.constructor)}</style><div class="tile" part="tile" role="group"></div>`
+    mountShadow(root, cssFor(this.constructor), '<div class="tile" part="tile" role="group"></div>')
     this._section = root.querySelector('.tile')
+    if (!this._section) {
+      // The page's trusted-types directive refused the markup (html.js warned): the tile is still built, by hand, and stays empty.
+      this._section = root.appendChild(document.createElement('div'))
+      this._section.className = 'tile'
+      this._section.setAttribute('part', 'tile')
+      this._section.setAttribute('role', 'group')
+    }
 
     // One delegated listener: Retry button in error view; tile activation for links and open actions (RFC 0003 §7).
     this._section.addEventListener('click', (e) => {
@@ -755,6 +880,14 @@ export class TsWidget extends Base {
       const text = this.t(id)
       if (text !== id) return text
     }
+    // A registered custom widget answers to the same key, from the host or from its author's messages
+    // (defineWidget), whether or not it has any: the message wins over a static label, as in the catalog.
+    const registered = classDefaultsOf(this.constructor)
+    if (registered && !key) {
+      const id = `widget.${registered.type}.label`
+      const text = this.t(id)
+      if (text !== id) return text
+    }
     return this.spec.label
   }
 
@@ -800,6 +933,17 @@ export class TsWidget extends Base {
     this.toggleAttribute('activatable', !!value)
   }
 
+  /** 'off' or 'on' when set on this widget, else null; the grid's value and the default are read by _scrubOn(). */
+  get scrub() {
+    const v = this.getAttribute('scrub')
+    return v === null ? null : v === 'off' ? v : 'on'
+  }
+
+  set scrub(value) {
+    if (value === null || value === undefined) this.removeAttribute('scrub')
+    else this.setAttribute('scrub', String(value))
+  }
+
   get clock() {
     return this._clock
   }
@@ -810,7 +954,10 @@ export class TsWidget extends Base {
   }
 
   now() {
-    return this._clock ? this._clock() : Date.now()
+    if (this._clock) return this._clock()
+    // The page clock (RFC 0004 §11.4); a widget never reads its grid's.
+    const page = currentConfig().clock
+    return page ? page() : Date.now()
   }
 
   get formatter() {
@@ -848,7 +995,8 @@ export class TsWidget extends Base {
 
   /**
    * Resolved per key: this element's messages, then the nearest grid's, then
-   * configure()'s, then EN. One function is shared by every element that
+   * configure()'s, then the English a custom widget registered with
+   * defineWidget, then EN. One function is shared by every element that
    * resolves to the same tables and locale; assign a new object to change a table.
    */
   get t() {
@@ -858,7 +1006,8 @@ export class TsWidget extends Base {
 
   _translatorFor(config, grid) {
     const locale = resolveFormatOptions(this, grid).locale || config.locale
-    return translator(config.messages, grid && grid.messages, this._messages, locale)
+    const defaults = classDefaultsOf(this.constructor)
+    return translator(config.messages, grid && grid.messages, this._messages, locale, defaults ? defaults.table : null)
   }
 
   /**
@@ -877,8 +1026,12 @@ export class TsWidget extends Base {
     const target = grid && typeof grid._link === 'function' ? grid : null
     if (target === this._grid) return
     if (this._grid) this._grid._unlink(this)
+    // A chart's scrubber hears when editing starts, so its tab stop goes with it (RFC 0004 §1.4).
+    const onEdit = this._onEditChange
+    if (onEdit && this._grid) this._grid.removeEventListener('ts-edit-change', onEdit)
     this._grid = target
     if (target) target._link(this)
+    if (onEdit && target) target.addEventListener('ts-edit-change', onEdit)
   }
 
   /** The first match for `selector` in the shadow root, remembered until the template is rebuilt. */
@@ -896,10 +1049,59 @@ export class TsWidget extends Base {
     this._queued = true
     // A microtask, not a frame: setting data twice in one tick costs one
     // render, yet a test can await the result without waiting for a frame.
-    queueMicrotask(() => {
+    queueMicrotask(() => this._flush())
+  }
+
+  _flush() {
+    // Already drawn by _drawNow (a printout), or the request was cancelled: nothing is owed.
+    if (!this._queued) return
+    if (!this.isConnected) {
       this._queued = false
-      if (this.isConnected) this._render()
-    })
+      return
+    }
+    // Hidden or far away: remember that a render was wanted, and make it when the widget comes back. Only a widget that
+    // already holds its content waits: the first content always draws, so the accessibility tree never keeps a
+    // loading skeleton for data that has arrived, whatever order the host set things in.
+    if (!this._inView && this._drawn && !this._drawOwed) {
+      // A host that gives the element no box (display: contents) is never "intersecting", whatever is on screen.
+      if (!this._skipped && boxless(this)) {
+        this._inView = true
+        unwatchView(this)
+      } else {
+        this._queued = false
+        this._skipped = true
+        return
+      }
+    }
+    // Thirty tiles fed in one tick would all render in one task, which on a slow phone is a long one. A page that has
+    // spent its slice puts the rest in the next task; _queued stays set meanwhile, so requests still merge.
+    if (sliceSpent()) {
+      setTimeout(() => this._flush(), 0)
+      return
+    }
+    this._queued = false
+    const from = sliceClock()
+    try {
+      this._render()
+    } finally {
+      sliced(sliceClock() - from)
+    }
+  }
+
+  /** Draw now if a render is owed, past the time-slicer: for a printout, which cannot wait for a timer. */
+  _drawNow() {
+    if (!this.isConnected || !this._queued) return
+    this._queued = false
+    this._render()
+  }
+
+  /** Called by the viewport observer when this widget enters or leaves the render zone. */
+  _setInView(on) {
+    this._inView = on
+    if (on && this._skipped) {
+      this._skipped = false
+      this.requestRender()
+    }
   }
 
   every(ms) {
@@ -959,13 +1161,33 @@ export class TsWidget extends Base {
     this._normaliseSize()
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this._onVisibility)
     this._arm()
-    if (DEV) this._watchForData()
+    watchView(this)
+    if (DEV) {
+      this._watchForData()
+      this._checkNumWidth()
+    }
     this.requestRender()
+  }
+
+  // --ts-num-width multiplies a count of characters in a calc(), so a unit (".62em") makes the whole
+  // font-size invalid and the figures fall back to the browser default. CSS cannot strip a unit, so say so once.
+  _checkNumWidth() {
+    if (DEV) {
+      const style = typeof getComputedStyle === 'function' ? getComputedStyle(this) : null
+      if (!style || typeof style.getPropertyValue !== 'function') return
+      const raw = String(style.getPropertyValue('--ts-num-width')).trim()
+      if (raw && !/^[0-9]*\.?[0-9]+$/.test(raw)) {
+        warnOnce('num-width', `--ts-num-width is "${raw}"; it must be a bare number of ems per figure, such as .62, with no unit, or figure sizes fall back to the browser default.`)
+      }
+    }
   }
 
   disconnectedCallback() {
     if (DEV) clearTimeout(this._undefTimer)
     unmount(this)
+    unwatchView(this)
+    this._inView = true
+    this._skipped = false
     this._link(null)
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this._onVisibility)
     this._disarm()
@@ -1101,6 +1323,14 @@ export class TsWidget extends Base {
     } else if (el.getAttribute(name) !== value) el.setAttribute(name, value)
   }
 
+  /** Whether a chart scrubs: the widget's own `scrub`, else the nearest grid's, else on. Anything but 'off' is on. */
+  _scrubOn() {
+    const own = this.getAttribute('scrub')
+    if (own !== null) return own !== 'off'
+    const grid = findGrid(this)
+    return !grid || grid.getAttribute('scrub') !== 'off'
+  }
+
   _isEditing() {
     const grid = findGrid(this)
     return Boolean(grid && (grid.editing || grid.hasAttribute('editing')))
@@ -1125,7 +1355,23 @@ export class TsWidget extends Base {
     const named = !!this.label
     this._setAttr(heading, 'aria-hidden', named ? null : 'true')
     this._setAttr(heading, 'aria-label', named && heading.textContent !== label ? label : null)
+    // The full text for a pointer user when CSS cuts the visible label short (RFC 0004 §11.3); the DOM text and the name stay whole.
+    this._setAttr(heading, 'title', named ? label : null)
+    this._describeMeta()
     this._applyActivation(heading, label)
+  }
+
+  /**
+   * When CSS drops the header's meta (a tile under 7rem), its text ("just now", "synced 11:42", "stale 5 min") would leave the
+   * accessibility tree with it, so the tile is described by it and the dot carries it as a title. Read at each render.
+   */
+  _describeMeta() {
+    const meta = this.$('[data-k="meta"]')
+    const gone = !!meta && !meta.hasAttribute('hidden') && typeof meta.getClientRects === 'function' && meta.getClientRects().length === 0
+    const text = gone ? meta.textContent.trim() : ''
+    this._setAttr(this._section, 'aria-description', text || null)
+    const dot = this.$('[data-k="dot"]')
+    if (dot) this._setAttr(dot, 'title', text || null)
   }
 
   _applyActivation(heading, label) {
@@ -1137,18 +1383,17 @@ export class TsWidget extends Base {
 
     if (href !== null) {
       if (!cur || (cur.localName !== 'a' && cur.tagName !== 'A')) {
-        const p = 'part' + '="link"'
-        heading.innerHTML = `<a ${p} href="${escapeHtml(href)}">${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</a>`
+        // Built, not parsed: the label and href are data, and only constants may be markup.
+        setNodes(heading, [{ tag: 'a', attrs: { part: 'link', href }, text: (cur && cur.textContent) || heading.textContent || label }])
       } else if (cur.getAttribute('href') !== href) {
         cur.setAttribute('href', href)
       }
     } else if (act) {
       if (!cur || (cur.localName !== 'button' && cur.tagName !== 'BUTTON')) {
-        const p = 'part' + '="link"'
-        heading.innerHTML = `<button type="button" ${p}>${escapeHtml((cur && cur.textContent) || heading.textContent || label)}</button>`
+        setNodes(heading, [{ tag: 'button', attrs: { type: 'button', part: 'link' }, text: (cur && cur.textContent) || heading.textContent || label }])
       }
     } else if (cur) {
-      heading.innerHTML = escapeHtml(cur.textContent || label)
+      setText(heading, cur.textContent || label)
     }
   }
 
@@ -1186,11 +1431,14 @@ export class TsWidget extends Base {
 
   _arm() {
     if (this._timer || !this._every || !this.isConnected || !this._visible()) return
-    this._timer = setInterval(() => this.requestRender(), this._every)
+    const render = () => this.requestRender()
+    // A whole number of seconds rides the page's one shared ticker; subscribe() hands back the function that leaves it.
+    this._timer = shareable(this._every) ? subscribe(render, this._every) : setInterval(render, this._every)
   }
 
   _disarm() {
-    clearInterval(this._timer)
+    if (typeof this._timer === 'function') this._timer()
+    else clearInterval(this._timer)
     this._timer = 0
   }
 
@@ -1323,6 +1571,8 @@ export class TsWidget extends Base {
   }
 
   _render() {
+    // Nothing can be drawn when the page's trusted-types directive refused the policy (html.js warned once in development).
+    if (!markupAllowed()) return
     // Asked once for this render: it is also where a grid that was not defined at connect is found.
     const config = currentConfig()
     const grid = findGrid(this)
@@ -1343,6 +1593,7 @@ export class TsWidget extends Base {
     const state = this.state
 
     if (state === 'error' || this._error || this._parseError) {
+      this._drawn = true
       this._failed = false
       return this._showError(label, this._error, grid)
     }
@@ -1350,6 +1601,7 @@ export class TsWidget extends Base {
       this._failed = false
       return this._showLoading(label, variant, grid)
     }
+    this._drawn = true
     if (this._data === null) {
       this._failed = false
       return this._showEmpty(label, grid)
@@ -1375,7 +1627,7 @@ export class TsWidget extends Base {
       const vm = Ctor.viewModel(d, variant, { ...this.viewContext(), fmt, t, now, label, freshness }) || {}
       if (DEV) this._checkDropped(vm)
       if (this._shown !== variant) {
-        this._section.innerHTML = templateFor(Ctor, variant)
+        setHTML(this._section, templateFor(Ctor, variant))
         this._refs.clear()
         this._clearFlashes()
         this._shown = variant
@@ -1404,7 +1656,7 @@ export class TsWidget extends Base {
   _show(key, html, label, name, busy, grid, skeletonLabel = label) {
     this._watchFreshness(false)
     if (this._shown !== key) {
-      this._section.innerHTML = html
+      setHTML(this._section, html)
       this._refs.clear()
       this._clearFlashes()
       this._shown = key
@@ -1429,7 +1681,7 @@ export class TsWidget extends Base {
 
   /**
    * The empty view's words: the host's `widget.<catalogKey>.empty` message
-   * first, then the class's own `emptyText` (a widget author's choice, which
+   * first (or `widget.<type>.empty` for a registered custom widget), then the class's own `emptyText` (a widget author's choice, which
    * for a built-in is the EN value), then `widget.empty`.
    */
   _emptyText() {
@@ -1440,6 +1692,13 @@ export class TsWidget extends Base {
       const id = `widget.${key}.empty`
       const text = t(id)
       if (text !== id && (text !== EN[id] || own === EN[id])) return text
+    }
+    // A registered custom widget has no catalogKey; its type names the key (defineWidget's messages, or a host's).
+    const registered = !key && classDefaultsOf(this.constructor)
+    if (registered) {
+      const id = `widget.${registered.type}.empty`
+      const text = t(id)
+      if (text !== id) return text
     }
     return own === EN['widget.empty'] ? t('widget.empty') : own
   }

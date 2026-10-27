@@ -2,7 +2,9 @@ import { test, describe, beforeEach, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { define, defineWidget, widgetCatalog, onCatalogChange } from '../src/elements/registry.js'
 import { DEV, warnOnce, resetWarnings } from '../src/elements/dev.js'
-import { version, WIDGETS } from '../src/core/index.js'
+import { version, WIDGETS, EN } from '../src/core/index.js'
+import { classDefaultsOf, translator } from '../src/elements/messages-cache.js'
+import { pickerItems } from '../src/elements/picker-model.js'
 
 // Only the two methods define() uses.
 class FakeRegistry {
@@ -382,6 +384,138 @@ describe('defineWidget, widgetCatalog and onCatalogChange (RFC 0003 §3)', () =>
     const guarded = make()
     if (!widgetCatalog()['acme-hot']) defineWidget('acme-hot', guarded, { type: 'acme-hot' })
     assert.equal(registry.get('acme-hot'), first)
+  })
+
+  describe('messages: a custom widget\'s English defaults (RFC 0004 §10.2)', () => {
+    const MESSAGES = { 'widget.dflt.label': 'Defaults', 'dflt.hello': 'Hello {who}', 'dflt.items.one': '{count} item', 'dflt.items.other': '{count} items' }
+
+    test('are stored frozen and copied, and fill a label and description the class left out', () => {
+      const W = widget({ sizes: ['S'] })
+      const given = { ...MESSAGES, 'widget.dflt.description': 'Says hello.' }
+      defineWidget('acme-dflt', W, { type: 'dflt', messages: given })
+      given['dflt.hello'] = 'changed after'
+      const { type, table } = classDefaultsOf(W)
+      assert.equal(type, 'dflt')
+      assert.equal(table['dflt.hello'], 'Hello {who}')
+      assert.ok(Object.isFrozen(table))
+      // Not copied into the spec: the grid and the picker ask t(), so a host's override reaches them.
+      assert.equal(widgetCatalog().dflt.label, '')
+      assert.equal(widgetCatalog().dflt.description, undefined)
+      const t = translator(null, null, null, 'en')
+      assert.equal(t('widget.dflt.label'), 'Defaults')
+      assert.equal(t('widget.dflt.description'), 'Says hello.')
+      assert.equal(translator({ 'widget.dflt.label': 'Host' }, null, null, 'en')('widget.dflt.label'), 'Host')
+    })
+
+    test('the picker entry shows the author\'s words, and the host\'s when it overrides them', () => {
+      defineWidget('acme-pick', widget({ sizes: ['S'] }), { type: 'pick', messages: { 'widget.pick.label': 'Author label', 'widget.pick.description': 'Author text.' } })
+      const item = (host) => pickerItems({ catalog: widgetCatalog(), addTypes: ['pick'], t: translator(host, null, null, 'en'), locale: 'en' })[0].items[0]
+      assert.equal(item(null).label, 'Author label')
+      assert.equal(item(null).description, 'Author text.')
+      const over = item({ 'widget.pick.label': 'Host label', 'widget.pick.description': 'Host text.' })
+      assert.equal(over.label, 'Host label')
+      assert.equal(over.description, 'Host text.')
+    })
+
+    test('a message wins over a static label, so the tile and the catalog name the widget alike', () => {
+      defineWidget('acme-both', widget({ label: 'Static', sizes: ['S'] }), { type: 'both', messages: { 'widget.both.label': 'Message' } })
+      assert.equal(widgetCatalog().both.label, '')
+      assert.equal(translator(null, null, null, 'en')('widget.both.label'), 'Message')
+    })
+
+    test('a static label with no message stays the name', () => {
+      defineWidget('acme-fixed', widget({ label: 'Fixed', sizes: ['S'] }), { type: 'fixed', messages: { 'fixed.x': 'x' } })
+      assert.equal(widgetCatalog().fixed.label, 'Fixed')
+    })
+
+    test('a subclass resolves the registered defaults through the prototype chain', () => {
+      const W = widget()
+      defineWidget('acme-base', W, { type: 'base', messages: { 'base.hello': 'Hi' } })
+      class Sub extends W {}
+      assert.equal(classDefaultsOf(Sub), classDefaultsOf(W))
+      class Own extends W {}
+      Own.spec = { label: 'Own', sizes: ['S'] }
+      defineWidget('acme-own', Own, { type: 'own', messages: { 'own.x': 'x' } })
+      assert.equal(classDefaultsOf(Own).type, 'own')
+    })
+
+    test('answer after the host\'s tables and before EN, with English plural rules', () => {
+      const t = translator(null, null, null, 'pl', MESSAGES)
+      assert.equal(t('dflt.hello', { who: 'there' }), 'Hello there')
+      assert.equal(t('dflt.items', {}, 1), '1 item')
+      assert.equal(t('dflt.items', {}, 5), '5 items')
+      // A built-in key is still answered by EN.
+      assert.equal(t('action.retry'), EN['action.retry'])
+      // The host wins at every layer, in the order element, grid, configure().
+      assert.equal(translator({ 'dflt.hello': 'config' }, null, null, 'en', MESSAGES)('dflt.hello'), 'config')
+      assert.equal(translator({ 'dflt.hello': 'config' }, { 'dflt.hello': 'grid' }, null, 'en', MESSAGES)('dflt.hello'), 'grid')
+      assert.equal(translator({ 'dflt.hello': 'config' }, { 'dflt.hello': 'grid' }, { 'dflt.hello': 'own' }, 'en', MESSAGES)('dflt.hello'), 'own')
+      // A host that translates only one plural form keeps the author's other forms.
+      const some = translator({ 'dflt.items.other': '{count} Stück' }, null, null, 'de', MESSAGES)
+      assert.equal(some('dflt.items', {}, 3), '3 Stück')
+      assert.equal(some('dflt.items', {}, 1), '1 Stück')
+    })
+
+    test('a key nobody has comes back as itself', () => {
+      assert.equal(translator(null, null, null, 'en', MESSAGES)('dflt.unknown'), 'dflt.unknown')
+    })
+
+    test('onCatalogChange hears of the type after the defaults are stored', () => {
+      const W = widget({ sizes: ['S'] })
+      let seen
+      const off = onCatalogChange(() => {
+        seen = classDefaultsOf(W)
+      })
+      defineWidget('acme-heard', W, { type: 'heard', messages: { 'heard.x': 'x' } })
+      off()
+      assert.equal(seen.table['heard.x'], 'x')
+    })
+
+    test('throw for a key outside the prefix, a built-in key, a non-string and a non-object, and record nothing', () => {
+      const bad = (messages, pattern) => {
+        const W = widget()
+        assert.throws(() => defineWidget('acme-bad', W, { type: 'bad', messages }), pattern)
+        assert.equal(widgetCatalog().bad, undefined)
+        assert.equal(registry.get('acme-bad'), undefined)
+        assert.equal(classDefaultsOf(W), null)
+      }
+      bad({ 'other.hello': 'Hi' }, /must start with 'widget\.bad\.' or 'bad\.'/)
+      bad({ 'badly.hello': 'Hi' }, /must start with/)
+      bad({ 'bad.ok': 'fine', 'action.retry': 'Again' }, /must start with/)
+      bad({ 'bad.n': 5 }, /must be a string/)
+      bad('nope', /must be an object/)
+      bad([], /must be an object/)
+      assert.deepEqual(heard, [])
+    })
+
+    test('a key that EN already has throws, even under the widget\'s own prefix', () => {
+      const key = Object.keys(EN)[0]
+      const type = key.split('.')[0]
+      assert.throws(() => defineWidget('acme-en', widget(), { type, messages: { [key]: 'mine' } }), /one of Tickslate's own messages/)
+    })
+
+    test('a repeat call with different messages warns once and keeps the first; the same table is silent', () => {
+      const warnings = []
+      mock.method(console, 'warn', (m) => warnings.push(m))
+      const W = widget()
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'first' } })
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'first' } })
+      defineWidget('acme-rep', W, { type: 'rep' })
+      assert.deepEqual(warnings, [])
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'second' } })
+      defineWidget('acme-rep', W, { type: 'rep', messages: { 'rep.a': 'third' } })
+      assert.equal(warnings.length, 1)
+      assert.match(warnings[0], /different messages, so the first table is kept/)
+      assert.equal(classDefaultsOf(W).table['rep.a'], 'first')
+    })
+
+    test('a class registered without messages has a type and no table, and a host\'s keys for it still apply', () => {
+      const W = widget({ sizes: ['S'] })
+      defineWidget('acme-none', W, { type: 'none' })
+      assert.deepEqual(classDefaultsOf(W), { type: 'none', table: null })
+      const item = (host) => pickerItems({ catalog: widgetCatalog(), addTypes: ['none'], t: translator(host, null, null, 'en'), locale: 'en' })[0].items[0]
+      assert.equal(item({ 'widget.none.label': 'Host name' }).label, 'Host name')
+    })
   })
 
   test('onCatalogChange needs a function', () => {

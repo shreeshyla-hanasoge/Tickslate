@@ -11,10 +11,12 @@
  * unused, which is what lets new data never need new markup.
  */
 
-import { TsWidget, sk, describeElement, syncedParts, header, escapeHtml } from './widget.js'
-import { areaPaths, bandGeometry, barPaths, scale, seriesDomain } from './chart.js'
+import { TsWidget, sk, describeElement, syncedParts, header } from './widget.js'
+import { areaPaths, bandGeometry, barPaths, downsample, scale, seriesDomain } from './chart.js'
+import { Scrubber, SCRUB_CSS, formatValue, scrubMarkup } from './scrub.js'
 import { DEV, warnOnce } from './dev.js'
 import { EN, toNumber, toTime } from '../core/index.js'
+import { setNodes } from './html.js'
 
 export const MAX_SERIES = 6
 
@@ -34,8 +36,6 @@ const BAND_PADDING = 0.2
 const CAT_MIN_PX = 56
 // Bars on a time or number axis get at most this many slots: 394 drawing units over 2, so a bar keeps about 2px.
 const MAX_SLOTS = 197
-// Beyond this a figure is written compact in labels, so 1e300 is not 300 digits in a screen reader's ear.
-const BIG = 1e15
 
 /**
  * Where an arrow key moves the focused point (index `from` of `count`), or -1
@@ -149,6 +149,23 @@ function readSeries(d, readX, t, cats) {
   return { all: out, dropped }
 }
 
+// ── Scrub data (pure) ──────────────────────────────────────────────────────
+
+// For each x of `xs` (ascending), the index of the point of `pts` (ascending) to read, or -1. `exact` reads only a point
+// at that x (bars, whose bands are categories); otherwise the nearest one, the earlier on a tie.
+function align(xs, pts, exact) {
+  const out = []
+  let k = 0
+  for (const x of xs) {
+    while (k < pts.length && pts[k].x < x) k++
+    let at = -1
+    if (k < pts.length && pts[k].x === x) at = k
+    else if (!exact && pts.length) at = k > 0 && (k === pts.length || x - pts[k - 1].x <= pts[k].x - x) ? k - 1 : k
+    out.push(at)
+  }
+  return out
+}
+
 // ── Axes (pure) ───────────────────────────────────────────────────────────
 
 // Intl constructors are slow next to format(), and a live chart relabels its
@@ -228,23 +245,8 @@ export function chartModel(data, variant, ctx) {
 
   // The last value, as the headline of each series: the formatter's own
   // decimals unless the host sets some, as in <ts-metric>.
-  const show = (n) => {
-    const o = { sign: 'negative', decimals }
-    // Compact formats stop at trillions, so a figure this large is written as a power of ten, whatever the format.
-    if (Math.abs(n) >= BIG) return `${n < 0 ? MINUS : ''}${Math.abs(n).toExponential(2)}`
-    switch (format) {
-      case 'money':
-        return fmt.money(n, o)
-      case 'percent':
-        return fmt.percent(n, o)
-      case 'duration': {
-        const s = fmt.duration(Math.abs(n))
-        return Number.isFinite(n) && n < 0 ? `${MINUS}${s}` : s
-      }
-      default:
-        return unit ? fmt.unit(n, unit, { decimals }) : fmt.number(n, o)
-    }
-  }
+  const spec = { kind: format, unit, decimals }
+  const show = (n) => formatValue(fmt, spec, n)
   // An axis label: compact, with only the decimals the step needs.
   const tick = (n, step) => {
     const dp = (s) => (s < 1 ? places(s) : undefined)
@@ -410,6 +412,45 @@ export function chartModel(data, variant, ctx) {
     }
   }
 
+  // What the scrubber reads (RFC 0004 §1.2): the drawn points as numbers, the x of the series with the most points being
+  // the ones the pointer snaps to, and each other series read at its own nearest point. Bars are read only where they
+  // stand, since a bar at another category is a different bar.
+  let scrub = null
+  if (hasPoints) {
+    const cap = 2 * BOX.width
+    const drawn = series.map((s) => (s.kind === 'bar' ? s.points : downsample(s.points, cap)))
+    let snap = 0
+    drawn.forEach((pts, i) => {
+      if (pts.length > drawn[snap].length) snap = i
+    })
+    const base = drawn[snap]
+    if (base.length > 1) {
+      const xs = base.map((p) => p.x)
+      scrub = {
+        kind: catAxis ? 'category' : !timeAxis ? 'number' : x1 - x0 < DAY_MS ? 'time' : 'date',
+        xs,
+        labels: categories,
+        points: base.map((p) => ({ x: x(p.x), y: 0 })),
+        box: { width: BOX.width, height: BOX.height, pad: PAD },
+        domain: [PAD, BOX.width - PAD],
+        series: series.map((s, i) => {
+          const bi = barSeries.indexOf(s)
+          const at = i === snap ? xs.map((_, j) => j) : align(xs, drawn[i], bi >= 0)
+          const ys = []
+          const py = []
+          for (const k of at) {
+            const p = k >= 0 ? drawn[i][k] : null
+            ys.push(p ? p.y : NaN)
+            // A bar's mark sits on the end of the bar away from the zero line, as its point does.
+            const box = p && bi >= 0 ? barDraw.rects[bi][k] : null
+            py.push(!p ? NaN : box ? (p.y < 0 ? box.y + box.h : box.y) : y(p.y))
+          }
+          return { name: s.name, fmt: spec, ys, py }
+        }),
+      }
+    }
+  }
+
   // The summary a listener gets instead of the picture (docs/ACCESSIBILITY.md).
   const summary = outSeries.length
     ? outSeries.map((s) => (s.empty ? t('chart.noData', { name: s.name }) : t('chart.last', { name: s.name, value: s.last }))).join('; ')
@@ -423,6 +464,7 @@ export function chartModel(data, variant, ctx) {
     synced: syncedParts(t),
     series: outSeries,
     points: outPoints,
+    scrub,
     legend: outSeries.map((s, i) => ({ name: s.name, index: i + 1 })),
     axis,
     categories,
@@ -455,9 +497,9 @@ const head = (wide) =>
 
 const marks = (cls, prefix) => SLOTS.map((i) => `<path class="${cls} c-${i}" data-k="${prefix}${i}"></path>`).join('')
 
-const plot = (ticked) => `<div class="prow"><div class="plot" part="chart"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
+const plot = (ticked) => `<div class="prow"><div class="plot sc" part="chart" data-k="plot"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
   ticked ? '<path class="gl" data-k="grid"></path>' : ''
-}<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sb', 'b')}${marks('sl', 'l')}${marks('sd', 'd')}</svg><ul class="pts" data-k="pts" hidden></ul><ul class="visually-hidden" data-k="vals" hidden></ul></div>${
+}<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sb', 'b')}${marks('sl', 'l')}${marks('sd', 'd')}</svg>${scrubMarkup(MAX_SERIES, MAX_SERIES, true)}<ul class="pts" data-k="pts" hidden></ul><ul class="visually-hidden" data-k="vals" hidden></ul></div>${
   ticked ? `<div class="yax n" aria-hidden="true"><div class="yin">${[0, 1, 2, 3].map((i) => `<span data-k="y${i}"></span>`).join('')}</div></div>` : ''
 }</div>`
 
@@ -509,17 +551,17 @@ export class TsChart extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `
+  static styles = `${SCRUB_CSS}
 [hidden] { display: none !important; }
 /* Time runs left to right in every locale, so the plot and its axes never mirror. */
 .chartcol { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; direction: ltr; }
 .prow { flex: 1; min-height: 0; display: flex; gap: 8px; }
 .plot { position: relative; flex: 1; min-width: 0; min-height: 0; }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; direction: ltr; }
-.yax { position: relative; width: 34px; flex: none; font-size: 10px; color: var(--ts-muted); }
+.yax { position: relative; width: 34px; flex: none; font-size: var(--ts-text-xs, max(10px, .625rem)); color: var(--ts-muted); }
 .yin { position: absolute; inset-inline: 0; inset-block: 3%; display: flex; flex-direction: column; justify-content: space-between; }
 .yin span { height: 0; display: flex; align-items: center; justify-content: flex-end; line-height: 1; white-space: nowrap; }
-.xax { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-size: 11px; color: var(--ts-muted); min-height: 14px; }
+.xax { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; font-size: var(--ts-text-sm, max(11px, .6875rem)); color: var(--ts-muted); min-height: 14px; }
 .xax > :last-child { justify-self: end; }
 .xax > * { unicode-bidi: plaintext; }
 .xax.gut { padding-inline-end: 42px; }
@@ -542,12 +584,12 @@ export class TsChart extends TsWidget {
 .sw.bar { width: 10px; height: 10px; }
 .sw.area { width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--c) 30%, transparent); box-shadow: inset 0 2px 0 var(--c); }
 .sname { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ts-muted); }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--ts-text-sm, max(11px, .6875rem)); }
 .li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .legend .n { color: var(--ts-muted); }
 .crow { flex: 1; min-height: 0; display: flex; gap: 20px; }
 .rail { width: 190px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 14px; border-inline-start: 1px solid var(--ts-line); padding-inline-start: 20px; }
-.ri { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 11px; }
+.ri { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: var(--ts-text-sm, max(11px, .6875rem)); }
 @container (max-width: 460px) {
   .crow { flex-direction: column; gap: 10px; }
   .rail { width: auto; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; gap: 8px 16px; border-inline-start: 0; padding-inline-start: 0; }
@@ -612,6 +654,7 @@ export class TsChart extends TsWidget {
 
   constructor() {
     super()
+    this._scrubber = new Scrubber(this)
     const onActivate = (e) => {
       // A click on a bar's body lands on the plot, not on its button: the nearest bar takes it.
       const btn = e.target?.closest?.('.pt') || this._nearestBar(e)
@@ -727,23 +770,27 @@ export class TsChart extends TsWidget {
       if (selectable) {
         // Arrow keys move the tab stop in place, so the markup is only rewritten when the points change, never to follow focus.
         const active = Math.min(this._active || 0, vm.points.length - 1)
-        let html = ''
-        let key = ''
-        vm.points.forEach((pt, i) => {
+        // Built with the DOM, positions through element.style: the points are data, so never markup (RFC 0003 §14).
+        const specs = vm.points.map((pt, i) => {
           const b = pt.bar
-          const pos = b ? `inset-inline-start: ${b.x}%; inset-block-start: ${b.y}%; inline-size: ${b.w}%; block-size: ${b.h}%;` : `inset-inline-start: ${pt.xPct}%; inset-block-start: ${pt.yPct}%;`
-          const item = (tab) => `<li${b ? ' class="pb"' : ''} style="${pos}"><button type="button" class="pt${b ? ' bar' : ''}" tabindex="${tab}" aria-label="${escapeHtml(pt.label)}" data-series="${escapeHtml(pt.series)}" data-index="${pt.index}"></button></li>`
-          html += item(i === active ? 0 : -1)
-          key += item(-1)
+          return {
+            tag: 'li',
+            attrs: b ? { class: 'pb' } : {},
+            css: b
+              ? { 'inset-inline-start': `${b.x}%`, 'inset-block-start': `${b.y}%`, 'inline-size': `${b.w}%`, 'block-size': `${b.h}%` }
+              : { 'inset-inline-start': `${pt.xPct}%`, 'inset-block-start': `${pt.yPct}%` },
+            kids: [{ tag: 'button', attrs: { type: 'button', class: b ? 'pt bar' : 'pt', tabindex: i === active ? '0' : '-1', 'aria-label': pt.label, 'data-series': pt.series, 'data-index': String(pt.index) } }],
+          }
         })
+        const key = JSON.stringify(vm.points.map((pt) => [pt.xPct, pt.yPct, pt.label, pt.series, pt.index, pt.bar || null]))
         if (this._ptsKey !== key) {
           this._ptsKey = key
           this._active = active
-          ptsEl.innerHTML = html
+          setNodes(ptsEl, specs)
         }
       } else if (ptsEl.innerHTML) {
         this._ptsKey = ''
-        ptsEl.innerHTML = ''
+        setNodes(ptsEl, [])
       }
     }
 
@@ -770,6 +817,7 @@ export class TsChart extends TsWidget {
     text('x1', vm.axis.middle)
     text('x2', vm.axis.end)
     this._drawCategories(vm)
+    this._scrubber?.sync(vm.scrub, vm.ariaLabel)
     this._drawBarValues(vm, this.actionEnabled('select') && Array.isArray(vm.points) && vm.points.length > 0)
   }
 

@@ -88,7 +88,7 @@ JSON `data` attribute and development warnings all work without more code.
 | `viewModel(data, variant, ctx)` | | Pure: data to display strings and numbers. `ctx` is `{ fmt, t, now, label, freshness, ...viewContext() }`, where `t(key, params?, count?)` reads the element's messages and `freshness` is `{ asOf, ago, stale }`: `data.asOf` as a time (`null` without one), how long ago in words (`''` without `asOf`; an `asOf` ahead of `now` reads `just now`), and whether live data is older than the `stale-after` attribute. `data` is never `null` here (it is `{}` for a `dataOptional` widget with none). Return `ariaLabel` to name the tile; without it the label does. Throwing shows the error view and logs once, linking `docs/widgets/<tag>.md` |
 | `dataShape` | `null` | `{ key: kind \| { kind, optional?, of? } }` with kinds `number`, `numeric`, `time`, `string`, `boolean`, `array` and `object`. A bare kind is required; keys not listed are allowed; `numeric` and `time` accept what `toNumber` and `toTime` read. Development only |
 | `dataOptional` | `false` | `true` for a widget useful before it has data: it renders while `data` is `undefined`, with `viewModel` getting `{}`, and shows the skeleton only for `state="loading"` |
-| `emptyText` | `EN['widget.empty']` | What the empty view says; a host's `widget.<catalogKey>.empty` message wins over it |
+| `emptyText` | `EN['widget.empty']` | What the empty view says; a host's `widget.<catalogKey>.empty` message wins over it; for a `defineWidget` class the `widget.<type>.empty` message (yours or the host's) is read first |
 | `skeleton(variant)` | a header, a bar and two lines | The loading markup: `.sk` blocks shaped like the content, built with `sk(width, height)` (width in percent snapped to 5, or `'x'`; height in px). Include an element with `data-k="label"` and the base fills it |
 
 Add observed attributes by extending the list and calling the base:
@@ -147,8 +147,10 @@ to `.g4` (columns), `.sep` (a hairline), `.ell` (ellipsis), `.btn`, `.dot.live`
 - **A catalog entry is optional.** `static spec` is enough for a grid. To give
   hosts a typed key (`type: 'uptime'`), add an entry to your own catalog:
   `grid.catalog = { ...WIDGETS, uptime: { tag: 'ts-uptime', label: 'Uptime', sizes: ['S', 'Wide'] } }`.
-- **To register and catalog a widget in one call**, use `defineWidget(tag, Class, { type })`;
-  the [custom widgets guide](custom-widgets.md) builds a full one, with tests.
+- **To register and catalog a widget in one call**, use `defineWidget(tag, Class, { type, messages })`.
+  `messages` is your English: `widget.<type>.label`, `.description` and `.empty` plus your own
+  keys under `<type>.`, all overridable by a host. The [custom widgets guide](custom-widgets.md)
+  builds a full one, with tests.
 - **A taken tag.** Tickslate's own registration of its built-in tags only warns in
   development and keeps the first class. `defineWidget` throws a `TypeError`
   instead, because it also writes the catalog, and the same class again is

@@ -133,12 +133,16 @@ globalThis.customElements = registry
 // The base class listens for the tab becoming visible; here the tab always is.
 globalThis.document = { visibilityState: 'visible', addEventListener() {}, removeEventListener() {} }
 
-const { AcmeMrr, mrrModel } = await import('./mrr.js')
-const { createFormatter, createMessages } = await import('../../src/core/index.js')
+const { AcmeMrr, mrrModel, MESSAGES } = await import('./mrr.js')
+const { createFormatter, configure } = await import('../../src/core/index.js')
+const { translator } = await import('../../src/elements/messages-cache.js')
 const { defineWidget, widgetCatalog, escapeHtml, scale, linePaths } = await import('../../src/elements/index.js')
+const { pickerItems } = await import('../../src/elements/picker-model.js')
 
 const fmt = createFormatter({ locale: 'en-US', currency: 'USD' })
-const ctx = (extra = {}) => ({ fmt, t: createMessages(null, 'en-US'), label: 'MRR', ...extra })
+// What an element's `t` is: the host's table (if any) first, then the widget's defaults handed to defineWidget.
+const tFor = (host, locale = 'en-US') => translator(host || null, null, null, locale, MESSAGES)
+const ctx = (extra = {}) => ({ fmt, t: tFor(), label: 'MRR', ...extra })
 
 // Made-up figures: a fictional SaaS product's recurring revenue, in dollars.
 const DATA = { mrr: 48250, previous: 45900, customers: 412, history: [41200, 42900, 44100, 45900, 48250] }
@@ -208,7 +212,7 @@ describe('mrrModel, the pure view model', () => {
   })
 
   test('a host that translates a sentence gets its words; the rest stay English', () => {
-    const t = createMessages({ 'acme.mrr.up': 'en hausse de {delta}' }, 'fr')
+    const t = tFor({ 'acme-mrr.up': 'en hausse de {delta}' }, 'fr')
     const vm = mrrModel(DATA, 'Wide', ctx({ t }))
     assert.equal(vm.ariaLabel, 'MRR, $48,250, en hausse de 5.1%')
     assert.equal(mrrModel({ mrr: 1, previous: 2 }, 'Wide', ctx({ t })).ariaLabel, 'MRR, $1, down 50.0% on last month')
@@ -235,19 +239,19 @@ describe('mrrModel, the pure view model', () => {
     assert.equal(mrrModel({ mrr: 1, customers: 1 }, 'Wide', ctx()).customers, '1 customer')
     assert.equal(mrrModel({ mrr: 1, customers: 412 }, 'Wide', ctx()).customers, '412 customers')
     assert.equal(mrrModel({ mrr: 1, customers: 112412 }, 'Wide', ctx()).customers, '112.4K customers')
-    const pl = createMessages({ 'acme.mrr.customers.one': '{count} klient', 'acme.mrr.customers.few': '{count} klientów', 'acme.mrr.customers.other': '{count} klientów' }, 'pl')
+    const pl = tFor({ 'acme-mrr.customers.one': '{count} klient', 'acme-mrr.customers.few': '{count} klientów', 'acme-mrr.customers.other': '{count} klientów' }, 'pl')
     assert.equal(mrrModel({ mrr: 1, customers: 1 }, 'Wide', ctx({ t: pl })).customers, '1 klient')
     assert.equal(mrrModel({ mrr: 1, customers: 3 }, 'Wide', ctx({ t: pl })).customers, '3 klientów')
     // A host that gives only .other is not answered with the English .one.
-    const other = createMessages({ 'acme.mrr.customers.other': '{count} Kunden' }, 'de')
+    const other = tFor({ 'acme-mrr.customers.other': '{count} Kunden' }, 'de')
     assert.equal(mrrModel({ mrr: 1, customers: 1 }, 'Wide', ctx({ t: other })).customers, '1 Kunden')
   })
 
   test('every string comes through a message key a host can override, none from the model\'s own words', () => {
     const everything = Object.fromEntries(
-      ['up', 'down', 'flat', 'trend', 'breakdown', 'customers.one', 'customers.other'].map((k) => [`acme.mrr.${k}`, `«${k}»`]),
+      ['up', 'down', 'flat', 'trend', 'breakdown', 'customers.one', 'customers.other'].map((k) => [`acme-mrr.${k}`, `«${k}»`]),
     )
-    const vm = mrrModel(DATA, 'M', ctx({ t: createMessages(everything, 'en-US') }))
+    const vm = mrrModel(DATA, 'M', ctx({ t: tFor(everything) }))
     assert.equal(vm.ariaLabel, 'MRR, $48,250, «up»')
     assert.equal(vm.sparkLabel, '«trend»')
     assert.equal(vm.more, '«breakdown»')
@@ -267,16 +271,33 @@ describe('mrrModel, the pure view model', () => {
   })
 })
 
+  // What the picker and the layout list build their translator from: configure()'s table only, no element.
+  const entry = (host) => {
+    const t = translator(host || null, null, null, 'en-US')
+    return pickerItems({ catalog: widgetCatalog(), addTypes: ['acme-mrr'], t, locale: 'en-US' })[0].items[0]
+  }
+
 describe('registration', () => {
   test('defineWidget defined the tag and recorded the spec under its type', () => {
     assert.equal(registry.get('acme-mrr'), AcmeMrr)
     const spec = widgetCatalog()['acme-mrr']
     assert.equal(spec.tag, 'acme-mrr')
-    assert.equal(spec.label, 'MRR')
+    // The class gives no label and the catalog copies none: the grid and the picker ask t('widget.acme-mrr.label'),
+    // so a host's translation of it reaches them. The author's 'MRR' answers when the host says nothing.
+    assert.equal(spec.label, '')
     assert.deepEqual([...spec.sizes], ['S', 'Wide', 'M'])
     assert.equal(spec.category, 'Revenue')
     // Built-in types are still there, untouched.
     assert.equal(widgetCatalog().todayPnl.tag, 'ts-today-pnl')
+  })
+
+  test('the picker shows the author\'s label and description, and a host\'s override of either wins', () => {
+    const plain = entry()
+    assert.equal(plain.label, 'MRR')
+    assert.equal(plain.description, 'Monthly recurring revenue and its change on last month.')
+    const host = entry({ 'widget.acme-mrr.label': 'MRR (monatlich)', 'widget.acme-mrr.description': 'Monatlicher Umsatz.' })
+    assert.equal(host.label, 'MRR (monatlich)')
+    assert.equal(host.description, 'Monatlicher Umsatz.')
   })
 
   test('evaluating the module again makes a new class; the guard keeps the first instead of throwing', async () => {
@@ -312,6 +333,56 @@ describe('the element', () => {
     assert.equal(text(el, 'value'), '$48,250')
     assert.equal(text(el, 'delta'), '+5.1%')
     assert.equal(section(el).getAttribute('aria-label'), 'MRR, $48,250, up 5.1% on last month')
+  })
+
+  test('speaks its registered English with no configure() call, and a host override of the same key wins', async () => {
+    const el = await make({ size: 'M' })
+    el.data = DATA
+    el.actions = ['breakdown']
+    await tick()
+    assert.equal(text(el, 'more'), 'Breakdown')
+    assert.equal(text(el, 'customers'), '412 customers')
+    el.messages = { 'acme-mrr.breakdown': 'Détail' }
+    await tick()
+    assert.equal(text(el, 'more'), 'Détail')
+    assert.equal(text(el, 'customers'), '412 customers')
+    el.messages = null
+    configure({ messages: { 'acme-mrr.breakdown': 'Aufschlüsselung', 'widget.acme-mrr.label': 'MRR (monatlich)' } })
+    try {
+      await tick()
+      assert.equal(text(el, 'more'), 'Aufschlüsselung')
+      assert.equal(text(el, 'label'), 'MRR (monatlich)')
+    } finally {
+      configure({ messages: null })
+    }
+  })
+
+  test('a host\'s label override shows on the tile and in the picker alike', async () => {
+    configure({ messages: { 'widget.acme-mrr.label': 'MRR (monatlich)' } })
+    try {
+      const el = await make()
+      el.data = DATA
+      await tick()
+      assert.equal(el.label, 'MRR (monatlich)')
+      assert.equal(text(el, 'label'), 'MRR (monatlich)')
+      assert.equal(entry({ 'widget.acme-mrr.label': 'MRR (monatlich)' }).label, el.label)
+    } finally {
+      configure({ messages: null })
+    }
+  })
+
+  test('a subclass of the registered widget keeps the defaults', async () => {
+    class Sub extends AcmeMrr {}
+    registry.define('acme-mrr-sub', Sub)
+    const el = new Sub()
+    el.localName = 'acme-mrr-sub-1'
+    el.setAttribute('currency', 'USD')
+    el.setAttribute('locale', 'en-US')
+    el.connect()
+    el.data = DATA
+    await tick()
+    assert.equal(text(el, 'label'), 'MRR')
+    assert.equal(el.label, 'MRR')
   })
 
   test('new numbers change in place: the markup is written once, only the text moves', async () => {
@@ -354,6 +425,23 @@ describe('the element', () => {
     el.data = null
     await tick()
     assert.equal(text(el, 'empty'), 'No revenue data yet')
+  })
+
+  test('the empty text is a message too: the host\'s override wins over the author\'s', async () => {
+    const el = await make()
+    el.data = null
+    await tick()
+    el.messages = { 'widget.acme-mrr.empty': 'Noch keine Umsatzdaten' }
+    await tick()
+    assert.equal(text(el, 'empty'), 'Noch keine Umsatzdaten')
+    el.messages = null
+    configure({ messages: { 'widget.acme-mrr.empty': 'Pas encore de données' } })
+    try {
+      await tick()
+      assert.equal(text(el, 'empty'), 'Pas encore de données')
+    } finally {
+      configure({ messages: null })
+    }
   })
 
   test('an unsupported size snaps to one the spec lists', async () => {

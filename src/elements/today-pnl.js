@@ -13,6 +13,7 @@
 
 import { TsWidget, sk, header, arrowFor, figure, FIGURE_CSS } from './widget.js'
 import { linePaths } from './chart.js'
+import { Scrubber, SCRUB_CSS, lineScrub, scrubMarkup } from './scrub.js'
 import { EN, toNumber, toTime } from '../core/index.js'
 
 // Characters the headline holds per variant before fmt.fit() switches it to
@@ -65,14 +66,22 @@ const joined = (parts) => parts.filter(Boolean).join(' · ')
 function readings(intraday) {
   if (!Array.isArray(intraday)) return { pts: [], dropped: 0 }
   const out = []
+  let ordered = true
+  let before = -Infinity
   for (const r of intraday) {
     const t = toTime(r && r.t)
     const v = toNumber(r && r.v)
-    if (Number.isFinite(t) && Number.isFinite(v)) out.push({ x: t, y: v })
+    if (Number.isFinite(t) && Number.isFinite(v)) {
+      if (t < before) ordered = false
+      before = t
+      out.push({ x: t, y: v })
+    }
   }
   // Hosts append, but a merged feed may not arrive in order, and a line
-  // drawn through unsorted points doubles back on itself.
-  return { pts: out.sort((a, b) => a.x - b.x), dropped: intraday.length - out.length }
+  // drawn through unsorted points doubles back on itself. A feed that is in
+  // order, which is nearly every one, skips the sort: half a million
+  // comparisons are a visible share of the frame.
+  return { pts: ordered ? out : out.sort((a, b) => a.x - b.x), dropped: intraday.length - out.length }
 }
 
 /** The curve's value at time t, between the readings either side of it. */
@@ -154,9 +163,9 @@ function chartOf(data, pts, fmt, t) {
   // One reading is not a curve; the chart says so instead of drawing a line
   // that implies a trend.
   if (pts.length < 2) {
-    return { empty: true, message: t('pnl.noIntraday'), ariaLabel: t('pnl.chartEmpty'), ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [] }
+    return { empty: true, message: t('pnl.noIntraday'), ariaLabel: t('pnl.chartEmpty'), ticks, midAt, line: '', area: '', zeroY: 0, lastX: 0, marks: [], scrub: null }
   }
-  const { line, area, zeroY, x, y } = linePaths(pts, { ...CHART_BOX, pad: PAD, xDomain: domain })
+  const { line, area, zeroY, x, y, drawn } = linePaths(pts, { ...CHART_BOX, pad: PAD, xDomain: domain })
   const first = pts[0]
   const last = pts[pts.length - 1]
   let low = first
@@ -196,6 +205,8 @@ function chartOf(data, pts, fmt, t) {
     lastX: Math.round(x(last.x) * 10) / 10,
     marks,
     droppedMarks: dropped,
+    // What the scrubber reads: the drawn points only, as numbers (RFC 0004 §1.2). The window domain is already in x.
+    scrub: lineScrub('time', { ...CHART_BOX, pad: PAD }, drawn, x, y, [{ name: t('chart.scrubNet'), ys: (p) => p.y, mark: true }]),
   }
 }
 
@@ -225,6 +236,8 @@ export function todayPnlModel(data, variant, ctx) {
     label: variant === 'S' ? t('pnl.today') : ctx.label,
     time,
     net: fmt.fit(d.net, HEADLINE_CHARS[variant] || HEADLINE_CHARS.Wide),
+    // The full figure, for the pointer, when fit() made the headline compact (RFC 0004 §1.5).
+    netTitle: '',
     netNum: net,
     netTone: tone(d.net),
     realized: fmt.money(d.realized),
@@ -242,6 +255,8 @@ export function todayPnlModel(data, variant, ctx) {
   }
 
   vm.netArrow = arrowFor(vm.net)
+  const full = fmt.money(d.net)
+  if (vm.net !== full) vm.netTitle = full
 
   if (variant === 'S') {
     vm.footer = joined([counts, feesPlain && t('pnl.feesNote', { amount: feesPlain })])
@@ -264,13 +279,13 @@ const TEMPLATES = {
 ${header({ dot: true, meta: true })}
 ${figure('big nv', 'net', 'value')}
 <span class="f1"></span>
-<span class="sm mut ell" data-k="footer"></span>`,
+<span class="sm mut ell sec" data-k="footer"></span>`,
   Wide: `
 <div class="cols">
   <div class="col lhs">
     ${header({ dot: true, meta: true })}
     ${figure('xbig nv', 'net', 'value')}
-    <span class="sm mut" data-k="note"></span>
+    <span class="sm mut sec" data-k="note"></span>
   </div>
   <div class="col rhs">
     <div class="rowb"><span class="lb f1" data-k="lbRealised"></span>${figure('n', 'realized')}</div>
@@ -281,7 +296,7 @@ ${figure('big nv', 'net', 'value')}
   M: `
 ${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"></span>' })}
 <div class="rowb base">${figure('xbig nv', 'net', 'value')}<span class="sm mut" data-k="summary"></span></div>
-<div class="chart" part="chart">
+<div class="chart sc" part="chart" data-k="plot">
   <svg viewBox="0 0 ${CHART_BOX.width} ${CHART_BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">
     <defs>
       <clipPath id="up"><rect x="0" y="0" width="${CHART_BOX.width}" data-k="clip-up"></rect></clipPath>
@@ -296,8 +311,9 @@ ${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"><
   </svg>
   <div class="marks" data-k="marks"></div>
   <div class="nodata sm" part="empty" data-k="nodata" hidden></div>
+  ${scrubMarkup(1, 1)}
 </div>
-<div class="axis sm mut n"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
+<div class="axis sm mut n ter"><span data-k="t0"></span><span class="mid" data-k="t1"></span><span data-k="t2"></span></div>
 <div class="g3 sep trio">
   <div class="col cell"><span class="lb" data-k="lbRealised"></span>${figure('n md', 'realized')}</div>
   <div class="col cell"><span class="lb" data-k="lbUnrealised"></span>${figure('n md', 'unrealized')}</div>
@@ -340,14 +356,21 @@ export class TsTodayPnl extends TsWidget {
     live: { kind: 'boolean', optional: true },
   }
 
-  static styles = `${FIGURE_CSS}
+  // Density and text size (RFC 0004 §2), kept out of the stylesheet because a comment in it ships to every page:
+  // - .lhs has min-width: auto, not the .col default of 0, so a figure that grows (a reader's letter spacing, a larger root
+  //   font size) widens its column and narrows the one beside it, instead of being cut. Its header and note are inline-size
+  //   contained, so only the figure counts: a long label still ellipsizes and never widens the column.
+  // - The S headline has no neighbour, so it may use the tile's padding when letter spacing widens it; the tile still clips
+  //   at its own edge.
+  static styles = `${FIGURE_CSS}${SCRUB_CSS}
 [hidden] { display: none; }
 /* Clip rather than overflow: a headline too wide for its slot must never
    run into the column beside it. fit() and the tile's scaled type make
    that rare; this makes it harmless. */
 .nv { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; }
 .cols { flex: 1; display: flex; gap: 24px; align-items: stretch; min-height: 0; }
-.lhs { flex: 1.15; min-width: 0; justify-content: space-between; }
+.lhs { flex: 1.15; min-width: auto; justify-content: space-between; }
+.lhs > .hd, .lhs > .sec { contain: inline-size; }
 .rhs { flex: 1; min-width: 0; justify-content: center; gap: 10px; }
 /* Narrow tile (a 2-column phone): the three figures stack label over value
    and shrink to their content, so the headline gets the rest of the width.
@@ -381,8 +404,8 @@ export class TsTodayPnl extends TsWidget {
    tiles only: 10 characters of a monospace face (0.6em each) and the arrow (0.4em) still fit the content box of a
    2-column phone's tile, where the figure never wraps or clips. A roomy tile keeps the 34px cap. The Wide headline sits
    in the left column (1.15 of 2.15 of the tile less the gap): 6.2em of that, and 48px when the tile is roomy. */
-.big.nv { font-size: min(34px, 15cqi); }
-.xbig.nv { font-size: min(48px, calc(8.6cqi - 2px)); }
+.big.nv { overflow: visible; max-width: none; font-size: min(var(--ts-text-big, max(34px, 2.125rem)), 15cqi); }
+.xbig.nv { font-size: min(var(--ts-text-xbig, max(48px, 3rem)), calc(8.6cqi - 2px)); }
 @media (forced-colors: active) {
   .mk.entry { background: Highlight; border-color: ButtonFace; }
   .mk.exit { background: CanvasText; border-color: ButtonFace; }
@@ -395,6 +418,11 @@ export class TsTodayPnl extends TsWidget {
 
   static skeleton(variant) {
     return SKELETONS[variant] || SKELETONS.Wide
+  }
+
+  constructor() {
+    super()
+    this._scrubber = new Scrubber(this)
   }
 
   _skeletonLabel(variant, label) {
@@ -421,18 +449,25 @@ export class TsTodayPnl extends TsWidget {
         el.style.setProperty('--fc', String(s.length))
       }
     }
+    // The title goes on the headline value (part="value"), so the tooltip is over the number alone (RFC 0004 §1.5).
+    const titled = (k, s) => {
+      const el = this.$(`[data-k="${k}"]`)
+      if (el) this._setAttr(el, 'title', s || null)
+    }
     this.$('[data-k="dot"]').toggleAttribute('hidden', !vm.live)
     text('label', vm.label)
 
     if (variant === 'S') {
       text('time', vm.time)
       toned('net', 'big nv', vm.net, vm.netArrow, vm.netTone)
+      titled('net', vm.netTitle)
       this.flash('net', vm.netNum)
       text('footer', vm.footer)
       return
     }
 
     toned('net', 'xbig nv', vm.net, vm.netArrow, vm.netTone)
+    titled('net', vm.netTitle)
     this.flash('net', vm.netNum)
     text('lbRealised', this.t('pnl.realised'))
     text('lbUnrealised', this.t('pnl.unrealised'))
@@ -449,6 +484,7 @@ export class TsTodayPnl extends TsWidget {
     text('counts', vm.counts)
     text('summary', vm.summary)
     this._updateChart(vm.chart)
+    this._scrubber?.sync(vm.chart.scrub, vm.ariaLabel)
     text('t0', vm.chart.ticks[0])
     text('t1', vm.chart.ticks[1]).style.insetInlineStart = `${vm.chart.midAt}%`
     text('t2', vm.chart.ticks[2])

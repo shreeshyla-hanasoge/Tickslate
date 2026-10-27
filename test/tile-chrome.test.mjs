@@ -27,7 +27,7 @@ before(async () => {
   globalThis.HTMLElement = FakeElement
   globalThis.document = new FakeDocument()
   W = await import('../src/elements/widget.js')
-  const [pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar, edge, funding] = await Promise.all([
+  const [pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar, edge, funding, mini, breakdown, status, feed] = await Promise.all([
     import('../src/elements/today-pnl.js'),
     import('../src/elements/equity-curve.js'),
     import('../src/elements/session-clock.js'),
@@ -41,8 +41,12 @@ before(async () => {
     import('../src/elements/pnl-calendar.js'),
     import('../src/elements/edge-stats.js'),
     import('../src/elements/capital-funding.js'),
+    import('../src/elements/mini-chart.js'),
+    import('../src/elements/breakdown.js'),
+    import('../src/elements/status.js'),
+    import('../src/elements/feed.js'),
   ])
-  C = { pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar, edge, funding }
+  C = { pnl, equity, clock, card, metric, chart, table, progress, watchlist, positions, calendar, edge, funding, mini, breakdown, status, feed }
   // Every widget the library registers, found from the define modules (each is a per-widget entry, RFC 0003 §2.1)
   // and not from a list kept here, so a new widget is scanned the day it is added.
   DEFINED = {}
@@ -72,6 +76,10 @@ const WIDGETS = () => [
   ['TsPnlCalendar', C.calendar.TsPnlCalendar, ['Tall', 'M', 'Banner'], ['header', 'label'], {}],
   ['TsEdgeStats', C.edge.TsEdgeStats, ['S', 'Wide', 'M'], ['header', 'label'], {}],
   ['TsCapitalFunding', C.funding.TsCapitalFunding, ['S', 'Tall', 'L'], ['header', 'label'], {}],
+  ['TsMiniChart', C.mini.TsMiniChart, ['M', 'L', 'XL'], ['header', 'label', 'chart'], {}],
+  ['TsBreakdown', C.breakdown.TsBreakdown, ['S', 'Wide', 'Tall', 'M'], ['header', 'label'], {}],
+  ['TsStatus', C.status.TsStatus, ['S', 'Tall', 'M'], ['header', 'label'], {}],
+  ['TsFeed', C.feed.TsFeed, ['Tall', 'M', 'L'], ['header', 'label'], {}],
 ]
 
 const hasPart = (html, part) => new RegExp(`\\bpart="${part}"`).test(html)
@@ -483,7 +491,7 @@ describe('text alternatives', () => {
 
 describe('typography tokens', () => {
   const TOKENS = {
-    '--ts-label-size': '10px',
+    '--ts-label-size': 'max(11px, .6875rem)',
     '--ts-label-case': 'uppercase',
     '--ts-label-tracking': '.12em',
     '--ts-label-weight': '600',
@@ -494,7 +502,7 @@ describe('typography tokens', () => {
     return Object.fromEntries([...body.matchAll(/(--ts-[\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]))
   }
 
-  test('exist in both token files, with the values the labels and figures had before', async () => {
+  test('exist in both token files, with the values the labels and figures have', async () => {
     const css = declared(read('src/themes/tokens.css'))
     const js = declared((await import('../src/elements/default-tokens.js')).TOKENS_CSS)
     for (const [token, value] of Object.entries(TOKENS)) {
@@ -506,7 +514,7 @@ describe('typography tokens', () => {
   test('.lb, .big and .xbig read them, with fallbacks that are the same values', () => {
     const css = W.SHARED_CSS
     const lb = css.match(/\.lb \{([^}]*)\}/)[1]
-    assert.match(lb, /font-size: var\(--ts-label-size, 10px\)/)
+    assert.match(lb, /font-size: var\(--ts-label-size, max\(11px, \.6875rem\)\)/)
     assert.match(lb, /text-transform: var\(--ts-label-case, uppercase\)/)
     assert.match(lb, /letter-spacing: var\(--ts-label-tracking, \.12em\)/)
     assert.match(lb, /font-weight: var\(--ts-label-weight, 600\)/)
@@ -679,11 +687,21 @@ describe('logical properties only', () => {
     assert.match(html, /^<span class="n md" data-k="peak"><span class="fg"><span class="ar" aria-hidden="true" data-k="peakAr"><\/span><span data-k="peakV"><\/span><\/span><\/span>$/)
     assert.match(W.FIGURE_CSS, /\.fg \{ white-space: nowrap; \}/)
     assert.match(W.FIGURE_CSS, /\.cell \{ container-type: inline-size; \}/)
-    assert.match(W.FIGURE_CSS, /\.cell \.md \{ font-size: min\(17px, calc\(100cqi \/ \(var\(--fc, 10\) \* \.62 \+ \.65\)\)\); \}/)
+    assert.match(W.FIGURE_CSS, /\.cell \.md \{ font-size: min\(var\(--ts-text-2xl, max\(17px, 1\.0625rem\)\), calc\(100cqi \/ \(var\(--fc, 10\) \* var\(--ts-num-width, \.62\) \+ \.65\)\)\); \}/)
+  })
+
+  test('the figure width is the --ts-num-width token, not a literal .62 (RFC 0004 §10.3)', () => {
+    // The fallback inside var() is the token's default; a bare `* .62` would ignore a host's wider face.
+    for (const [name, css] of [['SHARED_CSS', W.SHARED_CSS], ['FIGURE_CSS', W.FIGURE_CSS]]) {
+      assert.doesNotMatch(css.replace(/var\(--ts-num-width, \.62\)/g, ''), /\.62(?!\d)/, `${name} has a literal .62`)
+    }
+    assert.match(W.FIGURE_CSS, /var\(--ts-num-width, \.62\)/)
+    const tokens = read('src/themes/tokens.css')
+    assert.match(tokens, /--ts-num-width: \.62;/)
   })
 
   test('the arrow has a gap after it so it reads as a marker apart from the sign', () => {
-    const rule = (sel) => W.SHARED_CSS.match(new RegExp(`${sel.replace(/[.]/g, '\\.')} \\{([^}]*)\\}`))[1]
+    const rule = (sel) => W.SHARED_CSS.match(new RegExp(`${sel.replace(/[\\.]/g, '\\$&')} \\{([^}]*)\\}`))[1]
     assert.match(rule('.big .ar, .xbig .ar'), /margin-inline-end: \.375em/)
     assert.match(rule('.n .ar'), /margin-inline-end: \.22em/)
   })
@@ -691,8 +709,8 @@ describe('logical properties only', () => {
   test('the Wide equity headline keeps its 34px on a roomy tile, in a wider column that holds its arrow', () => {
     const css = stripComments(C.equity.TsEquityCurve.styles)
     // A narrow tile keeps the 170px column and sizes the figure to it; a roomy one widens the column and keeps 34px.
-    assert.match(css, /\.side \.big \{ font-size: 26px; \}/)
-    assert.match(css, /@container \(min-width: 420px\) \{ \.side \{ width: 220px; \} \.side \.big \{ font-size: 34px; \} \}/)
+    assert.match(css, /\.side \.big \{ font-size: var\(--ts-text-3xl, max\(26px, 1\.625rem\)\); \}/)
+    assert.match(css, /@container \(min-width: 420px\) \{ \.side \{ min-width: 220px; \} \.side \.big \{ font-size: var\(--ts-text-big, max\(34px, 2\.125rem\)\); \} \}/)
   })
 })
 
@@ -745,7 +763,7 @@ describe('colours', () => {
 
   test('the grid reads the same tokens, with no colour fallback of its own', () => {
     const source = stripScriptComments(read('src/elements/grid.js'))
-    const style = source.match(/<style>([\s\S]*?)<\/style>/)[1]
+    const style = source.match(/const CSS = `([\s\S]*?)`\n/)[1]
     assert.deepEqual(colourValues(style), [], 'the grid\'s stylesheet')
     // What it writes into a style from script (the lifted tile's shadow, say).
     const written = [...source.matchAll(/\.style\.(\w+)\s*=\s*(['"`])(.*?)\2/g)].map((m) => `${m[1].replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}: ${m[3]};`)
@@ -838,6 +856,6 @@ describe('the dashboard region', () => {
     // The one place that names it, and nothing else writes the host's role or label.
     assert.equal((source.match(/_board\.setAttribute\('aria-label'/g) || []).length, 1)
     assert.doesNotMatch(source, /this\.setAttribute\('(?:role|aria-label)'/)
-    assert.match(source, /return \['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'aria-label'\]/)
+    assert.match(source, /return \['editing', 'profile', 'locked', 'edit-controls', 'locale', 'currency', 'time-zone', 'hour-cycle', 'persist', 'density', 'scrub', 'hint', 'aria-label'\]/)
   })
 })

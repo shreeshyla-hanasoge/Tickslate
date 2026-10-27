@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes, keepInPlace, visualOrder } from '../src/elements/grid-geometry.js'
+import { metrics, boxOf, boardHeight, cellAt, extentOf, mergeOrder, px, itemsFromChildren, specResolver, hostResizes, keepInPlace, visualOrder, hasSmall, splitStrip, stripBoxes, stripSlotAt, mergeStrip } from '../src/elements/grid-geometry.js'
 import { WIDGETS, place, typeForTag } from '../src/core/index.js'
 import { TsGrid } from '../src/elements/index.js'
 
@@ -203,4 +203,130 @@ test('keepInPlace reaches the wanted order for any shuffle, moving at most all b
     assert.deepEqual(list, wanted)
     assert.ok(moves <= Math.max(0, current.length - 1))
   }
+})
+
+test('with rtl a box mirrors across the board and keeps its size', () => {
+  // x = (columns − col − cols) × pitchX: column 0 sits at the right edge.
+  assert.deepEqual(boxOf({ col: 0, row: 0, cols: 1, rows: 1 }, desktop, { rtl: true }), { x: 960, y: 0, w: 304, h: 150 })
+  assert.deepEqual(boxOf({ col: 1, row: 2, cols: 2, rows: 2 }, desktop, { rtl: true }), { x: 320, y: 332, w: 624, h: 316 })
+  assert.equal(boxOf({ col: 0, row: 0, cols: 4, rows: 1 }, desktop, { rtl: true }).x, 0)
+  // Without the option, or with rtl false, nothing changes.
+  assert.deepEqual(boxOf({ col: 1, row: 2, cols: 2, rows: 2 }, desktop, { rtl: false }), boxOf({ col: 1, row: 2, cols: 2, rows: 2 }, desktop))
+})
+
+test('a mirrored box ends where the grid ends when it starts at column 0', () => {
+  for (const cols of [1, 2, 3, 4]) {
+    const box = boxOf({ col: 0, row: 0, cols, rows: 1 }, desktop, { rtl: true })
+    assert.equal(box.x + box.w, 1264)
+  }
+})
+
+test('with rtl cellAt is the inverse of boxOf, clamped', () => {
+  for (const p of [{ col: 0, cols: 1 }, { col: 2, cols: 2 }, { col: 1, cols: 3 }, { col: 3, cols: 1 }]) {
+    const box = boxOf({ ...p, row: 1, rows: 1 }, desktop, { rtl: true })
+    const cell = cellAt(box.x, box.y, p.cols, desktop, { rtl: true })
+    assert.equal(cell.col, p.col)
+    assert.equal(cell.row, 1)
+  }
+  // Dragged past either edge it stays on the board.
+  assert.equal(cellAt(-500, 0, 2, desktop, { rtl: true }).col, 2)
+  assert.equal(cellAt(5000, 0, 2, desktop, { rtl: true }).col, 0)
+  // Halfway between two columns the fraction is mirrored too.
+  assert.equal(cellAt(160, 0, 1, desktop, { rtl: true }).col, 2.5)
+  assert.equal(cellAt(160, 0, 1, desktop).col, 0.5)
+})
+
+test('extentOf takes the option and ignores it', () => {
+  assert.deepEqual(extentOf(624, 316, desktop, { rtl: true }), extentOf(624, 316, desktop))
+})
+
+// ── The phone top strip (RFC 0003 §19) ──
+
+const stripItems = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, size: 'M' }))
+
+test('splitStrip takes the named items in strip order and leaves the rest on the board', () => {
+  const { strip, board } = splitStrip(stripItems, ['c', 'a'], 2)
+  assert.deepEqual(strip.map((i) => i.id), ['c', 'a'])
+  assert.deepEqual(board.map((i) => i.id), ['b', 'd', 'e'])
+  // The items themselves, not copies: the grid compares them by reference.
+  assert.equal(strip[0], stripItems[2])
+})
+
+test('splitStrip leaves an item pinnable() refuses on the board', () => {
+  const { strip, board } = splitStrip(stripItems, ['a', 'b', 'c'], 2, (item) => item.id !== 'b')
+  assert.deepEqual(strip.map((i) => i.id), ['a', 'c'])
+  assert.deepEqual(board.map((i) => i.id), ['b', 'd', 'e'])
+})
+
+test('hasSmall says whether a spec offers S, and an unknown type is a plain tile', () => {
+  assert.equal(hasSmall(['S', 'M']), true)
+  assert.equal(hasSmall(['Wide', 'Tall']), false)
+  assert.equal(hasSmall(WIDGETS.equityCurve.sizes), false)
+  assert.equal(hasSmall(WIDGETS.todayPnl.sizes), true)
+  assert.equal(hasSmall(undefined), true)
+  assert.equal(hasSmall([]), true)
+})
+
+test('splitStrip is empty at 3 or 4 columns and with no strip', () => {
+  for (const columns of [3, 4]) {
+    const { strip, board } = splitStrip(stripItems, ['a', 'b'], columns)
+    assert.deepEqual(strip, [])
+    assert.deepEqual(board.map((i) => i.id), ['a', 'b', 'c', 'd', 'e'])
+  }
+  assert.deepEqual(splitStrip(stripItems, undefined, 2).strip, [])
+  assert.deepEqual(splitStrip(stripItems, [], 2).board.length, 5)
+})
+
+test('splitStrip skips ids with no item, repeats, and anything past three', () => {
+  const { strip, board } = splitStrip(stripItems, ['x', 'b', 'b', 'a', 'c', 'd'], 2)
+  assert.deepEqual(strip.map((i) => i.id), ['b', 'a', 'c'])
+  assert.deepEqual(board.map((i) => i.id), ['d', 'e'])
+})
+
+test('splitStrip does not change what it is given', () => {
+  const before = JSON.stringify(stripItems)
+  const { board } = splitStrip(stripItems, [], 2)
+  board.pop()
+  assert.equal(JSON.stringify(stripItems), before)
+})
+
+const phone = metrics(390, 2, 150, 10)
+
+test('stripBoxes are equal in width, span the board, and are one compact row tall', () => {
+  for (const count of [1, 2, 3]) {
+    const boxes = stripBoxes(count, phone)
+    assert.equal(boxes.length, count)
+    assert.ok(boxes.every((b) => b.w === boxes[0].w && b.h === 150 && b.y === 0))
+    assert.equal(boxes[0].x, 0)
+    const last = boxes[count - 1]
+    assert.ok(Math.abs(last.x + last.w - 390) < 1e-9)
+    for (let i = 1; i < count; i++) assert.ok(Math.abs(boxes[i].x - (boxes[i - 1].x + boxes[i - 1].w + 10)) < 1e-9)
+  }
+  assert.deepEqual(stripBoxes(0, phone), [])
+  assert.equal(stripBoxes(3, phone)[0].w, (390 - 20) / 3)
+})
+
+test('stripBoxes mirror under rtl: the first tile is at the right edge', () => {
+  const ltr = stripBoxes(3, phone)
+  const rtl = stripBoxes(3, phone, { rtl: true })
+  rtl.forEach((box, i) => {
+    assert.ok(Math.abs(box.x - (390 - ltr[i].x - ltr[i].w)) < 1e-9)
+    assert.equal(box.w, ltr[i].w)
+  })
+  assert.ok(rtl[0].x > rtl[1].x && rtl[1].x > rtl[2].x)
+})
+
+test('stripSlotAt picks the slot whose box starts nearest, either direction', () => {
+  const ltr = stripBoxes(3, phone)
+  ltr.forEach((box, i) => assert.equal(stripSlotAt(box.x + 5, 3, phone), i))
+  assert.equal(stripSlotAt(-300, 3, phone), 0)
+  assert.equal(stripSlotAt(900, 3, phone), 2)
+  const rtl = stripBoxes(3, phone, { rtl: true })
+  rtl.forEach((box, i) => assert.equal(stripSlotAt(box.x - 5, 3, phone, { rtl: true }), i))
+  assert.equal(stripSlotAt(900, 3, phone, { rtl: true }), 0)
+})
+
+test('mergeStrip refills the visible slots and leaves unseen ids where they were', () => {
+  assert.deepEqual(mergeStrip(['a', 'x', 'b'], ['b', 'a']), ['b', 'x', 'a'])
+  assert.deepEqual(mergeStrip(['a', 'b'], ['a', 'b']), ['a', 'b'])
 })

@@ -6,6 +6,8 @@
 export const NON_WIDGET_DEFINES = {
   // The picker and the grid controls share one opt-in entry (RFC 0003 §18.5).
   controls: ['ts-widget-picker', 'ts-grid-controls'],
+  // The layout list is its own opt-in entry (RFC 0003 §20).
+  'layout-list': ['ts-layout-list'],
 }
 
 /** The define module file names, without `.js`. */

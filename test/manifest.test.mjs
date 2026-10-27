@@ -96,7 +96,7 @@ describe('the attribute tables that type the frameworks', () => {
 
 describe('the generator on a tree that gains an element', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tickslate-manifest-'))
-  for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts', 'controls.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
+  for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts', 'controls.d.ts', 'mini-chart.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
   const entry = { file: 'gauge', name: 'gauge', input: '', tags: ['ts-gauge'], exports: ['TsGauge'] }
 
   test('fails the build for a tag with no @element block', () => {
@@ -142,7 +142,7 @@ declare global { interface HTMLElementTagNameMap { 'ts-gauge': TsGauge } }
 describe('malformed tags and unresolved classes', () => {
   const tree = (dts) => {
     const dir = mkdtempSync(join(tmpdir(), 'tickslate-manifest-'))
-    for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts', 'controls.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
+    for (const f of ['index.d.ts', 'widget.d.ts', 'grid.d.ts', 'controls.d.ts', 'mini-chart.d.ts']) copyFileSync(new URL(`../src/elements/${f}`, import.meta.url), join(dir, f))
     writeFileSync(join(dir, 'gauge.d.ts'), dts)
     return dir
   }

@@ -8,6 +8,13 @@
  * server: `load` and `save` may return promises. Everything that can arrive
  * late is checked against a request counter and an edit counter before it is
  * applied, so a slow answer never undoes what the user did in the meantime.
+ *
+ * A host often assigns the grid's layout a moment after the grid connects. Until the
+ * user's first edit on a device, that assignment is captured as the device's
+ * defaults, and a saved layout is still shown over it (RFC 0004 §11.2). The grid
+ * announces such assignments through `_watchLayout`, a private hook, because a
+ * layout can be set without any event; persistLayout's own assignments are marked
+ * and never captured. A grid without the hook only misses the later captures.
  */
 import { readLayout } from '../core/index.js'
 import { DEV, warnOnce } from './dev.js'
@@ -69,6 +76,11 @@ export function persistLayout(grid, options = {}) {
   // and when the user has edited since it started: their edit wins (RFC 0003 §29.8).
   let request = 0
   let edits = 0
+  // Per device: the host's latest layout (the defaults), and whether the user has edited there (which ends capturing).
+  const captured = { desktop: null, phone: null }
+  const edited = { desktop: false, phone: false }
+  // True while persistLayout assigns grid.layout itself, so the hook does not take that for the host.
+  let applying = false
 
   if (DEV) {
     if (adapter && options.storage != null) warnOnce(`persist-both:${id}`, 'persistLayout was given both an adapter and storage; the adapter is used and storage is ignored.')
@@ -82,9 +94,25 @@ export function persistLayout(grid, options = {}) {
   function applyDefaults(d) {
     // The grid already shows them (the persist attribute passes its own layout),
     // and setting it again would end implicit mode for a layout nobody changed.
-    const wanted = fallback()[d]
+    const wanted = captured[d] || fallback()[d]
     if (wanted == null || grid.layout === wanted) return
-    grid.layout = readLayout(wanted, { unknown: 'keep', device: d }).layout
+    try {
+      assign(readLayout(wanted, { unknown: 'keep', device: d }).layout)
+    } catch (e) {
+      applyFailed(e)
+    }
+  }
+
+  function assign(layout) {
+    applying = true
+    // Tells the grid too, which keeps the host's layout as the other device's fallback and must not take this for it.
+    grid._persistWriting = true
+    try {
+      grid.layout = layout
+    } finally {
+      applying = false
+      grid._persistWriting = false
+    }
   }
 
   function loadFailed(e) {
@@ -138,7 +166,7 @@ export function persistLayout(grid, options = {}) {
   function show(d, raw) {
     // `== null` covers an adapter's undefined too: both mean nothing stored.
     if (raw == null) return applyDefaults(d)
-    grid.layout = readLayout(raw, { unknown: 'keep', device: d }).layout
+    assign(readLayout(raw, { unknown: 'keep', device: d }).layout)
   }
 
   function load(d) {
@@ -160,6 +188,9 @@ export function persistLayout(grid, options = {}) {
 
   function switchTo(d) {
     if (!isDevice(d) || d === device) return
+    // Attached with no defaults after the host set its layout: that layout is the defaults, so reset() has somewhere to go.
+    // Only the first device seen, before any edit: later the layout on show may be a saved one or the other device's.
+    if (device === null && defaults == null && !edited[d] && !captured[d]) captured[d] = grid.layout
     device = d
     load(d)
   }
@@ -175,6 +206,7 @@ export function persistLayout(grid, options = {}) {
     const layout = event.detail && event.detail.layout
     if (!layout) return
     edits++
+    edited[device] = true
     if (adapter) {
       // In event order and not awaited: a slow save must not hold the grid up.
       fire(() => adapter.save(device, layout), saveFailed)
@@ -187,6 +219,15 @@ export function persistLayout(grid, options = {}) {
       // Quota or private mode: the edit stays on screen, it just isn't kept.
     }
   }
+
+  // The host assigned grid.layout: before this device's first edit it is the new defaults, and a saved layout still wins.
+  function onHostLayout() {
+    if (disposed || applying || !device || edited[device]) return
+    captured[device] = grid.layout
+    load(device)
+  }
+
+  const unwatch = typeof grid._watchLayout === 'function' ? grid._watchLayout(onHostLayout) : null
 
   grid.addEventListener('ts-columns-change', onColumns)
   grid.addEventListener('ts-layout-change', onChange)
@@ -217,6 +258,7 @@ export function persistLayout(grid, options = {}) {
     dispose() {
       if (disposed) return
       disposed = true
+      if (unwatch) unwatch()
       if (DEV) grid._persisted--
       grid.removeEventListener('ts-columns-change', onColumns)
       grid.removeEventListener('ts-layout-change', onChange)

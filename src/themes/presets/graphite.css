@@ -37,12 +37,11 @@
   --ts-radius-sm: 6px;
   --ts-shadow: none;
   --ts-fill: 16%;
-  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --ts-pad: 16px;
+  --ts-font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif;
+  --ts-font-num: 'Newsreader', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif;
   --ts-num-weight: 500;
   --ts-num-weight-small: 600;
-  --ts-label-size: 10px;
+  --ts-label-size: max(11px, .6875rem);
   --ts-label-case: uppercase;
   --ts-label-tracking: .12em;
   --ts-label-weight: 600;
@@ -62,4 +61,27 @@
   --ts-series-5: #F472B6;
   --ts-series-6: #A3E635;
   --ts-focus: var(--ts-accent);
+}
+
+/*
+ * Owned by density: skipped on a compact element, on one inside a compact element, and on a
+ * <ts-grid density="compact">, so compact padding (RFC 0004 §2.1) beats the preset's on the
+ * same element or an ancestor. A rule in the grid's shadow root cannot outrank this one.
+ */
+:where([data-ts-theme='graphite']:not([data-ts-density='compact'], [density='compact'], [data-ts-density='compact'] *, [density='compact'] *)) {
+  --ts-pad: 16px;
+}
+
+/*
+ * The high contrast preference (RFC 0003 §13.3). A preset sets its own --ts-line and
+ * --ts-muted on the element it names, which would beat the ones tokens.css raises on
+ * :root, so each mode restates the raised pair here, after everything else. The values
+ * are this preset's own line and muted, moved toward its ink until line is 3:1 and
+ * muted 7:1 on the surface and the page.
+ */
+@media (prefers-contrast: more) {
+  :where([data-ts-theme='graphite']) {
+    --ts-line: #6E7581;
+    --ts-muted: #B0B6BF;
+  }
 }

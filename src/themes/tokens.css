@@ -47,14 +47,14 @@
   --ts-radius-sm: 6px;
   --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
   --ts-fill: 12%;
-  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif;
   /*
    * Newsreader is the designed face. The fallback is a sans stack, not Georgia:
    * Georgia's digits are old-style and proportional, so live figures would
    * jitter and sit at uneven heights without the web font. System sans digits
    * are lining, and tabular-nums on the figure classes makes them equal width.
    */
-  --ts-font-num: 'Newsreader', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ts-font-num: 'Newsreader', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif;
   --ts-row: 150px;
   --ts-gap: 16px;
   /* Caps the board's width and centres it; columns follow the board's own width, so a capped board on a large monitor keeps ordinary tiles. */
@@ -64,14 +64,30 @@
   /* At 2 columns (phones). Rows stay fixed so live numbers never resize a tile. */
   --ts-row-compact: 150px;
   --ts-gap-compact: 10px;
+  /* Where the phone top strip sticks: set it to a host's fixed header height. */
+  --ts-strip-top: 0px;
   --ts-num-weight: 500;
   --ts-num-weight-small: 500;
+  /* Average advance of a figure character in em, the sign included: figures that fit a cell are sized from it. A wider --ts-font-num needs a larger number. */
+  --ts-num-width: .62;
   /* Typography of the tile label and the headline figure; these defaults are the look before they were tokens. */
-  --ts-label-size: 10px;
+  --ts-label-size: max(11px, .6875rem);
   --ts-label-case: uppercase;
   --ts-label-tracking: .12em;
   --ts-label-weight: 600;
   --ts-headline-weight: var(--ts-num-weight);
+  /* The type scale (RFC 0004 §2.3): rem, so a reader's font-size setting reaches the tiles, with a px floor so a 62.5% root can't shrink text below the size it was designed at. */
+  --ts-text-2xs: max(9px, .5625rem);
+  --ts-text-xs: max(10px, .625rem);
+  --ts-text-sm: max(11px, .6875rem);
+  --ts-text-md: max(12px, .75rem);
+  --ts-text-base: max(13px, .8125rem);
+  --ts-text-lg: max(14px, .875rem);
+  --ts-text-xl: max(16px, 1rem);
+  --ts-text-2xl: max(17px, 1.0625rem);
+  --ts-text-3xl: max(26px, 1.625rem);
+  --ts-text-big: max(34px, 2.125rem);
+  --ts-text-xbig: max(48px, 3rem);
   /* A tile picked up while editing the layout. */
   --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
   --ts-motion: 220ms;
@@ -99,7 +115,6 @@
     --ts-series-6: #A3E635;
     --ts-focus: var(--ts-accent);
     --ts-radius: 12px;
-    --ts-pad: 16px;
     --ts-shadow: none;
     --ts-fill: 16%;
     --ts-num-weight-small: 600;
@@ -127,7 +142,6 @@
   --ts-series-6: #A3E635;
   --ts-focus: var(--ts-accent);
   --ts-radius: 12px;
-  --ts-pad: 16px;
   --ts-shadow: none;
   --ts-fill: 16%;
   --ts-num-weight-small: 600;
@@ -155,11 +169,107 @@
   --ts-series-6: #6B7A1A;
   --ts-focus: var(--ts-accent);
   --ts-radius: 10px;
-  --ts-pad: 18px;
   --ts-shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 8px 20px -12px rgba(28, 26, 22, .25);
   --ts-fill: 12%;
   --ts-num-weight-small: 500;
   --ts-shadow-lift: 0 2px 6px rgba(28, 26, 22, .08), 0 28px 48px -18px rgba(28, 26, 22, .45);
+}
+/* Padding follows the theme unless the element, an ancestor or a <ts-grid> says density="compact", so the compact value (the block below) wins on a theme set on the grid itself. Same guard as the presets (RFC 0004 §2.1). */
+@media (prefers-color-scheme: dark) {
+  :where([data-theme="auto"]:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)) {
+    --ts-pad: 16px;
+  }
+}
+:where([data-theme="dark"]:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *), .dark:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)) {
+  --ts-pad: 16px;
+}
+:where([data-theme="light"]:not([data-ts-density="compact"], [density="compact"], [data-ts-density="compact"] *, [density="compact"] *)) {
+  --ts-pad: 18px;
+}
+
+/* Density for a widget outside a <ts-grid> (RFC 0004 §2.1); a grid takes density="compact" instead. After the themes, so it beats their --ts-pad on the same element. */
+:where([data-ts-density="compact"]) {
+  --ts-row: 120px;
+  --ts-pad: 12px;
+  --ts-gap: 10px;
+}
+
+/*
+ * Palettes (RFC 0003 §13.2) and the high contrast preference (§13.3). They come
+ * after every theme block so that, at equal (zero) specificity, they win on an
+ * element that matches both. One palette value per element. Presets leave the
+ * tokens a palette owns to it (Decision 35).
+ */
+/* cvd: blue and orange for profit and loss, accent moved to purple. Separates under deuteranopia and protanopia (test/palettes.test.mjs).
+ * Each block also names a themed island below the palette (data-theme, .dark or auto on a descendant), which re-declares every token and would otherwise drop an ancestor's palette. A preset or palette of its own on the island keeps the island. */
+:where([data-ts-palette="cvd"], [data-ts-palette="cvd"] [data-theme="light"]:not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
+  --ts-profit: #1D4ED8;
+  --ts-loss: #C2410C;
+  --ts-accent: #7C10A3;
+  --ts-series-1: #7C10A3;
+  --ts-series-2: #C2744E;
+  --ts-series-3: #0C7A6C;
+  --ts-series-4: #0E6D8F;
+  --ts-focus: var(--ts-accent);
+}
+@media (prefers-color-scheme: dark) {
+  :where([data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] [data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]), [data-ts-palette="cvd"][data-theme="auto"]:not([data-theme="light"]), [data-ts-palette="cvd"] [data-theme="auto"]:not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
+    --ts-profit: #60A5FA;
+    --ts-loss: #FB923C;
+    --ts-accent: #EBB2FF;
+    --ts-series-1: #EBB2FF;
+    --ts-series-2: #F8BC19;
+    --ts-series-3: #15D2B9;
+    --ts-series-4: #18D3F0;
+    --ts-focus: var(--ts-accent);
+  }
+}
+:where(:is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] :is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]), [data-ts-palette="cvd"]:is([data-theme="dark"], .dark):not([data-theme="light"]), [data-ts-palette="cvd"] :is([data-theme="dark"], .dark):not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
+  --ts-profit: #60A5FA;
+  --ts-loss: #FB923C;
+  --ts-accent: #EBB2FF;
+  --ts-series-1: #EBB2FF;
+  --ts-series-2: #F8BC19;
+  --ts-series-3: #15D2B9;
+  --ts-series-4: #18D3F0;
+  --ts-focus: var(--ts-accent);
+}
+/* red-up: profit and loss swapped, for markets where red means a rise. */
+:where([data-ts-palette="red-up"], [data-ts-palette="red-up"] [data-theme="light"]:not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="red-up"] [data-ts-palette="cvd"] *)) {
+  --ts-profit: #C0362C;
+  --ts-loss: #0E7A4E;
+}
+@media (prefers-color-scheme: dark) {
+  :where([data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="red-up"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] [data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="red-up"]:not([data-theme="light"]), [data-ts-palette="red-up"][data-theme="auto"]:not([data-theme="light"]), [data-ts-palette="red-up"] [data-theme="auto"]:not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="red-up"] [data-ts-palette="cvd"] *)) {
+    --ts-profit: #FB7185;
+    --ts-loss: #34D399;
+  }
+}
+:where(:is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="red-up"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] :is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="red-up"]:not([data-theme="light"]), [data-ts-palette="red-up"]:is([data-theme="dark"], .dark):not([data-theme="light"]), [data-ts-palette="red-up"] :is([data-theme="dark"], .dark):not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="red-up"] [data-ts-palette="cvd"] *)) {
+  --ts-profit: #FB7185;
+  --ts-loss: #34D399;
+}
+@media (prefers-contrast: more) {
+  :where(:root) {
+    --ts-line: #8A8374;
+    --ts-muted: #4A463E;
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :where([data-theme="auto"]) {
+    --ts-line: #6B7280;
+    --ts-muted: #D1D5DB;
+  }
+}
+@media (prefers-contrast: more) {
+  :where([data-theme="dark"], .dark) {
+    --ts-line: #6B7280;
+    --ts-muted: #D1D5DB;
+  }
+  :where([data-theme="light"]) {
+    --ts-line: #8A8374;
+    --ts-muted: #4A463E;
+  }
 }
 
 /*

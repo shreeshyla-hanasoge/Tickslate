@@ -2,7 +2,7 @@ import { test, describe, before, after, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { readLayout } from '../src/core/index.js'
+import { readLayout, configure } from '../src/core/index.js'
 import { resetWarnings } from '../src/elements/dev.js'
 import { persistLayout } from '../src/elements/persist.js'
 import { FakeElement, FakeDocument } from './fake-dom.mjs'
@@ -13,6 +13,7 @@ function fakeGrid(columns = 4) {
   grid.sets = []
   let layout = { version: 1, device: 'desktop', profiles: { market: [], closed: [] } }
   Object.defineProperty(grid, 'layout', {
+    configurable: true,
     get: () => layout,
     set: (v) => { layout = v; grid.sets.push(v) },
   })
@@ -48,6 +49,18 @@ test('waits for ts-columns-change when columns is 0', () => {
   grid.columns = 2
   fire(grid, 'ts-columns-change', { columns: 2, device: 'phone', initial: true })
   assert.deepEqual(ids(grid.layout), ['p'])
+})
+
+test('the phone top strip is saved with a change and comes back on load', () => {
+  const storage = fakeStorage()
+  const grid = fakeGrid(2)
+  persistLayout(grid, { key: 'k', storage })
+  const layout = { version: 1, device: 'phone', profiles: { market: ['a', 'b', 'c'].map((id) => item(id)), closed: [] }, topStrip: ['c', 'a'] }
+  fire(grid, 'ts-layout-change', { layout, items: layout.profiles.market, previous: layout, profile: 'market', reason: 'strip', id: 'c' })
+  assert.deepEqual(JSON.parse(storage.data['k:phone']).topStrip, ['c', 'a'])
+  const next = fakeGrid(2)
+  persistLayout(next, { key: 'k', storage })
+  assert.deepEqual(next.layout.topStrip, ['c', 'a'])
 })
 
 test('nothing stored and no defaults leaves the grid alone', () => {
@@ -155,14 +168,15 @@ test('reset removes the entry and applies the defaults', () => {
   assert.deepEqual(ids(grid.layout), ['d'])
 })
 
-test('reset without defaults removes the entry and leaves the grid', () => {
+test('reset without defaults removes the entry and returns to the layout the grid had when attached', () => {
   const grid = fakeGrid(4)
+  const before = grid.layout
   const storage = fakeStorage({ 'k:desktop': stored(['mine']) })
   const handle = persistLayout(grid, { key: 'k', storage })
-  const n = grid.sets.length
+  assert.deepEqual(ids(grid.layout), ['mine'])
   handle.reset()
   assert.equal(storage.data['k:desktop'], undefined)
-  assert.equal(grid.sets.length, n)
+  assert.deepEqual(grid.layout, before, 'the saved layout is gone and the layout from before it is back')
 })
 
 test('dispose removes every listener', () => {
@@ -544,6 +558,211 @@ describe('adapters', () => {
   })
 })
 
+// ── A layout the host sets after connecting (RFC 0004 §11.2), on a fake grid ──
+
+// The grid announces host assignments through _watchLayout, as <ts-grid> does; the fake's own setter is the host's.
+function watchedGrid(columns = 4) {
+  const grid = fakeGrid(columns)
+  const watchers = new Set()
+  const descriptor = Object.getOwnPropertyDescriptor(grid, 'layout')
+  Object.defineProperty(grid, 'layout', {
+    configurable: true,
+    get: descriptor.get,
+    set: (v) => {
+      descriptor.set(v)
+      for (const fn of [...watchers]) fn()
+    },
+  })
+  grid._watchLayout = (fn) => {
+    watchers.add(fn)
+    return () => watchers.delete(fn)
+  }
+  grid.watching = () => watchers.size
+  return grid
+}
+const userEditOn = (grid, device, list) => {
+  const layout = readLayout(list, { unknown: 'keep', device }).layout
+  // The commit comes first so the assignment that puts it on screen is not mistaken for the host's.
+  fire(grid, 'ts-layout-change', { layout })
+  grid.layout = layout
+}
+const hostSets = (grid, list) => {
+  grid.layout = readLayout(list, { unknown: 'keep', device: grid.columns === 2 ? 'phone' : 'desktop' }).layout
+}
+
+describe('the host sets the layout after persist', () => {
+  for (const [device, columns] of [['desktop', 4], ['phone', 2]]) {
+    describe(`on ${device}`, () => {
+      const key = `k:${device}`
+      const savedFor = (ids_) => stored(ids_, device)
+      const userEdit = (grid, list) => {
+        const layout = readLayout(list, { unknown: 'keep', device }).layout
+        fire(grid, 'ts-layout-change', { layout })
+      }
+
+      test('is captured as the defaults, and reset() returns to it', () => {
+        const grid = watchedGrid(columns)
+        const storage = fakeStorage()
+        const handle = persistLayout(grid, { key: 'k', storage })
+        hostSets(grid, [item('h1'), item('h2')])
+        assert.deepEqual(ids(grid.layout), ['h1', 'h2'])
+        userEdit(grid, [item('mine')])
+        grid.layout = readLayout([item('mine')], { unknown: 'keep', device }).layout
+        handle.reset()
+        assert.deepEqual(ids(grid.layout), ['h1', 'h2'])
+        assert.equal(storage.data[key], undefined)
+      })
+
+      test('captures again each time, until the first edit', () => {
+        const grid = watchedGrid(columns)
+        const handle = persistLayout(grid, { key: 'k', storage: fakeStorage() })
+        hostSets(grid, [item('one')])
+        hostSets(grid, [item('two')])
+        handle.reset()
+        assert.deepEqual(ids(grid.layout), ['two'])
+        userEdit(grid, [item('edited')])
+        hostSets(grid, [item('three')])
+        handle.reset()
+        // The assignment after the edit was the host replacing the board by hand, not a new default.
+        assert.deepEqual(ids(grid.layout), ['two'])
+      })
+
+      test('a saved layout still wins over it, and a later host layout does not beat the saved one', () => {
+        const grid = watchedGrid(columns)
+        const storage = fakeStorage({ [key]: savedFor(['saved']) })
+        const handle = persistLayout(grid, { key: 'k', storage })
+        assert.deepEqual(ids(grid.layout), ['saved'])
+        hostSets(grid, [item('fetched')])
+        assert.deepEqual(ids(grid.layout), ['saved'])
+        // With the saved layout removed, what the host set last is shown.
+        handle.reset()
+        assert.deepEqual(ids(grid.layout), ['fetched'])
+      })
+
+      test('with nothing saved the host layout is what stays on screen, assigned once', () => {
+        const grid = watchedGrid(columns)
+        persistLayout(grid, { key: 'k', storage: fakeStorage() })
+        grid.sets.length = 0
+        hostSets(grid, [item('h')])
+        assert.equal(grid.sets.length, 1, 'only the host assigned: persist did not write it back')
+        assert.deepEqual(ids(grid.layout), ['h'])
+      })
+
+      test('the grid’s own writes are not captured', () => {
+        const grid = watchedGrid(columns)
+        const storage = fakeStorage({ [key]: savedFor(['saved']) })
+        const handle = persistLayout(grid, { key: 'k', storage, defaults: [item('given')] })
+        assert.deepEqual(ids(grid.layout), ['saved'])
+        // The load assigned the saved layout; if that were captured, reset() would return to it.
+        handle.reset()
+        assert.deepEqual(ids(grid.layout), ['given'], 'the saved layout was not taken for the defaults')
+        const hostGrid = watchedGrid(columns)
+        const h2 = persistLayout(hostGrid, { key: 'k', storage: fakeStorage(), defaults: [item('given')] })
+        hostSets(hostGrid, [item('fetched')])
+        h2.reset()
+        assert.deepEqual(ids(hostGrid.layout), ['fetched'])
+        h2.reset()
+        assert.deepEqual(ids(hostGrid.layout), ['fetched'], 'reset twice is the same')
+      })
+
+      test('disposing stops listening', () => {
+        const grid = watchedGrid(columns)
+        const handle = persistLayout(grid, { key: 'k', storage: fakeStorage() })
+        assert.equal(grid.watching(), 1)
+        handle.dispose()
+        assert.equal(grid.watching(), 0)
+      })
+    })
+  }
+
+  test('the other device keeps its own capture and its own edits', () => {
+    const grid = watchedGrid(4)
+    const handle = persistLayout(grid, { key: 'k', storage: fakeStorage() })
+    hostSets(grid, [item('desk')])
+    grid.columns = 2
+    fire(grid, 'ts-columns-change', { columns: 2, device: 'phone', initial: false })
+    hostSets(grid, [item('ph')])
+    handle.reset()
+    assert.deepEqual(ids(grid.layout), ['ph'])
+    grid.columns = 4
+    fire(grid, 'ts-columns-change', { columns: 4, device: 'desktop', initial: false })
+    assert.deepEqual(ids(grid.layout), ['desk'])
+  })
+
+  test('a layout set before the grid is measured counts as the first one', () => {
+    const grid = watchedGrid(0)
+    const handle = persistLayout(grid, { key: 'k', storage: fakeStorage() })
+    hostSets(grid, [item('early')])
+    grid.columns = 4
+    fire(grid, 'ts-columns-change', { columns: 4, device: 'desktop', initial: true })
+    // The user changes the board; reset() has to go back to the early layout, so it is only passing if that was captured.
+    userEditOn(grid, 'desktop', [item('mine')])
+    assert.deepEqual(ids(grid.layout), ['mine'])
+    handle.reset()
+    assert.deepEqual(ids(grid.layout), ['early'])
+  })
+
+  test('attached after the host layout, with no defaults, reset() returns to that layout', () => {
+    const grid = watchedGrid(4)
+    hostSets(grid, [item('host')])
+    const handle = persistLayout(grid, { key: 'k', storage: fakeStorage() })
+    userEditOn(grid, 'desktop', [item('mine')])
+    handle.reset()
+    assert.deepEqual(ids(grid.layout), ['host'])
+    // An explicit defaults option still wins over what the grid showed.
+    const given = watchedGrid(4)
+    hostSets(given, [item('host')])
+    const h2 = persistLayout(given, { key: 'k', storage: fakeStorage(), defaults: [item('given')] })
+    assert.deepEqual(ids(given.layout), ['given'])
+    h2.reset()
+    assert.deepEqual(ids(given.layout), ['given'])
+  })
+
+  test('a saved layout shown at attach is not taken for the defaults of the other device', () => {
+    const grid = watchedGrid(4)
+    hostSets(grid, [item('host')])
+    const storage = fakeStorage({ 'k:desktop': stored(['saved']) })
+    persistLayout(grid, { key: 'k', storage })
+    assert.deepEqual(ids(grid.layout), ['saved'])
+    grid.columns = 2
+    fire(grid, 'ts-columns-change', { columns: 2, device: 'phone', initial: false })
+    assert.deepEqual(ids(grid.layout), ['saved'], 'nothing is defined for the phone, so the grid is left as it is')
+  })
+
+  test('an adapter’s pending load: the host layout is on screen meanwhile, and the late result still applies unless the user edited', async () => {
+    const grid = watchedGrid(4)
+    const loads = []
+    const adapter = { load: () => new Promise((resolve) => loads.push(resolve)), save() {} }
+    persistLayout(grid, { adapter })
+    hostSets(grid, [item('host')])
+    assert.deepEqual(ids(grid.layout), ['host'])
+    // The load for that assignment is the one that counts; the first is stale.
+    loads[0](layoutOf(['first']))
+    await settle()
+    assert.deepEqual(ids(grid.layout), ['host'])
+    loads[1](layoutOf(['late']))
+    await settle()
+    assert.deepEqual(ids(grid.layout), ['late'])
+
+    const edited = watchedGrid(4)
+    const pending = []
+    persistLayout(edited, { adapter: { load: () => new Promise((resolve) => pending.push(resolve)), save() {} } })
+    hostSets(edited, [item('host')])
+    fire(edited, 'ts-layout-change', { layout: readLayout([item('mine')], { unknown: 'keep' }).layout })
+    pending[pending.length - 1](layoutOf(['late']))
+    await settle()
+    assert.deepEqual(ids(edited.layout), ['host'], 'the user edited, so the late result is ignored')
+  })
+
+  test('a grid without the hook still works, and only misses the later captures', () => {
+    const grid = fakeGrid(4)
+    const handle = persistLayout(grid, { key: 'k', storage: fakeStorage(), defaults: [item('given')] })
+    assert.deepEqual(ids(grid.layout), ['given'])
+    handle.reset()
+    assert.deepEqual(ids(grid.layout), ['given'])
+  })
+})
+
 // ── <ts-grid persist> and the unsaved-edits warning (RFC 0003 §4.1, §4.3) ───
 
 // A DOM just big enough to construct a grid, connect it and let it commit an
@@ -855,6 +1074,85 @@ describe('<ts-grid persist>', () => {
     handle.dispose()
   })
 
+  // ── A layout the host sets after connecting (RFC 0004 §11.2), on the real grid ──
+
+  describe('a host layout after connect', () => {
+    for (const [device, columns] of [['desktop', 4], ['phone', 2]]) {
+      const hostLayout = (list) => readLayout(list, { unknown: 'keep', device }).layout
+      const commits = (g) => {
+        const events = []
+        g.addEventListener('ts-layout-change', (e) => events.push(e.detail))
+        return events
+      }
+
+      test(`${device}: persist, then layout: it is the defaults and reset() returns to it`, () => {
+        const g = make({ persist: 'dash' }, columns)
+        seed(g, START)
+        g.connect()
+        const events = commits(g)
+        g.layout = hostLayout([item('h1'), item('h2')])
+        assert.deepEqual(ids(g.layout), ['h1', 'h2'])
+        assert.equal(events.length, 0, 'applying the host layout fires no ts-layout-change')
+        edit(g, [item('mine')])
+        g._persistHandle.reset()
+        assert.deepEqual(ids(g.layout), ['h1', 'h2'])
+        assert.equal(events.length, 1, 'only the user edit committed; reset() fired nothing')
+      })
+
+      test(`${device}: layout, then persist: the same`, () => {
+        const g = make({}, columns)
+        seed(g, START)
+        g.connect()
+        g.layout = hostLayout([item('h1'), item('h2')])
+        g.setAttribute('persist', 'dash')
+        edit(g, [item('mine')])
+        g._persistHandle.reset()
+        assert.deepEqual(ids(g.layout), ['h1', 'h2'])
+      })
+
+      test(`${device}: a saved layout still wins over a later host layout, and reset() shows the host's`, () => {
+        storage.data[`dash:${device}`] = stored(['saved'], device)
+        const g = make({ persist: 'dash' }, columns)
+        seed(g, START)
+        g.connect()
+        g.layout = hostLayout([item('fetched')])
+        assert.deepEqual(ids(g.layout), ['saved'])
+        g._persistHandle.reset()
+        assert.deepEqual(ids(g.layout), ['fetched'])
+      })
+
+      test(`${device}: after the first edit an assignment is not captured`, () => {
+        const g = make({ persist: 'dash' }, columns)
+        seed(g, START)
+        g.connect()
+        g.layout = hostLayout([item('first')])
+        edit(g, [item('mine')])
+        g.layout = hostLayout([item('later')])
+        g._persistHandle.reset()
+        assert.deepEqual(ids(g.layout), ['first'])
+      })
+    }
+
+    test('the other device, with nothing saved, starts from the host layout too', () => {
+      const g = make({ persist: 'dash' })
+      seed(g, START)
+      g.connect()
+      g.layout = readLayout([item('host')], { unknown: 'keep' }).layout
+      phone(g)
+      assert.deepEqual(ids(g.layout), ['host'])
+    })
+
+    test('persistLayout’s own assignments never become the defaults the grid falls back to', () => {
+      storage.data['dash:desktop'] = stored(['saved'])
+      const g = make({ persist: 'dash' })
+      seed(g, START)
+      g.connect()
+      assert.deepEqual(ids(g.layout), ['saved'])
+      phone(g)
+      assert.deepEqual(ids(g.layout), ['a', 'b'])
+    })
+  })
+
   // ── Implicit grids, with the grid's own _reconcile and _apply ─────────────
 
   // A child as the grid reads it: a tag, an item attribute and a style.
@@ -955,6 +1253,72 @@ describe('<ts-grid persist>', () => {
       // Nothing is saved under the new key, so the first defaults come back, not the layout "one" loaded.
       phone(g)
       assert.deepEqual(ids(g.layout), ['a', 'b'])
+    })
+  })
+
+  // ── The page clock (RFC 0004 §11.4) ───────────────────────────────────────
+
+  describe('the page clock reaches a grid', () => {
+    afterEach(() => configure({ clock: null }))
+    const watch = (g) => {
+      const calls = []
+      g._reschedule = (...args) => calls.push(args)
+      return calls
+    }
+
+    test('grid.clock is a function that follows configure({ clock }), and Date.now() without one', () => {
+      const g = make()
+      assert.equal(typeof g.clock, 'function')
+      assert.ok(Math.abs(g.clock() - Date.now()) < 1000)
+      configure({ clock: () => 42 })
+      assert.equal(g.clock(), 42)
+      assert.equal(typeof g.clock, 'function')
+      configure({ clock: null })
+      assert.ok(Math.abs(g.clock() - Date.now()) < 1000)
+    })
+
+    test('the grid’s own clock wins, and null gives the page clock back', () => {
+      const g = make()
+      configure({ clock: () => 42 })
+      const calls = watch(g)
+      g.clock = () => 7
+      assert.equal(g.clock(), 7)
+      assert.equal(calls.length, 1, 'setting it reschedules')
+      g.clock = null
+      assert.equal(g.clock(), 42)
+      g.clock = 'nope'
+      assert.equal(g.clock(), 42, 'only a function counts')
+    })
+
+    test('changing the page clock re-runs the schedule, quietly, unless the grid has its own clock', () => {
+      const g = make()
+      g.schedule = { calendar: {}, market: { sessions: [] } }
+      g.connect()
+      const calls = watch(g)
+      configure({ clock: () => 1 })
+      assert.deepEqual(calls, [[true, 'schedule', true]])
+      g.clock = () => 2
+      calls.length = 0
+      configure({ clock: () => 3 })
+      assert.deepEqual(calls, [], 'an element with its own clock is left alone')
+    })
+
+    test('a grid without a schedule has nothing to re-run', () => {
+      const g = make()
+      g.connect()
+      const calls = watch(g)
+      configure({ clock: () => 1 })
+      assert.deepEqual(calls, [])
+    })
+
+    test('a disconnected grid stops listening', () => {
+      const g = make()
+      g.schedule = { calendar: {}, market: { sessions: [] } }
+      g.connect()
+      const calls = watch(g)
+      g.disconnect()
+      configure({ clock: () => 1 })
+      assert.deepEqual(calls, [])
     })
   })
 

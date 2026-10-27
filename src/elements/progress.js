@@ -49,8 +49,9 @@ export function progressModel(data, variant, ctx) {
 
   const value = toNumber(d.value)
   const target = toNumber(d.target)
-  // A target that formats to zero (1e-9 as "0") would read "3 of 0", so it is no target.
-  const valid = Number.isFinite(value) && Number.isFinite(target) && target > 0 && /[1-9]/.test(show(target))
+  // A target that formats to zero (1e-9 as "0") would read "3 of 0", so it is no target. It is judged by comparing with how
+  // zero formats, never by looking for a digit in the text: a locale may write its digits in Arabic-Indic, Persian or Devanagari.
+  const valid = Number.isFinite(value) && Number.isFinite(target) && target > 0 && show(target) !== show(0)
   const label = ctx.label
 
   const vm = {
@@ -117,12 +118,12 @@ const TEMPLATES = {
 <div class="rowb wrap"><span class="big nv" part="value" data-k="pct"></span>${state}</div>
 <span class="f1"></span>
 ${bar}
-<span class="sm nv mut wrapt" data-k="text"></span>`,
+<span class="sm nv mut wrapt sec" data-k="text"></span>`,
   Wide: `${head}
 <div class="rowb"><span class="xbig nv" part="value" data-k="pct"></span>${state}</div>
 <span class="f1"></span>
 ${bar}
-<div class="rowb"><span class="sm nv mut wrapt f1" data-k="text"></span><span class="sm mut ell" data-k="caption"></span></div>`,
+<div class="rowb sec"><span class="sm nv mut wrapt f1" data-k="text"></span><span class="sm mut ell" data-k="caption"></span></div>`,
 }
 
 // Loading shapes follow each size's layout block for block.
@@ -155,8 +156,10 @@ export class TsProgress extends TsWidget {
 .sm.wrapt { white-space: normal; overflow-wrap: anywhere; }
 .wrap { flex-wrap: wrap; gap: 0 8px; }
 /* S is 150px tall and its text can take two lines, so the figure is smaller than a metric's. */
-.big { font-size: min(26px, 15cqi); }
+.big { font-size: min(var(--ts-text-3xl, max(26px, 1.625rem)), 15cqi); }
 .sm.wrapt { line-height: 1.25; }
+/* The words may take their lines even when a reader's spacing makes them taller than the room: they spill into the tile's padding rather than being cut by a shrunk box. */
+.sm.wrapt:not(.f1) { flex: none; }
 .st { font-weight: 600; min-width: 0; }
 .st:empty { display: none; }
 /* The fill starts at the inline start, so it grows from the right in a right-to-left page. */

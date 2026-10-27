@@ -1,0 +1,626 @@
+// Compact density, the rem type scale and the text-spacing check (RFC 0004 §2).
+//
+// The gallery (widgets.html) draws every widget it has at each size in both themes at once, and gains two controls:
+// Density (data-ts-density on both theme blocks) and Text spacing, which adds the four WCAG 1.4.12 overrides to the
+// document and to every open shadow root. These specs drive those controls, then read what each tile really drew.
+import { test, expect } from '@playwright/test'
+import { drawn, gridDrawn } from './drawn.mjs'
+
+const GALLERY = '/widgets.html'
+const FIXTURE = '/test/browser/fixtures/widgets.html'
+
+// Runs in the page. For every tile it inspects every text node in every shadow root (a note, a footer, a month label or
+// the words under a bar included, not only the headline) and finds the ones a widget clips: a text run whose ink leaves a
+// box that hides overflow, or whose box is squeezed below its own content. A label, a name, a note or the line under a
+// stat may be shortened with an ellipsis (that is how a narrow tile says so); a headline or a figure may not be cut at
+// all. Text a widget scrolls (a list inside a tile) and text the host slotted in are not the widget's to fit.
+function findClips({ fixture = false, phone = false, grid = false, place = null } = {}) {
+  // Only these are figures: an ellipsis on one of them is a cut, on anything else it is the tile saying it is narrow.
+  const FIGURE = ['big', 'xbig', 'n', 'nv', 'md']
+  const composedParent = (n) => n.assignedSlot || n.parentNode || n.host || null
+  const out = []
+  const visit = (node, acc) => {
+    for (const c of node.childNodes) {
+      if (c.nodeType === 3) {
+        if (c.textContent.trim()) acc.push(c)
+      } else if (c.nodeType === 1 && !['STYLE', 'SCRIPT'].includes(c.tagName)) {
+        if (c.shadowRoot) visit(c.shadowRoot, acc)
+        else visit(c, acc)
+      }
+    }
+  }
+  // The gallery's figures, or every tile of the fixture page: all the built-in widgets, at each size they have.
+  const subjects = grid
+    ? [...document.querySelectorAll('#g > *')].map((el) => ({ el, tile: `${el.localName}:${el.getAttribute('size')} ${place}`, place, theme: document.documentElement.dataset.theme || 'light' }))
+    : fixture
+    ? [...window.__fx.tiles].map(([key, el]) => ({ el, tile: `${key} ${phone ? 'phone' : 'desktop'}`, place: phone ? 'phone' : 'desktop', theme: new URLSearchParams(location.search).get('theme') || 'light' }))
+    : [...document.querySelectorAll('figure > [size]')].map((el) => {
+        const set = el.closest('.set')
+        const place = set.classList.contains('phone') ? 'phone' : set.previousElementSibling && set.previousElementSibling.textContent === 'States' ? 'states' : 'desktop'
+        return { el, tile: `${el.localName} ${el.getAttribute('size')} ${place}`, place, theme: el.closest('.theme').dataset.theme }
+      })
+  for (const { el, tile, theme } of subjects) {
+    const texts = []
+    visit(el.shadowRoot, texts)
+    for (const t of texts) {
+      const parent = t.parentElement
+      let figure = null
+      let isLabel = false
+      for (let a = parent; a && a.nodeType === 1; a = composedParent(a)) {
+        if (a.classList && a.classList.contains('lb')) isLabel = true
+        if (a.getAttribute && ['value', 'label'].includes(a.getAttribute('part'))) {
+          if (a.getAttribute('part') === 'label') isLabel = true
+          else figure = figure || a
+        }
+        if (a.classList && FIGURE.some((c) => a.classList.contains(c))) {
+          figure = a
+          break
+        }
+      }
+      // The second line under a stat (.sub) is built to give way with an ellipsis before the figure does (edge-stats.js).
+      const mayShorten = !figure || isLabel || figure.classList.contains('sub')
+      const range = document.createRange()
+      range.selectNodeContents(t)
+      const rects = [...range.getClientRects()].filter((q) => q.width > 0.5 && q.height > 0.5)
+      if (!rects.length) continue
+      // Text a reader does not see: a visually hidden helper is a box of a pixel or so.
+      let hidden = false
+      for (let a = parent; a && a.nodeType === 1; a = composedParent(a)) {
+        const q = a.getBoundingClientRect()
+        const s = getComputedStyle(a)
+        if (s.visibility !== 'visible' || (q.width <= 1.5 && q.height <= 1.5 && s.overflowX !== 'visible')) {
+          hidden = true
+          break
+        }
+      }
+      if (hidden) continue
+      const size = parseFloat(getComputedStyle(parent).fontSize) || 12
+      const left = Math.min(...rects.map((q) => q.left))
+      const right = Math.max(...rects.map((q) => q.right))
+      const top = Math.min(...rects.map((q) => q.top))
+      const bottom = Math.max(...rects.map((q) => q.bottom))
+      // Letter spacing adds room after the last glyph, which is not ink.
+      const spacing = Math.max(0, parseFloat(getComputedStyle(parent).letterSpacing) || 0)
+      for (let n = parent; n && n.nodeType === 1 && n !== document.documentElement; n = composedParent(n)) {
+        const s = getComputedStyle(n)
+        const clipsX = s.overflowX !== 'visible'
+        const clipsY = s.overflowY !== 'visible'
+        if (!clipsX && !clipsY) continue
+        // A scroller owns its content.
+        if (['auto', 'scroll'].some((v) => s.overflowX === v || s.overflowY === v)) break
+        const box = n.getBoundingClientRect()
+        const inner = {
+          left: box.left + (parseFloat(s.borderLeftWidth) || 0),
+          right: box.right - (parseFloat(s.borderRightWidth) || 0),
+          top: box.top + (parseFloat(s.borderTopWidth) || 0),
+          bottom: box.bottom - (parseFloat(s.borderBottomWidth) || 0),
+        }
+        const sideways = clipsX && (left < inner.left - 1 || right - spacing > inner.right + 1)
+        // A line box is taller than the ink of its glyphs (line-height 1 and tight rows), so a fifth of the size is not a cut.
+        const squeezed = clipsY && (top < inner.top - 0.2 * size - 1 || bottom > inner.bottom + 0.2 * size + 1)
+        if (!sideways && !squeezed) continue
+        // Only an ellipsis on the width, on text that is built to give way with one, is not a cut.
+        const shortened = s.textOverflow === 'ellipsis' && sideways && !squeezed
+        // What is drawn ends at that box, so the boxes around it have nothing more to clip.
+        if (shortened && mayShorten) break
+        out.push({ tile, theme, text: t.textContent.trim().slice(0, 30), by: String(n.className || n.localName), sideways, squeezed, shortened })
+        break
+      }
+    }
+  }
+  return out
+}
+
+// The gallery asks Google Fonts for its two faces; refuse that, so every run measures the same fallback faces whether or not the machine is online.
+async function open(page, query) {
+  await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+  await page.goto(`${GALLERY}${query}`)
+  // The widgets draw on the next frames, time-sliced over several tasks (RFC 0003 §23): a tile can hold its skeleton, which
+  // has a .tile but no footer or figures, long after the first has drawn. Wait until every tile that has data is named and
+  // no longer busy (the States row is a skeleton by design, so it is left out).
+  await gridDrawn(page, 'figure > [size]:not([state])')
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+}
+
+async function clips(page, options) {
+  return page.evaluate(findClips, options)
+}
+
+test.describe('compact density and text spacing in the gallery', () => {
+  test('the controls drive the tokens: compact rows, padding and gap, and a phone keeps its rows', async ({ page }) => {
+    await open(page, '')
+    const read = () =>
+      page.evaluate(() => {
+        const tile = (set, tag) => document.querySelector(`.theme[data-theme="light"] .set${set} ${tag}[size="S"]`)
+        const px = (el, name) => getComputedStyle(el).getPropertyValue(name).trim()
+        const desk = tile(':not(.phone)', 'ts-metric')
+        const phone = tile('.phone', 'ts-metric')
+        return {
+          deskRow: px(desk, '--ts-row'), deskPad: px(desk, '--ts-pad'), deskGap: px(desk, '--ts-gap'), deskHeight: desk.getBoundingClientRect().height,
+          phoneRow: px(phone, '--ts-row'), phonePad: px(phone, '--ts-pad'), phoneHeight: phone.getBoundingClientRect().height,
+        }
+      })
+    expect(await read()).toMatchObject({ deskRow: '150px', deskPad: '18px', deskGap: '16px', deskHeight: 150, phoneHeight: 150 })
+    await page.getByRole('radio', { name: 'Compact' }).check()
+    expect(page.url()).toContain('density=compact')
+    expect(await read()).toMatchObject({ deskRow: '120px', deskPad: '12px', deskGap: '10px', deskHeight: 120, phoneRow: '150px', phonePad: '12px', phoneHeight: 150 })
+    await page.getByRole('radio', { name: 'Comfortable' }).check()
+    expect(page.url()).not.toContain('density')
+    expect(await read()).toMatchObject({ deskRow: '150px', deskPad: '18px', deskHeight: 150 })
+  })
+
+  test('the Text spacing switch puts the four overrides on the page and inside every widget, and takes them off again', async ({ page }) => {
+    await open(page, '')
+    const measure = () =>
+      page.evaluate(() => {
+        const host = document.querySelector('ts-today-pnl[size="S"]')
+        const inner = getComputedStyle(host.shadowRoot.querySelector('.lb'))
+        const outer = getComputedStyle(document.querySelector('figcaption'))
+        return { inner: [inner.lineHeight, inner.letterSpacing, inner.wordSpacing], font: parseFloat(inner.fontSize), outer: [outer.letterSpacing, outer.wordSpacing, parseFloat(outer.fontSize)] }
+      })
+    const before = await measure()
+    // The label already tracks at .12em, so word spacing and line height tell the overrides apart.
+    expect(before.inner[2]).toBe('0px')
+    // The label's own line height (1.2), not the font's 'normal'.
+    expect(parseFloat(before.inner[0])).toBeCloseTo(before.font * 1.2, 1)
+    await page.getByRole('checkbox', { name: /WCAG 1.4.12/ }).check()
+    expect(page.url()).toContain('spacing=on')
+    const on = await measure()
+    expect(parseFloat(on.inner[0])).toBeCloseTo(on.font * 1.5, 1)
+    expect(parseFloat(on.inner[1])).toBeCloseTo(on.font * 0.12, 1)
+    expect(parseFloat(on.inner[2])).toBeCloseTo(on.font * 0.16, 1)
+    expect(parseFloat(on.outer[0])).toBeCloseTo(on.outer[2] * 0.12, 1)
+    await page.getByRole('checkbox', { name: /WCAG 1.4.12/ }).uncheck()
+    expect(page.url()).not.toContain('spacing')
+    expect(await measure()).toEqual(before)
+  })
+
+  // Nothing is cut: not at compact density, not with the overrides on, and not with both. A tile that cannot fit its
+  // secondary rows hides them (the .sec and .ter classes), so a headline, a label or a figure is never the thing that gives.
+  for (const query of ['?density=compact', '?spacing=on', '?density=compact&spacing=on']) {
+    test(`no headline, label or figure is cut at ${query}, in both themes`, async ({ page }) => {
+      await open(page, query)
+      const found = await clips(page)
+      // Both theme blocks are in the page, so a missing theme would pass quietly.
+      expect(new Set(await page.evaluate(() => [...document.querySelectorAll('.theme')].map((b) => b.dataset.theme)))).toEqual(new Set(['light', 'dark']))
+      expect(found, JSON.stringify(found, null, 1)).toEqual([])
+    })
+  }
+
+  test('today\'s P&L and the equity curve are clean at every size, in both themes, at compact density with the overrides on', async ({ page }) => {
+    await open(page, '?density=compact&spacing=on')
+    const found = await clips(page)
+    expect(found.filter((c) => /ts-today-pnl|ts-equity-curve/.test(c.tile)), 'the two widgets the density story converts').toEqual([])
+  })
+
+  test('a compact tile gives up its secondary rows: a snug S tile has no footer, a comfortable one keeps it', async ({ page }) => {
+    await open(page, '')
+    const footer = () => page.evaluate(() => getComputedStyle(document.querySelector('.theme[data-theme="light"] ts-today-pnl[size="S"]').shadowRoot.querySelector('[data-k="footer"]')).display)
+    expect(await footer()).not.toBe('none')
+    await page.getByRole('radio', { name: 'Compact' }).check()
+    expect(await footer()).toBe('none')
+  })
+})
+
+// The gallery draws six widgets. The fixture page draws all of them (the cards, metrics, charts, lists, calendars and
+// gauges, 43 tiles at their sizes), so the same check runs there: at compact density alone and with the four WCAG 1.4.12
+// overrides on as well, light and dark, at a desktop column width and at a phone's (the two columns and 150px rows of
+// RFC 0001 §4.1). Compact alone is its own run: a note that only the overrides happen to hide would pass the other one.
+const SPACING = '*, *::before, *::after { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } p { margin-block-end: 2em !important; }'
+
+// Puts the text-spacing overrides on the document and on every open shadow root, the way the gallery's switch does.
+function applySpacing(SPACING) {
+  const sheet = new CSSStyleSheet()
+  sheet.replaceSync(SPACING)
+  const adopt = (root) => { root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet] }
+  const walk = (root) => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { adopt(el.shadowRoot); walk(el.shadowRoot) } }
+  adopt(document)
+  walk(document)
+}
+
+test.describe('every built-in widget at compact density', () => {
+  for (const spacing of [false, true]) {
+    for (const theme of ['light', 'dark']) {
+      for (const phone of [false, true]) {
+        test(`${theme}, ${phone ? 'phone' : 'desktop'}, compact${spacing ? ' with the text-spacing overrides' : ' alone'}: no headline, label, figure or note is cut`, async ({ page }) => {
+          await page.setViewportSize({ width: phone ? 390 : 1400, height: 900 })
+          await page.goto(`${FIXTURE}?theme=${theme}`)
+          await page.waitForFunction(() => window.__ready === true)
+          await drawn(page)
+          await page.evaluate(({ phone, spacing, SPACING, applySpacing }) => {
+            const COLS = { S: 1, Tall: 1, Wide: 2, M: 2, L: 3, Banner: 4, XL: 4 }
+            for (const el of window.__fx.tiles.values()) {
+              const c = COLS[el.getAttribute('size')]
+              // A phone is two columns (170px a cell); a desktop column is 304px with 16px gaps.
+              const w = phone ? (c === 1 ? 170 : 350) : c * 304 + (c - 1) * 16
+              el.style.width = `${w}px`
+              el.parentElement.style.width = `${w}px`
+            }
+            // A phone's rows are --ts-row-compact whatever the density (RFC 0004 §2.1).
+            if (phone) document.documentElement.style.setProperty('--ts-row', 'var(--ts-row-compact)')
+            document.documentElement.setAttribute('data-ts-density', 'compact')
+            if (spacing) new Function(`return (${applySpacing})`)()(SPACING)
+          }, { phone, spacing, SPACING, applySpacing: applySpacing.toString() })
+          await page.evaluate(() => window.__fx.nextFrame())
+          await page.waitForTimeout(300)
+          const found = await clips(page, { fixture: true, phone })
+          expect(found, JSON.stringify(found, null, 1)).toEqual([])
+        })
+      }
+    }
+  }
+})
+
+// A tablet is the case the two fixed widths above never reach: a real <ts-grid> at two or three columns, with the
+// compact rows of 150px (RFC 0001 §4.1), where a Wide or a Banner tile is narrower than its desktop self.
+//
+// Three cuts are known and wait for layout work that tiering cannot do (a tier hides a row at a content height, and a
+// comfortable tile of the same height must keep it): they are listed here with the reason, and each has a fixme below
+// that asserts the tile is clean, so fixing one turns its fixme into a failure to delete.
+const KNOWN = [
+  { tile: 'ts-progress:Wide', width: 700, why: 'at 150px rows the words under the bar are pushed out by an xbig figure whose line is 1.5 tall; hiding them would also hide them on a comfortable phone' },
+  { tile: 'ts-today-pnl:S', width: 800, why: 'the figure is sized at 15cqi for a 304px tile, and the overrides add .12em a character to it at 249px' },
+  { tile: 'ts-pnl-calendar:Banner', width: 800, why: 'the last month label starts a week from the edge, and the overrides widen it past the tile' },
+]
+
+test.describe('every built-in widget in a real <ts-grid> at phone, tablet and desktop widths and compact density', () => {
+  const GRID = '/test/browser/fixtures/grid.html'
+  const draw = async (page, { width, spacing, theme }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`${GRID}?theme=${theme}`)
+    await page.waitForFunction(() => customElements.get('ts-grid'))
+    await page.evaluate(async ({ spacing, SPACING, applySpacing, theme }) => {
+      const { WIDGETS } = await import('/src/core/index.js')
+      const { setup, dataFor, frozenClock } = await import('/test/browser/fixtures/data.js')
+      const g = document.getElementById('g')
+      document.documentElement.dataset.theme = theme
+      setup()
+      for (const c of [...g.children]) c.remove()
+      g.setAttribute('density', 'compact')
+      g.setAttribute('edit-controls', 'off')
+      let i = 0
+      for (const [key, spec] of Object.entries(WIDGETS)) {
+        if (!customElements.get(spec.tag)) continue
+        for (const size of spec.sizes) {
+          const el = document.createElement(spec.tag)
+          el.setAttribute('item', `${key}-${size}-${i++}`)
+          el.setAttribute('size', size)
+          el.setAttribute('label', spec.label)
+          if (spec.tag === 'ts-card') el.insertAdjacentHTML('beforeend', '<span slot="value">42</span>')
+          else {
+            el.clock = frozenClock
+            el.data = dataFor(spec.tag)
+          }
+          g.append(el)
+        }
+      }
+      await new Promise((r) => setTimeout(r, 500))
+      if (spacing) new Function(`return (${applySpacing})`)()(SPACING)
+      await new Promise((r) => setTimeout(r, 500))
+    }, { spacing, SPACING, applySpacing: applySpacing.toString(), theme })
+    return clips(page, { grid: true, place: `${width}px` })
+  }
+  for (const width of [390, 700, 800, 1280]) {
+    for (const spacing of [false, true]) {
+      for (const theme of ['light', 'dark']) {
+        test(`${width}px, ${theme}, compact${spacing ? ' with the text-spacing overrides' : ' alone'}: nothing is cut`, async ({ page }) => {
+          const found = (await draw(page, { width, spacing, theme })).filter((c) => !KNOWN.some((k) => k.width === width && c.tile.startsWith(k.tile)))
+          expect(found, JSON.stringify(found, null, 1)).toEqual([])
+        })
+      }
+    }
+  }
+  for (const known of KNOWN) {
+    test.fixme(`${known.tile} at ${known.width}px, compact with the text-spacing overrides, is not cut (${known.why})`, async ({ page }) => {
+      const found = (await draw(page, { width: known.width, spacing: true, theme: 'light' })).filter((c) => c.tile.startsWith(known.tile))
+      expect(found, JSON.stringify(found, null, 1)).toEqual([])
+    })
+  }
+})
+
+test.describe('the rem type scale', () => {
+  test('the sizes the scale replaces are unchanged at 16px, and a 62.5% root does not shrink a single one (the px floor)', async ({ page }) => {
+    await page.goto(FIXTURE)
+    await page.waitForFunction(() => window.__ready === true)
+    await drawn(page)
+    const sizes = (root) =>
+      page.evaluate((root) => {
+        document.documentElement.style.fontSize = root
+        const probe = document.createElement('div')
+        document.body.append(probe)
+        const out = {}
+        for (const name of ['2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', 'big', 'xbig']) {
+          probe.style.fontSize = `var(--ts-text-${name})`
+          out[name] = parseFloat(getComputedStyle(probe).fontSize)
+        }
+        probe.style.fontSize = 'var(--ts-label-size)'
+        out.label = parseFloat(getComputedStyle(probe).fontSize)
+        const tile = window.__fx.tiles.get('todayPnl:S')
+        out.tileLabel = parseFloat(getComputedStyle(tile.shadowRoot.querySelector('.lb')).fontSize)
+        out.tileBase = parseFloat(getComputedStyle(tile.shadowRoot.querySelector('.tile')).fontSize)
+        out.tileHeight = tile.getBoundingClientRect().height
+        probe.remove()
+        return out
+      }, root)
+    const base = await sizes('16px')
+    expect(base).toMatchObject({ '2xs': 9, xs: 10, sm: 11, md: 12, base: 13, lg: 14, xl: 16, '2xl': 17, '3xl': 26, big: 34, xbig: 48, label: 11, tileLabel: 11, tileBase: 13, tileHeight: 150 })
+    const small = await sizes('62.5%')
+    expect(small).toEqual(base)
+    const large = await sizes('20px')
+    for (const name of Object.keys(base)) if (name !== 'tileHeight') expect(large[name], name).toBeGreaterThanOrEqual(base[name])
+    expect(large.label).toBeCloseTo(13.75, 1)
+    expect(large.base).toBeCloseTo(16.25, 1)
+    // Row heights stay in px: a layout must not move because a reader changed a font.
+    expect(large.tileHeight).toBe(150)
+  })
+
+  test('a long label or note never widens a column: only a figure can, so the layouts a default dashboard has are unchanged', async ({ page }) => {
+    await page.goto(FIXTURE)
+    await page.waitForFunction(() => window.__ready === true)
+    await drawn(page)
+    const widths = () =>
+      page.evaluate(async () => {
+        await window.__fx.nextFrame()
+        const of = (key, selectors) => {
+          const root = window.__fx.tiles.get(key).shadowRoot
+          return selectors.map((s) => Math.round(root.querySelector(s).getBoundingClientRect().width))
+        }
+        return { pnl: of('todayPnl:Wide', ['.lhs', '.rhs']), equity: of('equityCurve:Wide', ['.side', '.plot']) }
+      })
+    const before = await widths()
+    await page.evaluate(async () => {
+      for (const key of ['todayPnl:Wide', 'equityCurve:Wide']) window.__fx.tiles.get(key).setAttribute('label', 'A very long custom label for this dashboard tile that cannot fit')
+      // The label is written on the next render.
+      for (let i = 0; i < 50 && !window.__fx.tiles.get('todayPnl:Wide').shadowRoot.querySelector('.lb').textContent.startsWith('A very'); i++) await new Promise((r) => setTimeout(r, 50))
+    })
+    expect(await widths()).toEqual(before)
+  })
+
+  test('at a 20px root the tiles keep their size, the text grows, and compact density still shows its headline', async ({ page }) => {
+    await page.goto(FIXTURE)
+    await page.waitForFunction(() => window.__ready === true)
+    await drawn(page)
+    const read = (key) =>
+      page.evaluate((key) => {
+        const tile = window.__fx.tiles.get(key)
+        const label = tile.shadowRoot.querySelector('.lb')
+        const footer = tile.shadowRoot.querySelector('[data-k="footer"]')
+        const box = tile.getBoundingClientRect()
+        return { h: box.height, label: parseFloat(getComputedStyle(label).fontSize), footer: footer ? getComputedStyle(footer).display : null }
+      }, key)
+    const before = await read('todayPnl:S')
+    await page.evaluate(() => { document.documentElement.style.fontSize = '20px' })
+    const after = await read('todayPnl:S')
+    expect(after.h).toBe(before.h)
+    expect(after.label).toBeGreaterThan(before.label)
+    // 112px of content is 5.6rem at 20px: the tile is snug, so its footer gives way before anything clips.
+    expect(before.footer).not.toBe('none')
+    expect(after.footer).toBe('none')
+  })
+})
+
+// ── <ts-grid density> ───────────────────────────────────────────────────────
+
+test.describe('<ts-grid density>', () => {
+  const GRID = '/test/browser/fixtures/grid.html?mode=explicit&w=1240'
+  let warnings
+
+  test.beforeEach(async ({ page }) => {
+    warnings = []
+    await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+    page.on('console', (msg) => msg.type() === 'warning' && warnings.push(msg.text()))
+    await page.goto(GRID)
+    await page.waitForFunction(() => window.__ready === true)
+    await settle(page)
+  })
+
+  // The grid measures on a ResizeObserver callback that waits for the next frame, so a read taken right after load or an
+  // attribute change can see the layout from before that measure. Wait on the real condition: every tile's box unchanged
+  // over four consecutive frames.
+  const settle = (page) =>
+    page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const boxes = () => [...document.querySelectorAll('#g > *')].map((el) => { const r = el.getBoundingClientRect(); return `${r.left},${r.top},${r.width},${r.height}` }).join('|')
+          let last = boxes()
+          let same = 0
+          const step = () => {
+            const now = boxes()
+            same = now === last ? same + 1 : 0
+            last = now
+            if (same >= 4) resolve()
+            else requestAnimationFrame(step)
+          }
+          requestAnimationFrame(step)
+        }),
+    )
+  const read = (page) =>
+    page.evaluate(() => {
+      const grid = document.getElementById('g')
+      const style = getComputedStyle(grid)
+      const tile = (id) => document.querySelector(`#g > [item="${id}"]`).getBoundingClientRect()
+      return {
+        density: grid.density,
+        row: style.getPropertyValue('--ts-row').trim(),
+        pad: style.getPropertyValue('--ts-pad').trim(),
+        gap: style.getPropertyValue('--ts-gap').trim(),
+        columns: grid.columns,
+        notes: [tile('notes').width, tile('notes').height],
+        traffic: [tile('traffic').width, tile('traffic').height],
+        tilePad: getComputedStyle(document.querySelector('#g > [item="notes"]')).getPropertyValue('--ts-pad').trim(),
+        layout: JSON.stringify(grid.layout),
+      }
+    })
+
+  test('compact sets the three tokens, re-measures, and leaves the layout as it was; removing the attribute restores them', async ({ page }) => {
+    const before = await read(page)
+    expect(before).toMatchObject({ density: 'comfortable', row: '150px', pad: '18px', gap: '16px' })
+    expect(before.columns).toBeGreaterThanOrEqual(3)
+    await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+    await settle(page)
+    const compact = await read(page)
+    expect(compact).toMatchObject({ density: 'compact', row: '120px', pad: '12px', gap: '10px', tilePad: '12px' })
+    // A one-row tile is the row, a two-row tile two rows and a gap.
+    expect(compact.notes[1]).toBe(120)
+    expect(compact.traffic[1]).toBe(250)
+    expect(before.notes[1]).toBe(150)
+    expect(before.traffic[1]).toBe(316)
+    expect(compact.layout).toBe(before.layout)
+    await page.evaluate(() => document.getElementById('g').removeAttribute('density'))
+    await settle(page)
+    expect(await read(page)).toEqual(before)
+  })
+
+  test('the density property reflects the attribute, and setting it re-measures', async ({ page }) => {
+    await page.evaluate(() => { document.getElementById('g').density = 'compact' })
+    await settle(page)
+    expect(await page.evaluate(() => document.getElementById('g').getAttribute('density'))).toBe('compact')
+    expect((await read(page)).notes[1]).toBe(120)
+    await page.evaluate(() => { document.getElementById('g').density = null })
+    await settle(page)
+    expect(await page.evaluate(() => document.getElementById('g').hasAttribute('density'))).toBe(false)
+    expect((await read(page)).notes[1]).toBe(150)
+  })
+
+  test('a rule on the ts-grid element still wins, while a value on :root is only inherited and loses', async ({ page }) => {
+    await page.addStyleTag({ content: ':root { --ts-pad: 30px; --ts-row: 200px; } ts-grid { --ts-gap: 14px; }' })
+    await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+    await settle(page)
+    // The grid's own compact values beat the inherited root ones; the host's rule on the element beats the grid's.
+    expect(await read(page)).toMatchObject({ row: '120px', pad: '12px', gap: '14px' })
+  })
+
+  test('an invalid value warns once and is comfortable; a phone keeps its rows and changes only the padding', async ({ page }) => {
+    await page.evaluate(() => document.getElementById('g').setAttribute('density', 'dense'))
+    await page.evaluate(() => document.getElementById('g').setAttribute('density', 'tight'))
+    await settle(page)
+    expect(await read(page)).toMatchObject({ density: 'comfortable', row: '150px', pad: '18px', gap: '16px' })
+    expect(warnings.filter((w) => w.includes('density'))).toHaveLength(1)
+
+    await page.setViewportSize({ width: 390, height: 800 })
+    await page.evaluate(() => { document.getElementById('g').parentElement.style.width = '' })
+    await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+    await settle(page)
+    const phone = await read(page)
+    expect(phone.columns).toBe(2)
+    expect(phone.pad).toBe('12px')
+    // The rows of a phone are --ts-row-compact (150px) whatever the density, so live numbers never resize a tile.
+    expect(phone.notes[1]).toBe(150)
+  })
+})
+
+// ── a preset never defeats compact density ──────────────────────────────────
+// A preset sets --ts-pad on the element that names it, and a rule in a page's CSS outranks the grid's :host rule, so the
+// presets yield their padding to density (src/themes/presets/*.css). Same element, an ancestor, either spelling.
+
+test.describe('compact density wins over a preset', () => {
+  const GRID = '/test/browser/fixtures/grid.html?mode=explicit&w=1240'
+  const PRESETS = { calm: '18px', graphite: '16px', neutral: '16px', paper: '18px', signal: '16px', terminal: '12px' }
+
+  async function open(page, name) {
+    await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+    await page.goto(GRID)
+    await page.waitForFunction(() => window.__ready === true)
+    await page.addStyleTag({ url: `/src/themes/presets/${name}.css` })
+  }
+  // What the tile really draws: the padding of the tile inside the first card's shadow root, and the tokens on the grid.
+  const read = (page) =>
+    page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const g = document.getElementById('g')
+      const style = getComputedStyle(g)
+      const tile = document.querySelector('#g > [item="notes"]').shadowRoot.querySelector('.tile')
+      return { pad: style.getPropertyValue('--ts-pad').trim(), row: style.getPropertyValue('--ts-row').trim(), gap: style.getPropertyValue('--ts-gap').trim(), drawn: getComputedStyle(tile).paddingLeft }
+    })
+
+  for (const [name, own] of Object.entries(PRESETS)) {
+    test(`${name}: <ts-grid data-ts-theme density="compact"> has compact padding, rows and gap; comfortable keeps the preset's`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => document.getElementById('g').setAttribute('data-ts-theme', n), name)
+      expect(await read(page), 'comfortable').toMatchObject({ pad: own, drawn: own, row: '150px' })
+      await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+      expect(await read(page), 'compact').toEqual({ pad: '12px', drawn: '12px', row: '120px', gap: '10px' })
+      await page.evaluate(() => document.getElementById('g').removeAttribute('density'))
+      expect(await read(page), 'back to comfortable').toMatchObject({ pad: own, drawn: own })
+    })
+
+    test(`${name}: the preset on an ancestor of a compact grid, and data-ts-density on the same element`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => {
+        document.getElementById('wrap').setAttribute('data-ts-theme', n)
+        document.getElementById('g').setAttribute('density', 'compact')
+      }, name)
+      expect(await read(page), 'preset on the wrapper, compact on the grid').toMatchObject({ pad: '12px', drawn: '12px', row: '120px' })
+      await page.evaluate((n) => {
+        document.getElementById('wrap').removeAttribute('data-ts-theme')
+        const g = document.getElementById('g')
+        g.removeAttribute('density')
+        g.setAttribute('data-ts-theme', n)
+        g.setAttribute('data-ts-density', 'compact')
+      }, name)
+      expect(await read(page), 'data-ts-density and the preset on the grid').toMatchObject({ pad: '12px', drawn: '12px' })
+    })
+
+    test(`${name}: a compact ancestor beats the preset on a descendant`, async ({ page }) => {
+      await open(page, name)
+      await page.evaluate((n) => {
+        document.getElementById('wrap').setAttribute('data-ts-density', 'compact')
+        document.getElementById('g').setAttribute('data-ts-theme', n)
+      }, name)
+      expect(await read(page)).toMatchObject({ pad: '12px', drawn: '12px' })
+    })
+  }
+})
+
+// The same for the light and dark themes of tokens.css, whose padding (18px and 16px) sat on the element that names the theme:
+// a data-theme on the <ts-grid> itself beat the grid's :host rule, so compact padding lost to it.
+test.describe('compact density wins over a theme set on the grid itself', () => {
+  const GRID = '/test/browser/fixtures/grid.html?mode=explicit&w=1240'
+  const THEMES = [['light', '18px', 'light'], ['dark', '16px', 'light'], ['auto', '16px', 'dark']]
+
+  async function open(page, scheme) {
+    await page.context().route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname), (route) => route.abort())
+    await page.emulateMedia({ colorScheme: scheme })
+    await page.goto(GRID)
+    await page.waitForFunction(() => window.__ready === true)
+    // The fixture puts data-theme on the page; the cases below put it where each one names.
+    await page.evaluate(() => document.documentElement.removeAttribute('data-theme'))
+  }
+  const read = (page) =>
+    page.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const g = document.getElementById('g')
+      const tile = document.querySelector('#g > [item="notes"]').shadowRoot.querySelector('.tile')
+      return { pad: getComputedStyle(g).getPropertyValue('--ts-pad').trim(), drawn: getComputedStyle(tile).paddingLeft }
+    })
+
+  for (const [theme, own, scheme] of THEMES) {
+    test(`data-theme="${theme}" on the grid: its own padding, and 12px with density="compact"`, async ({ page }) => {
+      await open(page, scheme)
+      await page.evaluate((t) => document.getElementById('g').setAttribute('data-theme', t), theme)
+      expect(await read(page), 'comfortable').toEqual({ pad: own, drawn: own })
+      await page.evaluate(() => document.getElementById('g').setAttribute('density', 'compact'))
+      expect(await read(page), 'compact').toEqual({ pad: '12px', drawn: '12px' })
+      await page.evaluate(() => document.getElementById('g').removeAttribute('density'))
+      expect(await read(page), 'comfortable again').toEqual({ pad: own, drawn: own })
+    })
+
+    test(`data-theme="${theme}" on an ancestor of a compact grid`, async ({ page }) => {
+      await open(page, scheme)
+      await page.evaluate((t) => {
+        document.getElementById('wrap').setAttribute('data-theme', t)
+        document.getElementById('g').setAttribute('density', 'compact')
+      }, theme)
+      expect(await read(page)).toEqual({ pad: '12px', drawn: '12px' })
+    })
+
+    test(`a compact ancestor over a grid that names data-theme="${theme}"`, async ({ page }) => {
+      await open(page, scheme)
+      await page.evaluate((t) => {
+        document.getElementById('wrap').setAttribute('data-ts-density', 'compact')
+        document.getElementById('g').setAttribute('data-theme', t)
+      }, theme)
+      expect(await read(page)).toEqual({ pad: '12px', drawn: '12px' })
+    })
+  }
+})

@@ -27,6 +27,14 @@ test('keys while holding: arrows move, Space and Enter drop, Escape cancels', ()
   assert.deepEqual(keyAction('Escape', 'a', holding), { type: 'cancel', id: 'a' })
 })
 
+test('P toggles the pin on the focused tile, and on the held one', () => {
+  for (const key of ['p', 'P']) {
+    assert.deepEqual(keyAction(key, 'b', free), { type: 'togglePin', id: 'b' })
+    assert.deepEqual(keyAction(key, 'b', holding), { type: 'togglePin', id: 'a' })
+  }
+  assert.equal(keyAction('p', '', free), null)
+})
+
 test('keys while holding: resize and remove are off, and the held tile is the subject', () => {
   for (const key of ['+', '-', 'Delete', 'Backspace', 'x']) assert.equal(keyAction(key, 'a', holding), null, key)
   // Focus has moved to another handle; the keys still act on the held tile.

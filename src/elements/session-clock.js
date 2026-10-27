@@ -30,10 +30,17 @@
  * then each of its times names the day when it isn't today. A session that is
  * open with no close the calendar can name is `endless`: a full rail, "Open
  * 24/7", no hours and no countdown, though its candles still feed the header.
+ *
+ * Breaks (RFC 0004 §5.2): a session with a lunch break is drawn as its whole
+ * day with the break as a gap in the rail, the fill and the ticks, and reads
+ * "Break" and "resumes 12:30" while it lasts. Its candles restart after the
+ * break, so ticks are laid out per stretch that trades.
  */
 
 import { TsWidget, sk, header } from './widget.js'
 import { EN, createFormatter, localDate } from '../core/index.js'
+import { setHTML, setNodes } from './html.js'
+import { DEV, warnOnce } from './dev.js'
 
 const DAY = 86400000
 const MINUTE = 60000
@@ -125,28 +132,93 @@ function lookup(calendar, id, t) {
  * no countdown, and its rail is full.
  */
 function laneState(calendar, id, now) {
-  const st = calendar.state(id, now)
-  const endless = st.open && st.closesAt === null
-  let win = null
-  if (st.open) {
-    if (st.closesAt !== null && st.startedAt !== null) win = { open: st.startedAt, close: st.closesAt }
-  } else if (st.opensAt !== null) {
-    // Ask what the session will be once open, so windows that touch read as one (an FX week) and an overnight one keeps its next-day close.
-    const next = calendar.state(id, st.opensAt)
-    if (next.open && next.closesAt !== null && next.startedAt !== null) win = { open: next.startedAt, close: next.closesAt }
-  }
+  const base = laneBase(calendar, id, now)
+  const { st, win, endless, gaps } = base
+  // What moves each second is derived here from the cached boundaries; the calendar is not asked again.
+  // With breaks the rail is the whole day, so the fill runs across the gap too.
+  let progress = null
+  if (gaps.length) progress = win && (st.open || st.onBreak) ? (now - win.open) / (win.close - win.open) : null
+  else progress = st.open && st.startedAt !== null && st.closesAt !== null ? (now - st.startedAt) / (st.closesAt - st.startedAt) : null
   return {
     open: st.open,
+    onBreak: st.onBreak,
+    ends: st.ends,
+    gaps,
     endless,
     win,
     opensAt: st.opensAt,
     closesAt: st.closesAt,
     // Open with a known close but no known start (a run that began over a month ago): there is no fraction to show.
     partial: st.open && !endless && st.startedAt === null,
-    progress: endless ? 100 : st.open && st.progress !== null ? round(st.progress * 100, 2) : 0,
+    progress: endless ? 100 : (st.open || st.onBreak) && progress !== null ? round(progress * 100, 2) : 0,
     // More than a day away, a weekday says more than a duration does.
-    far: !st.open && st.opensAt !== null && st.opensAt - now > DAY,
+    far: !st.open && !st.onBreak && st.opensAt !== null && st.opensAt - now > DAY,
   }
+}
+
+// The calendar's answer for a session only changes when the session opens or
+// closes, or when the day turns, so it is asked once for that stretch of time
+// and not once a second per lane (RFC 0003 §23). Calendars are immutable, so
+// a different calendar is a different key; the weak map frees the cache with it.
+const laneCache = new WeakMap()
+const NO_GAPS = Object.freeze([])
+
+function cacheFor(calendar) {
+  let cache = laneCache.get(calendar)
+  if (!cache) laneCache.set(calendar, (cache = new Map()))
+  return cache
+}
+
+/**
+ * The whole window around `at` and its breaks, for a session that has them, else null. The
+ * calendar's own run stops at a break, but a rail that stopped there would hide the afternoon.
+ */
+function breakDay(calendar, id, at) {
+  const zone = calendar.session(id).timeZone
+  for (const date of [localDate(at, zone), localDate(at - DAY, zone)]) {
+    const h = calendar.hours(id, date)
+    if (h && h.breaks && h.open <= at && at < h.close) return { win: { open: h.open, close: h.close }, gaps: h.breaks }
+  }
+  return null
+}
+
+function laneBase(calendar, id, now) {
+  const cache = cacheFor(calendar)
+  const hit = cache.get(`lane|${id}`)
+  if (hit && now >= hit.from && now < hit.until) return hit
+  const st = calendar.state(id, now)
+  const endless = st.open && st.closesAt === null
+  let win = null
+  const at = st.open ? now : st.opensAt
+  const day = endless || at === null ? null : breakDay(calendar, id, at)
+  if (day) win = day.win
+  else if (st.open) {
+    if (st.closesAt !== null && st.startedAt !== null) win = { open: st.startedAt, close: st.closesAt }
+  } else if (st.opensAt !== null) {
+    // Ask what the session will be once open, so windows that touch read as one (an FX week) and an overnight one keeps its next-day close.
+    const next = calendar.state(id, st.opensAt)
+    if (next.open && next.closesAt !== null && next.startedAt !== null) win = { open: next.startedAt, close: next.closesAt }
+  }
+  const change = st.open ? st.closesAt : st.opensAt
+  const dayEnd = (Math.floor(now / DAY) + 1) * DAY
+  const entry = { st, win, endless, gaps: day ? day.gaps : NO_GAPS, from: now, until: change === null ? dayEnd : Math.min(change, dayEnd) }
+  if (cache.size >= 64) cache.clear()
+  cache.set(`lane|${id}`, entry)
+  return entry
+}
+
+// The next candle close holds until it is reached, so it too is asked once per candle.
+function candleClose(calendar, id, now, tf) {
+  const cache = cacheFor(calendar)
+  const key = `candle|${tf}|${id}`
+  const hit = cache.get(key)
+  if (hit && now >= hit.from && now < hit.until) return hit.until
+  const at = calendar.candleClose(id, now, tf)
+  if (at !== null && at > now) {
+    if (cache.size >= 64) cache.clear()
+    cache.set(key, { from: now, until: at })
+  }
+  return at
 }
 
 // Candidate ticks depend only on the session window and the timeframes, so
@@ -154,8 +226,8 @@ function laneState(calendar, id, now) {
 // position in % (l), its timeframe index (k) and its instant (at).
 const tickCache = new Map()
 
-function tickItems(win, tfs) {
-  const key = `${win.open}|${win.close}|${tfs.join(',')}`
+function tickItems(win, tfs, gaps) {
+  const key = `${win.open}|${win.close}|${tfs.join(',')}|${gaps.map((g) => `${g.from}-${g.to}`).join(',')}`
   let ticks = tickCache.get(key)
   if (!ticks) {
     if (tickCache.size > 32) tickCache.clear()
@@ -163,10 +235,20 @@ function tickItems(win, tfs) {
     const length = win.close - win.open
     // How far apart one timeframe's neighbours are, in % of the rail.
     const steps = tfs.map((tf) => round((tf * MINUTE / length) * 100, 3))
+    // Each stretch that trades is counted from its own start: a candle never crosses a break.
+    const stretches = []
+    let from = win.open
+    for (const g of gaps) {
+      stretches.push({ from, to: g.from })
+      from = g.to
+    }
+    stretches.push({ from, to: win.close })
     tfs.forEach((tf, k) => {
       const step = tf * MINUTE
       if (length / step > MAX_TICKS) return
-      for (let off = step; off < length; off += step) items.push({ l: round((off / length) * 100, 3), k, at: win.open + off })
+      for (const sx of stretches) {
+        for (let off = step; off < sx.to - sx.from; off += step) items.push({ l: round(((sx.from + off - win.open) / length) * 100, 3), k, at: sx.from + off })
+      }
     })
     ticks = { key, items, steps }
     tickCache.set(key, ticks)
@@ -221,7 +303,9 @@ function opensText(env, st, withTime, t) {
 
 function ariaFor(name, env, st, now, t) {
   if (st.endless) return t('session.ariaOpen247', { session: name })
-  if (st.open) return t('session.ariaOpen', { session: name, time: whenText(env, st.closesAt, now, t) })
+  if (st.onBreak) return t('session.ariaBreak', { session: name, opens: opensText(env, st, true, t) })
+  // A run that ends at a break closes for the day later, which is what "closes" should say.
+  if (st.open) return t('session.ariaOpen', { session: name, time: whenText(env, st.ends === 'break' && st.win ? st.win.close : st.closesAt, now, t) })
   if (st.opensAt === null) return t('session.ariaNone', { session: name })
   return t('session.ariaClosed', { session: name, opens: opensText(env, st, true, t) })
 }
@@ -230,9 +314,9 @@ function ariaFor(name, env, st, now, t) {
  * Pure: data in, strings and percentages out. Never throws for a missing
  * calendar or an unknown session id; those show as a muted message.
  *
- * S: { variant, live, title, titleShort, session, time, zone, progress, track, from, to, middle, middleShort, ariaLabel }
+ * S: { variant, live, title, titleShort, session, time, zone, progress, gaps, track, from, to, middle, middleShort, ariaLabel }
  * Banner: { variant, live, title, clock, legend: [{ mark, text }], nextClose, lanes, ariaLabel }
- *   lane: { id, name, error, open, hours, progress, track, right, ticks: { key, items: [{ l, k, at }], steps }, next }
+ *   lane: { id, name, error, open, hours, progress, gaps: [{ l, w }], track, right, sub, ticks: { key, items: [{ l, k, at }], steps }, next }
  *   (ticks are all the candidates; visibleTicks picks what to draw. `now` is on the model for it.)
  *   (percentages are 0–100; `next` is null unless the lane is open and has timeframes)
  */
@@ -253,6 +337,13 @@ export function sessionClockModel(data, variant, ctx) {
   return vm
 }
 
+/** The breaks as % of the rail: where each starts and how wide it is. */
+function gapsOf(st) {
+  if (!st.win || !st.gaps.length) return []
+  const length = st.win.close - st.win.open
+  return st.gaps.map((g) => ({ l: round(((g.from - st.win.open) / length) * 100, 3), w: round(((g.to - g.from) / length) * 100, 3) }))
+}
+
 function small(d, ids, first, env, now, ctx) {
   const { t } = ctx
   const zone = env.name(now)
@@ -267,6 +358,7 @@ function small(d, ids, first, env, now, ctx) {
       time,
       zone,
       progress: 0,
+      gaps: [],
       track: true,
       from: '',
       to: '',
@@ -285,9 +377,13 @@ function small(d, ids, first, env, now, ctx) {
   if (st.endless) {
     middle = t('session.open247')
     middleShort = middle
+  } else if (st.onBreak) {
+    middle = t('session.resumes', { time: whenText(env, st.opensAt, now, t) })
+    middleShort = middle
   } else if (st.open) {
     middleShort = words(env, st.closesAt - now)
     middle = t('session.toClose', { time: middleShort })
+    if (st.ends === 'break') middle = t('session.toBreak', { time: middleShort })
   } else if (st.opensAt === null) {
     middle = t('session.noneScheduled')
     middleShort = t('session.noneShort')
@@ -301,12 +397,13 @@ function small(d, ids, first, env, now, ctx) {
   return {
     variant: 'S',
     live: st.open,
-    title: st.open ? t('session.open') : t('session.closed'),
-    titleShort: st.open ? t('session.openShort') : t('session.closedShort'),
+    title: st.onBreak ? t('session.break') : st.open ? t('session.open') : t('session.closed'),
+    titleShort: st.onBreak ? t('session.break') : st.open ? t('session.openShort') : t('session.closedShort'),
     session: spec.label,
     time,
     zone,
     progress: st.progress,
+    gaps: gapsOf(st),
     track: !st.partial,
     from: st.partial ? '' : times.from,
     to: st.partial ? whenText(env, st.closesAt, now, t) : times.to,
@@ -325,7 +422,7 @@ function banner(d, ids, first, env, now, ctx) {
   ids.forEach((id, i) => {
     const found = i === 0 ? first : lookup(d.calendar, id, t)
     if (found.error) {
-      lanes.push({ id, name: id, error: found.error, open: false, hours: '', progress: 0, track: true, right: '', ticks: { key: '', items: [], steps: [] }, next: null })
+      lanes.push({ id, name: id, error: found.error, open: false, hours: '', progress: 0, gaps: [], track: true, right: '', sub: '', ticks: { key: '', items: [], steps: [] }, next: null })
       spoken.push(found.error)
       return
     }
@@ -334,7 +431,7 @@ function banner(d, ids, first, env, now, ctx) {
     const times = windowTimes(env, st.win, now, t)
     let next = null
     if (st.open && tfs.length) {
-      const closes = tfs.map((tf) => d.calendar.candleClose(id, now, tf)).filter((t) => t !== null)
+      const closes = tfs.map((tf) => candleClose(d.calendar, id, now, tf)).filter((t) => t !== null)
       if (closes.length) {
         // A loop rather than a spread into Math.min: no argument list grows with the data.
         let at = Infinity
@@ -345,8 +442,12 @@ function banner(d, ids, first, env, now, ctx) {
       }
     }
     let right
+    let sub = ''
     if (st.endless) right = t('session.open247')
-    else if (st.open) right = t('session.left', { time: words(env, st.closesAt - now) })
+    else if (st.onBreak) {
+      right = t('session.break')
+      sub = t('session.resumes', { time: whenText(env, st.opensAt, now, t) })
+    } else if (st.open) right = t(st.ends === 'break' ? 'session.toBreak' : 'session.left', { time: words(env, st.closesAt - now) })
     else right = st.opensAt === null ? t('session.noneShort') : opensText(env, st, false, t)
     lanes.push({
       id,
@@ -356,9 +457,11 @@ function banner(d, ids, first, env, now, ctx) {
       // With no start to show, the hours are just the close, after the dash that would have followed the open.
       hours: st.win ? `${times.from}–${times.to}` : st.partial ? `–${whenText(env, st.closesAt, now, t)}` : '',
       progress: st.progress,
+      gaps: gapsOf(st),
       track: !st.partial,
       right,
-      ticks: st.win ? tickItems(st.win, tfs) : { key: '', items: [], steps: [] },
+      sub,
+      ticks: st.win ? tickItems(st.win, tfs, st.gaps) : { key: '', items: [], steps: [] },
       next,
     })
     spoken.push(ariaFor(spec.label, env, st, now, t))
@@ -379,14 +482,29 @@ function banner(d, ids, first, env, now, ctx) {
 
 // ── Element ────────────────────────────────────────────────────────────────
 
+// Calendars already checked: the issues are frozen at creation, so once is enough.
+let warnedCalendars = 0
+const coverageChecked = new WeakMap()
+
+/** Development only: says once per calendar that a holiday list is about to run out (RFC 0004 §5.4). It changes nothing on screen. */
+function warnCoverage(data) {
+  const calendar = data && data.calendar
+  if (!calendar || typeof calendar !== 'object' || coverageChecked.has(calendar)) return
+  // Keyed per calendar, so a second calendar with the same problem is reported too.
+  coverageChecked.set(calendar, (warnedCalendars += 1))
+  for (const issue of Array.isArray(calendar.issues) ? calendar.issues : []) {
+    if (DEV && issue && issue.code === 'holiday-coverage') warnOnce(`holiday-coverage|${coverageChecked.get(calendar)}|${issue.session}|${issue.message}`, `${issue.message} See docs/guide/sessions.md`)
+  }
+}
+
 const setText = (el, value) => {
   if (el && el.textContent !== value) el.textContent = value
 }
 
 const LANE_HTML =
   '<div class="lane"><div class="lcol"><span class="lname sm ell"></span><span class="lhours xs mut n ell"></span></div>' +
-  '<div class="lt"><div class="rail"></div><div class="lf"></div><div class="tks"></div><div class="mk"></div><span class="msg xs mut ell" hidden></span></div>' +
-  '<span class="lr n sm mut"></span></div>'
+  '<div class="lt"><div class="rail"></div><div class="lf"></div><div class="gps"></div><div class="tks"></div><div class="mk"></div><span class="msg xs mut ell" hidden></span></div>' +
+  '<div class="lrw"><span class="lr n sm mut"></span><span class="lr2 xs mut" hidden></span></div></div>'
 
 // Loading shapes follow each variant's layout. A Banner can't know how many
 // sessions it will show, so it draws two lanes.
@@ -418,7 +536,9 @@ export class TsSessionClock extends TsWidget {
 .title { white-space: nowrap; flex: none; }
 .ts, .ms { display: none; }
 .legend { display: flex; gap: 10px; white-space: nowrap; }
-.nx { font-weight: 600; white-space: nowrap; }
+/* When the header is short the next close gives way (an ellipsis), never the clock beside it. */
+.nx { font-weight: 600; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.clock { flex: none; }
 .lanes { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; justify-content: center; }
 .lane { display: flex; align-items: center; gap: 14px; }
 .lcol { width: 110px; flex: none; display: flex; flex-direction: column; gap: 1px; }
@@ -431,16 +551,23 @@ export class TsSessionClock extends TsWidget {
 .tk.b { top: 5px; height: 16px; background: var(--ts-ink); }
 .mk { position: absolute; top: 2px; inset-inline-start: 0; width: 6px; height: 22px; margin-inline-start: -3px; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--ts-ink); }
 .msg { position: absolute; inset: 0; display: flex; align-items: center; unicode-bidi: plaintext; }
-.lr { width: 90px; flex: none; text-align: end; white-space: nowrap; }
+.lr, .lrw { width: 90px; flex: none; text-align: end; white-space: nowrap; }
+.lrw { display: flex; flex-direction: column; align-items: flex-end; }
+/* A break is a hole in the rail, fill and ticks: it is painted in the tile's own surface, so it needs no colour of its own. */
+.gps { position: absolute; inset: 0; pointer-events: none; }
+.gp { position: absolute; top: 0; bottom: 0; background: var(--ts-surface); }
+.lt .gp { top: 11px; bottom: auto; height: 4px; }
 /* Box-shadows, and the backgrounds that tell a track from its fill, are gone in forced colours. Outlines and the fill stay. */
 @media (forced-colors: active) {
   .trk, .rail { box-sizing: border-box; border: 1px solid CanvasText; background: ButtonFace; }
   .fill, .lf { background: Highlight; }
+  /* The gap keeps the track's face and is edged in text colour, so it still reads as a break. */
+  .gp { box-sizing: border-box; background: ButtonFace; border-inline: 1px solid CanvasText; }
   .tk, .tk.b { background: CanvasText; }
   .mk { box-sizing: border-box; border: 2px solid CanvasText; box-shadow: none; }
 }
 @container (max-width: 480px) { .legend { display: none; } }
-@container (max-width: 400px) { .lane { gap: 10px; } .lcol { width: 84px; } .lr { width: 72px; } }
+@container (max-width: 400px) { .lane { gap: 10px; } .lcol { width: 84px; } .lr, .lrw { width: auto; min-width: 72px; } }
 /* A phone-width S (~170px): short words so nothing wraps or truncates. */
 @container (max-width: 220px) { .tf, .mf { display: none; } .ts, .ms { display: inline; } }
 `
@@ -465,8 +592,8 @@ export class TsSessionClock extends TsWidget {
       header({ dot: true, labelClass: 'title', inner: '<span class="tf"></span><span class="ts"></span>', meta: '<span class="xs mut sess ell"></span>' }) +
       '<div class="rowb"><span class="big time" part="value"></span><span class="sm mut zone"></span></div>' +
       '<span class="f1"></span>' +
-      '<div class="trk"><div class="fill"></div></div>' +
-      '<div class="row xs mut ft"><span class="n from"></span><span class="f1"></span><span class="mid ell"><span class="mf"></span><span class="ms"></span></span><span class="f1"></span><span class="n to"></span></div>'
+      '<div class="trk"><div class="fill"></div><div class="gps"></div></div>' +
+      '<div class="row xs mut ft sec"><span class="n from"></span><span class="f1"></span><span class="mid ell"><span class="mf"></span><span class="ms"></span></span><span class="f1"></span><span class="n to"></span></div>'
     )
   }
 
@@ -484,6 +611,7 @@ export class TsSessionClock extends TsWidget {
   }
 
   update(vm, variant) {
+    if (DEV) warnCoverage(this.data)
     if (variant === 'Banner') this._updateBanner(vm)
     else this._updateSmall(vm)
   }
@@ -496,6 +624,7 @@ export class TsSessionClock extends TsWidget {
     setText(this.$('.time'), vm.time)
     setText(this.$('.zone'), vm.zone)
     this.$('.fill').style.width = `${vm.progress}%`
+    this._gaps(this.$('.gps'), vm.gaps)
     this.$('.trk').hidden = !vm.track
     this.$('.from').hidden = !vm.track
     setText(this.$('.from'), vm.from)
@@ -505,6 +634,14 @@ export class TsSessionClock extends TsWidget {
     const mid = this.$('.mid')
     if (mid.title !== vm.middle) mid.title = vm.middle
     setText(this.$('.to'), vm.to)
+  }
+
+  /** The break gaps, rebuilt only when they move (once a day, as the lane's day turns). */
+  _gaps(host, gaps) {
+    const key = gaps.map((g) => `${g.l}:${g.w}`).join('|')
+    if (host._gapKey === key) return
+    host._gapKey = key
+    setNodes(host, gaps.map((g) => ({ tag: 'i', attrs: { class: 'gp' }, css: { 'inset-inline-start': `${g.l}%`, width: `${g.w}%` } })))
   }
 
   _updateBanner(vm) {
@@ -531,17 +668,21 @@ export class TsSessionClock extends TsWidget {
       setText(row.name, lane.name)
       setText(row.hours, lane.error ? '' : lane.hours)
       setText(row.right, lane.right)
+      row.sub.hidden = !lane.sub
+      setText(row.sub, lane.sub)
       row.msg.hidden = !lane.error
       setText(row.msg, lane.error || '')
       row.rail.hidden = !!lane.error
       row.fill.hidden = !!lane.error || !lane.track
       row.fill.style.width = `${lane.progress}%`
+      this._gaps(row.gaps, lane.gaps)
       // The tick container is rebuilt only when the drawn set changes (a
       // candle passes, the day changes, the rail resizes); every other
       // second only the fill and marker move.
       const ticks = visibleTicks(lane, vm.now, widths[i])
       if (row.tickKey !== ticks.key) {
-        row.ticks.innerHTML = ticks.items.map((t) => `<i class="tk${t.k ? ' b' : ''}" style="inset-inline-start:${t.l}%"></i>`).join('')
+        // DOM-built, each tick placed through element.style: a style attribute in markup is blocked by a strict style-src.
+        setNodes(row.ticks, ticks.items.map((t) => ({ tag: 'i', attrs: { class: t.k ? 'tk b' : 'tk' }, css: { 'inset-inline-start': `${t.l}%` } })))
         row.tickKey = ticks.key
       }
       row.mark.hidden = lane.next === null
@@ -555,11 +696,13 @@ export class TsSessionClock extends TsWidget {
     const key = lanes.map((l) => l.id).join('\n')
     const cur = this._lanes
     if (cur && cur.host === host && cur.key === key) return cur.rows
-    host.innerHTML = lanes.map(() => LANE_HTML).join('')
+    setHTML(host, LANE_HTML, lanes.length)
     const rows = Array.from(host.querySelectorAll('.lane')).map((el) => ({
       name: el.querySelector('.lname'),
       hours: el.querySelector('.lhours'),
       right: el.querySelector('.lr'),
+      sub: el.querySelector('.lr2'),
+      gaps: el.querySelector('.gps'),
       rail: el.querySelector('.rail'),
       fill: el.querySelector('.lf'),
       track: el.querySelector('.lt'),

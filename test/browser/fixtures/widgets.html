@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- Every registered widget at every size it supports, in one theme chosen by
-     ?theme=light|dark. It loads nothing from the network. The spec drives it
-     through window.__fx. ?fill=1 puts a height: 100% element in each card.
+     ?theme=light|dark|default (default: no data-theme). It loads nothing from the network. The spec drives it
+     through window.__fx. ?exact=1 sizes each tile to its real column width. ?fill=1 puts a height: 100% element in each card.
      ?preset=terminal (or calm, signal...) loads that theme preset (src/themes/presets/)
      and puts it on the page, beside data-theme, as a host would. -->
 <html lang="en">
@@ -16,26 +16,36 @@
   h1 { font: 600 20px/1.2 var(--ts-font-ui); margin: 0 0 12px; }
   h2 { font: 600 15px/1.2 var(--ts-font-ui); margin: 24px 0 8px; }
   .set { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
-  figure { margin: 0; max-width: 100%; }
+  /* A tile with no content of its own to size it (the progress S) would shrink to 44px inside its own figure; a phone's S is 170. */
+  figure { margin: 0; max-width: 100%; min-width: min(170px, 100%); }
   figcaption { margin-top: 4px; font-size: 12px; color: var(--ts-muted); }
   .fill { height: 100%; background: var(--ts-surface-2); }
   ul { margin: 0; padding: 0; list-style: none; }
 </style>
 </head>
 <body>
+<script>
+  // These specs read every tile on a long page, drawn or not. Off-screen widgets skip renders by design (RFC 0003 §23),
+  // so this page opts out by having no IntersectionObserver. The gating itself (first draw, later renders, print, display: contents) runs on every engine in test/browser/perf.spec.mjs, on freshness.html, which keeps the observer.
+  delete window.IntersectionObserver
+</script>
 <main id="stage">
   <h1>Widget fixture</h1>
 </main>
 <script type="module">
   import { WIDGETS, SIZES, SIZE_NAMES } from '/src/core/index.js'
   import '/src/elements/index.js'
+  // The one widget the all-in entry leaves out: it draws with the optional peer Emberwick, which is a dev dependency here.
+  import '/src/elements/define/mini-chart.js'
   import { setup, dataFor, frozenClock, fillCard } from './data.js'
 
   setup()
   const params = new URLSearchParams(location.search)
-  const theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  // ?theme=default leaves data-theme off, so a host that sets none sees the bare :root palette.
+  const theme = params.get('theme') === 'dark' ? 'dark' : params.get('theme') === 'default' ? 'default' : 'light'
   const fill = params.has('fill')
-  document.documentElement.dataset.theme = theme
+  const exact = params.has('exact')
+  if (theme !== 'default') document.documentElement.dataset.theme = theme
   // A preset is its own file, and reaches the widgets as tokens through the page's data-ts-theme. The page is ready
   // only once the file has loaded, or the first measurement would be of the default tokens.
   const preset = params.get('preset')
@@ -81,6 +91,12 @@
       const figure = document.createElement('figure')
       const caption = document.createElement('figcaption')
       caption.textContent = `${size} · ${SIZES[size].cols} × ${SIZES[size].rows}`
+      // A percentage width inside a shrink-to-fit flex item collapses to the content's width (a 304 px tile would be
+      // 44 px). ?exact=1 gives the figure the width and the tile all of it, for the pixel comparison.
+      if (exact) {
+        figure.style.width = el.style.width
+        el.style.width = '100%'
+      }
       figure.append(el, caption)
       set.append(figure)
       tiles.set(`${entry.key}:${size}`, el)

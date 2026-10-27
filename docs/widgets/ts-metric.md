@@ -111,6 +111,12 @@ and so on) are listed in [Your own widget](../guide/your-own-widget.md). The
 static `TsMetric.metricModel(data, variant, ctx)` is the pure view model, handy
 for tests and server rendering.
 
+## The full figure
+
+When `fmt.fit` makes the `S` headline compact ("1.2M"), or `compact` is set, the full figure is the `title` of the
+headline, so hovering the number shows "1,234,567". The tile's accessible name always has the full figure, never the
+compact form.
+
 ## Freshness and change flashes
 
 Send `asOf` with `live: true` and the header says how old the data is. While it is fresh the dot pulses and the header reads `just now`, then `2 min. ago` (in the tile's locale). Past `stale-after` the dot turns `--ts-warn` and stops pulsing, the header reads `Stale · 3 min`, and the tile's name ends with `, stale` where it would end with `, live`. With `asOf` and no `live` the data is a snapshot: the dot is hidden, the header reads `synced 11:42` and nothing ages.

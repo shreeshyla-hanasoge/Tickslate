@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickslate dashboard from JSON</title>
+<!--
+  A dashboard with no framework and no DOM code: examples/data/sample.json holds
+  the layout and the data, createDashboard() builds the grid and its tiles, and
+  an interval fetches the file again and calls update() with what changed.
+  The file is static, so each tick nudges a few figures to show the update.
+
+  Give `label` a name that says what the dashboard is. The page has an h1 and the
+  dashboard sits directly under it, so the grid's tile headings are level 2
+  (heading-level, RFC 0003 Decision 29). All figures are made up.
+-->
+<link rel="stylesheet" href="/src/themes/tokens.css">
+<style>
+  body { margin: 0; background: var(--ts-bg); color: var(--ts-ink); font-family: var(--ts-font-ui); }
+  .page { max-width: 1312px; margin: 0 auto; padding: 24px 24px 96px; }
+  h1 { font: 500 28px/1 var(--ts-font-num); margin: 0 0 8px; }
+  p { color: var(--ts-muted); font-size: 13px; line-height: 1.5; margin: 0 0 16px; max-width: 70ch; }
+  @media (max-width: 699px) { .page { padding: 16px; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <h1>Service overview</h1>
+  <p id="note">Loading sample.json&hellip;</p>
+  <div id="app"></div>
+</main>
+<script type="module">
+  import { createDashboard } from '/src/elements/index.js'
+
+  const load = () => fetch('/examples/data/sample.json').then((r) => r.json())
+  // An async function, not a top-level await: the public site builds this page for es2019, which has none.
+  const start = async () => {
+    const { layout, data } = await load()
+    const dashboard = createDashboard('#app', { layout, data, label: 'Service overview', currency: 'USD', locale: 'en-US' })
+    dashboard.grid.setAttribute('heading-level', '2')
+    document.getElementById('note').textContent = 'Four tiles from examples/data/sample.json, refreshed every 5 seconds. Drag, resize or remove a tile; it comes back from the picker with its data.'
+
+    let tick = 0
+    setInterval(async () => {
+      tick++
+      const next = (await load()).data
+      // Only the tiles that changed are sent.
+      dashboard.update({
+        metric: { ...next.metric, value: next.metric.value + tick * 7 },
+        progress: { ...next.progress, value: Math.min(100, next.progress.value + tick) },
+      })
+    }, 5000)
+
+    window.__dashboard = dashboard
+    window.__ready = true
+  }
+  start()
+</script>
+</body>
+</html>

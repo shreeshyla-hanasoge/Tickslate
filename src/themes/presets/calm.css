@@ -37,9 +37,8 @@
   --ts-radius-sm: 8px;
   --ts-shadow: 0 1px 2px rgba(17, 26, 44, .05), 0 10px 24px -14px rgba(17, 26, 44, .2);
   --ts-fill: 12%;
-  --ts-font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ts-font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, system-ui, sans-serif;
   --ts-font-num: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
-  --ts-pad: 18px;
   --ts-num-weight: 600;
   --ts-num-weight-small: 500;
   --ts-label-size: 12px;
@@ -62,6 +61,15 @@
   --ts-series-5: #BE185D;
   --ts-series-6: #4D7C0F;
   --ts-focus: var(--ts-accent);
+}
+
+/*
+ * Owned by density: skipped on a compact element, on one inside a compact element, and on a
+ * <ts-grid density="compact">, so compact padding (RFC 0004 §2.1) beats the preset's on the
+ * same element or an ancestor. A rule in the grid's shadow root cannot outrank this one.
+ */
+:where([data-ts-theme='calm']:not([data-ts-density='compact'], [density='compact'], [data-ts-density='compact'] *, [density='compact'] *)) {
+  --ts-pad: 18px;
 }
 
 /*
@@ -144,5 +152,39 @@
     --ts-series-5: #F472B6;
     --ts-series-6: #A3E635;
     --ts-focus: var(--ts-accent);
+  }
+}
+
+/*
+ * The high contrast preference (RFC 0003 §13.3). A preset sets its own --ts-line and
+ * --ts-muted on the element it names, which would beat the ones tokens.css raises on
+ * :root, so each mode restates the raised pair here, after everything else. The values
+ * are this preset's own line and muted, moved toward its ink until line is 3:1 and
+ * muted 7:1 on the surface and the page.
+ */
+@media (prefers-contrast: more) {
+  :where([data-ts-theme='calm']) {
+    --ts-line: #808897;
+    --ts-muted: #465065;
+  }
+
+  :where(
+    :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']):not([data-theme='light'] *),
+    [data-theme='light'] :is([data-theme='dark'], .dark):not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']),
+    [data-ts-theme='calm']:is([data-theme='dark'], .dark):not([data-theme='light'])
+  ) {
+    --ts-line: #616977;
+    --ts-muted: #9DA7BA;
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :where(
+    [data-theme='auto']:not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']):not([data-theme='light'] *),
+    [data-theme='light'] [data-theme='auto']:not([data-theme='light']) [data-ts-theme='calm']:not([data-theme='light']),
+    [data-ts-theme='calm'][data-theme='auto']:not([data-theme='light'])
+  ) {
+    --ts-line: #616977;
+    --ts-muted: #9DA7BA;
   }
 }
