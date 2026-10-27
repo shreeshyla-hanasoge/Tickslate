@@ -307,8 +307,16 @@ test('a printout draws every waiting tile before the beforeprint handlers return
     }
     window.__tiles = tiles
     window.__dataFor = dataFor
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    await new Promise((resolve) => setTimeout(resolve, 300))
+    // Thirty first renders are time-sliced over several tasks (RFC 0003 §23), and how many tasks depends on the machine, so
+    // a fixed wait leaves the last few undrawn on a slow one, and their first draw then lands after the counters are
+    // reset below. Wait for each tile to be named and no longer busy: the condition the comment under this call states.
+    for (let drawn = false; !drawn; ) {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      drawn = tiles.every(({ el }) => {
+        const tile = el.shadowRoot && el.shadowRoot.querySelector('.tile')
+        return !!tile && !!tile.getAttribute('aria-label') && !tile.hasAttribute('aria-busy')
+      })
+    }
   })
   // All thirty are far below the screen and have drawn their first content. New data now has to wait.
   expect(await page.evaluate(() => window.__tiles.filter(({ el }) => !el._inView).length)).toBe(30)
