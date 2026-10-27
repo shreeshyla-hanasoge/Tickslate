@@ -255,6 +255,11 @@ ADD_BUDGETS.status = stage2Add(17)
 // Measured 15,365 B min+gz, so 16,902 B with 10 %, which rounds up to 17 kB (16.5 kB is 16,896 B, 6 B short). RFC 0003 §25.
 ADD_BUDGETS.feed = { ...ADD_BUDGET, maxKb: 17, target: 're-measured after the hidden-meta description joined widget.js (trading-polish), RFC 0003 §25' }
 
+// The progress row alone (mini-chart-actions, 2026-10-28): the base widget's Expand button (header() markup, its CSS, the
+// click and render code; RFC 0005 §2.3) is reviewed shared code in widget.js, so it reaches every entry. It took progress
+// from 15,232 B to 15,412 B min+gz, 52 B over 15 kB. Measured 15,412 B, so 16,953 B with 10 %, which rounds up to 17 kB. RFC 0003 §25.
+ADD_BUDGETS.progress = { ...ADD_BUDGET, maxKb: 17, target: 're-measured after the base widget gained the Expand button (mini-chart-actions), RFC 0003 §25', date: '2026-10-28' }
+
 const problems = []
 const warnings = []
 const notes = []
