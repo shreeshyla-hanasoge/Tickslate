@@ -490,8 +490,11 @@ ${standaloneCss()}
   color: inherit; text-decoration: none; font: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; display: inline;
 }
-/* A button's user-agent sheet sets its own case and tracking, and \`font\` does not reset them. Inherit both from the label (.lb), so an activatable tile reads like a plain one in every preset. */
-button[part~="link"] { text-transform: inherit; letter-spacing: inherit; text-align: inherit; }
+/* A button's user-agent sheet sets its own case and tracking, and the font shorthand does not reset them. Inherit both from the label (.lb), so an activatable tile reads like a plain one in every preset. Chromium and WebKit also make a button an atomic inline, which the label's ellipsis cannot cut, so it carries its own. */
+button[part~="link"] {
+  text-transform: inherit; letter-spacing: inherit; text-align: inherit;
+  max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top;
+}
 [part~="link"]::after { content: ''; position: absolute; inset: 0; z-index: 1; }
 /* The ring is on the link's own overlay, which already covers the tile, so it works in engines without the parent selector (Firefox before 121). */
 [part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
@@ -1383,19 +1386,32 @@ export class TsWidget extends Base {
     const act = this.activatable && href === null
     const cur = heading.querySelector ? heading.querySelector('[part~="link"]') : null
 
+    // The label's own nodes move into the link instead of being rebuilt from their text: a label that holds two forms (the
+    // session clock's long and short title, one hidden by CSS) must keep both spans, or the link's name reads "Market openOpen".
+    const relink = (spec) => {
+      const from = cur || heading
+      const kids = from.childNodes ? [...from.childNodes] : []
+      const text = from.textContent || label
+      setNodes(heading, [{ ...spec, text: '' }])
+      const link = heading.querySelector('[part~="link"]')
+      if (kids.length && link && link.append) link.append(...kids)
+      else if (link) link.textContent = text
+    }
+
     if (href !== null) {
       if (!cur || (cur.localName !== 'a' && cur.tagName !== 'A')) {
         // Built, not parsed: the label and href are data, and only constants may be markup.
-        setNodes(heading, [{ tag: 'a', attrs: { part: 'link', href }, text: (cur && cur.textContent) || heading.textContent || label }])
+        relink({ tag: 'a', attrs: { part: 'link', href } })
       } else if (cur.getAttribute('href') !== href) {
         cur.setAttribute('href', href)
       }
     } else if (act) {
       if (!cur || (cur.localName !== 'button' && cur.tagName !== 'BUTTON')) {
-        setNodes(heading, [{ tag: 'button', attrs: { type: 'button', part: 'link' }, text: (cur && cur.textContent) || heading.textContent || label }])
+        relink({ tag: 'button', attrs: { type: 'button', part: 'link' } })
       }
     } else if (cur) {
-      setText(heading, cur.textContent || label)
+      if (cur.childNodes && cur.childNodes.length && heading.replaceChildren) heading.replaceChildren(...cur.childNodes)
+      else setText(heading, cur.textContent || label)
     }
   }
 
