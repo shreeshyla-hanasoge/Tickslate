@@ -41,7 +41,7 @@ jobs:
           cache: npm
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
-      # Test, build everything, check the package and the size budgets.
+      # Test, lint, build everything, check the package and the size budgets.
       - run: npm run release
       # Nothing is published: the file list a real publish would send.
       - run: npm publish ./dist-lib --dry-run --access public
