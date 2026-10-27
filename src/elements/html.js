@@ -102,6 +102,12 @@ export function setHTML(host, markup, count = 1) {
   host.replaceChildren(out)
 }
 
+/** Adds `fn` as a `type` listener on each node under `host` that matches `selector`. The stand-in nodes have none to find. */
+export function listenAll(host, selector, type, fn) {
+  if (!live()) return
+  for (const n of host.querySelectorAll(selector)) n.addEventListener(type, fn)
+}
+
 function markupOf(s) {
   let attrs = ''
   for (const k in s.attrs) attrs += ` ${k}="${escapeHtml(s.attrs[k])}"`

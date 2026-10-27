@@ -302,6 +302,8 @@ const setAttr = (el, name, value) => {
 }
 
 export class TsPnlCalendar extends TsWidget {
+  // Its lifted surfaces sit below the summary figures, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'pnlCalendar'
   static emptyText = EN['widget.pnlCalendar.empty']
   static dataShape = Object.freeze({
@@ -375,7 +377,7 @@ export class TsPnlCalendar extends TsWidget {
 <div class="body ${v.toLowerCase()}">
 <div class="sum">${SUMMARY[v]}</div>
 <div class="calwrap">
-<div class="cal" data-k="grid" role="grid" aria-label="" aria-describedby="summary"></div>
+<div class="cal lift" data-k="grid" role="grid" aria-label="" aria-describedby="summary"></div>
 <span class="visually-hidden" id="summary" data-k="summary"></span>
 <div class="none" data-k="none" hidden></div>
 </div>
@@ -545,6 +547,7 @@ export class TsPnlCalendar extends TsWidget {
     none.toggleAttribute('hidden', !vm.empty && !vm.note)
 
     const grid = this.$(k('grid'))
+    this._lift(grid, !vm.empty)
     // The grid's name is short; the summary of best day, worst day and net is its description.
     setAttr(grid, 'aria-label', vm.label)
     text('summary', vm.chartLabel)

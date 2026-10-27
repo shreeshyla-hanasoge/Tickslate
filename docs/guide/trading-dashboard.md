@@ -162,7 +162,7 @@ The events bubble and are composed, so one listener on the grid hears every tile
 | `{ action: 'rebalance', id }` | capital funding | `actions = ['rebalance']` | Show your own flow (`id` is the account's), then send the new `accounts` |
 | `{ action: 'select', id }` | table | `actions = ['select']` | Open the order or fill |
 | `{ action: 'select', value, series, y, index }` | chart | `actions = ['select']` | Show the point's detail |
-| `{ action: 'open', id }` | any tile with `activatable` | the `activatable` attribute | Route to the tile's page (`id` is its item). The whole tile is the target, so a click on a chart or cell fires it too; send it somewhere other than the page the tile is on. Use `href` instead for a plain link |
+| `{ action: 'open', id }` | any tile with `activatable` | the `activatable` attribute | Route to the tile's page (`id` is its item). The header, the headline figure and the empty space fire it; a click on a chart, a cell or a list never does. Send it somewhere other than the page the tile is on. Use `href` instead for a plain link |
 | `{ action: 'sort', value, dir }` | table | always on | Keep the choice by sending the same `sort` back in `data` |
 | `{ action: 'range', value }` | equity curve at `XL` | always on | Save the range if you want it remembered |
 | `{ action: 'retry' }` | every tile | `actions = ['retry']` | Fetch again; clear `error` and send `data` |

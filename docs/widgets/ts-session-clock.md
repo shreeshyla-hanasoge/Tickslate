@@ -124,7 +124,7 @@ The session clock works out the time from its clock, not from data that ages, so
 `retry` only. With `actions = ['retry']` the error view's button fires
 `ts-action` with `{ action: 'retry' }`. See [Events](../reference/events.md).
 
-`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label: it has no data surface, so a click on any part of it, the session track and the lanes included, fires `open` (or follows an `href`); only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
 
 ## Parts
 

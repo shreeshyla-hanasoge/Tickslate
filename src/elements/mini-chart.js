@@ -565,7 +565,7 @@ function chartBlock(i, xl) {
   return `<div class="mc">
 <div class="row mh"><span class="n ins ell" data-k="ins${i}"></span><span class="n sm mut" data-k="tf${i}"></span><span class="f1"></span><span class="n" data-k="last${i}"></span>${figure('n sm', `chg${i}`)}</div>
 ${xl ? `<div class="sm mut ell" data-k="note${i}"></div>` : ''}
-<div class="plot" part="chart" role="img" data-k="plot${i}" aria-label="">
+<div class="plot lift" part="chart" role="img" data-k="plot${i}" aria-label="">
 <div class="cv" data-k="cv${i}" aria-hidden="true" tabindex="-1"></div>
 <span class="sk grow" data-k="load${i}" hidden></span>
 <div class="none sm mut" data-k="none${i}" hidden></div>
@@ -576,6 +576,8 @@ ${xl ? `<div class="sm mut ell" data-k="note${i}"></div>` : ''}
 const SKELETON_BLOCK = '<div class="mc"><div class="plot"><span class="sk grow"></span></div></div>'
 
 export class TsMiniChart extends TsWidget {
+  // Its lifted surfaces sit below each chart's instrument row, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'miniChart'
   static emptyText = EN['widget.miniChart.empty']
   static dataShape = {
@@ -817,6 +819,7 @@ export class TsMiniChart extends TsWidget {
       if (plot) {
         if (plot.getAttribute('aria-label') !== summary) plot.setAttribute('aria-label', summary)
         plots.push(plot)
+        this._lift(plot, !!(c && c.bars.length))
       }
       const none = this.$(k(`none${i}`))
       if (none) {

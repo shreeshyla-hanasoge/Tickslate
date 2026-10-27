@@ -35,7 +35,12 @@
  *     of `variant`. Start it with `header({ dot, meta, … })`: the one header
  *     row, whose label is the tile's heading and whose parts are `header` and
  *     `label`. Give the headline figure `part="value"` and the drawing box
- *     `part="chart"`.
+ *     `part="chart"`. Put `class="lift"` on each data surface: a drawn chart
+ *     a reader points at, a scrolling list, a grid of cells, anything with
+ *     pointer or keyboard behaviour of its own. On an `href` or `activatable`
+ *     tile it sits above the stretched link, so a click there scrubs,
+ *     scrolls, selects or does nothing, and only the header and the empty
+ *     space open the tile (RFC 0005 §1).
  *
  *   static viewModel(data, variant, ctx) → object
  *     Pure: data in, plain display strings and numbers out. `ctx` is
@@ -176,7 +181,7 @@
 import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isSize, SIZES, SIZE_NAMES, toTime, toNumber } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
-import { escapeHtml, markupAllowed, mountShadow, setHTML, setNodes, setText, unwrapNodes, wrapNodes } from './html.js'
+import { escapeHtml, listenAll, markupAllowed, mountShadow, setHTML, setNodes, setText, unwrapNodes, wrapNodes } from './html.js'
 import { translator, classDefaultsOf } from './messages-cache.js'
 import { subscribe, shareable } from './ticker.js'
 
@@ -429,6 +434,17 @@ export function localeDirection(tag) {
 // size where the room shrinks in rem) there is no room for a label and its meta ("just now") together, and the meta is dropped
 // whole rather than clipped: the dot and the tile's name still say live or stale. `.ell` on the label supplies the overflow,
 // nowrap and ellipsis.
+// A click on data never opens an href or activatable tile (RFC 0005 §1): each data surface carries .lift and sits above the
+// stretched link's overlay, level with the tile's own buttons; a tile with neither attribute keeps its stacking untouched.
+// Such a tile isolates its stacking, so those z-indexes, and the overlay's, are ordered inside the tile and never against
+// the page's own layers (a sticky app bar, a popover); a tile in a <ts-grid> was isolated already by its transform. A plain
+// tile is left alone, so a host's position: fixed menu slotted into it still stacks against the page as it always did.
+// What is left to open the tile is the strip above the first lifted surface: the padding, the header and the tile's 10px
+// gap. On a touch screen that strip stays a 44px target (ACCESSIBILITY item 8), which compact padding (12px) would leave
+// 3px short, so the header grows by the difference, but only on a tile that lifts something (.lifts, decided when the
+// view's template is built, so a list that empties and refills does not move its header): one with nothing lifted opens
+// from anywhere, and its rows keep the room they were laid out with. A widget whose
+// lifted surfaces always sit below a headline row has a taller strip anyway, and sets static _liftsUnderHeader = false.
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -500,6 +516,9 @@ button[part~="link"] {
 [part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
 /* Plain slotted content stays under the overlay, so a click on it opens the tile. Only controls, and whatever the host puts in the actions slot, are lifted above it to take their own clicks. */
 ::slotted(:is(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="link"])), ::slotted([slot="actions"]) { position: relative; z-index: 2; }
+:host([activatable]), :host([href]) { isolation: isolate; }
+:host([activatable]) .lift, :host([href]) .lift { position: relative; z-index: 2; }
+@media (pointer: coarse) { :host([activatable]) .lifts .hd, :host([href]) .lifts .hd { min-block-size: max(18px, calc(34px - var(--ts-pad, 18px))); } }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
 @media (pointer: coarse) { .btn { min-height: 44px; min-width: 44px; } }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
@@ -634,6 +653,7 @@ function unmount(widget) {
 }
 
 const ACTION_OPEN = 'open'
+const KEEP_TAP = () => {}
 const findLink = (t) => t?.closest ? t.closest('[part~="link"]') : (t?.getAttribute?.('part') === 'link' ? t : null)
 
 // Time-slicing the renders of one burst (RFC 0003 §23). The microtasks of a tick all run in the same task, so the time
@@ -1336,6 +1356,24 @@ export class TsWidget extends Base {
     return !grid || grid.getAttribute('scrub') !== 'off'
   }
 
+  /**
+   * Lifts a data surface only while it holds data (RFC 0005 §1.2). An empty list, or a plot that says it has nothing to
+   * draw, is a message, and a click on it opens the tile like the rest of the empty space.
+   */
+  _lift(el, on) {
+    if (!el || !el.classList) return
+    if (on) el.classList.add('lift')
+    else el.classList.remove('lift')
+  }
+
+  /** Marks the tile while something in it is lifted, which is what the touch header floor keys on. */
+  _markLifts(on) {
+    if (on === this._lifts) return
+    this._lifts = on
+    // Written whole, not with classList.toggle, which the unit tests' stand-in nodes lack; nothing else sets a class on the tile.
+    this._section.setAttribute('class', on ? 'tile lifts' : 'tile')
+  }
+
   _isEditing() {
     const grid = findGrid(this)
     return Boolean(grid && (grid.editing || grid.hasAttribute('editing')))
@@ -1635,6 +1673,11 @@ export class TsWidget extends Base {
       if (DEV) this._checkDropped(vm)
       if (this._shown !== variant) {
         setHTML(this._section, templateFor(Ctor, variant))
+        // Before update() can drop a class from an empty surface: the floor follows what the view can hold, not this data.
+        this._markLifts(Ctor._liftsUnderHeader !== false && !!this._section.querySelector('.lift'))
+        // WebKit's touch adjustment moves a tap on a node that takes no click of its own to the nearest one that does,
+        // and over a thin lifted surface (a 10px share bar) that is the stretched link: a listener makes it a target.
+        listenAll(this._section, '.lift', 'click', KEEP_TAP)
         this._refs.clear()
         this._clearFlashes()
         this._shown = variant
@@ -1662,6 +1705,7 @@ export class TsWidget extends Base {
   /** Swap in a non-content view's markup, and write the real label into it. */
   _show(key, html, label, name, busy, grid, skeletonLabel = label) {
     this._watchFreshness(false)
+    this._markLifts(false)
     if (this._shown !== key) {
       setHTML(this._section, html)
       this._refs.clear()
