@@ -142,6 +142,8 @@ shows a Retry button that fires:
 It bubbles and is composed, so one listener on the grid or the document hears
 every tile. See [Events](../reference/events.md).
 
+`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+
 ## States
 
 Exactly one view shows: error, then loading, then empty, then content.

@@ -13,7 +13,7 @@ npm install && npm run dev
 ```
 
 To try the published package instead, copy the example out of the repo and set
-the dependency to a version, for example `"tickslate": "0.3.0"`, or run
+the dependency to a version, for example `"tickslate": "0.3.1"`, or run
 `npm install tickslate@latest` inside the copy.
 
 `npm run test:consumers` (repo root) is what CI runs: it packs `dist-lib/`,

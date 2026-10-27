@@ -2,6 +2,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { TsChart, chartModel, niceDomain, BOX, MAX_SERIES } from '../src/elements/series-chart.js'
 import { EN, createFormatter, createMessages } from '../src/core/index.js'
+import { readsOf } from './ops.mjs'
 import { checkShape, shapeMessage, resetWarnings } from '../src/elements/dev.js'
 
 const fmt = createFormatter({ locale: 'en-US', currency: 'USD', timeZone: 'UTC' })
@@ -757,10 +758,16 @@ describe('bars stay visible and readable (review fixes)', () => {
 
   test('a second apart on a monthly series, and 1e-9 beside 1e9, never collapse or throw', () => {
     const months = Array.from({ length: 12 }, (_, i) => Date.UTC(2026, i, 1))
-    const t0 = Date.now()
-    const m = model({ series: [{ name: 'a', kind: 'bar', points: [...months, months[3] + 1000].map((x) => ({ x, y: 2 })) }] })
+    const strayed = (copies) => ({ series: [{ name: 'a', kind: 'bar', points: [...Array.from({ length: copies }, (_, c) => months.map((x) => x + c * 7)).flat(), months[3] + 1000].map((x) => ({ x, y: 2 })) }] })
+    const m = model(strayed(1))
     assert.ok(Math.min(...widths(m.series[0].bars)) >= 1)
-    assert.ok(Date.now() - t0 < 500)
+    // Does not hang: the slot count is capped, so the path holds one bar per point and the points are read a fixed
+    // number of times each, however much finer the smallest gap is than the typical one.
+    assert.equal(widths(m.series[0].bars).length, 13)
+    const perPoint = (copies) => readsOf(strayed(copies), (data) => model(data)) / (12 * copies + 1)
+    const [few, many] = [perPoint(1), perPoint(10)]
+    assert.ok(few <= 20, `${few.toFixed(1)} reads per point`)
+    assert.ok(many <= few * 1.5, `${few.toFixed(1)} reads per point at 13 points, ${many.toFixed(1)} at 121`)
     for (const xs of [[0, 1e-9, 1e9], [0, 1e-9], [-1e308, 1e308], [5, 5, 5], [0, 1, 1e9, 1e9 + 1]]) {
       const vm = model(bars(xs))
       assert.ok(vm.series[0].bars.startsWith('M'), String(xs))

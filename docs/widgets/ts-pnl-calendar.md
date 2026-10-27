@@ -157,7 +157,10 @@ The base members every widget has are listed in
 
 The calendar acts on nothing: **`retry`** is the error view's button, with
 `actions = ['retry']`, and `'open'` is fired when the tile is `activatable`. A
-cell is not a button and fires nothing.
+cell is not a button and has no action of its own, but on an `activatable` tile
+the whole tile is the target, so a click on a cell or on empty space opens the
+tile. Only the tile's own buttons and the `actions` slot keep their clicks.
+Route `open` to a page other than the one the tile is already on.
 
 ## Parts
 

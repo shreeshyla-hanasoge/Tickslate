@@ -76,7 +76,7 @@ export declare class TsWidget<Data = unknown, ViewModel extends { ariaLabel?: st
   actionEnabled(name: string): boolean
   /** Attribute and property. Makes the label a real link. Only http, https, mailto, tel and relative URLs are accepted. */
   href: string | null
-  /** Attribute and property. Fires ts-action { action: 'open', id }. */
+  /** Attribute and property. Makes the whole tile the target: the label becomes a button, and a click anywhere on the tile (a chart, a heatmap cell, empty space) fires ts-action { action: 'open', id }. Only the tile's own buttons and the actions slot keep their clicks. Route `open` to a page other than the one the tile is on. */
   activatable: boolean
   /**
    * Attribute and property: `'off'` turns scrubbing off on a chart (hover, touch drag and the keyboard slider),
