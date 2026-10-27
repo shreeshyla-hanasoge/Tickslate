@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| Status | **Approved** (27 Oct 2026), with every recommended option of the Decisions section. The 0.4.0 stories are `activatable-target`, `mini-chart-actions`, `spacing-signal`, `dashboard-labels`, `size-ceilings`, `versioning-rows` and `release-lint`; `link-label-style` and `wall-clock-tests` shipped in 0.3.1. |
+| Status | **Approved** (27 Oct 2026), with every recommended option of the Decisions section. The 0.4.0 stories are `activatable-target`, `mini-chart-actions`, `spacing-signal`, `dashboard-labels`, `size-ceilings`, `versioning-rows`, `release-lint` and `calendar-loss-mark` (§15, added the same day); `link-label-style` and `wall-clock-tests` shipped in 0.3.1. |
 | Written | 27 Oct 2026 |
-| Amends | [RFC 0004](0004-p2-surfaces.md) §2.2, §2.4, §5.3, §6.2, §7, §9.1, §10.4 and §12, and Decision 68; [RFC 0003](0003-p1-surfaces.md) §5.1, §7 and §25; [RFC 0002](0002-integration-and-ux.md) §6; and `docs/VERSIONING.md` (§7) |
-| Covers | The click target of an activatable tile (issue #68); opt-in `instrument` and `expand` actions (issue #69); a text-spacing signal tiles can key on; a `labels` option on `createDashboard`; the 0.3.0 budget rows; the font default shipped in 0.3.0; a review of the four Breaking lines of 0.3.0; the sources the remaining market presets need; and three process rules |
-| Sources | RFC 0001 to RFC 0004, [docs/VERSIONING.md](../VERSIONING.md), [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md), [docs/WORKFLOW.md](../WORKFLOW.md), the 0.3.0 section of [CHANGELOG.md](../../CHANGELOG.md), `src/elements/widget.js`, `src/elements/mini-chart.js`, `src/elements/dashboard.js`, `src/core/calendar.js`, `scripts/check-size.mjs`, `test/browser/density.spec.mjs`, and GitHub issues #68 and #69. It takes no new measurements. |
-| Approval | The maintainer approved it in chat ("approve RFC 0005") on 27 Oct 2026. |
+| Amends | [RFC 0004](0004-p2-surfaces.md) §2.2, §2.4, §5.3, §6.2, §7, §9.1, §10.4 and §12, and Decision 68; [RFC 0003](0003-p1-surfaces.md) §5.1, §7, §21.1 and §25; [RFC 0002](0002-integration-and-ux.md) §6; and `docs/VERSIONING.md` (§7) |
+| Covers | The click target of an activatable tile (issue #68); opt-in `instrument` and `expand` actions (issue #69); a text-spacing signal tiles can key on; a `labels` option on `createDashboard`; the 0.3.0 budget rows; the font default shipped in 0.3.0; a review of the four Breaking lines of 0.3.0; the sources the remaining market presets need; three process rules; and the calendar's loss corner, off by default and opt-in (§15, Decision 95) |
+| Sources | RFC 0001 to RFC 0004, [docs/VERSIONING.md](../VERSIONING.md), [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md), [docs/WORKFLOW.md](../WORKFLOW.md), the 0.3.0 section of [CHANGELOG.md](../../CHANGELOG.md), `src/elements/widget.js`, `src/elements/mini-chart.js`, `src/elements/dashboard.js`, `src/core/calendar.js`, `scripts/check-size.mjs`, `test/browser/density.spec.mjs`, `src/elements/pnl-calendar.js` (§15), and GitHub issues #68 and #69. It takes no new measurements. |
+| Approval | The maintainer approved it in chat ("approve RFC 0005") on 27 Oct 2026. §15 and Decision 95 were added the same day, after a separate question to the maintainer, and amend RFC 0003 §21.1. |
 
 RFC 0001 to RFC 0004 stay the contract for everything this RFC doesn't
 mention, and none of them is edited. Where this RFC changes one, the section
@@ -63,11 +63,13 @@ the wave, and asked for approval once.
 | §7 The four Breaking lines of 0.3.0 | `versioning-rows` |
 | §8 Market preset sources | `preset-sources`, once the maintainer answers the parked question |
 | §9 Process | `release-lint`, `wall-clock-tests`; the required visual check is a repository setting the maintainer changes |
+| §15 The calendar's loss mark is opt-in | `calendar-loss-mark` |
 
 **Which stories must merge before which**
 
 | Story | Must merge first | Why |
 |---|---|---|
+| `calendar-loss-mark` | Nothing | `pnl-calendar.js`, `tokens.css` and `default-tokens.js`; it edits the calendar's `::after` rule and the forced-colours block, not the tier rules `spacing-signal` owns |
 | `link-label-style` | Nothing | One rule in `widget.js`; shipped in 0.3.1 (PR #70, as `activatable-label`) |
 | `activatable-target` | `link-label-style` | Both edit the stretched-link rules in `widget.js` |
 | `mini-chart-actions` | `activatable-target` | Both edit `widget.js` (the shared header and the lifted surfaces); the instrument picker must sit above the overlay |
@@ -84,6 +86,7 @@ the wave, and asked for approval once.
 | File | Stories, in build order | What each adds |
 |---|---|---|
 | `src/elements/widget.js`, `src/elements/widget.d.ts` | `link-label-style`, `activatable-target`, `mini-chart-actions`, `spacing-signal` | The label tokens on the link; the lifted surfaces; the expand button and its action; the `data-ts-spacing` host rule |
+| `src/elements/pnl-calendar.js`, `src/themes/tokens.css`, `src/elements/default-tokens.js` | `spacing-signal` (tier rules), `calendar-loss-mark` | The calendar's tier rules; the loss corner token `--ts-loss-mark`, its `::after` rule and the `cvd` setters |
 | `src/core/messages.js` and the `Messages` interface | Any order: each story appends one contiguous block under its own `// ── <family> ──` comment | `action.expand`, `miniChart.instrument`, `miniChart.instrumentOf` |
 | `src/elements/index.d.ts` | `mini-chart-actions`, then `dashboard-labels` | `TsExpandAction` in `TsCommonAction`; `DashboardOptions.labels` |
 | `test/api-surface.snapshot.json` | Each story that adds a public name, by `npm run api:update` | Its own names |
@@ -849,6 +852,7 @@ the slicer an injected clock so the test needs no busy-wait.
 | Tiles under a reader's text spacing | Three tiles cut at tablet widths | Secondary rows give way; the grid detects the spacing | §3 |
 | `createDashboard` | No per-tile titles | `labels` | §4 |
 | Eleven "adds to grid" rows | Warnings | Enforced ceilings | §5.2 |
+| The corner on a loss day in `<ts-pnl-calendar>` | Drawn in `--ts-ink` | Off by default (`--ts-loss-mark: transparent`); on under the `cvd` palette, under forced colours, or when a host sets the token | §15 |
 
 Only the first row changes existing behaviour, and the changelog lists it
 under Breaking with a line telling the host what to do: "to open the tile from
@@ -888,6 +892,7 @@ every recommended option.
 | 92 | Is the `visual` job a required check? (§9.2) | **Recommended:** yes, with `test`, `lint`, `build`, `browser`, `examples` and `coverage`, through a ruleset on `master` and `wave/*` that the maintainer sets.<br>Alternative: required on `master` only.<br>Alternative: stay advisory. | **Accepted** (27 Oct 2026): the recommended option |
 | 93 | May a unit test assert elapsed time? (§9.3) | **Recommended:** no; tests count work, and timing lives in a benchmark that never fails CI. `wall-clock-tests` converts the three sites.<br>Alternative: keep the limits and widen them. | **Accepted** (27 Oct 2026): the recommended option |
 | 94 | Which versions carry this RFC? | **Recommended:** `link-label-style` and `wall-clock-tests` in a **0.3.1** patch (no API, no break); §1 to §5 in **0.4.0**, since §1 is listed as Breaking.<br>Alternative: everything in 0.4.0. | **Accepted** (27 Oct 2026): the recommended option; `link-label-style` and `wall-clock-tests` shipped in 0.3.1 (PR #70 as `activatable-label`, PR #72) |
+| 95 | Is the corner mark on a loss day in `<ts-pnl-calendar>` drawn by default? (§15) | **Recommended:** no. Off by default and opt-in through `--ts-loss-mark`; the `cvd` palette and forced colours turn it on.<br>Alternative: keep it on by default (the 0.2.0 behaviour).<br>Alternative: on by default, with a switch to turn it off. | **Accepted** (27 Oct 2026): the maintainer chose "Off by default, opt-in", after being told the corner is the non-colour loss cue that WCAG 1.4.1 and `docs/ACCESSIBILITY.md` rule 15 ask for |
 
 ## 13. Points this RFC settles that no decision covers
 
@@ -934,3 +939,69 @@ For the maintainer. None blocks a section unless the section says so.
    without querying `dashboard.grid`?
 6. **The 15 kB target.** With eleven ceilings in place, is 15 kB still the right
    figure for a new widget's difference, or should it follow the shared core?
+
+## 15. The calendar's loss mark is opt-in (amends RFC 0003 §21.1; Decision 95)
+
+*Implemented by: calendar-loss-mark. Added 27 Oct 2026, after the RFC's approval.*
+
+**Status.** Accepted (27 Oct 2026). Asked whether the ink-coloured corner on
+`<ts-pnl-calendar>` loss cells should stay on by default, the maintainer chose
+"Off by default, opt-in" after being told it is the non-colour cue that
+WCAG 1.4.1 and the accessibility rule (rule 15, "Colour is never the only
+signal") ask of a loss.
+
+**What changes.** RFC 0003 §21.1 says loss cells carry a corner mark drawn in
+`--ts-ink`. From 0.4.0 the corner is drawn in a new token:
+
+```css
+/* tokens.css and the injected defaults */
+--ts-loss-mark: transparent;   /* the corner draws nothing */
+```
+
+- **One token, a colour.** `--ts-loss-mark`. The calendar's `.c.neg::after`
+  paints `background: var(--ts-loss-mark, transparent)`. A host opts in with
+  `--ts-loss-mark: currentColor` (or any colour) on `:root`, the grid or the
+  widget. The rule gives the pseudo-element `color: var(--ts-ink)`, so
+  `currentColor` resolves the ink at the cell, in every theme island, preset and
+  palette. `var(--ts-ink)` is read where it is declared, so it is only right
+  when written on the calendar itself, not on `:root` or a wrapper above a
+  themed island; `CanvasText` is black in a dark theme and is not advised. Both `tokens.css` and `default-tokens.js` carry the default, and
+  their sync test enforces it.
+- **The colour-vision palette turns it on.** `data-ts-palette="cvd"` sets
+  `--ts-loss-mark: var(--ts-ink)` in its light, dark and auto blocks, because
+  that is where the cue was designed to help. `red-up` is a market convention,
+  not a colour-vision aid, and leaves it off. The six presets do not set it.
+- **Forced colours keep the mark.** Under `forced-colors: active` the corner is
+  drawn in `Highlight` whatever the token says. Colour is gone in that mode and
+  a loss would otherwise look like any other cell; the double border and the
+  corner are all that tell them apart.
+- **Names are unchanged.** Every cell's accessible name ("Mon 12 Oct, −310.50")
+  and the grid's summary carry the signed figure, as before.
+
+**Reasoning.** The maintainer's choice is that the default heat map is drawn
+without the corner, and that the cue is something a host or a reader turns on.
+The cue stays on where it was designed to help and where it can be placed with
+confidence: under the `cvd` palette, which a reader or host picks because of
+colour vision, and under forced colours, where colour is gone. A host that
+decides for all its users uses the token.
+
+**Accessibility consequence.** In the default theme a loss day is told apart
+from a gain by colour and, for a screen-reader user, by the sign in its name
+and the summary. A sighted reader who cannot separate red and green and who has
+not chosen the `cvd` palette sees two colours of similar lightness and no shape
+cue; the sign is in the name but not drawn in the cell. WCAG 1.4.1 asks for
+more than colour to carry the information, and the figures in the header
+(best day, worst day, net) are in text with a sign, but the cell itself no
+longer carries it by default. The docs say so (`docs/widgets/ts-pnl-calendar.md`,
+`docs/theming.md`, `docs/ACCESSIBILITY.md` rule 15), and a host that must meet
+1.4.1 on the heat map itself sets `--ts-loss-mark`.
+
+**Compatibility.** A look change for every existing host, under *Changed* in the
+changelog and not *Breaking*: no attribute, event, name or data changes. A host
+that wants the 0.3 look adds `ts-pnl-calendar { --ts-loss-mark: currentColor }`.
+
+**What the story must show.** Default: the `::after` has a transparent
+background. Opt-in: it has the ink colour. `cvd`: it has the palette's ink.
+Forced colours (Chromium): it is drawn. Cell names and the summary are the same
+in every case. Screenshots at 1280 and 390 px, light and dark, default and
+opted in.

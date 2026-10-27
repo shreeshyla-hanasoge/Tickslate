@@ -332,8 +332,12 @@ export class TsPnlCalendar extends TsWidget {
 .c.neg { background: color-mix(in srgb, var(--ts-loss) var(--s, 100%), transparent); }
 /* A day not yet traded is an outline, not a fill. */
 .c.up { background: transparent; box-shadow: inset 0 0 0 1px var(--ts-line); }
-/* A loss also carries a corner mark in the ink colour, so it never depends on colour alone. */
-.c.neg::after { content: ''; position: absolute; inset-block-start: 0; inset-inline-end: 0; inline-size: 45%; block-size: 45%; max-inline-size: 7px; max-block-size: 7px; background: var(--ts-ink); clip-path: polygon(0 0, 100% 0, 100% 100%); }
+/* A loss can carry a corner mark so it does not depend on colour alone. It is off by default: --ts-loss-mark is
+   transparent, so the corner draws nothing, and a host or the cvd palette sets a colour to turn it on (RFC 0005
+   Decision 95). Every cell's name and the summary carry the signed figure either way. The pseudo-element sets its own
+   colour to the ink so that --ts-loss-mark: currentColor resolves the ink where the cell is, in whatever theme island
+   or preset it sits, not where the host wrote the token. */
+.c.neg::after { content: ''; position: absolute; inset-block-start: 0; inset-inline-end: 0; inline-size: 45%; block-size: 45%; max-inline-size: 7px; max-block-size: 7px; color: var(--ts-ink); background: var(--ts-loss-mark, transparent); clip-path: polygon(0 0, 100% 0, 100% 100%); }
 .c:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 1px; z-index: 1; }
 /* A wide fallback face with tracking runs to about .72em a character, so the figure is sized for that and not for the shared .62. */
 .cell .md { font-size: min(var(--ts-text-2xl, max(17px, 1.0625rem)), calc(100cqi / (var(--fc, 10) * .72 + .65))); }
@@ -351,7 +355,8 @@ export class TsPnlCalendar extends TsWidget {
 }
 @container ts-tile (max-width: 699px) and (max-height: 8.5rem) { .body.banner .sum .sec, .body.banner .sp, .body.banner .wl { display: none; } }
 /* Forced colours drop backgrounds the page set, so the heat is drawn again from system colours: a gain in Highlight,
-   a loss in CanvasText with a double border and its corner, both stepped by strength, a flat day in ButtonFace, a
+   a loss in CanvasText with a double border and its corner (kept on here, since colour is gone and the corner is then
+   the only shape cue), both stepped by strength, a flat day in ButtonFace, a
    day with no entry dotted and a day to come dashed. */
 @media (forced-colors: active) {
   .c { forced-color-adjust: none; border: 1px solid CanvasText; }

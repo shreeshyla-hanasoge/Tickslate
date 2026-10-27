@@ -173,8 +173,35 @@ Route `open` to a page other than the one the tile is already on.
 | `error` | The error view's container (only while the error view shows) |
 | `skeleton` | The loading view's container, around the skeleton blocks |
 
-Theme it with the tokens: `--ts-profit`, `--ts-loss`, `--ts-surface-2`, `--ts-ink`
-(the loss corner), `--ts-line` (an upcoming day's outline) and `--ts-focus`.
+Theme it with the tokens: `--ts-profit`, `--ts-loss`, `--ts-surface-2`,
+`--ts-loss-mark` (the loss corner, off by default; see below), `--ts-line` (an
+upcoming day's outline) and `--ts-focus`.
+
+### The loss corner
+
+A loss day can carry a small triangle in its top corner, so it differs from a gain
+by shape as well as by colour. It is **off by default**: `--ts-loss-mark` is
+`transparent`, and the corner draws nothing. To turn it on, give the token a colour:
+
+```css
+ts-pnl-calendar { --ts-loss-mark: currentColor; }
+```
+
+`currentColor` draws the corner in the widget's own ink, in light, dark, every preset
+and every themed island, wherever you write the rule (`:root` included). A colour you
+name (`#fff`, `var(--ts-accent)`) is used as written. `var(--ts-ink)` is read where it is
+declared, so it is only right when written on the calendar itself, not on `:root` or a
+wrapper above a theme island; avoid `CanvasText`, which is black in a dark theme.
+
+- The `cvd` palette (`data-ts-palette="cvd"`) turns it on, in `--ts-ink`, because
+  that is where a reader who cannot tell red from green needs it.
+- Forced colours always draw it, in `Highlight`, whatever the token says: colour is
+  gone in that mode and losses would otherwise look alike.
+- The six presets leave it off.
+- A default dashboard therefore tells a loss by colour and, for assistive technology,
+  by the signed figure in each cell's name and in the summary; the cell itself draws
+  no sign. See [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md) rule 15 and
+  RFC 0005 Decision 95.
 
 ## States
 
@@ -195,7 +222,7 @@ Theme it with the tokens: `--ts-profit`, `--ts-loss`, `--ts-surface-2`, `--ts-in
   calendar, net +21,400.00 over 180 trading days". The RFC says the grid is
   `role="img"`, but the children of an image are presentational and cannot be
   focusable, so this is the nearest valid thing (see the changelog's internal notes).
-- Every cell is named with its date and signed value ("Mon 12 Oct, -310.50"; "Tue
+- Every cell is named with its date and signed value ("Mon 12 Oct, −310.50"; "Tue
   13 Oct, no entry"; "Fri 16 Oct, upcoming"). The month and weekday names beside the
   grid are decoration (`aria-hidden`): the same words are in the cell names.
 - **Keyboard.** One cell is the tab stop, today's to begin with, and it stays where
@@ -206,14 +233,17 @@ Theme it with the tokens: `--ts-profit`, `--ts-loss`, `--ts-surface-2`, `--ts-in
   End to the first and last cell, and Page Up and Page Down to the same weekday in
   the month before and after. A rebuild, from a width change or a new week, keeps the
   focus on the same date where it is still drawn.
-- **Loss cells carry a non-colour cue**: a corner mark in `--ts-ink`, so a loss is
-  never only red. A gain or a loss is also in the cell's name with its sign.
+- **The corner mark is an opt-in cue** (RFC 0005 Decision 95). By default a loss
+  cell is told apart by colour and by its name, which carries the signed value
+  ("Mon 12 Oct, −310.50"), as does the summary. A host turns the corner on with
+  `--ts-loss-mark: currentColor`, and the `cvd` palette and forced colours turn it
+  on themselves.
 - The net and the best and worst day carry `+` or the true minus and an `aria-hidden`
   arrow; a figure that rounds to zero has neither.
 - Under forced colours the heat is drawn again from system colours: a gain in
   `Highlight` and a loss in `CanvasText`, each stepped by strength, a loss with a
-  double border and its corner, a flat day in `ButtonFace`, a day with no entry
-  dotted and a day to come dashed.
+  double border and its corner (drawn whatever `--ts-loss-mark` says), a flat day in
+  `ButtonFace`, a day with no entry dotted and a day to come dashed.
 - Nothing animates apart from the shared change flash, which stops under
   `prefers-reduced-motion`. The cells are smaller than 44px by design: they are a
   chart, not controls, and every figure is also in the header.

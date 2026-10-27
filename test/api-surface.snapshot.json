@@ -805,6 +805,7 @@
     "--ts-label-weight",
     "--ts-line",
     "--ts-loss",
+    "--ts-loss-mark",
     "--ts-motion",
     "--ts-muted",
     "--ts-num-weight",
