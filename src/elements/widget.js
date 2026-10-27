@@ -490,6 +490,8 @@ ${standaloneCss()}
   color: inherit; text-decoration: none; font: inherit; background: none; border: 0; padding: 0; margin: 0;
   cursor: pointer; outline: none; display: inline;
 }
+/* A button's user-agent sheet sets its own case and tracking, and \`font\` does not reset them. Inherit both from the label (.lb), so an activatable tile reads like a plain one in every preset. */
+button[part~="link"] { text-transform: inherit; letter-spacing: inherit; text-align: inherit; }
 [part~="link"]::after { content: ''; position: absolute; inset: 0; z-index: 1; }
 /* The ring is on the link's own overlay, which already covers the tile, so it works in engines without the parent selector (Firefox before 121). */
 [part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
