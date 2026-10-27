@@ -205,6 +205,21 @@ Tiles the user adds from the picker are yours to render too: set
 children again from a saved layout on load (the grid keeps layout items it has no
 child for, and warns in development).
 
+### Switching the instrument and expanding a tile
+
+A mini chart asks; you answer. List the choices and the one shown, opt in, and send the new data:
+
+```js
+chart.actions = ['instrument', 'expand']
+chart.data = { charts: [{ id: 'main', instrument: 'NIFTY 50', instrumentId: 'nifty', instruments: [{ id: 'nifty', label: 'NIFTY 50' }, { id: 'crude', label: 'CRUDEOIL' }], bars }] }
+chart.addEventListener('ts-action', (e) => {
+  if (e.detail.action === 'instrument') chart.data = dataFor(e.detail.value) // or e.preventDefault() to refuse
+  if (e.detail.action === 'expand') chart.requestFullscreen() // or open your own larger chart in a modal
+})
+```
+
+`expand` works on any widget (not at size `S`). When your full-screen or modal view closes, return focus to the tile's Expand button.
+
 ## Saving layouts on a server
 
 `persist="my-key"` on the grid is enough for `localStorage`. For a server, use

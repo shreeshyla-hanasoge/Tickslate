@@ -93,7 +93,7 @@ describe('the click target of an href or activatable tile (RFC 0005 §1)', () =>
     'equity-curve.js': { cls: 'TsEquityCurve', sizes: { Wide: ['part=chart'], M: ['part=chart'], XL: ['part=chart'] } },
     'series-chart.js': { cls: 'TsChart', sizes: { Wide: ['part=chart'], M: ['part=chart'], L: ['part=chart'], XL: ['part=chart'] } },
     'pnl-calendar.js': { cls: 'TsPnlCalendar', sizes: { Tall: ['role=grid'], M: ['role=grid'], Banner: ['role=grid'] } },
-    'mini-chart.js': { cls: 'TsMiniChart', sizes: { M: ['part=chart'], L: ['part=chart'], XL: ['part=chart', 'part=chart'] } },
+    'mini-chart.js': { cls: 'TsMiniChart', sizes: { M: ['part=chart', 'part=instrument'], L: ['part=chart', 'part=instrument'], XL: ['part=chart', 'part=instrument', 'part=chart', 'part=instrument'] } },
     'metric.js': { cls: 'TsMetric', sizes: { S: [], Wide: ['part=chart'], M: ['part=chart'] } },
     'edge-stats.js': { cls: 'TsEdgeStats', sizes: { S: [], Wide: [], M: ['part=chart'] } },
     'breakdown.js': { cls: 'TsBreakdown', sizes: { S: ['part=bar'], Wide: ['part=bar', 'scroll'], Tall: ['part=bar', 'scroll'], M: ['part=chart', 'scroll'] } },
@@ -120,6 +120,7 @@ describe('the click target of an href or activatable tile (RFC 0005 §1)', () =>
     const marks = []
     if ((get('part') || '').split(/\s+/).includes('chart')) marks.push('part=chart')
     if ((get('part') || '').split(/\s+/).includes('bar')) marks.push('part=bar')
+    if ((get('part') || '').split(/\s+/).includes('instrument')) marks.push('part=instrument')
     if (get('role') === 'grid') marks.push('role=grid')
     if (classes.includes('scroll')) marks.push('scroll')
     return { name, classes, marks }

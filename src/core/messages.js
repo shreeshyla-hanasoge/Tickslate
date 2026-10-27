@@ -494,6 +494,11 @@ export const EN = Object.freeze({
   'feed.aria.one': '{label}, {count} event, latest: {text}',
   'feed.aria.other': '{label}, {count} events, latest: {text}',
   'feed.ariaEmpty': '{label}, no events',
+
+  // Expand, and the mini chart's instrument picker
+  'action.expand': 'Expand {label}',
+  'miniChart.instrument': 'Instrument',
+  'miniChart.instrumentOf': 'Instrument, chart {n} of {count}',
 })
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)

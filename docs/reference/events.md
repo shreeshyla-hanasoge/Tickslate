@@ -52,6 +52,8 @@ interface TsActionDetail {
 | `exit-all` | `<ts-open-positions>` | The user presses Exit all, and `actions` includes `'exit-all'`. The button only shows while a position is open | none |
 | `rebalance` | `<ts-capital-funding>` | The user presses an account's Rebalance button, and `actions` includes `'rebalance'`. Nothing is moved by the widget: show your own flow, then send the new `accounts` | `id`: the account's id, as given |
 | `select` | `<ts-table>`, `<ts-chart>` | The user activates a row, or a chart point, and `actions` includes `'select'` | A table sends `id`, the row's id as given; a chart sends `value`, `series`, `y` and `index` |
+| `instrument` | `<ts-mini-chart>` | The user picks an instrument in the chart's picker (M, L, XL), and `actions` includes `'instrument'`. The picker shows with two or more `instruments` and a matching `instrumentId`. Nothing changes in the widget: send the new `bars`, `instrument` and `instrumentId` in `data`, or call `preventDefault()` to put the picker back | `id`: the chart's id, `value`: the instrument's id, as listed in `instruments` |
+| `expand` | any widget | The user presses the header's Expand button (every size but `S`), and `actions` includes `'expand'`. The widget does nothing itself: call `requestFullscreen()` on it or show your own larger view | `id`: the tile's `item` attribute, `''` without one |
 | `timeframe` | `<ts-mini-chart>` | The user presses a timeframe button at `L`, and `actions` includes `'timeframe'`. Nothing changes in the widget: send the new `bars` and `timeframe` in `data` | `id`: the chart's id, `value`: the timeframe pressed, as listed in `timeframes` |
 
 ```js

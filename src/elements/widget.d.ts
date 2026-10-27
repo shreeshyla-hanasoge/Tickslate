@@ -169,6 +169,9 @@ export declare function validateHref(raw: unknown, el?: { _uid?: string; localNa
 /** RFC 0003 §7: Tile activation */
 export type TsOpenAction = { action: 'open'; id: string }
 
+/** RFC 0005 §2.3: the header's Expand button, shown when `actions` includes 'expand', at every size but S. `id` is the `item` attribute, '' without one. The host decides what expanding means. */
+export type TsExpandAction = { action: 'expand'; id: string }
+
 /** RFC 0003 §7.1: Chart point selection */
 export type TsChartSelectAction = {
   action: 'select'

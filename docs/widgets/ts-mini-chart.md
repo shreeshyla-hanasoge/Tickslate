@@ -63,6 +63,10 @@ interface MiniChartData {
     id: string
     instrument: string
     /** '5m'. Shown in the header and the summary; the pressed button at L. */
+    /** The picker's choices, at most 50, in your order. With `actions` including 'instrument', two or more and a matching `instrumentId`, a native select replaces the name. */
+    instruments?: Array<{ id: string; label: string }>
+    /** The choice shown now; one of `instruments`. */
+    instrumentId?: string
     timeframe?: string
     /** L: the buttons, with `timeframe` pressed. Shown only when `actions` includes 'timeframe'. */
     timeframes?: string[]
@@ -131,7 +135,7 @@ ones, a different instrument or timeframe) is a `setData`.
 | `data` | property, or a JSON attribute | `MiniChartData` |
 | `state` | attribute and property | `'loading'` or `'error'` |
 | `error` | property | A message shows the error view; `null` clears it |
-| `actions` | property | Names of the actions offered: `['retry']`, `['timeframe']` |
+| `actions` | property | Names of the actions offered: `['retry']`, `['timeframe']`, `['instrument']`, `['expand']` |
 | `clock` | property | `() => number`. Frozen in a demo, it reaches Emberwick's countdown too |
 | `locale`, `currency`, `time-zone`, `hour-cycle` | attributes | Formatting. `time-zone` is also the zone of the chart's time axis |
 | `item` | attribute | The id a grid matches this child by |
@@ -156,9 +160,11 @@ animation stops under `prefers-reduced-motion`, and follows that setting if it c
 | Action | When | `ts-action` detail |
 |---|---|---|
 | `timeframe` | The user presses a timeframe button at `L` (needs `actions = ['timeframe']` and `timeframes`) | `{ action: 'timeframe', id: 'abc', value: '15m' }` |
+| `instrument` | The user picks an instrument (needs `actions = ['instrument']`, `instruments` and `instrumentId`) | `{ action: 'instrument', id: 'abc', value: 'crudeoil' }` |
+| `expand` | The user presses Expand in the header, at M, L and XL (needs `actions = ['expand']`) | `{ action: 'expand', id: '' }` |
 | `retry` | The user presses Retry in the error view (needs `actions = ['retry']`) | `{ action: 'retry' }` |
 
-The widget does not change its own bars: replace `bars` and `timeframe` in `data`. See [Events](../reference/events.md).
+The widget does not change its own bars or instrument: replace `bars`, `timeframe`, `instrument` and `instrumentId` in `data`. Until you do, the picker shows the reader's choice; `preventDefault()` on the event puts it back at once. See [Events](../reference/events.md).
 
 `open` fires too when the tile is `activatable`. The header and the empty space open it, and an `href` tile follows its link from the same places; each chart shows Emberwick's crosshair and a click on it does nothing, and the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
 
@@ -170,6 +176,8 @@ The widget does not change its own bars: replace `bars` and `timeframe` in `data
 | `header` | The header row: the live dot, the label, the timeframe buttons at `L`, the sync time |
 | `label` | The label, a `role="heading"` whose level comes from `heading-level` |
 | `chart` | The framed box one chart is drawn in; a `role="img"` named by the summary |
+| `instrument` | The instrument picker, a native `<select>` in each chart's row |
+| `expand` | The header's Expand button, last in the header |
 | `timeframes` | The group of timeframe buttons at `L` |
 | `empty` | The empty view's container |
 | `error` | The error view's container (also for a missing Emberwick or a rejected profile) |
@@ -194,6 +202,7 @@ The widget does not change its own bars: replace `bars` and `timeframe` in `data
 - Entries are circles and exits are diamonds, so a mark is never told apart by colour alone.
 - The timeframe buttons sit in a `role="group"` named "Timeframe", each a toggle with `aria-pressed`, and are at least
   44px on touch screens.
+- The instrument picker is a native select named "Instrument" ("Instrument, chart 1 of 2" at XL); the Expand button is named "Expand" and the tile's label. Both are at least 44px on touch screens and do nothing while the grid is being edited.
 - In forced colours the canvas keeps Emberwick's colours; the frame and the controls use the system's.
 - Emberwick's animation stops under `prefers-reduced-motion`, also if the setting changes while the page is open.
 - The tile's group is named by the label and the headline, and each chart's box is the `role="img"` that carries the
