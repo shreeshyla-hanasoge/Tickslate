@@ -2,6 +2,7 @@
 // an ellipsis and keeps the whole text in the DOM, its title and its accessible name; and the trading example's fills table
 // is readable at 390 px, with a content column that takes only its text at 1280.
 import { test, expect } from '@playwright/test'
+import { gridDrawn } from './drawn.mjs'
 
 const PAGE = '/examples/trading.html'
 
@@ -25,6 +26,18 @@ async function open(page, width, scheme = 'light') {
   await page.setViewportSize({ width, height: 900 })
   await page.goto(PAGE)
   await page.waitForFunction(() => document.querySelector('ts-table')?.shadowRoot?.querySelector('tbody tr'))
+  // The first renders of the board are time-sliced over several tasks (RFC 0003 §23): the table can have rows while the
+  // session clock or a Tall tile's heading is still being drawn. Read nothing before every tile has drawn.
+  await gridDrawn(page, '#board > *')
+  // For the specs that change data or the clock and read the result: resolves once no widget owes a render. A widget keeps
+  // _queued set from the request until it has drawn, so this waits for the condition itself, not for a guessed delay.
+  await page.evaluate(() => {
+    const owing = (root) => [...root.querySelectorAll('*')].some((el) => el._queued === true || (el.shadowRoot && owing(el.shadowRoot)))
+    window.__settled = async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+      while (owing(document)) await new Promise((r) => requestAnimationFrame(r))
+    }
+  })
 }
 
 // What a heading shows and what it is called, read in the page: the visible text, whether CSS is cutting it, its name, its title.
@@ -282,7 +295,9 @@ test.describe('the fills table in the trading example', () => {
         ],
         rows: [{ id: 1, sym: 'ALPHA 24300 PE WEEKLY 03 NOV', qty: 75, pnl: 1250.5 }],
       }
-      await new Promise((r) => setTimeout(r, 300))
+      // The table draws, measures, and draws again with the columns that fit (RFC 0003 §23); its own columns are the
+      // condition, so wait for the three this data has instead of for a guessed delay.
+      while (el.shadowRoot.querySelectorAll('col').length !== 3) await new Promise((r) => requestAnimationFrame(r))
       const root = el.shadowRoot
       const th = [...root.querySelectorAll('thead th')].map((h) => Math.round(h.getBoundingClientRect().width))
       const sym = root.querySelector('tbody td')
@@ -428,10 +443,10 @@ test.describe('in every engine', () => {
       // The example set its own page clock; take it over with a frozen one and look at the widget and the grid.
       const noon = Date.UTC(2026, 9, 26, 6, 30)
       configure({ clock: () => noon })
-      await new Promise((r) => setTimeout(r, 300))
+      await window.__settled()
       const frozen = { grid: grid.clock(), sessions: read(), profile: grid.profile }
       configure({ clock: () => Date.UTC(2026, 9, 26, 17, 30) })
-      await new Promise((r) => setTimeout(r, 300))
+      await window.__settled()
       const later = { grid: grid.clock(), sessions: read(), profile: grid.profile }
       grid.clock = () => noon
       configure({ clock: () => 5 })
