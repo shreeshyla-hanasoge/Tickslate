@@ -161,3 +161,9 @@ defineWidget('acme-typed', TypedMrr, { type: 'acme-typed', messages: { 'widget.a
 defineWidget('acme-typed-bare', class extends TsWidget<{ n: number }, { ariaLabel?: string }> {}, { type: 'acme-typed-bare' })
 // @ts-expect-error a message is a string
 defineWidget('acme-typed-bad', class extends TsWidget<{ n: number }, { ariaLabel?: string }> {}, { type: 'acme-typed-bad', messages: { 'acme-typed-bad.n': 5 } })
+
+// createDashboard takes a title per item id (RFC 0005 §4).
+import { createDashboard } from 'tickslate/elements'
+createDashboard('#app', { layout: [], labels: { revenue: 'Revenue', costs: 'Costs' } })
+// @ts-expect-error a label is a string
+createDashboard('#app', { layout: [], labels: { revenue: 5 } })

@@ -318,7 +318,7 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 npm install
 npm run dev        # playground at http://localhost:5173
 npm test           # node --test, no install needed
-npm run release    # test, build ESM, development tree, UMD and CDN bundle, assemble dist-lib/
+npm run release    # test, lint, build ESM, development tree, UMD and CDN bundle, assemble dist-lib/
 ```
 
 Publishing is done from the assembled folder: `npm publish ./dist-lib`.

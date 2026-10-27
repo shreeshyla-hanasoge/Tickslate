@@ -30,7 +30,7 @@
     "coverage": "npm run coverage:core && npm run coverage:models",
     "coverage:core": "node --test --experimental-test-coverage --test-coverage-include=src/core/*.js --test-coverage-lines=90 test/*.test.mjs examples/custom-widget/*.test.mjs",
     "coverage:models": "node --test --experimental-test-coverage --test-coverage-include=src/elements/*.js --test-coverage-exclude=src/elements/grid.js --test-coverage-exclude=src/elements/widget.js --test-coverage-exclude=src/elements/picker.js --test-coverage-exclude=src/elements/grid-controls.js --test-coverage-exclude=src/elements/persist.js --test-coverage-exclude=src/elements/registry.js --test-coverage-exclude=src/elements/ticker.js --test-coverage-exclude=src/elements/dev.js --test-coverage-exclude=src/elements/html.js --test-coverage-exclude=src/elements/layout-list.js --test-coverage-lines=80 test/*.test.mjs examples/custom-widget/*.test.mjs",
-    "release": "npm test && npm run build:lib && npm run build:dev && npm run build:umd && npm run build:cdn && npm run pack:lib && npm run verify:package && npm run size"
+    "release": "npm test && npm run lint && npm run build:lib && npm run build:dev && npm run build:umd && npm run build:cdn && npm run pack:lib && npm run verify:package && npm run size"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

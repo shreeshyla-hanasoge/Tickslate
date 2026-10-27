@@ -50,6 +50,26 @@ const canonical = parseBlocks(readFileSync(new URL('../src/themes/tokens.css', i
 const layerBody = TOKENS_CSS.match(/^@layer tickslate\.defaults \{([\s\S]*)\}\s*$/)
 const defaults = layerBody ? parseBlocks(layerBody[1]) : []
 
+describe('--ts-loss-mark (RFC 0005 Decision 95)', () => {
+  const root = (blocks) => blocks.find((b) => b.at === '' && b.selector === ':where(:root)')
+  test('is transparent by default in tokens.css and in the injected defaults, so a loss cell draws no corner', () => {
+    assert.equal(root(canonical).decls.get('--ts-loss-mark'), 'transparent')
+    assert.equal(root(defaults).decls.get('--ts-loss-mark'), 'transparent')
+  })
+  test('is set by the cvd palette to the ink colour in both files, and by no theme or preset block', () => {
+    for (const blocks of [canonical, defaults]) {
+      const setters = blocks.filter((b) => b.decls.has('--ts-loss-mark'))
+      assert.equal(setters.length, 4, 'the root default and the three cvd blocks')
+      const palette = setters.filter((b) => b.selector !== ':where(:root)')
+      assert.equal(palette.length, 3)
+      for (const b of palette) {
+        assert.equal(b.decls.get('--ts-loss-mark'), 'var(--ts-ink)')
+        assert.ok(b.decls.has('--ts-series-2') && b.decls.get('--ts-focus') === 'var(--ts-accent)' && /data-ts-palette="cvd"/.test(b.selector), b.selector)
+      }
+    }
+  })
+})
+
 describe('default tokens', () => {
   test('are tokens.css wrapped in @layer tickslate.defaults', () => {
     assert.ok(layerBody, 'TOKENS_CSS is one @layer tickslate.defaults { … } block')
@@ -104,7 +124,8 @@ describe('default tokens', () => {
     const light = new Map(canonical.filter((b) => b.selector.startsWith(':where([data-theme="light"]') && !b.at.includes('prefers-contrast')).flatMap((b) => [...b.decls]))
     const paper = canonical.find((b) => b.selector === ':where(:root)').decls
     for (const block of canonical.filter((b) => b.selector.includes('dark') || b.selector.includes('auto'))) {
-      for (const name of block.decls.keys()) assert.equal(light.get(name), paper.get(name), `light island ${name}`)
+      // The cvd palette turns the loss corner on and no theme does, so there is nothing for the light island to restore.
+      for (const name of block.decls.keys()) if (name !== '--ts-loss-mark') assert.equal(light.get(name), paper.get(name), `light island ${name}`)
     }
   })
 
