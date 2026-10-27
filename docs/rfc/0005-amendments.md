@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| Status | **Draft** (27 Oct 2026). Nothing in it is built until the maintainer answers the Decisions in §12. |
+| Status | **Approved** (27 Oct 2026), with every recommended option of the Decisions section. The 0.4.0 stories are `activatable-target`, `mini-chart-actions`, `spacing-signal`, `dashboard-labels`, `size-ceilings`, `versioning-rows` and `release-lint`; `link-label-style` and `wall-clock-tests` shipped in 0.3.1. |
 | Written | 27 Oct 2026 |
 | Amends | [RFC 0004](0004-p2-surfaces.md) §2.2, §2.4, §5.3, §6.2, §7, §9.1, §10.4 and §12, and Decision 68; [RFC 0003](0003-p1-surfaces.md) §5.1, §7 and §25; [RFC 0002](0002-integration-and-ux.md) §6; and `docs/VERSIONING.md` (§7) |
 | Covers | The click target of an activatable tile (issue #68); opt-in `instrument` and `expand` actions (issue #69); a text-spacing signal tiles can key on; a `labels` option on `createDashboard`; the 0.3.0 budget rows; the font default shipped in 0.3.0; a review of the four Breaking lines of 0.3.0; the sources the remaining market presets need; and three process rules |
 | Sources | RFC 0001 to RFC 0004, [docs/VERSIONING.md](../VERSIONING.md), [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md), [docs/WORKFLOW.md](../WORKFLOW.md), the 0.3.0 section of [CHANGELOG.md](../../CHANGELOG.md), `src/elements/widget.js`, `src/elements/mini-chart.js`, `src/elements/dashboard.js`, `src/core/calendar.js`, `scripts/check-size.mjs`, `test/browser/density.spec.mjs`, and GitHub issues #68 and #69. It takes no new measurements. |
-| Approval | Pending. Reply per Decision row in §12, or "go with the recommendations". |
+| Approval | The maintainer approved it in chat ("approve RFC 0005") on 27 Oct 2026. |
 
 RFC 0001 to RFC 0004 stay the contract for everything this RFC doesn't
 mention, and none of them is edited. Where this RFC changes one, the section
@@ -17,7 +17,7 @@ earlier one differ, this RFC wins.
 This is the documentation story that RFC 0003 and RFC 0004 promised: it
 collects what the 0.3.0 stories recorded under `### Internal`, what the first
 consumer's integration found, and what the maintainer settled in chat during
-the wave, and asks for approval once.
+the wave, and asked for approval once.
 
 **How stories use this RFC**
 
@@ -29,8 +29,8 @@ the wave, and asks for approval once.
 - **A story's file list is the boundary.** Where a section needs a file
   another story owns, its *Files and order* says so, and the two stories are
   built in the order given there.
-- **Nothing starts before approval.** Each section's story may start once its
-  Decision rows are answered and everything in its *must merge first* column
+- **This RFC is approved** (27 Oct 2026), so a section's story may start once
+  everything in its *must merge first* column
   has merged.
 
 **Conventions in this RFC**
@@ -68,7 +68,7 @@ the wave, and asks for approval once.
 
 | Story | Must merge first | Why |
 |---|---|---|
-| `link-label-style` | Nothing | One rule in `widget.js`; it can ship in a patch |
+| `link-label-style` | Nothing | One rule in `widget.js`; shipped in 0.3.1 (PR #70, as `activatable-label`) |
 | `activatable-target` | `link-label-style` | Both edit the stretched-link rules in `widget.js` |
 | `mini-chart-actions` | `activatable-target` | Both edit `widget.js` (the shared header and the lifted surfaces); the instrument picker must sit above the overlay |
 | `spacing-signal` | `activatable-target` | Both edit `widget.js`; it also owns `grid.js`, `progress.js`, `today-pnl.js` and `pnl-calendar.js`' tier rules |
@@ -76,7 +76,7 @@ the wave, and asks for approval once.
 | `size-ceilings` | `activatable-target`, `mini-chart-actions`, `spacing-signal` | It measures after the shared base has stopped moving |
 | `versioning-rows` | Nothing | `docs/VERSIONING.md` only |
 | `release-lint` | Nothing | `package.json` only |
-| `wall-clock-tests` | Nothing | Three test files only |
+| `wall-clock-tests` | Nothing | Three test files only; shipped in 0.3.1 (PR #72) |
 | `preset-sources` | The maintainer's answer to parked question 4 | It needs sources nobody could read on 26 Oct 2026 |
 
 **Files more than one story touches**
@@ -215,7 +215,8 @@ from the user agent's defaults. So a linked label is mixed case with no
 tracking beside its uppercase, tracked neighbours. The fix is two declarations
 on `[part~="link"]`: `text-transform: inherit; letter-spacing: inherit`. It
 changes no public name, so it needs no RFC. It is recorded here only so the
-two stories don't both edit the rule. It can ship in a patch (Decision 94).
+two stories don't both edit the rule. It can ship in a patch (Decision 94), and
+it did: `link-label-style` shipped in 0.3.1 as PR #70 (`activatable-label`).
 
 ### 1.6 Messages
 
@@ -832,7 +833,7 @@ reports and never fails CI.
 slice. It asserts counts, not time, so the rule allows it. A follow-up may give
 the slicer an injected clock so the test needs no busy-wait.
 
-*Implemented by: wall-clock-tests. Files: the three test files above, and
+*Implemented by: wall-clock-tests, shipped in 0.3.1 (PR #72). Files: the three test files above, and
 `docs/WORKFLOW.md`'s Checks section (one line stating the rule).*
 
 ## 10. What changes for existing hosts
@@ -864,32 +865,33 @@ widgets the density story listed, and the manual assistive-technology pass.
 
 This RFC's own decisions, numbered on from RFC 0004's 76. The recommended
 option is marked **Recommended**. Reply per row, or "go with the
-recommendations". Nothing is built until the rows are answered.
+recommendations". The maintainer approved the RFC on 27 Oct 2026, accepting
+every recommended option.
 
 | # | Question | Options | Status |
 |---|---|---|---|
-| 77 | What is the click target of an `activatable` tile? (§1; amends RFC 0003 §7; issue #68) | **Recommended:** (b) lift the data surfaces listed in §1.2 above the overlay, so the header and empty space open the tile and a click on data scrubs, focuses, selects, scrolls or does nothing. The label button is unchanged for the keyboard.<br>Alternative: (a) document today's behaviour.<br>Alternative: (c) `activatable="label"` opt-in narrowing. | Open |
-| 78 | Do `href` tiles narrow the same way? (§1.2) | **Recommended:** yes; the two share the stretched link, and a link that fires on a chart click has the same fault.<br>Alternative: narrow only `activatable`, so `href` tiles navigate from anywhere. | Open |
-| 79 | How is §1 listed in the changelog? (§10) | **Recommended:** under Breaking, with a do-instead line, because it changes which clicks fire `open` (VERSIONING: "changing the meaning of" an attribute).<br>Alternative: under Fixed, since the docs already promised the narrower target. | Open |
-| 80 | How does a mini chart offer instruments? (§2.1, §2.2; issue #69) | **Recommended:** `instruments` and `instrumentId` per chart, a native `<select>` in the chart's own row, named "Instrument" (or "Instrument, chart n of 2" at XL), firing `{ action: 'instrument', id, value }` when `actions` includes `'instrument'`.<br>Alternative: a menu button, themed, at an estimated 1.5 to 2.5 kB.<br>Alternative: the picker in the tile header, which holds one picker only, so XL could switch only its first chart. | Open |
-| 81 | Is `expand` a base-widget action? (§2.3) | **Recommended:** yes: any tile opts in with `actions`, the base renders "Expand {label}" in the shared header, and the host decides what expand means.<br>Alternative: a mini-chart action only.<br>Alternative: no button; hosts use the `actions` slot. | Open |
-| 82 | Which sizes show the expand button? (§2.3) | **Recommended:** every size but `S`.<br>Alternative: every size, `S` included, at the cost of label room on a phone.<br>Alternative: only sizes of two columns or more. | Open |
-| 83 | How do tiles learn that the reader widened the text? (§3) | **Recommended:** (a) the grid detects it and writes `data-ts-spacing="wide"` on its children, with `text-spacing="auto \| normal \| wide"` on the grid and the data attribute settable by hosts on standalone widgets.<br>Alternative: (b) a host attribute only.<br>Alternative: (c) a custom property and style queries, which Safari 16.4 lacks.<br>Alternative: (d) no signal; each widget measures its own text. | Open |
-| 84 | What does detection read, and when? (§3.3) | **Recommended:** the grid's computed `letter-spacing` (at least `.1em`) or `word-spacing` (at least `.14em`), never `line-height`, on every measure.<br>Alternative: all four properties, which marks every page with `body { line-height: 1.5 }`.<br>Alternative: also re-check on a timer (parked question 3). | Open |
-| 85 | What is `labels` on `createDashboard`, and what wins? (§4) | **Recommended:** `labels?: Record<string, string>`, written as each child's `label` attribute whenever the dashboard creates it, so it wins over every `messages` source for that tile.<br>Alternative: a function `(item) => string`.<br>Alternative: a `label` field on `LayoutItem`, saved with the layout. | Open |
-| 86 | Are the four re-measured "adds to grid" rows ratified? (§5.1) | **Recommended:** yes: `mini-chart` 20 kB, `breakdown` 19 kB, `status` 17 kB (26 Oct 2026) and `feed` 17 kB (27 Oct 2026), each its measurement plus 10% under RFC 0003 §25.<br>Alternative: return them to 15 kB as warnings, like the eleven older rows. | Open |
-| 87 | What happens to the eleven "adds to grid" rows that only warn? (§5.2) | **Recommended:** (c) enforced ceilings at their measurement plus 10%, set after §1 to §3 land; 15 kB stays the target for new widgets.<br>Alternative: (a) keep them as warnings.<br>Alternative: (d) drop the pair rule for them. | Open |
+| 77 | What is the click target of an `activatable` tile? (§1; amends RFC 0003 §7; issue #68) | **Recommended:** (b) lift the data surfaces listed in §1.2 above the overlay, so the header and empty space open the tile and a click on data scrubs, focuses, selects, scrolls or does nothing. The label button is unchanged for the keyboard.<br>Alternative: (a) document today's behaviour.<br>Alternative: (c) `activatable="label"` opt-in narrowing. | **Accepted** (27 Oct 2026): the recommended option |
+| 78 | Do `href` tiles narrow the same way? (§1.2) | **Recommended:** yes; the two share the stretched link, and a link that fires on a chart click has the same fault.<br>Alternative: narrow only `activatable`, so `href` tiles navigate from anywhere. | **Accepted** (27 Oct 2026): the recommended option |
+| 79 | How is §1 listed in the changelog? (§10) | **Recommended:** under Breaking, with a do-instead line, because it changes which clicks fire `open` (VERSIONING: "changing the meaning of" an attribute).<br>Alternative: under Fixed, since the docs already promised the narrower target. | **Accepted** (27 Oct 2026): the recommended option |
+| 80 | How does a mini chart offer instruments? (§2.1, §2.2; issue #69) | **Recommended:** `instruments` and `instrumentId` per chart, a native `<select>` in the chart's own row, named "Instrument" (or "Instrument, chart n of 2" at XL), firing `{ action: 'instrument', id, value }` when `actions` includes `'instrument'`.<br>Alternative: a menu button, themed, at an estimated 1.5 to 2.5 kB.<br>Alternative: the picker in the tile header, which holds one picker only, so XL could switch only its first chart. | **Accepted** (27 Oct 2026): the recommended option |
+| 81 | Is `expand` a base-widget action? (§2.3) | **Recommended:** yes: any tile opts in with `actions`, the base renders "Expand {label}" in the shared header, and the host decides what expand means.<br>Alternative: a mini-chart action only.<br>Alternative: no button; hosts use the `actions` slot. | **Accepted** (27 Oct 2026): the recommended option |
+| 82 | Which sizes show the expand button? (§2.3) | **Recommended:** every size but `S`.<br>Alternative: every size, `S` included, at the cost of label room on a phone.<br>Alternative: only sizes of two columns or more. | **Accepted** (27 Oct 2026): the recommended option |
+| 83 | How do tiles learn that the reader widened the text? (§3) | **Recommended:** (a) the grid detects it and writes `data-ts-spacing="wide"` on its children, with `text-spacing="auto \| normal \| wide"` on the grid and the data attribute settable by hosts on standalone widgets.<br>Alternative: (b) a host attribute only.<br>Alternative: (c) a custom property and style queries, which Safari 16.4 lacks.<br>Alternative: (d) no signal; each widget measures its own text. | **Accepted** (27 Oct 2026): the recommended option |
+| 84 | What does detection read, and when? (§3.3) | **Recommended:** the grid's computed `letter-spacing` (at least `.1em`) or `word-spacing` (at least `.14em`), never `line-height`, on every measure.<br>Alternative: all four properties, which marks every page with `body { line-height: 1.5 }`.<br>Alternative: also re-check on a timer (parked question 3). | **Accepted** (27 Oct 2026): the recommended option |
+| 85 | What is `labels` on `createDashboard`, and what wins? (§4) | **Recommended:** `labels?: Record<string, string>`, written as each child's `label` attribute whenever the dashboard creates it, so it wins over every `messages` source for that tile.<br>Alternative: a function `(item) => string`.<br>Alternative: a `label` field on `LayoutItem`, saved with the layout. | **Accepted** (27 Oct 2026): the recommended option |
+| 86 | Are the four re-measured "adds to grid" rows ratified? (§5.1) | **Recommended:** yes: `mini-chart` 20 kB, `breakdown` 19 kB, `status` 17 kB (26 Oct 2026) and `feed` 17 kB (27 Oct 2026), each its measurement plus 10% under RFC 0003 §25.<br>Alternative: return them to 15 kB as warnings, like the eleven older rows. | **Accepted** (27 Oct 2026): the recommended option |
+| 87 | What happens to the eleven "adds to grid" rows that only warn? (§5.2) | **Recommended:** (c) enforced ceilings at their measurement plus 10%, set after §1 to §3 land; 15 kB stays the target for new widgets.<br>Alternative: (a) keep them as warnings.<br>Alternative: (d) drop the pair rule for them. | **Accepted** (27 Oct 2026): the recommended option |
 | 88 | The font default: `Arial` before `system-ui` in `--ts-font-ui` and `--ts-font-num`, followed by `paper`, `graphite`, `calm` and `signal`, not `neutral` or `terminal`; the label floor `max(6ch, 4.2em)`. (§6) | As shipped in 0.3.0. | **Accepted** (27 Oct 2026), in chat; this row records it |
-| 89 | Should `docs/VERSIONING.md` gain rows for the keyboard and accessibility tree, and for the tile's CSS contract? (§7) | **Recommended:** yes, as §7's table, so the next tab stop or container change is judged by a row, not by analogy.<br>Alternative: leave the table as it is. | Open |
-| 90 | What counts as a source for a market preset? (§8) | **Recommended:** the five rules of §8: the venue's own page, read by a person on the `Checked:` date, quoted in the PR, specific to the segment; a human read in a browser counts where automated requests are refused.<br>Alternative: allow a broker's or vendor's published hours where the venue's page cannot be read. | Open |
-| 91 | Does `npm run release` run lint? (§9.1) | **Recommended:** yes, after `npm test`.<br>Alternative: no; CI alone runs it. | Open |
-| 92 | Is the `visual` job a required check? (§9.2) | **Recommended:** yes, with `test`, `lint`, `build`, `browser`, `examples` and `coverage`, through a ruleset on `master` and `wave/*` that the maintainer sets.<br>Alternative: required on `master` only.<br>Alternative: stay advisory. | Open |
-| 93 | May a unit test assert elapsed time? (§9.3) | **Recommended:** no; tests count work, and timing lives in a benchmark that never fails CI. `wall-clock-tests` converts the three sites.<br>Alternative: keep the limits and widen them. | Open |
-| 94 | Which versions carry this RFC? | **Recommended:** `link-label-style` and `wall-clock-tests` in a **0.3.1** patch (no API, no break); §1 to §5 in **0.4.0**, since §1 is listed as Breaking.<br>Alternative: everything in 0.4.0. | Open |
+| 89 | Should `docs/VERSIONING.md` gain rows for the keyboard and accessibility tree, and for the tile's CSS contract? (§7) | **Recommended:** yes, as §7's table, so the next tab stop or container change is judged by a row, not by analogy.<br>Alternative: leave the table as it is. | **Accepted** (27 Oct 2026): the recommended option |
+| 90 | What counts as a source for a market preset? (§8) | **Recommended:** the five rules of §8: the venue's own page, read by a person on the `Checked:` date, quoted in the PR, specific to the segment; a human read in a browser counts where automated requests are refused.<br>Alternative: allow a broker's or vendor's published hours where the venue's page cannot be read. | **Accepted** (27 Oct 2026): the recommended option |
+| 91 | Does `npm run release` run lint? (§9.1) | **Recommended:** yes, after `npm test`.<br>Alternative: no; CI alone runs it. | **Accepted** (27 Oct 2026): the recommended option |
+| 92 | Is the `visual` job a required check? (§9.2) | **Recommended:** yes, with `test`, `lint`, `build`, `browser`, `examples` and `coverage`, through a ruleset on `master` and `wave/*` that the maintainer sets.<br>Alternative: required on `master` only.<br>Alternative: stay advisory. | **Accepted** (27 Oct 2026): the recommended option |
+| 93 | May a unit test assert elapsed time? (§9.3) | **Recommended:** no; tests count work, and timing lives in a benchmark that never fails CI. `wall-clock-tests` converts the three sites.<br>Alternative: keep the limits and widen them. | **Accepted** (27 Oct 2026): the recommended option |
+| 94 | Which versions carry this RFC? | **Recommended:** `link-label-style` and `wall-clock-tests` in a **0.3.1** patch (no API, no break); §1 to §5 in **0.4.0**, since §1 is listed as Breaking.<br>Alternative: everything in 0.4.0. | **Accepted** (27 Oct 2026): the recommended option; `link-label-style` and `wall-clock-tests` shipped in 0.3.1 (PR #70 as `activatable-label`, PR #72) |
 
 ## 13. Points this RFC settles that no decision covers
 
-Each is a proposal the RFC's approval accepts unless amended.
+Each was a proposal that the RFC's approval (27 Oct 2026) accepted.
 
 1. **The lifted surfaces are marked by one class, `lift`**, shared by every
    widget and offered to custom widgets (§1.2).
