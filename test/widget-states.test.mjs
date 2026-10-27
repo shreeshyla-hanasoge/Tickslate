@@ -381,17 +381,17 @@ describe('the views', () => {
       const el = await connect(make())
       el.error = 'Feed disconnected'
       await tick()
-      assert.doesNotMatch(section(el).html, /<button/)
+      assert.doesNotMatch(section(el).html, /data-action="retry"/)
       el.actions = ['exit-all']
       await tick()
-      assert.doesNotMatch(section(el).html, /<button/)
+      assert.doesNotMatch(section(el).html, /data-action="retry"/)
       el.actions = ['exit-all', 'retry']
       await tick()
       assert.match(section(el).html, /<button type="button" class="btn retry" data-action="retry" data-k="retry"><\/button>/)
       assert.equal(text(el, '[data-k="retry"]'), 'Retry')
       el.actions = []
       await tick()
-      assert.doesNotMatch(section(el).html, /<button/)
+      assert.doesNotMatch(section(el).html, /data-action="retry"/)
     })
 
     test("the button fires ts-action { action: 'retry' }, bubbling and composed", async () => {

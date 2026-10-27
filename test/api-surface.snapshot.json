@@ -107,6 +107,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -115,6 +116,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "item",
           "label",
@@ -143,6 +145,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:rebalance",
           "ts-action:retry"
@@ -152,6 +155,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -182,6 +186,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -189,6 +194,7 @@
           "body",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -216,6 +222,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry",
           "ts-action:select"
@@ -224,6 +231,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "scrub",
@@ -255,6 +263,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -262,6 +271,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -289,6 +299,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:range",
           "ts-action:retry"
@@ -297,6 +308,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "scrub",
@@ -327,6 +339,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -335,6 +348,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "item",
           "label",
@@ -432,6 +446,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -439,6 +454,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -466,6 +482,8 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
+          "ts-action:instrument",
           "ts-action:open",
           "ts-action:retry",
           "ts-action:timeframe"
@@ -474,6 +492,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -503,6 +522,7 @@
           "ts-action",
           "ts-action:exit-all",
           "ts-action:exit-position",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -512,6 +532,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "row",
@@ -540,12 +561,14 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
         "parts": [
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -572,6 +595,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -579,6 +603,7 @@
           "bar",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -606,12 +631,14 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
         "parts": [
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "skeleton",
@@ -639,6 +666,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -649,6 +677,7 @@
           "dot",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "row",
@@ -677,6 +706,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry",
           "ts-action:select",
@@ -686,6 +716,7 @@
           "cell",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "row",
@@ -714,6 +745,7 @@
         ],
         "events": [
           "ts-action",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -721,6 +753,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "scrub",
@@ -752,6 +785,7 @@
         "events": [
           "ts-action",
           "ts-action:add-instrument",
+          "ts-action:expand",
           "ts-action:open",
           "ts-action:retry"
         ],
@@ -761,6 +795,7 @@
           "chart",
           "empty",
           "error",
+          "expand",
           "header",
           "label",
           "row",

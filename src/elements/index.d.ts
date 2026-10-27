@@ -1,12 +1,12 @@
 import type { Calendar, Catalog, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
 import { TsWidget } from './widget.js'
-import type { ViewModelContext, TsOpenAction, TsChartSelectAction } from './widget.js'
+import type { ViewModelContext, TsOpenAction, TsExpandAction, TsChartSelectAction } from './widget.js'
 
 export { version } from '../core/index.js'
 // widget.d.ts is shipped beside this file (scripts/pack-lib.mjs), so this
 // import resolves both in the repo and in the published package.
 export { TsWidget } from './widget.js'
-export type { ViewModelContext, WidgetState, TsOpenAction, TsChartSelectAction } from './widget.js'
+export type { ViewModelContext, WidgetState, TsOpenAction, TsExpandAction, TsChartSelectAction } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
 // controls.d.ts (the picker and the grid controls) ships beside this file too.
@@ -154,7 +154,7 @@ export interface Dashboard {
 export declare function createDashboard(target: Element | string, options: DashboardOptions): Dashboard
 
 /** The `ts-action` detail every widget can send: the error view's Retry and tile activation (RFC 0003 §7, §22.2). */
-export type TsCommonAction = { action: 'retry' } | TsOpenAction
+export type TsCommonAction = { action: 'retry' } | TsOpenAction | TsExpandAction
 
 /**
  * What every widget inherits, for the manifest (scripts/gen-manifest.mjs): the attributes, parts and

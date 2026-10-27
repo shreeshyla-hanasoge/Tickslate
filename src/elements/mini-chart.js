@@ -214,6 +214,7 @@ export function emberwickTheme(read) {
 
 const MARK_SHAPE = { entry: 'circle', exit: 'diamond' }
 const MAX_TIMEFRAMES = 12
+const MAX_INSTRUMENTS = 50
 
 function readBars(raw) {
   const out = []
@@ -318,9 +319,27 @@ export function miniChartModel(data, variant, ctx) {
       for (const f of chart.timeframes) if (typeof f === 'string' && f && !frames.includes(f) && frames.length < MAX_TIMEFRAMES) frames.push(f)
     }
 
+    // The picker's choices: first of a duplicate id wins, at most 50, and the selected id must be one of them (RFC 0005 §2.1).
+    const choices = []
+    if (Array.isArray(chart.instruments)) {
+      for (const o of chart.instruments) {
+        if (!o || typeof o.id !== 'string' || typeof o.label !== 'string' || choices.some((x) => x.id === o.id)) continue
+        if (choices.length >= MAX_INSTRUMENTS) {
+          if (DEV) warnOnce('mini-chart:instruments-cap', `<ts-mini-chart> shows at most ${MAX_INSTRUMENTS} instruments; the rest were dropped.`)
+          break
+        }
+        choices.push({ id: o.id, label: o.label })
+      }
+    }
+    const instrumentId = typeof chart.instrumentId === 'string' ? chart.instrumentId : ''
+    const picked = choices.some((x) => x.id === instrumentId)
+    if (DEV && choices.length && !picked) warnOnce('mini-chart:instrument-id', `<ts-mini-chart> instrumentId "${instrumentId}" is not one of its instruments; the picker is not shown.`)
+
     return {
       id,
       instrument,
+      choices: picked && choices.length > 1 ? choices : [],
+      instrumentId,
       timeframe,
       bars,
       marks,
@@ -596,6 +615,10 @@ export class TsMiniChart extends TsWidget {
 /* Two charts need room: in a tile too narrow for them side by side (an XL outside a grid on a phone) they stack. */
 @container (max-width: 520px) { .mcs { flex-direction: column; } }
 .ins { font-weight: 600; }
+.sel { min-width: 0; max-width: 100%; color: var(--ts-ink); background: var(--ts-surface); font-weight: 600; }
+/* WebKit ignores min-height on a native select, so the height is set outright. */
+.sel { block-size: 28px; }
+@media (pointer: coarse) { .sel { block-size: 44px; } }
 .tfs { gap: 4px; }
 /* Time runs left to right in every locale, so the drawing box never mirrors. */
 .plot { position: relative; flex: 1; min-height: 0; min-width: 0; direction: ltr; overflow: hidden; border: 1px solid var(--ts-line); border-radius: var(--ts-radius-sm); }
@@ -656,6 +679,17 @@ export class TsMiniChart extends TsWidget {
       })
     }
     this._onMotion = () => this._ctl.setAnimate(!this._reduced())
+    // The picker: a request, never a switch. A host that cancels it, or edit mode, puts the data's choice back.
+    this._section.addEventListener('change', (e) => {
+      const sel = e.target && e.target.closest ? e.target.closest('select[data-i]') : null
+      if (!sel) return
+      const c = this._lastVm && this._lastVm.charts[Number(sel.getAttribute('data-i'))]
+      if (!c || this._isEditing() || !this.actionEnabled('instrument')) {
+        if (c) sel.value = c.instrumentId
+        return
+      }
+      if (!this.emit('instrument', { id: c.id, value: sel.value })) sel.value = c.instrumentId
+    })
     // One listener on the tile: the buttons are rebuilt when the timeframes change.
     this._section.addEventListener('click', (e) => {
       const button = e.target && e.target.closest ? e.target.closest('button[data-tf]') : null
@@ -798,12 +832,14 @@ export class TsMiniChart extends TsWidget {
       if (el && el.textContent !== value) el.textContent = value
     }
     text('label', this.label)
+    this._lastVm = vm
     const slots = variant === 'XL' ? 2 : 1
     const specs = []
     const plots = []
     for (let i = 0; i < slots; i++) {
       const c = vm.charts[i] || null
       text(`ins${i}`, c ? c.instrument : '')
+      this._updatePicker(i, c, slots)
       text(`tf${i}`, c ? c.timeframe : '')
       text(`last${i}`, c ? c.lastText : '')
       text(`chg${i}Ar`, c ? c.changeArrow : '')
@@ -845,6 +881,37 @@ export class TsMiniChart extends TsWidget {
     }
     if (pending) this._section.setAttribute('aria-busy', 'true')
     this._observe(plots)
+  }
+
+  /** The instrument picker for chart `i`: a native select built with the DOM, in place of the name, only with the opt-in. */
+  _updatePicker(i, c, slots) {
+    let sel = this.$(k(`sel${i}`))
+    const show = !!(c && this.actionEnabled('instrument') && c.choices.length)
+    const name = this.$(k(`ins${i}`))
+    if (!sel && !show) return
+    // Built on first use, not in the template: WebKit gives even a hidden <select> a style attribute, which a strict CSP refuses.
+    if (!sel && name) {
+      sel = document.createElement('select')
+      for (const [a, v] of [['class', 'btn lift sel'], ['part', 'instrument'], ['data-k', `sel${i}`], ['data-i', String(i)]]) sel.setAttribute(a, v)
+      name.after(sel)
+    }
+    if (!sel) return
+    sel.toggleAttribute('hidden', !show)
+    this._lift(sel, show)
+    if (name) name.toggleAttribute('hidden', show)
+    if (!show) {
+      sel.removeAttribute('data-sig')
+      return
+    }
+    const label = slots > 1 ? this.t('miniChart.instrumentOf', { n: i + 1, count: slots }) : this.t('miniChart.instrument')
+    if (sel.getAttribute('aria-label') !== label) sel.setAttribute('aria-label', label)
+    const sig = JSON.stringify(c.choices)
+    if (sel.getAttribute('data-sig') !== sig) {
+      sel.setAttribute('data-sig', sig)
+      setNodes(sel, c.choices.map((o) => ({ tag: 'option', attrs: { value: o.id }, text: o.label })))
+    }
+    // The next data always wins over the reader's choice.
+    if (sel.value !== c.instrumentId) sel.value = c.instrumentId
   }
 
   /** The timeframe buttons: real buttons made with the DOM (the values are data), only while the host listed 'timeframe'. */

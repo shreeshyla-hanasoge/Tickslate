@@ -347,11 +347,14 @@ const HEADING = '[part="label"]'
  * `inner` and a string `meta` go beyond the RFC's signature; without them the
  * clock's title and every widget's own meta could not use the shared row.
  */
+// The expand button (RFC 0005 §2.3), last in every header(). Static markup, hidden until the host lists 'expand' (_syncExpand). Four outward corners in currentColor.
+const EXPAND = '<button type="button" class="btn" part="expand" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor"/></svg></button>'
+
 export function header(opts) {
   const { dot = false, meta = false, actions = false, extra = '', inner = '', labelClass = '' } = opts || {}
   const right = (meta === true ? META : meta || '') + (actions ? '<slot name="actions"></slot>' : '')
   const label = `<span class="lb ell${labelClass ? ` ${labelClass}` : ''}" part="label" role="heading" aria-level="3" data-k="label">${inner}</span>`
-  return `<div class="hd" part="header">${dot ? DOT : ''}${label}${extra}${right ? `<span class="f1"></span>${right}` : ''}</div>`
+  return `<div class="hd" part="header">${dot ? DOT : ''}${label}${extra}${right ? `<span class="f1"></span>${right}` : ''}${EXPAND}</div>`
 }
 
 // The sign sits in the run of non-digits before the first digit: after a bidi mark (U+200E, U+200F, U+061C),
@@ -544,7 +547,9 @@ button[part~="link"] {
 .empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--ts-muted); text-align: center; }
 .err { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; }
 .err-msg { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 100%; font-size: var(--ts-text-md, max(12px, .75rem)); font-weight: 500; color: var(--ts-ink); text-align: start; }
-.err-msg svg { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--ts-warn); }
+.err-msg svg, .btn svg { width: 14px; height: 14px; }
+.btn svg { stroke-width: 1.5; }
+.err-msg svg { flex: none; margin-top: 1px; color: var(--ts-warn); }
 .btn.retry { color: var(--ts-ink); }
 .sk { display: block; flex: none; position: relative; overflow: hidden; border-radius: var(--ts-radius-sm); background: var(--ts-surface-2); }
 .sk.grow { flex: 1; min-height: 0; width: 100%; }
@@ -810,7 +815,9 @@ export class TsWidget extends Base {
         this.emit('retry')
         return
       }
-      const link = findLink(t)
+      // The expand button takes the same road as the label: nothing in edit mode, else a request (the hidden one is not the host's to press).
+      const ex = t?.closest?.('[part=expand]')
+      const link = ex && !ex.hidden ? ex : findLink(t)
       if (!link) return
       if (this._isEditing()) {
         e.preventDefault?.()
@@ -820,7 +827,8 @@ export class TsWidget extends Base {
       // Only the button exists when the tile opens; a valid href renders a real link and navigates natively.
       if (link.localName === 'button') {
         e.preventDefault?.()
-        this.emit(ACTION_OPEN, { id: this.getAttribute('item') || '' })
+        if (link === ex) this.emit('expand', { id: this.getAttribute('item') || '' })
+        else this.emit(ACTION_OPEN, { id: this.getAttribute('item') || '' })
       }
     })
     this._section.addEventListener('keydown', (e) => {
@@ -1387,6 +1395,11 @@ export class TsWidget extends Base {
    * its tag, which the heading would only repeat, so the heading is hidden.
    */
   _markHeading(grid, label) {
+    const ex = this._section.querySelector('[part=expand]')
+    if (ex) {
+      ex.hidden = !this.actionEnabled('expand') || this.size === 'S'
+      ex.ariaLabel = this.t('action.expand', { label })
+    }
     // Remembered with the other refs, which are dropped whenever the markup is rebuilt.
     let heading = this._refs.get(HEADING)
     if (!heading) {

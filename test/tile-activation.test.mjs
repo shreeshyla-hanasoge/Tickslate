@@ -120,6 +120,7 @@ describe('the click target of an href or activatable tile (RFC 0005 §1)', () =>
     const marks = []
     if ((get('part') || '').split(/\s+/).includes('chart')) marks.push('part=chart')
     if ((get('part') || '').split(/\s+/).includes('bar')) marks.push('part=bar')
+    if ((get('part') || '').split(/\s+/).includes('instrument')) marks.push('part=instrument')
     if (get('role') === 'grid') marks.push('role=grid')
     if (classes.includes('scroll')) marks.push('scroll')
     return { name, classes, marks }

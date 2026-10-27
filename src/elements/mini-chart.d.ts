@@ -46,6 +46,10 @@ export interface MiniChartData extends WidgetFreshness {
   charts: Array<{
     id: string
     instrument: string
+    /** The picker's choices, in the host's order (at most 50). The picker shows only when `actions` includes 'instrument', there are two or more, and `instrumentId` names one. */
+    instruments?: Array<{ id: string; label: string }>
+    /** The id of the choice shown now; one of `instruments`. */
+    instrumentId?: string
     /** '5m'. Shown in the header and the summary; the pressed button at L. */
     timeframe?: string
     /** L: the timeframe buttons, with `timeframe` pressed. They appear only when `actions` includes 'timeframe'. */
@@ -70,7 +74,7 @@ export interface MiniChartData extends WidgetFreshness {
  * Emberwick. Import it from `tickslate/elements/mini-chart`: `tickslate/elements` never loads Emberwick.
  *
  * @element ts-mini-chart
- * @fires {CustomEvent<TsMiniChartAction>} ts-action - Retry, 'open', and 'timeframe' when `actions` includes it.
+ * @fires {CustomEvent<TsMiniChartAction>} ts-action - Retry, 'open', and 'timeframe' and 'instrument' when `actions` includes them, and 'expand'.
  * @csspart chart - The framed box one chart is drawn in; it is the image the summary names.
  * @csspart timeframes - The group of timeframe buttons at L.
  */
@@ -104,6 +108,9 @@ export interface MiniChartModel {
     marksCount: string
     note: string
     timeframes: Array<{ value: string; on: boolean }>
+    /** The picker's choices after cleaning; empty when there is no valid picker. */
+    choices: Array<{ id: string; label: string }>
+    instrumentId: string
     /** The host's volume profile, at L on the first chart only; null otherwise. */
     profile: MiniChartProfile | null
     /** 'ABC Corp, 5m: last 128.40, up 1.20%, 78 bars, 2 entries and 1 exit'. */
@@ -118,5 +125,5 @@ export interface MiniChartModel {
   live: boolean
 }
 
-/** 'timeframe' only fires when the host opts in with `actions = ['timeframe']` (RFC 0004 §6.2). */
-export type TsMiniChartAction = TsCommonAction | { action: 'timeframe'; id: string; value: string }
+/** 'timeframe' and 'instrument' only fire when the host opts in with `actions` (RFC 0004 §6.2, RFC 0005 §2.1). The widget never switches itself. */
+export type TsMiniChartAction = TsCommonAction | { action: 'timeframe'; id: string; value: string } | { action: 'instrument'; id: string; value: string }

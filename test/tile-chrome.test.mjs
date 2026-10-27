@@ -105,7 +105,9 @@ describe('header()', () => {
 
   test('with no options it is the label alone: no dot, no spacer, no meta', () => {
     const html = W.header()
+    // Its one extra is the hidden Expand button (RFC 0005 §2.3), last in every header.
     assert.doesNotMatch(html, /class="dot|class="f1"|meta/)
+    assert.match(html, /<\/span><button type="button" class="btn" part="expand" hidden>.*<\/button><\/div>$/)
     assert.equal(W.header({}), html)
   })
 
@@ -116,7 +118,7 @@ describe('header()', () => {
   })
 
   test('a string meta is the widget\'s own right-hand markup', () => {
-    assert.match(W.header({ meta: '<em>x</em>' }), /<span class="f1"><\/span><em>x<\/em><\/div>$/)
+    assert.match(W.header({ meta: '<em>x</em>' }), /<span class="f1"><\/span><em>x<\/em><button [^>]*part="expand"/)
   })
 })
 
