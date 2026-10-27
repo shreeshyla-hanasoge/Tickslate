@@ -1,14 +1,17 @@
 // Hostile and broken layouts (RFC 0004 §8.2). readLayout is fed 10,000 values from a fixed seed: it must never
-// throw, must always return a layout inside the caps, and must stay fast. The seed is in every failure message, so
+// throw, must always return a layout inside the caps, and must do bounded work (counted in reads of the input, not timed). The seed is in every failure message, so
 // a failing value is rebuilt by calling valueAt(SEED, index).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readLayout, WIDGETS, BUILT_IN_PROFILES, isSize } from '../src/core/index.js'
+import { readsOf } from './ops.mjs'
 
 const SEED = 0x7ac15a7e
 const RUNS = 10000
-// Generous on purpose: a call over this is a bug in readLayout, but a slow shared runner must not be one.
-const CEILING_MS = 5
+// Reads of the input one call may make. The caps (100 items in each of 20 profiles) leave the busiest of these inputs
+// near 10,200 reads; a pass that visits every item per item reads 20,000 or more in a single 100-item profile, so the
+// ceiling sits between. A count is the same on a loaded runner and a quiet one, which a clock is not.
+const READ_CEILING = 15000
 
 // mulberry32: small, fast and the same on every engine.
 function mulberry32(seed) {
@@ -103,28 +106,24 @@ function assertValid(result, maxItems = 100, maxProfiles = 20) {
 }
 
 test(`readLayout survives ${RUNS} seeded random values (seed ${SEED})`, () => {
-  let slowest = 0
+  let busiest = 0
   for (let i = 0; i < RUNS; i++) {
     const input = valueAt(SEED, i)
     for (const options of [undefined, { unknown: 'keep', device: 'phone' }]) {
       let result
-      const start = performance.now()
+      let reads
       try {
-        result = readLayout(input, options)
+        reads = readsOf(input, (counted) => {
+          result = readLayout(counted, options)
+        })
       } catch (error) {
         assert.fail(`readLayout threw for seed ${SEED} index ${i}: ${error && error.message}`)
       }
-      let took = performance.now() - start
-      // A pause (garbage collection, a busy runner) is not a slow algorithm: a call over the ceiling is timed twice
-      // more and fails only if every attempt is slow. The result is deterministic, so the repeats read the same thing.
-      for (let again = 0; again < 2 && took >= CEILING_MS; again++) {
-        const t = performance.now()
-        readLayout(input, options)
-        took = Math.min(took, performance.now() - t)
-      }
-      slowest = Math.max(slowest, took)
-      assert.ok(took < CEILING_MS, `readLayout took ${took.toFixed(2)} ms for seed ${SEED} index ${i}`)
+      busiest = Math.max(busiest, reads)
+      assert.ok(reads <= READ_CEILING, `readLayout made ${reads} reads for seed ${SEED} index ${i}`)
       try {
+        // Reading through the counting proxy must change nothing about the answer.
+        assert.deepEqual(result, readLayout(input, options))
         assertValid(result)
       } catch (error) {
         error.message = `${error.message} (seed ${SEED} index ${i})`
@@ -132,7 +131,7 @@ test(`readLayout survives ${RUNS} seeded random values (seed ${SEED})`, () => {
       }
     }
   }
-  console.log(`# fuzz seed ${SEED}: ${RUNS} values, slowest call ${slowest.toFixed(3)} ms`)
+  console.log(`# fuzz seed ${SEED}: ${RUNS} values, busiest call ${busiest} reads`)
 })
 
 test('the generator is deterministic', () => {
@@ -163,11 +162,14 @@ test('items: only the first 100 entries are read, valid or not', () => {
 
 test('items: a bare array is capped too, and a huge sparse list costs one comparison', () => {
   assert.equal(readLayout(items(130)).layout.profiles.market.length, 100)
+  const layoutOf = (market) => ({ version: 1, device: 'desktop', profiles: { market, closed: [] } })
   const huge = new Array(5e7)
-  const start = performance.now()
-  const result = readLayout({ version: 1, device: 'desktop', profiles: { market: huge, closed: [] } })
-  assert.ok(performance.now() - start < 50)
+  const result = readLayout(layoutOf(huge))
   assert.deepEqual(codes(result), ['too-many-items'])
+  // The length is compared before any entry is read, so fifty million slots cost what a thousand do.
+  const reads = readsOf(layoutOf(huge), readLayout)
+  assert.equal(reads, readsOf(layoutOf(new Array(1e3)), readLayout), 'reads grew with the list')
+  assert.ok(reads <= 300, `${reads} reads`)
 })
 
 test('profiles: 20 are read, 21 are capped with one issue, built-ins first', () => {
@@ -212,9 +214,11 @@ test('options: maxItems and maxProfiles change a direct read, and a bad value is
 test('topStrip: a million entries cost one comparison and a short read, with one issue', () => {
   const base = { version: 1, device: 'desktop', profiles: { market: [{ id: 'a', size: 'S', type: 'metric' }], closed: [] } }
   const big = Array.from({ length: 1e6 }, () => 'a')
-  const start = performance.now()
   const result = readLayout({ ...base, topStrip: big })
-  assert.ok(performance.now() - start < 50, 'a million-entry strip took too long')
+  // The strip's length is compared first, so a million entries are read no more often than a thousand.
+  const reads = readsOf({ ...base, topStrip: big }, readLayout)
+  assert.equal(reads, readsOf({ ...base, topStrip: big.slice(0, 1e3) }, readLayout), 'reads grew with the strip')
+  assert.ok(reads <= 300, `${reads} reads`)
   assert.deepEqual(result.layout.topStrip, ['a'])
   const capped = result.issues.filter((i) => i.code === 'too-many-items')
   assert.deepEqual(capped.map((i) => [i.path, i.fixed]), [['topStrip', 'dropped']])
