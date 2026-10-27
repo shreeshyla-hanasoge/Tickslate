@@ -70,7 +70,11 @@ describe('without a DOM', () => {
     assert.match(css, /var\(--ts-profit\)/)
     assert.match(css, /var\(--ts-loss\)/)
     assert.match(css, /var\(--ts-surface-2\)/)
-    assert.match(css, /\.c\.neg::after[^}]*var\(--ts-ink\)/)
+    // The corner is opt-in (RFC 0005 Decision 95): it paints --ts-loss-mark, which is transparent until a host or a palette sets it.
+    assert.match(css, /\.c\.neg::after[^}]*background: var\(--ts-loss-mark, transparent\)/)
+    assert.doesNotMatch(css, /\.c\.neg::after[^}]*var\(--ts-ink\)/)
+    // Forced colours drop the token and keep the shape, since colour is gone there.
+    assert.match(css, /forced-colors: active[\s\S]*\.c\.neg::after \{ background: Highlight; \}/)
   })
 })
 

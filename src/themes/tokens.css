@@ -30,6 +30,8 @@
   --ts-muted: #6A655B;
   --ts-profit: #0E7A4E;
   --ts-loss: #C0362C;
+  /* The corner on a loss cell in <ts-pnl-calendar>. Off by default (RFC 0005 Decision 95); set it to a colour such as var(--ts-ink) to draw it. The cvd palette and forced colours turn it on. */
+  --ts-loss-mark: transparent;
   --ts-warn: #A85A06;
   --ts-accent: #2C52C4;
   /* The chart zero line. --ts-line is too faint for a mark that carries meaning. */
@@ -211,6 +213,7 @@
   --ts-series-3: #0C7A6C;
   --ts-series-4: #0E6D8F;
   --ts-focus: var(--ts-accent);
+  --ts-loss-mark: var(--ts-ink);
 }
 @media (prefers-color-scheme: dark) {
   :where([data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] [data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]), [data-ts-palette="cvd"][data-theme="auto"]:not([data-theme="light"]), [data-ts-palette="cvd"] [data-theme="auto"]:not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
@@ -222,6 +225,7 @@
     --ts-series-3: #15D2B9;
     --ts-series-4: #18D3F0;
     --ts-focus: var(--ts-accent);
+    --ts-loss-mark: var(--ts-ink);
   }
 }
 :where(:is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] :is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]), [data-ts-palette="cvd"]:is([data-theme="dark"], .dark):not([data-theme="light"]), [data-ts-palette="cvd"] :is([data-theme="dark"], .dark):not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
@@ -233,6 +237,7 @@
   --ts-series-3: #15D2B9;
   --ts-series-4: #18D3F0;
   --ts-focus: var(--ts-accent);
+  --ts-loss-mark: var(--ts-ink);
 }
 /* red-up: profit and loss swapped, for markets where red means a rise. */
 :where([data-ts-palette="red-up"], [data-ts-palette="red-up"] [data-theme="light"]:not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="red-up"] [data-ts-palette="cvd"] *)) {

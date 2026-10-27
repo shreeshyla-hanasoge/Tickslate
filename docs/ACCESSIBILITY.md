@@ -101,6 +101,12 @@ list wins.
     marks differ in shape (a circle and a diamond). Decorative glyphs (▲, ▼,
     the live dot, tick marks) are `aria-hidden`; range buttons add a visually
     hidden expansion, so `1W` is announced as "1W, 1 week".
+    The loss corner of `<ts-pnl-calendar>` is an opt-in shape cue, not a
+    default (RFC 0005 Decision 95): a default dashboard tells a loss by colour
+    and by the signed figure in every cell's accessible name and in the summary.
+    The `cvd` palette and forced colours turn the corner on, so it is present
+    where colour alone is least reliable, and a host that wants it everywhere
+    sets `--ts-loss-mark`.
 16. **Tokens only.** Widget CSS uses `--ts-*` variables and no colour values,
     so a host theme or a palette reaches every pixel. The one exception is
     `@media (forced-colors: active)`, where `Highlight`, `HighlightText`,

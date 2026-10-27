@@ -160,7 +160,7 @@ any ancestor, including one above a grid that sets its own `data-theme`,
 
 | `data-ts-palette` | Effect |
 |---|---|
-| `cvd` | Profit becomes blue and loss orange (`#1D4ED8` and `#C2410C` in light, `#60A5FA` and `#FB923C` in dark). The accent, `--ts-focus` and the first series move from blue to purple, and series 2, 3 and 4 are re-chosen (terracotta or amber, teal, and a blue-green or cyan) so all six series colours stay at least 30 ΔE apart and the first two stay at least 15 ΔE from profit and loss under deuteranopia and protanopia. |
+| `cvd` | Profit becomes blue and loss orange (`#1D4ED8` and `#C2410C` in light, `#60A5FA` and `#FB923C` in dark). The accent, `--ts-focus` and the first series move from blue to purple, and series 2, 3 and 4 are re-chosen (terracotta or amber, teal, and a blue-green or cyan) so all six series colours stay at least 30 ΔE apart and the first two stay at least 15 ΔE from profit and loss under deuteranopia and protanopia. It also turns on the loss corner of `<ts-pnl-calendar>` (`--ts-loss-mark: var(--ts-ink)`), the shape cue that is off in the default theme. |
 | `red-up` | Swaps the values of `--ts-profit` and `--ts-loss`, for markets where red means a rise. Nothing else changes. |
 
 - **One value per element.** There is no combined `cvd red-up`.
@@ -216,6 +216,7 @@ Graphite does not override it. The values are checked against `tokens.css` by
 | `--ts-muted` | Secondary text | `#6A655B` | `#9CA3AF` | Labels, captions, axis text, "synced" meta, footers |
 | `--ts-profit` | Gains | `#0E7A4E` | `#34D399` | Positive figures, the live dot, rising changes, profit side of curves |
 | `--ts-loss` | Losses | `#C0362C` | `#FB7185` | Negative figures, falling changes, loss side of curves, drawdown shading |
+| `--ts-loss-mark` | The corner mark on a loss day in `<ts-pnl-calendar>`; a colour, or `transparent` for none | `transparent` | same | `<ts-pnl-calendar>` only. Off by default, so a loss shows as colour alone (every cell's name still carries the signed figure). Turn it on with `--ts-loss-mark: var(--ts-ink)` on the grid, a widget or `:root`; the `cvd` palette sets it to `--ts-ink` for you, and forced colours always draw it in `Highlight` (RFC 0005 Decision 95). Set it beside the theme you want it to follow: `var(--ts-ink)` is read where you declare it |
 | `--ts-warn` | Warnings | `#A85A06` | `#FBBF24` | The warning glyph in the error view |
 | `--ts-accent` | Brand and interactive accent | `#2C52C4` | `#818CF8` | Progress fills, the target bar, the pressed range button underline, series 1; the default for focus rings |
 | `--ts-axis` | Chart zero lines and axis rules; a mark that carries meaning, so firmer than --ts-line | `#948C7C` | `#6B7280` | The dashed zero line in `<ts-chart>`, `<ts-today-pnl>` and `<ts-equity-curve>` |

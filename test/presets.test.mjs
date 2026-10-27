@@ -19,8 +19,8 @@ const TYPE_SCALE = ['2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', '
 // Typography a preset may tune but need not restate: the figure width follows the face a preset picks (a monospace
 // --ts-font-num is wider than .62em), like --ts-label-size (RFC 0004 §10.3).
 const OPTIONAL = ['--ts-num-width']
-// The host's, not a theme's: grid metrics, the type scale and motion.
-const NOT_THEMED = ['--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-strip-top', '--ts-motion', '--ts-ease', ...TYPE_SCALE]
+// The host's, not a theme's: grid metrics, the type scale and motion, and the calendar's loss corner, which is off until a host or the cvd palette turns it on (RFC 0005 Decision 95), so no preset sets it.
+const NOT_THEMED = ['--ts-loss-mark', '--ts-row', '--ts-gap', '--ts-grid-max-width', '--ts-row-compact', '--ts-gap-compact', '--ts-strip-top', '--ts-motion', '--ts-ease', ...TYPE_SCALE]
 const GUARD = ':not([data-ts-palette])'
 // Padding is owned by density (RFC 0004 §2.1): the preset's --ts-pad sits in a block that yields to compact on the element,
 // on an ancestor, or on a <ts-grid density="compact">, whose :host rule cannot outrank a page rule.
