@@ -31,7 +31,7 @@ the next one.
 Run from the repository root, on the merged branch, with a clean tree.
 
 ```bash
-# 1. Test, build everything, check the package and the size budgets.
+# 1. Test, lint, build everything, check the package and the size budgets.
 npm run release
 
 # 2. Real-browser tests on every project in playwright.config.mjs: chromium,
