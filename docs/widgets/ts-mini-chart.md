@@ -160,6 +160,8 @@ animation stops under `prefers-reduced-motion`, and follows that setting if it c
 
 The widget does not change its own bars: replace `bars` and `timeframe` in `data`. See [Events](../reference/events.md).
 
+`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+
 ## Parts
 
 | Part | Element |

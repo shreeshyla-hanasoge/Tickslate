@@ -166,6 +166,8 @@ result. The buttons are named for what they exit: "Exit ETA 24500 CE, Long 50" (
 positions in one instrument differ by side and quantity) and, for Exit all, "Exit all
 3 positions". See [Events](../reference/events.md).
 
+`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+
 ## Parts
 
 | Part | Element |

@@ -135,6 +135,28 @@ export function setNodes(host, specs) {
   host.replaceChildren(out)
 }
 
+/**
+ * Replaces `host`'s children with one element described as in `setNodes`, and moves the nodes of `from` (the host
+ * itself, or an element inside it) into that element. The words are not rebuilt from text, so a label that holds
+ * two forms, one hidden by CSS, keeps both. With nothing to move it holds `fallback`.
+ */
+export function wrapNodes(host, spec, from, fallback) {
+  if (!live()) {
+    setNodes(host, [{ ...spec, text: from.textContent || fallback }])
+    return
+  }
+  const kids = [...from.childNodes]
+  setNodes(host, [{ ...spec, text: kids.length ? '' : fallback }])
+  host.firstChild.append(...kids)
+}
+
+/** Puts the nodes of `link`, an element inside `host`, in place of everything in `host`; with none, `fallback` as text. */
+export function unwrapNodes(host, link, fallback) {
+  if (!live()) setText(host, link.textContent || fallback)
+  else if (link.childNodes.length) host.replaceChildren(...link.childNodes)
+  else host.textContent = fallback
+}
+
 /** Replaces `host`'s children with plain text. */
 export function setText(host, text) {
   if (!live()) host.innerHTML = escapeHtml(text)

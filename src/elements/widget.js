@@ -176,7 +176,7 @@
 import { WIDGETS, EN, createFormatter, currentConfig, onConfigure, snapSize, isSize, SIZES, SIZE_NAMES, toTime, toNumber } from '../core/index.js'
 import { DEV, warnOnce, checkShape, shapeMessage, parseErrorParts } from './dev.js'
 import { ensureTokens } from './default-tokens.js'
-import { escapeHtml, markupAllowed, mountShadow, setHTML, setNodes, setText } from './html.js'
+import { escapeHtml, markupAllowed, mountShadow, setHTML, setNodes, setText, unwrapNodes, wrapNodes } from './html.js'
 import { translator, classDefaultsOf } from './messages-cache.js'
 import { subscribe, shareable } from './ticker.js'
 
@@ -1388,30 +1388,19 @@ export class TsWidget extends Base {
 
     // The label's own nodes move into the link instead of being rebuilt from their text: a label that holds two forms (the
     // session clock's long and short title, one hidden by CSS) must keep both spans, or the link's name reads "Market openOpen".
-    const relink = (spec) => {
-      const from = cur || heading
-      const kids = from.childNodes ? [...from.childNodes] : []
-      const text = from.textContent || label
-      setNodes(heading, [{ ...spec, text: '' }])
-      const link = heading.querySelector('[part~="link"]')
-      if (kids.length && link && link.append) link.append(...kids)
-      else if (link) link.textContent = text
-    }
-
     if (href !== null) {
       if (!cur || (cur.localName !== 'a' && cur.tagName !== 'A')) {
         // Built, not parsed: the label and href are data, and only constants may be markup.
-        relink({ tag: 'a', attrs: { part: 'link', href } })
+        wrapNodes(heading, { tag: 'a', attrs: { part: 'link', href } }, cur || heading, label)
       } else if (cur.getAttribute('href') !== href) {
         cur.setAttribute('href', href)
       }
     } else if (act) {
       if (!cur || (cur.localName !== 'button' && cur.tagName !== 'BUTTON')) {
-        relink({ tag: 'button', attrs: { type: 'button', part: 'link' } })
+        wrapNodes(heading, { tag: 'button', attrs: { type: 'button', part: 'link' } }, cur || heading, label)
       }
     } else if (cur) {
-      if (cur.childNodes && cur.childNodes.length && heading.replaceChildren) heading.replaceChildren(...cur.childNodes)
-      else setText(heading, cur.textContent || label)
+      unwrapNodes(heading, cur, label)
     }
   }
 

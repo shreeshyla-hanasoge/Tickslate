@@ -221,6 +221,8 @@ January, Profit February. A bar's whole rectangle is its target, at least 24px
 each way; on a crowded axis a click goes to the nearest bar. See
 [Events](../reference/events.md).
 
+`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+
 ## Parts
 
 | Part | Element |

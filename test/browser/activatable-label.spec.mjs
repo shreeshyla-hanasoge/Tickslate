@@ -5,6 +5,7 @@
 // they set a case and a tracking the button's own sheet does not, so a missing rule fails on every engine.
 import { test, expect } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
+import { gridDrawn } from './drawn.mjs'
 
 const SHOTS = process.env.TS_SHOTS
 const PRESETS = ['terminal', 'paper']
@@ -33,12 +34,9 @@ async function pairUp(page, width) {
     }
     await window.__fx.nextFrame()
   }, width)
-  // A tile draws on a later task, and slower engines are not done after two frames: wait for every twin's button and every label.
-  await page.waitForFunction(() => {
-    const pairs = [...document.querySelectorAll('.pair')]
-    return pairs.length > 0 && pairs.every((pair) => [...pair.children].every((el) => el.shadowRoot && el.shadowRoot.querySelector('[part~="label"]')) && pair.children[1].shadowRoot.querySelector('button[part~="link"]'))
-  })
-  await page.evaluate(() => window.__fx.nextFrame())
+  // Every tile, the twins included, has drawn: named and no longer busy (the condition the other specs wait on), then the twin's button.
+  await gridDrawn(page, '.pair > *')
+  await page.waitForFunction(() => [...document.querySelectorAll('.pair')].every((pair) => pair.children[1].shadowRoot.querySelector('button[part~="link"]')))
 }
 
 // What a reader can read: text nodes not under display:none, as the accessibility tree builds a name.
@@ -137,10 +135,10 @@ test('forced colours keep the label tokens, the width and the focus ring', async
   await page.emulateMedia({ forcedColors: 'active' })
   await page.goto('/test/browser/fixtures/widgets.html?preset=terminal&theme=dark')
   await page.waitForFunction(() => window.__ready === true)
-  await pairUp(page, 351)
+  await pairUp(page, 170)
   const all = await measure(page)
   for (const [key, { plain, act }] of Object.entries(all)) {
-    expect([key, act.textTransform, act.letterSpacing]).toEqual([key, plain.textTransform, plain.letterSpacing])
+    expect([key, act.textTransform, act.letterSpacing, act.cut]).toEqual([key, plain.textTransform, plain.letterSpacing, plain.cut])
     expect(Math.abs(act.width - plain.width)).toBeLessThanOrEqual(0.5)
   }
   await page.locator('.pair[data-pair^="metric:"]').first().locator('ts-metric[activatable]').evaluate((el) => el.shadowRoot.querySelector('button[part~="link"]').focus())
