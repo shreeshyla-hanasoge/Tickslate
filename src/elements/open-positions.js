@@ -137,7 +137,7 @@ ${header({ dot: true, meta: true })}
   <span class="rowb" data-k="marginBox" hidden><span class="lb" data-k="marginLabel"></span><span class="n sm" data-k="margin"></span></span>
   <button type="button" class="btn exitall" data-k="exitAll" hidden></button>
 </div>
-<div class="scroll" data-k="scroll" role="group" tabindex="0">
+<div class="scroll lift" data-k="scroll" role="group" tabindex="0">
 <table part="table" data-k="table">
 <caption class="visually-hidden" data-k="caption"></caption>
 <thead><tr>${head('h0')}${variant === 'L' ? head('h1', ' class="sp"') : ''}${head('h2')}${head('h3')}${head('h4', ' hidden')}</tr></thead>

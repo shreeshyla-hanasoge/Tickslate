@@ -173,6 +173,19 @@ and, in development builds, a console warning with the position. See
 <ts-metric label="Signups" data='{"value": 1204, "previous": 1075}'></ts-metric>
 ```
 
+## Opening a tile
+
+| Attribute | What the tile does |
+|---|---|
+| `href="/orders"` | Its label is a link, and a click on the header or the empty space follows it |
+| `activatable` | Its label is a button, and a click on the header or the empty space fires `ts-action` with `{ action: 'open', id }` (`id` is the tile's `item`) |
+
+A click on data never opens a tile: a chart scrubs, a calendar cell takes
+focus, a list scrolls, a sort button sorts and a selectable row or point fires
+`select`. The keyboard reaches the label as one Tab stop, and Enter opens it.
+Route `open` to a page other than the one the tile is on. See
+[docs/reference/events.md](docs/reference/events.md).
+
 ## Saving layouts
 
 ```js

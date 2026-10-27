@@ -225,7 +225,7 @@ export function tableModel(data, variant, ctx, o = {}) {
 // leaves out so a ticking table does not make it read again.
 const TEMPLATE = `
 ${header({ dot: true, meta: true })}
-<div class="scroll" data-k="scroll" role="group" tabindex="0">
+<div class="scroll lift" data-k="scroll" role="group" tabindex="0">
 <table part="table" data-k="table">
 <caption class="visually-hidden" data-k="caption"></caption>
 <thead data-k="thead"><tr data-k="head"></tr></thead>

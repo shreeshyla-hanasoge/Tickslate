@@ -223,22 +223,22 @@ const NONE = '<div class="none mut" data-k="none" hidden></div>'
 
 const SHARE = `${HEAD}
 <span class="shr" data-k="share"></span>
-<div class="track" part="bar" role="img" data-k="bar"><span class="fill" data-k="fill"></span></div>
+<div class="track lift" part="bar" role="img" data-k="bar"><span class="fill" data-k="fill"></span></div>
 <span class="sm mut foot" data-k="foot"></span>
 ${NONE}`
 
 // The legend scrolls inside the tile rather than growing it.
-const LEGEND = (cls) => `<div class="scroll" data-k="scroll" role="group" tabindex="0"><ul class="lg ${cls}" part="legend" data-k="legend"></ul></div>`
+const LEGEND = (cls) => `<div class="scroll lift" data-k="scroll" role="group" tabindex="0"><ul class="lg ${cls}" part="legend" data-k="legend"></ul></div>`
 // The note about left-out values sits above the legend, so it is never the line that scrolls out of view.
 const NOTE = '<p class="sm mut note" data-k="note" hidden></p>'
-const BAR = '<div class="bar" part="bar" role="img" data-k="bar"></div>'
+const BAR = '<div class="bar lift" part="bar" role="img" data-k="bar"></div>'
 
 const TEMPLATES = {
   S: SHARE,
   Wide: `${HEAD}${NONE}${BAR}${NOTE}${LEGEND('flow')}`,
   Tall: `${HEAD}${NONE}${BAR}${NOTE}${LEGEND('stack')}`,
   M: `${HEAD}${NONE}${NOTE}
-<div class="dn"><div class="donut"><svg viewBox="0 0 100 100" part="chart" role="img" focusable="false" data-k="chart"><g data-k="arcs"></g></svg><span class="mid n sm" data-k="mid"></span></div>${LEGEND('stack round')}</div>`,
+<div class="dn"><div class="donut"><svg class="lift" viewBox="0 0 100 100" part="chart" role="img" focusable="false" data-k="chart"><g data-k="arcs"></g></svg><span class="mid n sm" data-k="mid"></span></div>${LEGEND('stack round')}</div>`,
 }
 
 const SKELETONS = {

@@ -35,7 +35,12 @@
  *     of `variant`. Start it with `header({ dot, meta, … })`: the one header
  *     row, whose label is the tile's heading and whose parts are `header` and
  *     `label`. Give the headline figure `part="value"` and the drawing box
- *     `part="chart"`.
+ *     `part="chart"`. Put `class="lift"` on each data surface: a drawn chart
+ *     a reader points at, a scrolling list, a grid of cells, anything with
+ *     pointer or keyboard behaviour of its own. On an `href` or `activatable`
+ *     tile it sits above the stretched link, so a click there scrubs,
+ *     scrolls, selects or does nothing, and only the header and the empty
+ *     space open the tile (RFC 0005 §1).
  *
  *   static viewModel(data, variant, ctx) → object
  *     Pure: data in, plain display strings and numbers out. `ctx` is
@@ -429,6 +434,11 @@ export function localeDirection(tag) {
 // size where the room shrinks in rem) there is no room for a label and its meta ("just now") together, and the meta is dropped
 // whole rather than clipped: the dot and the tile's name still say live or stale. `.ell` on the label supplies the overflow,
 // nowrap and ellipsis.
+// A click on data never opens an href or activatable tile (RFC 0005 §1): each data surface carries .lift and sits above the
+// stretched link's overlay, level with the tile's own buttons; a tile with neither attribute keeps its stacking untouched.
+// What is left to open the tile is the strip above the first lifted surface: the padding, the header and the tile's 10px
+// gap. On a touch screen that strip stays a 44px target (ACCESSIBILITY item 8), which compact padding (12px) would leave
+// 3px short, so the header of such a tile grows by the difference.
 export const SHARED_CSS = `
 :host { display: block; }
 :host([hidden]) { display: none; }
@@ -500,6 +510,8 @@ button[part~="link"] {
 [part~="link"]:focus-visible::after { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: -2px; border-radius: var(--ts-radius); }
 /* Plain slotted content stays under the overlay, so a click on it opens the tile. Only controls, and whatever the host puts in the actions slot, are lifted above it to take their own clicks. */
 ::slotted(:is(a, button, input, select, textarea, summary, [tabindex], [role="button"], [role="link"])), ::slotted([slot="actions"]) { position: relative; z-index: 2; }
+:host([activatable]) .lift, :host([href]) .lift { position: relative; z-index: 2; }
+@media (pointer: coarse) { :host([activatable]) .hd, :host([href]) .hd { min-block-size: max(18px, calc(34px - var(--ts-pad, 18px))); } }
 /* Touch screens: the 44px minimum target the RFC asks for at 2 columns. */
 @media (pointer: coarse) { .btn { min-height: 44px; min-width: 44px; } }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }

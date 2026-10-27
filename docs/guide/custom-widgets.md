@@ -94,6 +94,15 @@ const TEMPLATES = {
   [Your own widget](your-own-widget.md#shared-classes)). They are built from the
   `--ts-*` tokens, so your widget follows the host's theme with no colour of its
   own. `.big` and `.xbig` shrink to fit a narrow tile.
+- **Mark your data surfaces with `lift`.** On an `href` or `activatable`
+  tile the label's link is stretched over the whole tile, so a click anywhere
+  opens it. Put `class="lift"` on each part a reader points at or works with:
+  a drawn chart, a scrolling list, a grid of cells, anything with pointer or
+  keyboard behaviour of its own (`<div class="spark lift">` for the sparkline
+  above). The base lifts it above the link on those tiles only, so a click
+  there scrolls, scrubs or does nothing, and the header and empty space still
+  open the tile. A `.btn` and slotted controls are lifted already; the
+  headline figure stays under the link, as the built-in widgets' do.
 - **Add only the CSS you need**, again with tokens only:
 
 ```js
@@ -645,6 +654,7 @@ page that imports `tickslate/elements`.
 - [ ] Gains and losses carry a sign, an `aria-hidden` arrow and a tone, decided from the number and not the text
 - [ ] No English in the template: every word is a message key with a default of your own
 - [ ] `update` sets text and attributes, and never rebuilds markup
+- [ ] Every data surface (a chart, a scrolling list, a grid of cells) carries `class="lift"`, so a click on it never opens an `activatable` tile
 - [ ] `static dataShape` and a `widget.<type>.empty` message
 - [ ] No attribute or property named like an `HTMLElement` member (`title`, `hidden`, `scroll`…)
 - [ ] A prefix of your own on the tag and the type, registered with `defineWidget`, guarded against a second evaluation

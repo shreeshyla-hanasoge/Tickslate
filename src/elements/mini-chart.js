@@ -565,7 +565,7 @@ function chartBlock(i, xl) {
   return `<div class="mc">
 <div class="row mh"><span class="n ins ell" data-k="ins${i}"></span><span class="n sm mut" data-k="tf${i}"></span><span class="f1"></span><span class="n" data-k="last${i}"></span>${figure('n sm', `chg${i}`)}</div>
 ${xl ? `<div class="sm mut ell" data-k="note${i}"></div>` : ''}
-<div class="plot" part="chart" role="img" data-k="plot${i}" aria-label="">
+<div class="plot lift" part="chart" role="img" data-k="plot${i}" aria-label="">
 <div class="cv" data-k="cv${i}" aria-hidden="true" tabindex="-1"></div>
 <span class="sk grow" data-k="load${i}" hidden></span>
 <div class="none sm mut" data-k="none${i}" hidden></div>

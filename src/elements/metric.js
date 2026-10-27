@@ -214,7 +214,7 @@ export function metricModel(data, variant, ctx) {
 const delta = `<span class="delta sec" data-k="deltabox" hidden><span class="n" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span class="nv" data-k="delta"></span></span><span class="mut ell" data-k="compare"></span></span>`
 const head = header({ dot: true, meta: true })
 const spark = (cls) => `
-<div class="${cls}" part="chart"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="${cls} lift" part="chart"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>`
 

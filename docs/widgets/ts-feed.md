@@ -97,7 +97,7 @@ button fires:
 { action: 'retry' }
 ```
 
-`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on a row, on empty space or anywhere else on it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on. Nothing in this tile tells the host
+`open` fires too when the tile is `activatable`. The header and the empty space open it, and an `href` tile follows its link from the same places; the scrolling list scrolls under the pointer and an entry does nothing, and the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on. Nothing in this tile tells the host
 anything else, so there is no action to opt in to. See [Events](../reference/events.md).
 
 ## Updates keep your place

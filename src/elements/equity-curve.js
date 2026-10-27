@@ -260,7 +260,7 @@ const k = (name) => `[data-k="${name}"]`
 function chartMarkup(v) {
   const [w, h] = DIMS[v]
   const xl = v === 'XL'
-  return `<div class="plot sc" part="chart" data-k="plot">
+  return `<div class="plot sc lift" part="chart" data-k="plot">
 <svg data-k="svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="">
 <defs><clipPath id="cu"><rect data-k="clipUp" x="0" y="0" width="${w}" height="0"></rect></clipPath><clipPath id="cd"><rect data-k="clipDn" x="0" y="0" width="${w}" height="0"></rect></clipPath></defs>
 ${xl ? '<path class="dd" data-k="band" d=""></path>' : ''}

@@ -107,7 +107,7 @@ button fires:
 
 See [Events](../reference/events.md).
 
-`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label: it has no data surface, so a click on any part of it, the progress track included, fires `open` (or follows an `href`); only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
 
 ## Parts
 

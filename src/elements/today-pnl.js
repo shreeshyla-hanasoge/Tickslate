@@ -296,7 +296,7 @@ ${figure('big nv', 'net', 'value')}
   M: `
 ${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"></span>' })}
 <div class="rowb base">${figure('xbig nv', 'net', 'value')}<span class="sm mut" data-k="summary"></span></div>
-<div class="chart sc" part="chart" data-k="plot">
+<div class="chart sc lift" part="chart" data-k="plot">
   <svg viewBox="0 0 ${CHART_BOX.width} ${CHART_BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">
     <defs>
       <clipPath id="up"><rect x="0" y="0" width="${CHART_BOX.width}" data-k="clip-up"></rect></clipPath>

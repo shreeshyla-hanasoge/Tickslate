@@ -370,7 +370,7 @@ export class TsPnlCalendar extends TsWidget {
 <div class="body ${v.toLowerCase()}">
 <div class="sum">${SUMMARY[v]}</div>
 <div class="calwrap">
-<div class="cal" data-k="grid" role="grid" aria-label="" aria-describedby="summary"></div>
+<div class="cal lift" data-k="grid" role="grid" aria-label="" aria-describedby="summary"></div>
 <span class="visually-hidden" id="summary" data-k="summary"></span>
 <div class="none" data-k="none" hidden></div>
 </div>

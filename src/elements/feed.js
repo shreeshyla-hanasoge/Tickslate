@@ -79,7 +79,7 @@ export function feedModel(data, variant, ctx) {
 
 const HEAD = header({ dot: true, meta: true })
 const list = (cls) => `${HEAD}
-<div class="scroll" data-k="scroll" role="group" tabindex="0">
+<div class="scroll lift" data-k="scroll" role="group" tabindex="0">
 <ul class="fl ${cls}" part="list" data-k="list"></ul>
 <p class="sm mut more" data-k="more" hidden></p>
 <div class="none mut" data-k="none" hidden></div>

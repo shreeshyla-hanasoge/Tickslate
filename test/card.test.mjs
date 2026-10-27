@@ -281,7 +281,8 @@ describe('scrollable', () => {
     const card = make({ attrs: { label: 'Notes', scrollable: '' } })
     await tick()
     const body = card.shadowRoot.section.querySelector('[data-k="body"]')
-    assert.equal(body.getAttribute('class'), 'body scroll')
+    // A scrolling body is a data surface, lifted above an activatable tile's link (RFC 0005 §1.2).
+    assert.equal(body.getAttribute('class'), 'body scroll lift')
     assert.equal(body.getAttribute('tabindex'), '0')
     assert.equal(body.getAttribute('role'), 'group')
     assert.equal(body.getAttribute('aria-label'), 'Notes')
