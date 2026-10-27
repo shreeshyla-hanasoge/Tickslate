@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | **Approved** (27 Oct 2026), with every recommended option of the Decisions section. The 0.4.0 stories are `activatable-target`, `mini-chart-actions`, `spacing-signal`, `dashboard-labels`, `size-ceilings`, `versioning-rows` and `release-lint`; `link-label-style` and `wall-clock-tests` shipped in 0.3.1. |
+| Status | **Approved** (27 Oct 2026), with every recommended option of the Decisions section. The 0.4.0 stories are `activatable-target`, `mini-chart-actions`, `spacing-signal`, `dashboard-labels`, `size-ceilings`, `versioning-rows`, `release-lint` and `calendar-loss-mark` (§15, added the same day); `link-label-style` and `wall-clock-tests` shipped in 0.3.1. |
 | Written | 27 Oct 2026 |
-| Amends | [RFC 0004](0004-p2-surfaces.md) §2.2, §2.4, §5.3, §6.2, §7, §9.1, §10.4 and §12, and Decision 68; [RFC 0003](0003-p1-surfaces.md) §5.1, §7 and §25; [RFC 0002](0002-integration-and-ux.md) §6; and `docs/VERSIONING.md` (§7) |
-| Covers | The click target of an activatable tile (issue #68); opt-in `instrument` and `expand` actions (issue #69); a text-spacing signal tiles can key on; a `labels` option on `createDashboard`; the 0.3.0 budget rows; the font default shipped in 0.3.0; a review of the four Breaking lines of 0.3.0; the sources the remaining market presets need; and three process rules |
-| Sources | RFC 0001 to RFC 0004, [docs/VERSIONING.md](../VERSIONING.md), [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md), [docs/WORKFLOW.md](../WORKFLOW.md), the 0.3.0 section of [CHANGELOG.md](../../CHANGELOG.md), `src/elements/widget.js`, `src/elements/mini-chart.js`, `src/elements/dashboard.js`, `src/core/calendar.js`, `scripts/check-size.mjs`, `test/browser/density.spec.mjs`, and GitHub issues #68 and #69. It takes no new measurements. |
+| Amends | [RFC 0004](0004-p2-surfaces.md) §2.2, §2.4, §5.3, §6.2, §7, §9.1, §10.4 and §12, and Decision 68; [RFC 0003](0003-p1-surfaces.md) §5.1, §7, §21.1 and §25; [RFC 0002](0002-integration-and-ux.md) §6; and `docs/VERSIONING.md` (§7) |
+| Covers | The click target of an activatable tile (issue #68); opt-in `instrument` and `expand` actions (issue #69); a text-spacing signal tiles can key on; a `labels` option on `createDashboard`; the 0.3.0 budget rows; the font default shipped in 0.3.0; a review of the four Breaking lines of 0.3.0; the sources the remaining market presets need; three process rules; and the calendar's loss corner, off by default and opt-in (§15, Decision 95) |
+| Sources | RFC 0001 to RFC 0004, [docs/VERSIONING.md](../VERSIONING.md), [docs/ACCESSIBILITY.md](../ACCESSIBILITY.md), [docs/WORKFLOW.md](../WORKFLOW.md), the 0.3.0 section of [CHANGELOG.md](../../CHANGELOG.md), `src/elements/widget.js`, `src/elements/mini-chart.js`, `src/elements/dashboard.js`, `src/core/calendar.js`, `scripts/check-size.mjs`, `test/browser/density.spec.mjs`, `src/elements/pnl-calendar.js` (§15), and GitHub issues #68 and #69. It takes no new measurements. |
 | Approval | The maintainer approved it in chat ("approve RFC 0005") on 27 Oct 2026. §15 and Decision 95 were added the same day, after a separate question to the maintainer, and amend RFC 0003 §21.1. |
 
 RFC 0001 to RFC 0004 stay the contract for everything this RFC doesn't
@@ -69,6 +69,7 @@ the wave, and asked for approval once.
 
 | Story | Must merge first | Why |
 |---|---|---|
+| `calendar-loss-mark` | Nothing | `pnl-calendar.js`, `tokens.css` and `default-tokens.js`; it edits the calendar's `::after` rule and the forced-colours block, not the tier rules `spacing-signal` owns |
 | `link-label-style` | Nothing | One rule in `widget.js`; shipped in 0.3.1 (PR #70, as `activatable-label`) |
 | `activatable-target` | `link-label-style` | Both edit the stretched-link rules in `widget.js` |
 | `mini-chart-actions` | `activatable-target` | Both edit `widget.js` (the shared header and the lifted surfaces); the instrument picker must sit above the overlay |
@@ -85,6 +86,7 @@ the wave, and asked for approval once.
 | File | Stories, in build order | What each adds |
 |---|---|---|
 | `src/elements/widget.js`, `src/elements/widget.d.ts` | `link-label-style`, `activatable-target`, `mini-chart-actions`, `spacing-signal` | The label tokens on the link; the lifted surfaces; the expand button and its action; the `data-ts-spacing` host rule |
+| `src/elements/pnl-calendar.js`, `src/themes/tokens.css`, `src/elements/default-tokens.js` | `spacing-signal` (tier rules), `calendar-loss-mark` | The calendar's tier rules; the loss corner token `--ts-loss-mark`, its `::after` rule and the `cvd` setters |
 | `src/core/messages.js` and the `Messages` interface | Any order: each story appends one contiguous block under its own `// ── <family> ──` comment | `action.expand`, `miniChart.instrument`, `miniChart.instrumentOf` |
 | `src/elements/index.d.ts` | `mini-chart-actions`, then `dashboard-labels` | `TsExpandAction` in `TsCommonAction`; `DashboardOptions.labels` |
 | `test/api-surface.snapshot.json` | Each story that adds a public name, by `npm run api:update` | Its own names |
@@ -942,7 +944,7 @@ For the maintainer. None blocks a section unless the section says so.
 
 *Implemented by: calendar-loss-mark. Added 27 Oct 2026, after the RFC's approval.*
 
-**Status.** Accepted (27 Oct 2026). Asked whether the white corner on
+**Status.** Accepted (27 Oct 2026). Asked whether the ink-coloured corner on
 `<ts-pnl-calendar>` loss cells should stay on by default, the maintainer chose
 "Off by default, opt-in" after being told it is the non-colour cue that
 WCAG 1.4.1 and the accessibility rule (rule 15, "Colour is never the only
@@ -958,8 +960,12 @@ signal") ask of a loss.
 
 - **One token, a colour.** `--ts-loss-mark`. The calendar's `.c.neg::after`
   paints `background: var(--ts-loss-mark, transparent)`. A host opts in with
-  `--ts-loss-mark: var(--ts-ink)` (or any colour) on `:root`, the grid or the
-  widget. Both `tokens.css` and `default-tokens.js` carry the default, and
+  `--ts-loss-mark: currentColor` (or any colour) on `:root`, the grid or the
+  widget. The rule gives the pseudo-element `color: var(--ts-ink)`, so
+  `currentColor` resolves the ink at the cell, in every theme island, preset and
+  palette. `var(--ts-ink)` is read where it is declared, so it is only right
+  when written on the calendar itself, not on `:root` or a wrapper above a
+  themed island; `CanvasText` is black in a dark theme and is not advised. Both `tokens.css` and `default-tokens.js` carry the default, and
   their sync test enforces it.
 - **The colour-vision palette turns it on.** `data-ts-palette="cvd"` sets
   `--ts-loss-mark: var(--ts-ink)` in its light, dark and auto blocks, because
@@ -992,7 +998,7 @@ longer carries it by default. The docs say so (`docs/widgets/ts-pnl-calendar.md`
 
 **Compatibility.** A look change for every existing host, under *Changed* in the
 changelog and not *Breaking*: no attribute, event, name or data changes. A host
-that wants the 0.3 look adds `--ts-loss-mark: var(--ts-ink)`.
+that wants the 0.3 look adds `ts-pnl-calendar { --ts-loss-mark: currentColor }`.
 
 **What the story must show.** Default: the `::after` has a transparent
 background. Opt-in: it has the ink colour. `cvd`: it has the palette's ink.

@@ -148,6 +148,22 @@ test.describe('the grid', () => {
     })
   }
 
+  // currentColor resolves at the cell, so a rule written once on :root draws the ink of whichever theme island the calendar is in.
+  for (const [root, island] of [['light', 'dark'], ['dark', 'light']]) {
+    test(`--ts-loss-mark: currentColor on a ${root} root draws the ink of a ${island} island inside it`, async ({ page }) => {
+      await open(page, `size=M&theme=${root}`)
+      const rootInk = (await corner(page)).ink
+      await page.evaluate((island) => {
+        document.documentElement.style.setProperty('--ts-loss-mark', 'currentColor')
+        document.getElementById('wrap').setAttribute('data-theme', island)
+      }, island)
+      const marks = await corner(page)
+      expect(marks.ink).not.toBe(rootInk)
+      expect(marks.loss.bg).toBe(marks.ink)
+      expect(marks.loss.w).toBeGreaterThan(2)
+    })
+  }
+
   test('names every cell and the summary the same with the corner off, on by token and on by palette', async ({ page }) => {
     await open(page, 'size=M&locale=en-GB')
     const off = await names(page)

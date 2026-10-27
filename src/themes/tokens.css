@@ -30,7 +30,7 @@
   --ts-muted: #6A655B;
   --ts-profit: #0E7A4E;
   --ts-loss: #C0362C;
-  /* The corner on a loss cell in <ts-pnl-calendar>. Off by default (RFC 0005 Decision 95); set it to a colour such as var(--ts-ink) to draw it. The cvd palette and forced colours turn it on. */
+  /* The corner on a loss cell in <ts-pnl-calendar>. Off by default (RFC 0005 Decision 95); set it to currentColor (the ink where the calendar sits) or any colour to draw it. The cvd palette and forced colours turn it on. */
   --ts-loss-mark: transparent;
   --ts-warn: #A85A06;
   --ts-accent: #2C52C4;

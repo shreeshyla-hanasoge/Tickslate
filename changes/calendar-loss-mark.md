@@ -1,6 +1,10 @@
+### Added
+
+- `--ts-loss-mark`: the colour of the corner on a loss day in `<ts-pnl-calendar>`, `transparent` by default. For example `ts-pnl-calendar { --ts-loss-mark: currentColor; }` draws it in the widget's ink in any theme.
+
 ### Changed
 
-- `<ts-pnl-calendar>`: the corner mark on a loss day is now off by default. Turn it on with the new `--ts-loss-mark` token, for example `--ts-loss-mark: var(--ts-ink)`; the `cvd` colour-vision palette turns it on for you, and forced colours always show it. Every day's name and the summary still carry the signed figure.
+- `<ts-pnl-calendar>`: the corner mark on a loss day is now off by default. Turn it on with the new `--ts-loss-mark` token, for example `--ts-loss-mark: currentColor`; the `cvd` colour-vision palette turns it on for you, and forced colours always show it. Every day's name and the summary still carry the signed figure.
 
 ### Internal
 
