@@ -37,11 +37,11 @@ Without a bundler, load it from jsDelivr. Pin an exact version so a release
 can never change your page.
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.3.0/elements.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.3.1/elements.js"></script>
 ```
 
 To use a named export from a page script, import it from the same URL:
-`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.3.0/elements.js'`.
+`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.3.1/elements.js'`.
 
 Pay only for the widgets you use: each one has its own entry, which registers
 just that tag.
@@ -62,7 +62,7 @@ Or, with no build step at all, one script tag loads the core and every element
 and sets `window.Tickslate`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/tickslate@0.3.0/cdn/tickslate.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tickslate@0.3.1/cdn/tickslate.iife.js"></script>
 ```
 
 `cdn/tickslate.js` is the same code as a minified ES module. The `unpkg` and
@@ -110,7 +110,7 @@ stylesheet at all. Linking `tokens.css` is still the clearest way to see and
 override every variable, and it always beats the built-in defaults:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.3.0/tokens.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.3.1/tokens.css">
 ```
 
 ```js
