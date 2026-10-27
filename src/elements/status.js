@@ -206,6 +206,7 @@ export class TsStatus extends TsWidget {
     write('post', vm.synced.post)
     write('none', vm.noRows)
     hide('none', vm.total > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.total > 0)
 
     if (variant === 'S') {
       write('sum', vm.total ? vm.summary : '')

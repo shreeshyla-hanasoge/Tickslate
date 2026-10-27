@@ -285,7 +285,8 @@ const STYLES = `
 .note { margin: 0; }
 .dn { display: flex; flex: 1; min-height: 0; align-items: center; gap: 16px; }
 .dn .scroll { align-self: stretch; }
-.donut { position: relative; flex: none; inline-size: min(46cqi, 230px); aspect-ratio: 1; }
+/* Square by width, but never taller than the row it sits in: a compact M is shorter than 46cqi is wide, and the ring would run out of the tile. */
+.donut { position: relative; flex: none; inline-size: min(46cqi, 230px); aspect-ratio: 1; max-block-size: 100%; }
 .donut svg { display: block; inline-size: 100%; block-size: 100%; }
 .arc { fill: var(--c); }
 /* The hole's width is 62% of the ring, so the total sits inside it and wraps rather than touching the ring. */
@@ -381,6 +382,7 @@ export class TsBreakdown extends TsWidget {
     write('none', vm.noRows)
     // Whatever the size, a set with nothing to draw says so; the (zero) parts still list below, so the legend never contradicts the data.
     hide('none', vm.drawn)
+    for (const key of ['bar', 'scroll', 'chart']) this._lift(this.$(`[data-k="${key}"]`), vm.drawn)
     // Handed back to the next model, which keeps each slice's colour and holds near-tied slices in place.
     this._colours = vm.colours
 

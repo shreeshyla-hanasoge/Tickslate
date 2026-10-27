@@ -185,6 +185,7 @@ export class TsFeed extends TsWidget {
     write('post', vm.synced.post)
     write('none', vm.noRows)
     hide('none', vm.items.length > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.items.length > 0)
     write('more', vm.more)
     hide('more', !vm.more)
     const scroll = this.$('[data-k="scroll"]')

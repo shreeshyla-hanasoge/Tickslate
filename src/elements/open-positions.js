@@ -313,6 +313,7 @@ export class TsOpenPositions extends TsWidget {
     setAttr(this.$('[data-k="scroll"]'), 'aria-label', this.t('positions.region', { label: vm.label }))
     write('none', vm.noRows)
     hide('none', vm.rows.length > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.rows.length > 0)
 
     this._bind()
     this._rows.sync(vm.rows)

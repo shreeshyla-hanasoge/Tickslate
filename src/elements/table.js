@@ -479,6 +479,7 @@ export class TsTable extends TsWidget {
     setAttr(scroll, 'aria-label', this.t('table.region', { label: vm.label }))
     text('none', vm.noRows)
     hide('none', vm.rows.length > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.rows.length > 0)
 
     this._sort = vm.sort
     this._cols = vm.columns

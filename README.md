@@ -177,12 +177,13 @@ and, in development builds, a console warning with the position. See
 
 | Attribute | What the tile does |
 |---|---|
-| `href="/orders"` | Its label is a link, and a click on the header or the empty space follows it |
-| `activatable` | Its label is a button, and a click on the header or the empty space fires `ts-action` with `{ action: 'open', id }` (`id` is the tile's `item`) |
+| `href="/orders"` | Its label is a link, and a click on the header, the headline figure or the empty space follows it |
+| `activatable` | Its label is a button, and a click on the header, the headline figure or the empty space fires `ts-action` with `{ action: 'open', id }` (`id` is the tile's `item`) |
 
 A click on data never opens a tile: a chart scrubs, a calendar cell takes
 focus, a list scrolls, a sort button sorts and a selectable row or point fires
-`select`. The keyboard reaches the label as one Tab stop, and Enter opens it.
+`select`. A list with nothing in it, a chart with nothing to draw, a progress
+track and a session clock's lanes open the tile like its empty space. The keyboard reaches the label as one Tab stop, and Enter opens it.
 Route `open` to a page other than the one the tile is on. See
 [docs/reference/events.md](docs/reference/events.md).
 

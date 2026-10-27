@@ -235,6 +235,8 @@ const setAttr = (el, name, value) => {
 }
 
 export class TsEdgeStats extends TsWidget {
+  // Its lifted surfaces sit below the stats, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'edgeStats'
   static emptyText = EN['widget.edgeStats.empty']
   static dataShape = Object.freeze({

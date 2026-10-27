@@ -104,7 +104,7 @@ export function mrrModel(data, variant, { fmt, t, label }) {
   return vm
 }
 
-const head = '<div class="hd"><span class="lb ell" data-k="label"></span></div>'
+const head = '<div class="hd" part="header"><span class="lb ell" part="label" role="heading" aria-level="3" data-k="label"></span></div>'
 const change = '<span class="sm n nv" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span data-k="delta"></span></span>'
 const more = '<button type="button" class="btn" data-action="breakdown" data-k="more" hidden></button>'
 
@@ -114,7 +114,7 @@ const TEMPLATES = {
   Wide: `${head}<span class="xbig n nv" data-k="value"></span><span class="f1"></span>
 <div class="row">${change}<span class="f1"></span><span class="sm mut ell" data-k="customers"></span></div>`,
   M: `${head}<div class="rowb"><span class="xbig n nv" data-k="value"></span>${change}</div>
-<div class="spark"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="spark lift"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>
 <div class="row"><span class="sm mut ell f1" data-k="customers"></span>${more}</div>`,

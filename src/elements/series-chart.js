@@ -758,6 +758,7 @@ export class TsChart extends TsWidget {
     text('post', vm.synced.post)
     attr('svg', 'aria-label', vm.chartLabel === undefined ? vm.ariaLabel : vm.chartLabel)
 
+    this._lift(this.$('[data-k="plot"]'), vm.series.some((s) => !s.empty))
     this._points = vm.points
     const ptsEl = this.$('[data-k="pts"]')
     if (ptsEl !== this._ptsEl) {

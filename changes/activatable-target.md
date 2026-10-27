@@ -1,10 +1,12 @@
 ### Changed
 
-- On a touch screen the header row of an `href` or `activatable` tile is a little taller in compact density, so the strip that opens the tile stays 44px tall.
+- On a touch screen the header row of an `href` or `activatable` tile that has a chart or a list in it is 4px taller in compact density, so the strip that opens the tile stays 44px tall. A tile with nothing lifted keeps its header.
+- Every widget is its own stacking context (`isolation: isolate` on the element), so nothing inside a tile, its buttons and its sticky table header included, paints over a host page's sticky bar or popover.
+- `<ts-breakdown>`'s donut at M is never taller than its row, so at compact density it no longer runs past the tile's bottom edge.
 
 ### Breaking
 
-- **A click on data no longer opens an `href` or `activatable` tile.** The label, the header and the empty space still open it, but a click on a chart scrubs, on a `<ts-pnl-calendar>` cell focuses the cell, on a scrolling list scrolls it, on a sort button sorts and on a selectable row or chart point fires `select`, and none of them fires `open` or follows the `href`. Lists inside such a tile now scroll under the mouse wheel. The keyboard is unchanged: the label is one Tab stop and Enter opens it. Do this instead: to open the tile from a click anywhere, listen for `click` on the tile yourself; in a widget of your own, put `class="lift"` on each data surface so it behaves the same way.
+- **A click on data no longer opens an `href` or `activatable` tile.** The label, the header, the headline figure and the empty space still open it, but a click on a chart scrubs, on a `<ts-pnl-calendar>` cell focuses the cell, on a scrolling list scrolls it, on a sort button sorts and on a selectable row or chart point fires `select`, and none of them fires `open` or follows the `href`. Lists inside such a tile now scroll under the mouse wheel. A list with nothing in it and a chart with nothing to draw still open the tile. The keyboard is unchanged: the label is one Tab stop and Enter opens it. Do this instead: to open the tile from a click anywhere, listen for `click` on the tile and skip the clicks the tile already handles (its label, which fires `open` or follows the `href` itself, and its own buttons and links): `tile.addEventListener('click', (e) => { if (!e.composedPath().some((n) => n.matches?.('[part~="link"], button, a'))) openTile(tile) })`. In a widget of your own, put `class="lift"` on each data surface so it behaves the same way.
 
 ### Internal
 
@@ -13,4 +15,6 @@
 - Deviation from RFC 0005 §1.8: `README.md` had no attribute table, so it gains a short "Opening a tile" section with a table of `href` and `activatable` instead.
 - Deviation from RFC 0005 §1.2: `<ts-mini-chart>`'s instrument picker does not exist yet, so only its plot boxes carry `lift`; `mini-chart-actions` lifts the picker when it builds it.
 - Deviation from RFC 0005 §1.4: the 44px floor is met by a `min-block-size` on the header under `(pointer: coarse)` only, as the other 44px targets are; with a fine pointer at compact density the strip is 41px.
+- A lifted surface carries `lift` only while it holds data: each widget drops the class in `update()` for an empty list or a plot with nothing to draw, and the base marks the tile `.lifts` after a render that leaves one, which is what the touch header floor keys on. Each lifted node gets a no-op `click` listener when its template is built, because WebKit's touch adjustment otherwise moves a tap on a thin surface (breakdown's 10px share bar) to the stretched link.
+- `examples/custom-widget/mrr.js` and the guides' header snippets carry `part="label"` (without it `activatable` makes no link) and the sparkline carries `lift`; `docs/guide/your-own-widget.md` lists `.lift` among the shared classes.
 - `docs/reference/events.md`, `docs/guide/trading-dashboard.md`, `src/elements/index.d.ts` and `test/card.test.mjs` each change a line to match the narrower target, and `test/browser/activatable-label.spec.mjs` expects the taller header on a touch screen at 12px padding.

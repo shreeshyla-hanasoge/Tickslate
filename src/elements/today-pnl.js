@@ -338,6 +338,8 @@ const SKELETONS = {
 }
 
 export class TsTodayPnl extends TsWidget {
+  // Its lifted surfaces sit below the net figure, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'todayPnl'
   static emptyText = EN['widget.todayPnl.empty']
   // The headline figures are required: a tile without them has nothing to say,
@@ -497,6 +499,7 @@ export class TsTodayPnl extends TsWidget {
     const nodata = this.$('[data-k="nodata"]')
     nodata.textContent = c.message
     nodata.toggleAttribute('hidden', !c.empty)
+    this._lift(this.$('[data-k="plot"]'), !c.empty)
 
     const set = (k, attrs) => {
       const el = this.$(`[data-k="${k}"]`)

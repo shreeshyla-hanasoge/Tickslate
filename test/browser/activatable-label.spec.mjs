@@ -70,6 +70,7 @@ const measure = (page) => page.evaluate(`(() => {
         headerHeight: Math.round(root.querySelector('[part~="header"]').getBoundingClientRect().height * 2) / 2,
         pad: parseFloat(getComputedStyle(root.querySelector('.tile')).paddingTop),
         coarse: matchMedia('(pointer: coarse)').matches,
+        lifts: root.querySelector('.tile').classList.contains('lifts'),
         // Cut text, plain: the span clips it; activatable: the button does. Either way the words reach the box edge.
         cut: carrier.scrollWidth > carrier.clientWidth + 0.5 || label.scrollWidth > label.clientWidth + 0.5,
         // The button must never be wider than the label it sits in.
@@ -100,8 +101,9 @@ for (const preset of PRESETS) {
           for (const p of ['textTransform', 'letterSpacing', 'fontSize', 'fontWeight', 'color', 'fontFamily', 'lineHeight', 'ariaLabel', 'name', 'cut']) {
             if (act[p] !== plain[p]) bad.push(`${key}: ${p} ${JSON.stringify(plain[p])} vs ${JSON.stringify(act[p])}`)
           }
-          // On a touch screen an activatable header grows to keep a 44px open target over 12px of padding (RFC 0005 §1.4); otherwise it matches.
-          const header = act.coarse ? Math.max(plain.headerHeight, 34 - act.pad) : plain.headerHeight
+          // On a touch screen the header of an activatable tile with a chart or a list right under it grows to keep a 44px open
+          // target over 12px of padding (RFC 0005 §1.4); otherwise it matches.
+          const header = act.coarse && act.lifts ? Math.max(plain.headerHeight, 34 - act.pad) : plain.headerHeight
           if (act.headerHeight !== header) bad.push(`${key}: headerHeight ${header} vs ${act.headerHeight}`)
           if (Math.abs(act.width - plain.width) > 0.5) bad.push(`${key}: width ${plain.width} vs ${act.width}`)
           if (act.spill > 0.5) bad.push(`${key}: the button is ${act.spill}px wider than its label`)

@@ -576,6 +576,8 @@ ${xl ? `<div class="sm mut ell" data-k="note${i}"></div>` : ''}
 const SKELETON_BLOCK = '<div class="mc"><div class="plot"><span class="sk grow"></span></div></div>'
 
 export class TsMiniChart extends TsWidget {
+  // Its lifted surfaces sit below each chart's instrument row, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'miniChart'
   static emptyText = EN['widget.miniChart.empty']
   static dataShape = {
@@ -817,6 +819,7 @@ export class TsMiniChart extends TsWidget {
       if (plot) {
         if (plot.getAttribute('aria-label') !== summary) plot.setAttribute('aria-label', summary)
         plots.push(plot)
+        this._lift(plot, !!(c && c.bars.length))
       }
       const none = this.$(k(`none${i}`))
       if (none) {

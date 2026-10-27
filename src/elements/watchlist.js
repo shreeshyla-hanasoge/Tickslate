@@ -258,6 +258,7 @@ export class TsWatchlist extends TsWidget {
     setAttr(this.$('[data-k="scroll"]'), 'aria-label', this.t('watchlist.region', { label: vm.label }))
     write('none', vm.noRows)
     hide('none', vm.rows.length > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.rows.length > 0)
     const add = this.$('[data-k="add"]')
     const canAdd = this.actionEnabled(ACTION_ADD)
     add.toggleAttribute('hidden', !canAdd)

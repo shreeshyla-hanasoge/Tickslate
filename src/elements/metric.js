@@ -214,7 +214,7 @@ export function metricModel(data, variant, ctx) {
 const delta = `<span class="delta sec" data-k="deltabox" hidden><span class="n" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span class="nv" data-k="delta"></span></span><span class="mut ell" data-k="compare"></span></span>`
 const head = header({ dot: true, meta: true })
 const spark = (cls) => `
-<div class="${cls} lift" part="chart"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="${cls} lift" part="chart" data-k="sparkbox"><svg viewBox="0 0 ${SPARK_BOX.width} ${SPARK_BOX.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>`
 
@@ -255,6 +255,8 @@ ${sk(65, 11)}`,
 }
 
 export class TsMetric extends TsWidget {
+  // Its lifted surfaces sit below the value, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'metric'
   static emptyText = EN['widget.metric.empty']
   // value is the one required key: a tile without it has nothing to say, and
@@ -357,6 +359,7 @@ svg.mut { color: var(--ts-muted); }
 
     const svg = this.$('[data-k="spark"]')
     svg.toggleAttribute('hidden', !vm.line)
+    this._lift(this.$('[data-k="sparkbox"]'), !!vm.line)
     attr(svg, 'class', vm.tone)
     attr(svg, 'aria-label', vm.sparkLabel)
     attr(this.$('[data-k="line"]'), 'd', vm.line)

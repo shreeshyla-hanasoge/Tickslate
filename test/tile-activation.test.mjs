@@ -1,6 +1,6 @@
 import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
+import { FakeElement, FakeDocument, FakeNode, tick } from './fake-dom.mjs'
 
 // Tile activation and point selection (RFC 0003 §7): href, activatable,
 // stretched-link pattern, focus ring, edit guard, and chart point select.
@@ -132,17 +132,40 @@ describe('the click target of an href or activatable tile (RFC 0005 §1)', () =>
     assert.match(css, /\[part~="link"\]::after \{[^}]*z-index: 1;/)
     assert.match(css, /\.btn \{[^}]*z-index: 2;/)
     // Nothing lifts .lift on a plain tile: every rule that names it is scoped to the two attributes.
-    for (const rule of css.match(/[^{}]*\.lift[^{]*\{/g)) assert.match(rule, /^\s*(?:\/\*[\s\S]*?\*\/\s*)?:host\(\[activatable\]\) \.lift, :host\(\[href\]\) \.lift \{$/)
+    for (const rule of css.match(/[^{}]*\.lift\b(?!s)[^{]*\{/g)) assert.match(rule, /^\s*(?:\/\*[\s\S]*?\*\/\s*)?:host\(\[activatable\]\) \.lift, :host\(\[href\]\) \.lift \{$/)
+    // The host is its own stacking context, so z-index 2 is ordered inside the tile and never against a page's sticky bar or popover.
+    assert.match(css, /:host \{ display: block; isolation: isolate; \}/)
   })
 
-  test('on a touch screen the header of an href or activatable tile keeps a 44px open target in compact padding', () => {
+  test('on a touch screen the header floor applies only to a tile that lifts something', () => {
     const css = W.SHARED_CSS
-    const rule = /@media \(pointer: coarse\) \{ :host\(\[activatable\]\) \.hd, :host\(\[href\]\) \.hd \{ min-block-size: max\(18px, calc\(34px - var\(--ts-pad, 18px\)\)\); \} \}/
-    assert.match(css, rule)
-    // 12px of compact padding, the header and the tile's 10px gap make 44; 18px of comfortable padding needs no more than 18.
-    const header = (pad) => Math.max(18, 34 - pad)
-    assert.equal(12 + header(12) + 10, 44)
-    assert.equal(header(18), 18)
+    assert.match(css, /@media \(pointer: coarse\) \{ :host\(\[activatable\]\) \.lifts \.hd, :host\(\[href\]\) \.lifts \.hd \{ min-block-size: max\(18px, calc\(34px - var\(--ts-pad, 18px\)\)\); \} \}/)
+    assert.doesNotMatch(css, /:host\(\[activatable\]\) \.hd/, 'a tile with nothing lifted keeps the header it was laid out with')
+  })
+
+  test('the base marks the tile .lifts after a render that leaves a lifted surface, and clears it for the other views', async () => {
+    const el = new DummyTile()
+    el.setAttribute('label', 'Orders')
+    el.setAttribute('activatable', '')
+    el.connect()
+    el.data = {}
+    await tick()
+    // The stand-in finds a node for any selector, so a content render reads as one with a lifted surface.
+    assert.equal(el.shadowRoot.section.getAttribute('class'), 'tile lifts')
+    el.data = null
+    await tick()
+    assert.equal(el.shadowRoot.section.getAttribute('class'), 'tile')
+  })
+
+  test('_lift adds and removes the class, so an empty surface opens the tile like the rest of it', () => {
+    const el = new DummyTile()
+    const node = new FakeNode()
+    node.setAttribute('class', 'scroll lift')
+    el._lift(node, false)
+    assert.equal(node.getAttribute('class'), 'scroll')
+    el._lift(node, true)
+    assert.equal(node.getAttribute('class'), 'scroll lift')
+    el._lift(null, true)
   })
 
   for (const [file, { cls, sizes }] of Object.entries(SURFACES)) {

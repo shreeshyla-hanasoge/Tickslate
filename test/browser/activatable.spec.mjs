@@ -6,7 +6,7 @@
 // selectable row or point fires select, the charts still scrub, the keyboard path is the one a plain tile has with the
 // label in front, and the open target stays 44px tall on a touch screen in both densities.
 import { test, expect } from '@playwright/test'
-import { drawn } from './drawn.mjs'
+import { drawn, rendered } from './drawn.mjs'
 
 // ?exact=1 gives each tile its real column width, so a Wide or XL tile lays its chart out beside its figures as a grid would.
 const FIXTURE = '/test/browser/fixtures/widgets.html?exact=1'
@@ -147,11 +147,14 @@ const openPoints = (page, key) =>
 
 // An href tile's open is the hash it went to, read from location: navigating to a fragment updates it during the click,
 // while the hashchange event comes a task later and could be counted against the next click.
+// A finger on a touch project, the mouse elsewhere: WebKit's touch adjustment can move a tap where a click would not go.
+const press = (page, hasTouch, x, y) => (hasTouch ? page.touchscreen.tap(x, y) : page.mouse.click(x, y))
+
 const opensOf = (page) => page.evaluate(() => [...window.__opens, ...(location.hash.startsWith('#open-') ? [decodeURIComponent(location.hash.slice(6))] : [])])
 
 for (const mode of MODES) {
   for (const [widget, selectors] of Object.entries(LIFTED)) {
-    test(`${mode}: ${widget}: a click on data never opens it; the label, header, padding and figure do`, async ({ page }) => {
+    test(`${mode}: ${widget}: a click on data never opens it; the label, header, padding and figure do`, async ({ page, hasTouch }) => {
       await load(page, mode, [widget])
       const keys = await page.evaluate((w) => [...window.__fx.tiles.keys()].filter((k) => k.startsWith(`${w}:`)), widget)
       expect(keys.length).toBeGreaterThan(0)
@@ -163,7 +166,7 @@ for (const mode of MODES) {
           for (const p of await pointsOn(page, key, sel)) {
             found++
             await reset(page)
-            await page.mouse.click(p.x, p.y)
+            await press(page, hasTouch, p.x, p.y)
             const opens = await opensOf(page)
             if (opens.length) bad.push(`${key} ${sel} (${p.what}, hit ${p.hit}) opened the tile`)
             clicked++
@@ -175,7 +178,7 @@ for (const mode of MODES) {
         const under = UNDER[widget] ? await pointsOn(page, key, UNDER[widget]) : []
         for (const p of [...(await openPoints(page, key)), ...under.map((p) => ({ ...p, name: p.what }))]) {
           await reset(page)
-          await page.mouse.click(p.x, p.y)
+          await press(page, hasTouch, p.x, p.y)
           const opens = await opensOf(page)
           if (opens.length !== 1 || opens[0] !== key) bad.push(`${key}: a click on the ${p.name} opened ${JSON.stringify(opens)}`)
         }
@@ -190,7 +193,7 @@ for (const mode of MODES) {
 
 test.describe('what a lifted surface does instead', () => {
   for (const mode of MODES) {
-    test(`${mode}: a sort button sorts, a selectable row and a chart point fire select, and none of them opens`, async ({ page }) => {
+    test(`${mode}: a sort button sorts, a selectable row and a chart point fire select, and none of them opens`, async ({ page, hasTouch }) => {
       await load(page, mode, ['table', 'chart'])
       await page.evaluate(() => {
         window.__fx.tiles.get('table:M').actions = ['select']
@@ -205,7 +208,7 @@ test.describe('what a lifted surface does instead', () => {
         const [p] = await pointsOn(page, key, sel)
         expect(p, `${key} ${sel} is on screen`).toBeTruthy()
         await reset(page)
-        await page.mouse.click(p.x, p.y)
+        await press(page, hasTouch, p.x, p.y)
         return { actions: await page.evaluate(() => window.__actions.map((a) => a.action)), opens: await opensOf(page) }
       }
 
@@ -240,8 +243,11 @@ test.describe('what a lifted surface does instead', () => {
       if (isMobile && browserName === 'webkit') continue
       await page.evaluate((key) => { window.__fx.tiles.get(key).shadowRoot.querySelector('.scroll').scrollTop = 0 }, key)
       await page.mouse.move(p.x, p.y)
-      await page.mouse.wheel(0, 120)
-      await page.waitForFunction((key) => window.__fx.tiles.get(key).shadowRoot.querySelector('.scroll').scrollTop > 0, key)
+      // WebKit now and then drops a wheel event, on the base too, so each look sends another.
+      await expect.poll(async () => {
+        await page.mouse.wheel(0, 120)
+        return page.evaluate((key) => window.__fx.tiles.get(key).shadowRoot.querySelector('.scroll').scrollTop, key)
+      }, { message: `${key} scrolls under the wheel` }).toBeGreaterThan(0)
     }
   })
 
@@ -346,4 +352,186 @@ test.describe('the open target on a touch screen', () => {
       }
     })
   }
+})
+
+test.describe('only real data is lifted', () => {
+  // Data that reaches the content view with nothing in its list or nothing to draw. Each widget then shows its own message
+  // where the data would be, and that message, like the box it sits in, opens the tile.
+  const EMPTY = {
+    table: '(d) => ({ ...d, rows: [] })',
+    feed: '(d) => ({ ...d, items: [] })',
+    watchlist: '(d) => ({ ...d, instruments: [] })',
+    openPositions: '(d) => ({ ...d, positions: [] })',
+    capitalFunding: '(d) => ({ ...d, accounts: [] })',
+    status: '(d) => Object.fromEntries(Object.entries(d).map(([k, v]) => [k, Array.isArray(v) ? [] : v]))',
+    breakdown: '(d) => Object.fromEntries(Object.entries(d).map(([k, v]) => [k, Array.isArray(v) ? [] : v]))',
+    miniChart: '(d) => { const o = JSON.parse(JSON.stringify(d)); if (Array.isArray(o.charts)) o.charts.forEach((c) => { c.bars = [] }); else o.bars = []; return o }',
+    metric: '(d) => ({ ...d, series: [] })',
+    todayPnl: '(d) => ({ ...d, intraday: [], marks: [] })',
+    equityCurve: '(d) => ({ ...d, days: [] })',
+    chart: '(d) => ({ ...d, series: d.series.map((s) => ({ ...s, points: [] })) })',
+    pnlCalendar: '(d) => ({ ...d, days: [] })',
+  }
+  // The messages the reviewer of #78 found under the lifted box, by widget.
+  const MESSAGE = '[data-k="none"], [data-k^="none"], [data-k="nodata"], [data-k="empty"]'
+
+  for (const mode of MODES) {
+    test(`${mode}: an empty list or a plot with nothing to draw opens the tile, its message included`, async ({ page, hasTouch }) => {
+      await load(page, mode, Object.keys(EMPTY))
+      await page.evaluate((fns) => {
+        for (const el of window.__fx.tiles.values()) {
+          const fn = fns[el.dataset.key]
+          // eslint-disable-next-line no-eval
+          if (fn) el.data = (0, eval)(fn)(el.data)
+        }
+      }, EMPTY)
+      await rendered(page)
+      // Nothing is left lifted: every surface dropped the class with its data.
+      expect(await page.evaluate((keys) => [...window.__fx.tiles].filter(([, el]) => keys.includes(el.dataset.key))
+        .flatMap(([key, el]) => [...el.shadowRoot.querySelectorAll('.lift')].map((n) => `${key} ${n.localName}.${[...n.classList].join('.')}`)), Object.keys(EMPTY))).toEqual([])
+      const keys = await page.evaluate((keys) => [...window.__fx.tiles.keys()].filter((k) => keys.includes(k.split(':')[0])), Object.keys(EMPTY))
+      const bad = []
+      let messages = 0
+      for (const key of keys) {
+        const widget = key.split(':')[0]
+        const shown = await pointsOn(page, key, MESSAGE)
+        messages += shown.length
+        const boxes = []
+        // The box itself, not what is in it: an empty table still has its header cells, whose sort buttons keep their clicks.
+        for (const sel of new Set(LIFTED[widget].filter((sel) => !sel.includes(' ')))) boxes.push(...(await pointsOn(page, key, sel)).slice(0, 1))
+        for (const p of [...shown.map((p) => ({ ...p, name: `message ${p.what}` })), ...boxes.map((p) => ({ ...p, name: `empty ${p.what}` }))]) {
+          await reset(page)
+          await press(page, hasTouch, p.x, p.y)
+          const opens = await opensOf(page)
+          if (opens.length !== 1 || opens[0] !== key) bad.push(`${key}: a click on the ${p.name} opened ${JSON.stringify(opens)}`)
+        }
+      }
+      // Each kind of message is on screen somewhere: "No rows yet", "No instruments yet", "No intraday data yet"…
+      expect(messages).toBeGreaterThanOrEqual(20)
+      expect(bad).toEqual([])
+    })
+  }
+
+  test('the same tile lifts its list again when rows arrive', async ({ page }) => {
+    await load(page, 'activatable', ['table'])
+    const lifted = () => page.evaluate(() => window.__fx.tiles.get('table:M').shadowRoot.querySelector('[data-k="scroll"]').classList.contains('lift'))
+    expect(await lifted()).toBe(true)
+    await page.evaluate(() => { const el = window.__fx.tiles.get('table:M'); el.__full = el.data; el.data = { ...el.data, rows: [] } })
+    await expect.poll(lifted).toBe(false)
+    await page.evaluate(() => { const el = window.__fx.tiles.get('table:M'); el.data = el.__full })
+    await expect.poll(lifted).toBe(true)
+  })
+})
+
+test.describe('the tile keeps its stacking to itself', () => {
+  for (const z of ['1', '2']) {
+    test(`a host's sticky bar at z-index ${z} stays above an activatable tile's data and header`, async ({ page }) => {
+      await load(page, 'activatable', ['table', 'chart', 'pnlCalendar', 'metric'])
+      await page.evaluate((z) => {
+        const bar = document.createElement('header')
+        bar.id = 'bar'
+        bar.style.cssText = `position: sticky; inset-block-start: 0; z-index: ${z}; block-size: 60px; background: var(--ts-ink)`
+        document.body.prepend(bar)
+      }, z)
+      const bad = []
+      for (const key of ['table:M', 'chart:M', 'pnlCalendar:M', 'metric:M']) {
+        for (const sel of ['.lift', '[part~="header"]']) {
+          // Scroll the page so the middle of the surface sits under the bar, then ask what is on top there.
+          const hit = await page.evaluate(({ key, sel }) => {
+            const n = window.__fx.tiles.get(key).shadowRoot.querySelector(sel)
+            const r0 = n.getBoundingClientRect()
+            window.scrollBy(0, r0.top + r0.height / 2 - 30)
+            const r = n.getBoundingClientRect()
+            const x = r.left + Math.min(r.width / 2, 100)
+            if (r.top > 30 || r.bottom < 30) return 'not under the bar'
+            const top = document.elementFromPoint(x, 30)
+            return top && top.id === 'bar' ? 'bar' : `${top && top.localName}`
+          }, { key, sel })
+          if (hit !== 'bar') bad.push(`${key} ${sel}: ${hit} is on top of the host's bar`)
+        }
+      }
+      expect(bad).toEqual([])
+    })
+  }
+
+  test('the tile is its own stacking context, so its buttons and the scrub read-out stay in it', async ({ page }) => {
+    await load(page, 'activatable', ['chart'])
+    expect(await page.evaluate(() => getComputedStyle(window.__fx.tiles.get('chart:M')).isolation)).toBe('isolate')
+  })
+})
+
+test.describe('layout on a phone', () => {
+  // Every tile at 390px in compact density, plain and then with the attribute: what changes is only the header of a tile
+  // that lifts something, and no tile overflows more than its plain self did.
+  test('compact at 390px: a tile with nothing lifted keeps its header, and no tile clips more than the plain one', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(FIXTURE)
+    await page.waitForFunction(() => window.__ready === true)
+    await page.evaluate(() => document.documentElement.setAttribute('data-ts-density', 'compact'))
+    await drawn(page)
+    const read = () => page.evaluate(() => Object.fromEntries([...window.__fx.tiles].map(([key, el]) => {
+      const t = el.shadowRoot.querySelector('.tile')
+      return [key, { header: el.shadowRoot.querySelector('[part~="header"]').getBoundingClientRect().height, over: t.scrollHeight - t.clientHeight, lifts: t.classList.contains('lifts') }]
+    })))
+    const plain = await read()
+    await page.evaluate(() => { for (const el of window.__fx.tiles.values()) el.setAttribute('activatable', '') })
+    await page.waitForFunction(() => [...window.__fx.tiles.values()].every((el) => el.shadowRoot.querySelector('[part~="link"]') && el._queued !== true))
+    const act = await read()
+    const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches)
+    const bad = []
+    for (const [key, a] of Object.entries(act)) {
+      const p = plain[key]
+      if (!a.lifts && Math.abs(a.header - p.header) > 0.5) bad.push(`${key}: lifts nothing, yet its header went ${p.header} to ${a.header}`)
+      if (a.lifts && !coarse && Math.abs(a.header - p.header) > 0.5) bad.push(`${key}: the header grew without a coarse pointer`)
+      if (a.over > p.over + 0.5) bad.push(`${key}: overflows ${a.over}px, plain ${p.over}px`)
+    }
+    for (const key of ['edgeStats:Wide', 'capitalFunding:S']) expect(act[key].lifts, key).toBe(false)
+    expect(bad).toEqual([])
+  })
+
+  for (const [w, h] of [[1280, 900], [390, 844]]) {
+    test(`compact at ${w}px: no lifted surface reaches the band the label's focus ring is drawn in`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: h })
+      await load(page, 'activatable')
+      await page.evaluate(() => document.documentElement.setAttribute('data-ts-density', 'compact'))
+      await page.waitForFunction(() => [...window.__fx.tiles.values()].every((el) => el._queued !== true))
+      const bad = await page.evaluate(() => {
+        const out = []
+        for (const [key, el] of window.__fx.tiles) {
+          const t = el.shadowRoot.querySelector('.tile').getBoundingClientRect()
+          // The ring is 2px wide, drawn 2px inside the tile's edge (outline-offset: -2px), so the band is the outer 4px.
+          for (const n of el.shadowRoot.querySelectorAll('.lift')) {
+            const r = n.getBoundingClientRect()
+            if (!r.width || !r.height) continue
+            if (r.left < t.left + 4 || r.right > t.right - 4 || r.top < t.top + 4 || r.bottom > t.bottom - 4) out.push(`${key} ${n.localName}.${[...n.classList].join('.')}`)
+          }
+        }
+        return out
+      })
+      expect(bad).toEqual([])
+    })
+  }
+})
+
+test.describe("the changelog's do-instead", () => {
+  test('a host that opens on any click, skipping the label and buttons, opens once per click', async ({ page }) => {
+    await load(page, 'activatable', ['table'])
+    await page.evaluate(() => {
+      window.__host = 0
+      const tile = window.__fx.tiles.get('table:M')
+      // The snippet in changes/activatable-target.md, word for word, with openTile counting.
+      const openTile = () => { window.__host++ }
+      tile.addEventListener('click', (e) => { if (!e.composedPath().some((n) => n.matches?.('[part~="link"], button, a'))) openTile(tile) })
+    })
+    const count = async (sel) => {
+      const [p] = await pointsOn(page, 'table:M', sel)
+      await reset(page)
+      await page.evaluate(() => { window.__host = 0 })
+      await page.mouse.click(p.x, p.y)
+      return { host: await page.evaluate(() => window.__host), opens: (await opensOf(page)).length }
+    }
+    expect(await count('[part~="label"]')).toEqual({ host: 0, opens: 1 })
+    expect(await count('tbody td')).toEqual({ host: 1, opens: 0 })
+    expect(await count('th .sort')).toEqual({ host: 0, opens: 0 })
+  })
 })

@@ -334,6 +334,7 @@ export class TsCapitalFunding extends TsWidget {
     setAttr(this.$('[data-k="scroll"]'), 'aria-label', vm.region)
     write('none', vm.noRows)
     hide('none', vm.rows.length > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.rows.length > 0)
     write('note', vm.note)
     hide('note', !vm.note)
     this._bind()

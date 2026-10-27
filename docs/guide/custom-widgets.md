@@ -59,7 +59,7 @@ message.
 
 ```js
 // mrr.js
-const head = '<div class="hd"><span class="lb ell" data-k="label"></span></div>'
+const head = '<div class="hd" part="header"><span class="lb ell" part="label" role="heading" aria-level="3" data-k="label"></span></div>'
 const change = '<span class="sm n nv" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span data-k="delta"></span></span>'
 const more = '<button type="button" class="btn" data-action="breakdown" data-k="more" hidden></button>'
 
@@ -69,7 +69,7 @@ const TEMPLATES = {
   Wide: `${head}<span class="xbig n nv" data-k="value"></span><span class="f1"></span>
 <div class="row">${change}<span class="f1"></span><span class="sm mut ell" data-k="customers"></span></div>`,
   M: `${head}<div class="rowb"><span class="xbig n nv" data-k="value"></span>${change}</div>
-<div class="spark"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="spark lift"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>
 <div class="row"><span class="sm mut ell f1" data-k="customers"></span>${more}</div>`,
@@ -98,11 +98,14 @@ const TEMPLATES = {
   tile the label's link is stretched over the whole tile, so a click anywhere
   opens it. Put `class="lift"` on each part a reader points at or works with:
   a drawn chart, a scrolling list, a grid of cells, anything with pointer or
-  keyboard behaviour of its own (`<div class="spark lift">` for the sparkline
+  keyboard behaviour of its own (the sparkline's `<div class="spark lift">`
   above). The base lifts it above the link on those tiles only, so a click
-  there scrolls, scrubs or does nothing, and the header and empty space still
-  open the tile. A `.btn` and slotted controls are lifted already; the
-  headline figure stays under the link, as the built-in widgets' do.
+  there scrolls, scrubs or does nothing, and the header, the headline figure
+  and the empty space still open the tile. A `.btn` and slotted controls are
+  lifted already. The link is made from the label the header marks with
+  `part="label"`, so keep that part, as `head` above does. A surface that is
+  empty for now (a list with no rows) can drop the class in `update()` so a
+  click on its message opens the tile too.
 - **Add only the CSS you need**, again with tokens only:
 
 ```js
@@ -394,9 +397,9 @@ if you must build markup from data, escape it (below). On a page with Trusted Ty
 Put the base's two header parts in your head markup and the base does the rest:
 
 ```js
-const head = `<div class="hd">
+const head = `<div class="hd" part="header">
 <span class="dot live" data-k="dot" aria-hidden="true" hidden></span>
-<span class="lb ell" data-k="label"></span><span class="f1"></span>
+<span class="lb ell" part="label" role="heading" aria-level="3" data-k="label"></span><span class="f1"></span>
 <span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>
 </div>`
 ```
