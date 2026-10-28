@@ -142,7 +142,7 @@ When the net figure changes, it is tinted for 700 ms: `--ts-profit` when it rose
 `retry` only. With `actions = ['retry']` the error view's button fires
 `ts-action` with `{ action: 'retry' }`. See [Events](../reference/events.md).
 
-`open` fires too when the tile is `activatable`. The whole tile is the click target, not only the label, so a click on any part of it fires `open`; only the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+`open` fires too when the tile is `activatable`. The header, the figures and the empty space open it, and an `href` tile follows its link from the same places; the chart at M scrubs and a click on it does nothing, and the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
 
 ## Parts
 

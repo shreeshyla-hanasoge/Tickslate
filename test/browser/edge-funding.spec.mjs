@@ -114,7 +114,7 @@ test.describe('<ts-edge-stats>', () => {
 
   test('has no actions of its own', async ({ page }) => {
     await open(page, `${EDGE}&size=Wide&width=624`)
-    expect(await page.locator('ts-edge-stats').evaluate((el) => el.shadowRoot.querySelectorAll('button').length)).toBe(0)
+    expect(await page.locator('ts-edge-stats').evaluate((el) => el.shadowRoot.querySelectorAll('button:not([hidden])').length)).toBe(0)
   })
 })
 

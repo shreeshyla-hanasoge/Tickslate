@@ -150,7 +150,7 @@ const value = (theme, name) => {
 }
 
 describe('every palette block is zero specificity and sets only palette tokens', () => {
-  const OWNED = new Set(['--ts-profit', '--ts-loss', '--ts-accent', '--ts-focus', ...[1, 2, 3, 4, 5, 6].map((n) => `--ts-series-${n}`)])
+  const OWNED = new Set(['--ts-profit', '--ts-loss', '--ts-loss-mark', '--ts-accent', '--ts-focus', ...[1, 2, 3, 4, 5, 6].map((n) => `--ts-series-${n}`)])
   for (const name of ['cvd', 'red-up']) {
     test(name, () => {
       const p = palette(name)
@@ -237,6 +237,21 @@ describe('data-ts-palette="cvd"', () => {
       }
     })
   }
+})
+
+describe('the loss corner of <ts-pnl-calendar> (RFC 0005 Decision 95)', () => {
+  test('is off in the base theme, so a default dashboard draws no corner', () => {
+    assert.equal(paper['--ts-loss-mark'], 'transparent')
+    assert.equal(graphite['--ts-loss-mark'], 'transparent')
+  })
+  test('cvd turns it on in its light, dark and auto rules, in the ink colour', () => {
+    const p = palette('cvd')
+    for (const [kind, block] of Object.entries(p)) assert.equal(block['--ts-loss-mark'], 'var(--ts-ink)', kind)
+  })
+  test('red-up leaves it off: it swaps colours and is not a colour-vision palette', () => {
+    const p = palette('red-up')
+    for (const block of Object.values(p)) assert.ok(!('--ts-loss-mark' in block))
+  })
 })
 
 describe('data-ts-palette="red-up"', () => {

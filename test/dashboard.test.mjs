@@ -402,3 +402,96 @@ describe('the grid contract', () => {
     assert.equal(typeof mod.createDashboard, 'function')
   })
 })
+
+describe('labels', () => {
+  const labelOf = (grid, id) => grid.children.find((c) => c.getAttribute('item') === id).getAttribute('label')
+
+  test('the first children carry their label; a tile without one carries none', () => {
+    const { grid } = createDashboard(app, { layout: [item('a', { type: 'metric' }), item('b', { type: 'metric' })], labels: { a: 'Revenue' } })
+    assert.equal(labelOf(grid, 'a'), 'Revenue')
+    assert.equal(labelOf(grid, 'b'), null)
+  })
+
+  test('a child made for a ts-add-request carries its label', () => {
+    const dash = createDashboard(app, { layout: [], labels: { 'card-2': 'Notes' } })
+    dash.grid.add('card', 'card-2')
+    assert.equal(labelOf(dash.grid, 'card-2'), 'Notes')
+  })
+
+  test('a child for a layout restored after the start carries its label', () => {
+    const dash = createDashboard(app, { layout: [item('metric')], persist: 'k', labels: { late: 'Late' } })
+    assert.equal(warnings.length, 0)
+    dash.grid.held = readLayout([item('metric'), item('late', { type: 'card' })], { unknown: 'keep' }).layout
+    dash.grid.dispatchEvent(new CustomEvent('ts-layout-change', { detail: { reason: 'restore' } }))
+    assert.equal(labelOf(dash.grid, 'late'), 'Late')
+  })
+
+  test('a non-string or empty value is ignored with one warning', () => {
+    const { grid } = createDashboard(app, { layout: [item('a', { type: 'metric' }), item('b', { type: 'metric' }), item('c', { type: 'metric' })], labels: { a: 5, b: '', c: 'Costs' } })
+    assert.equal(labelOf(grid, 'a'), null)
+    assert.equal(labelOf(grid, 'b'), null)
+    assert.equal(labelOf(grid, 'c'), 'Costs')
+    assert.equal(warnings.filter((w) => w.includes('"a"')).length, 1)
+    assert.equal(warnings.filter((w) => w.includes('"b"')).length, 1)
+  })
+
+  test('an id with no tile warns once without persist, is silent with it, and is kept for a later add', () => {
+    const dash = createDashboard(app, { layout: [item('metric')], labels: { nope: 'Nope' } })
+    assert.equal(warnings.filter((w) => w.includes('"nope"')).length, 1)
+    dash.grid.add('card', 'nope')
+    assert.equal(labelOf(dash.grid, 'nope'), 'Nope')
+    warnings.length = 0
+    resetWarnings()
+    createDashboard(new FakeEl('div'), { layout: [], persist: 'k', labels: { nope: 'Nope' } })
+    assert.deepEqual(warnings, [])
+  })
+
+  test('update() and set() never change a title, and the host object is read once', () => {
+    const labels = { metric: 'Revenue' }
+    const dash = createDashboard(app, { layout: [item('metric')], labels })
+    labels.metric = 'Changed'
+    dash.update({ metric: { value: 1 } })
+    dash.set('metric', { value: 2 })
+    assert.equal(labelOf(dash.grid, 'metric'), 'Revenue')
+    dash.grid.add('card', 'card-9')
+    assert.equal(labelOf(dash.grid, 'card-9'), null)
+  })
+
+  test('prototype keys are ordinary ids, and inherited ones are not labels', () => {
+    const own = JSON.parse('{"__proto__": "Proto", "constructor": "Ctor"}')
+    const { grid } = createDashboard(app, { layout: [item('__proto__', { type: 'metric' }), item('constructor', { type: 'card' }), item('toString', { type: 'table' })], labels: own })
+    assert.equal(labelOf(grid, '__proto__'), 'Proto')
+    assert.equal(labelOf(grid, 'constructor'), 'Ctor')
+    assert.equal(labelOf(grid, 'toString'), null)
+    assert.equal({}.label, undefined)
+  })
+
+  test('labels that is not an object warns once and changes nothing', () => {
+    const { grid } = createDashboard(app, { layout: [item('metric')], labels: 'Revenue' })
+    assert.equal(labelOf(grid, 'metric'), null)
+    assert.equal(warnings.filter((w) => w.includes('labels')).length, 1)
+  })
+
+  test('a whitespace-only label is ignored with one warning', () => {
+    const { grid } = createDashboard(app, { layout: [item('a', { type: 'metric' })], labels: { a: '  \n\t ' } })
+    assert.equal(labelOf(grid, 'a'), null)
+    assert.equal(warnings.filter((w) => w.includes('"a"')).length, 1)
+  })
+
+  test('a Map or an array as labels is ignored, and the warning fires once per page', () => {
+    const m = createDashboard(app, { layout: [item('metric')], labels: new Map([['metric', 'Revenue']]) })
+    assert.equal(labelOf(m.grid, 'metric'), null)
+    assert.equal(warnings.filter((w) => w.includes('labels')).length, 1)
+    const a = createDashboard(new FakeEl('div'), { layout: [item('0', { type: 'metric' })], labels: ['Revenue'] })
+    assert.equal(labelOf(a.grid, '0'), null)
+    assert.equal(warnings.filter((w) => w.includes('labels')).length, 1)
+  })
+
+  test('destroy() is unchanged', () => {
+    const dash = createDashboard(app, { layout: [item('metric')], labels: { metric: 'Revenue' } })
+    dash.destroy()
+    dash.destroy()
+    assert.equal(dash.grid.children.length, 1)
+    assert.equal(dash.grid.parentElement, null)
+  })
+})

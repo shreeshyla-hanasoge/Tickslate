@@ -497,7 +497,7 @@ const head = (wide) =>
 
 const marks = (cls, prefix) => SLOTS.map((i) => `<path class="${cls} c-${i}" data-k="${prefix}${i}"></path>`).join('')
 
-const plot = (ticked) => `<div class="prow"><div class="plot sc" part="chart" data-k="plot"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
+const plot = (ticked) => `<div class="prow"><div class="plot sc lift" part="chart" data-k="plot"><svg viewBox="0 0 ${BOX.width} ${BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">${
   ticked ? '<path class="gl" data-k="grid"></path>' : ''
 }<path class="zl" data-k="zero"></path>${marks('sa', 'a')}${marks('sb', 'b')}${marks('sl', 'l')}${marks('sd', 'd')}</svg>${scrubMarkup(MAX_SERIES, MAX_SERIES, true)}<ul class="pts" data-k="pts" hidden></ul><ul class="visually-hidden" data-k="vals" hidden></ul></div>${
   ticked ? `<div class="yax n" aria-hidden="true"><div class="yin">${[0, 1, 2, 3].map((i) => `<span data-k="y${i}"></span>`).join('')}</div></div>` : ''
@@ -758,6 +758,7 @@ export class TsChart extends TsWidget {
     text('post', vm.synced.post)
     attr('svg', 'aria-label', vm.chartLabel === undefined ? vm.ariaLabel : vm.chartLabel)
 
+    this._lift(this.$('[data-k="plot"]'), vm.series.some((s) => !s.empty))
     this._points = vm.points
     const ptsEl = this.$('[data-k="pts"]')
     if (ptsEl !== this._ptsEl) {

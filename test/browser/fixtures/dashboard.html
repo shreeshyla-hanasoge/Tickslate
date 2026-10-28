@@ -2,7 +2,8 @@
 <!-- createDashboard() in a real page: four tiles from a layout and an object of
      data, and nothing else. window.__dashboard is the handle.
        ?theme=dark   dark theme        ?persist=key   the grid's persist key
-       ?add=off      addTypes: null -->
+       ?add=off      addTypes: null
+       ?labels=on    labels for revenue only, over configure() messages for metric and progress -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -16,8 +17,11 @@
 </style>
 <script type="module">
   import { createDashboard } from '/src/elements/index.js'
+  import { configure } from '/src/core/index.js'
   const params = new URLSearchParams(location.search)
   if (params.get('theme') === 'dark') document.documentElement.dataset.theme = 'dark'
+  const withLabels = params.get('labels') === 'on'
+  if (withLabels) configure({ messages: { 'widget.metric.label': 'From messages (metric)', 'widget.progress.label': 'From messages (progress)' } })
   const dashboard = createDashboard('#app', {
     layout: {
       version: 1,
@@ -34,6 +38,7 @@
       trend: { series: [{ name: 'Orders', points: [{ x: '2026-10-01', y: 4 }, { x: '2026-10-02', y: 6 }] }] },
     },
     label: 'Fixture dashboard',
+    labels: withLabels ? { revenue: 'Net revenue' } : undefined,
     persist: params.get('persist') || undefined,
     addTypes: params.get('add') === 'off' ? null : '*',
   })

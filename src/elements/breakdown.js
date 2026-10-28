@@ -223,22 +223,22 @@ const NONE = '<div class="none mut" data-k="none" hidden></div>'
 
 const SHARE = `${HEAD}
 <span class="shr" data-k="share"></span>
-<div class="track" part="bar" role="img" data-k="bar"><span class="fill" data-k="fill"></span></div>
+<div class="track lift" part="bar" role="img" data-k="bar"><span class="fill" data-k="fill"></span></div>
 <span class="sm mut foot" data-k="foot"></span>
 ${NONE}`
 
 // The legend scrolls inside the tile rather than growing it.
-const LEGEND = (cls) => `<div class="scroll" data-k="scroll" role="group" tabindex="0"><ul class="lg ${cls}" part="legend" data-k="legend"></ul></div>`
+const LEGEND = (cls) => `<div class="scroll lift" data-k="scroll" role="group" tabindex="0"><ul class="lg ${cls}" part="legend" data-k="legend"></ul></div>`
 // The note about left-out values sits above the legend, so it is never the line that scrolls out of view.
 const NOTE = '<p class="sm mut note" data-k="note" hidden></p>'
-const BAR = '<div class="bar" part="bar" role="img" data-k="bar"></div>'
+const BAR = '<div class="bar lift" part="bar" role="img" data-k="bar"></div>'
 
 const TEMPLATES = {
   S: SHARE,
   Wide: `${HEAD}${NONE}${BAR}${NOTE}${LEGEND('flow')}`,
   Tall: `${HEAD}${NONE}${BAR}${NOTE}${LEGEND('stack')}`,
   M: `${HEAD}${NONE}${NOTE}
-<div class="dn"><div class="donut"><svg viewBox="0 0 100 100" part="chart" role="img" focusable="false" data-k="chart"><g data-k="arcs"></g></svg><span class="mid n sm" data-k="mid"></span></div>${LEGEND('stack round')}</div>`,
+<div class="dn"><div class="donut"><svg class="lift" viewBox="0 0 100 100" part="chart" role="img" focusable="false" data-k="chart"><g data-k="arcs"></g></svg><span class="mid n sm" data-k="mid"></span></div>${LEGEND('stack round')}</div>`,
 }
 
 const SKELETONS = {
@@ -248,6 +248,8 @@ const SKELETONS = {
   M: `${header()}<div class="skm"><span class="sk w40 h44"></span><div class="col f1">${sk(90, 10)}${sk(80, 10)}${sk(85, 10)}${sk(70, 10)}</div></div>`,
 }
 
+// The donut is square by width but never taller than the row it sits in (max-block-size): a compact M is shorter than
+// 46cqi is wide, and the ring would run out of the tile. Kept out of STYLES, where a comment ships.
 const STYLES = `
 .scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
 .scroll:focus-visible { outline: 2px solid var(--ts-focus, var(--ts-accent)); outline-offset: 2px; }
@@ -285,7 +287,7 @@ const STYLES = `
 .note { margin: 0; }
 .dn { display: flex; flex: 1; min-height: 0; align-items: center; gap: 16px; }
 .dn .scroll { align-self: stretch; }
-.donut { position: relative; flex: none; inline-size: min(46cqi, 230px); aspect-ratio: 1; }
+.donut { position: relative; flex: none; inline-size: min(46cqi, 230px); aspect-ratio: 1; max-block-size: 100%; }
 .donut svg { display: block; inline-size: 100%; block-size: 100%; }
 .arc { fill: var(--c); }
 /* The hole's width is 62% of the ring, so the total sits inside it and wraps rather than touching the ring. */
@@ -381,6 +383,7 @@ export class TsBreakdown extends TsWidget {
     write('none', vm.noRows)
     // Whatever the size, a set with nothing to draw says so; the (zero) parts still list below, so the legend never contradicts the data.
     hide('none', vm.drawn)
+    for (const key of ['bar', 'scroll', 'chart']) this._lift(this.$(`[data-k="${key}"]`), vm.drawn)
     // Handed back to the next model, which keeps each slice's colour and holds near-tied slices in place.
     this._colours = vm.colours
 

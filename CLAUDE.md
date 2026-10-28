@@ -66,5 +66,5 @@ there too.
 ```bash
 npm test            # unit tests
 npm run dev         # playground (also in .claude/launch.json as "playground")
-npm run release     # test + build:lib + build:dev + build:umd + build:cdn + pack:lib + verify:package + size
+npm run release     # test + lint + build:lib + build:dev + build:umd + build:cdn + pack:lib + verify:package + size
 ```

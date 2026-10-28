@@ -238,7 +238,9 @@ slot[name="footer"]::slotted(*) {
     this.flash('value', figureOf(vm.valueText))
 
     const body = this.$('[data-k="body"]')
-    body.setAttribute('class', vm.scrollable ? 'body scroll' : 'body')
+    body.setAttribute('class', vm.scrollable ? 'body scroll lift' : 'body')
+    // Its template lifts nothing, so the base's per-template mark misses a scrolling body: the attribute, not the data, decides it.
+    this._markLifts(vm.scrollable)
     // A scrolling region the keyboard can't reach is unusable without a mouse.
     if (vm.scrollable) {
       body.setAttribute('tabindex', '0')

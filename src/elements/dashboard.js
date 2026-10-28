@@ -76,6 +76,21 @@ export function createDashboard(target, options = {}) {
   // ts-add-request for that id (the host gave `data` for it) arrives with its figures.
   const values = new Map()
   if (data && typeof data === 'object') for (const id of Object.keys(data)) values.set(id, data[id])
+  // The titles the host gave, read once: they are creation-time host data, so
+  // a later change to the host's object does nothing (RFC 0005 §4, no setter).
+  // Own keys only, so "__proto__" and "constructor" are ids, never the prototype's members.
+  const titles = new Map()
+  const given = options.labels
+  // A Map or an array is an object but not an id-to-title record; both would be read wrongly (a Map as empty, an array as "0", "1").
+  const plain = given && typeof given === 'object' && !Array.isArray(given) && !(given instanceof Map)
+  if (plain) {
+    for (const id of Object.keys(given)) {
+      const text = given[id]
+      // A blank title would empty the tile's heading and accessible name, so it counts as empty.
+      if (typeof text === 'string' && text.trim()) titles.set(id, text)
+      else if (DEV) warnOnce(`dashboard-label-value:${id}`, `createDashboard was given a label for "${id}" that is not a non-empty string, so it is ignored.`)
+    }
+  } else if (DEV && given !== undefined) warnOnce('dashboard-labels-shape', 'createDashboard was given labels that is not a plain object of item id to label, so it is ignored.')
   let alive = true
 
   const tagFor = (item) => {
@@ -94,6 +109,8 @@ export function createDashboard(target, options = {}) {
     }
     const el = document.createElement(tag)
     el.setAttribute('item', item.id)
+    // The attribute, not the layout: it wins over every messages source for this tile and is never saved.
+    if (titles.has(item.id)) el.setAttribute('label', titles.get(item.id))
     if (values.has(item.id)) el.data = values.get(item.id)
     tiles.set(item.id, el)
     grid.appendChild(el)
@@ -145,6 +162,9 @@ export function createDashboard(target, options = {}) {
     if (DEV && !persist) {
       for (const id of values.keys()) {
         if (!tiles.has(id)) warnOnce(`dashboard-data:${id}`, `createDashboard was given data for "${id}", which is no item in any profile of the layout, so it is ignored.`)
+      }
+      for (const id of titles.keys()) {
+        if (!tiles.has(id)) warnOnce(`dashboard-label:${id}`, `createDashboard was given a label for "${id}", which is no item in any profile of the layout, so it is ignored.`)
       }
     }
   }

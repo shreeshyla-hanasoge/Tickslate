@@ -59,7 +59,7 @@ message.
 
 ```js
 // mrr.js
-const head = '<div class="hd"><span class="lb ell" data-k="label"></span></div>'
+const head = '<div class="hd" part="header"><span class="lb ell" part="label" role="heading" aria-level="3" data-k="label"></span></div>'
 const change = '<span class="sm n nv" data-k="change"><span aria-hidden="true" data-k="arrow"></span> <span data-k="delta"></span></span>'
 const more = '<button type="button" class="btn" data-action="breakdown" data-k="more" hidden></button>'
 
@@ -69,7 +69,7 @@ const TEMPLATES = {
   Wide: `${head}<span class="xbig n nv" data-k="value"></span><span class="f1"></span>
 <div class="row">${change}<span class="f1"></span><span class="sm mut ell" data-k="customers"></span></div>`,
   M: `${head}<div class="rowb"><span class="xbig n nv" data-k="value"></span>${change}</div>
-<div class="spark"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
+<div class="spark lift" data-k="sparkbox"><svg viewBox="0 0 ${SPARK.width} ${SPARK.height}" preserveAspectRatio="none" role="img" data-k="spark" hidden>
   <path class="sa" data-k="area"></path><path class="sl" data-k="line"></path>
 </svg></div>
 <div class="row"><span class="sm mut ell f1" data-k="customers"></span>${more}</div>`,
@@ -94,6 +94,19 @@ const TEMPLATES = {
   [Your own widget](your-own-widget.md#shared-classes)). They are built from the
   `--ts-*` tokens, so your widget follows the host's theme with no colour of its
   own. `.big` and `.xbig` shrink to fit a narrow tile.
+- **Mark your data surfaces with `lift`.** On an `href` or `activatable`
+  tile the label's link is stretched over the whole tile, so a click anywhere
+  opens it. Put `class="lift"` on each part a reader points at or works with:
+  a drawn chart, a scrolling list, a grid of cells, anything with pointer or
+  keyboard behaviour of its own (the sparkline's `<div class="spark lift">`
+  above). The base lifts it above the link on those tiles only, so a click
+  there scrolls, scrubs or does nothing, and the header, the headline figure
+  and the empty space still open the tile. A `.btn` and slotted controls are
+  lifted already. The link is made from the label the header marks with
+  `part="label"`, so keep that part, as `head` above does. Lift data only
+  while it exists: drop the class in `update()` for an empty list or a plot
+  with nothing to draw, as `update()` below does for the sparkline, so a click
+  on the empty box or its message opens the tile like the rest of it.
 - **Add only the CSS you need**, again with tokens only:
 
 ```js
@@ -357,6 +370,8 @@ is what lets a test call it directly.
     if (variant === 'Wide') return
 
     this.$('[data-k="spark"]').toggleAttribute('hidden', !vm.line)
+    // Lifted only while there is a line: an empty box is empty space, and opens an activatable tile.
+    attr('sparkbox', 'class', vm.line ? 'spark lift' : 'spark')
     attr('spark', 'class', vm.tone)
     attr('spark', 'aria-label', vm.sparkLabel)
     attr('line', 'd', vm.line)
@@ -385,9 +400,9 @@ if you must build markup from data, escape it (below). On a page with Trusted Ty
 Put the base's two header parts in your head markup and the base does the rest:
 
 ```js
-const head = `<div class="hd">
+const head = `<div class="hd" part="header">
 <span class="dot live" data-k="dot" aria-hidden="true" hidden></span>
-<span class="lb ell" data-k="label"></span><span class="f1"></span>
+<span class="lb ell" part="label" role="heading" aria-level="3" data-k="label"></span><span class="f1"></span>
 <span class="sm mut n meta" data-k="meta" hidden><span class="pre" data-k="pre"></span><span data-k="time"></span><span class="pre" data-k="post"></span></span>
 </div>`
 ```
@@ -645,6 +660,8 @@ page that imports `tickslate/elements`.
 - [ ] Gains and losses carry a sign, an `aria-hidden` arrow and a tone, decided from the number and not the text
 - [ ] No English in the template: every word is a message key with a default of your own
 - [ ] `update` sets text and attributes, and never rebuilds markup
+- [ ] Every data surface (a chart, a scrolling list, a grid of cells) carries `class="lift"`, so a click on it never opens an `activatable` tile
+- [ ] `update()` drops `lift` from a surface while it holds no data, so an empty list or an undrawn chart opens the tile
 - [ ] `static dataShape` and a `widget.<type>.empty` message
 - [ ] No attribute or property named like an `HTMLElement` member (`title`, `hidden`, `scroll`…)
 - [ ] A prefix of your own on the tag and the type, registered with `defineWidget`, guarded against a second evaluation

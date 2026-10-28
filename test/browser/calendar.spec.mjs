@@ -75,19 +75,47 @@ test.describe('the grid', () => {
     expect(cells.some((c) => ['Sat', 'Sun'].includes(new Date(`${c.date}T00:00:00Z`).toUTCString().slice(0, 3)))).toBe(false)
   })
 
-  test('draws a loss with a corner mark that has a box and pixels, and a gain with none', async ({ page }) => {
-    await open(page, 'size=M')
-    const marks = await page.evaluate(() => {
+  // The corner is opt-in (RFC 0005 Decision 95): --ts-loss-mark is transparent until a host, the cvd palette or forced colours turns it on.
+  const corner = (page) =>
+    page.evaluate(() => {
       const root = window.__c.el.shadowRoot
       const style = (sel) => {
         const after = getComputedStyle(root.querySelector(sel), '::after')
-        return { content: after.content, display: after.display, bg: after.backgroundColor, ink: getComputedStyle(root.querySelector('.tile')).color, w: parseFloat(after.width), h: parseFloat(after.height) }
+        return { content: after.content, display: after.display, bg: after.backgroundColor, w: parseFloat(after.width), h: parseFloat(after.height) }
       }
-      return { loss: style('.c.neg'), gain: style('.c.pos') }
+      return { loss: style('.c.neg'), gain: style('.c.pos'), ink: getComputedStyle(root.querySelector('.tile')).color }
     })
+  const TRANSPARENT = 'rgba(0, 0, 0, 0)'
+  const names = (page) =>
+    page.evaluate(() => ({
+      cells: [...window.__c.el.shadowRoot.querySelectorAll('.c')].map((c) => c.getAttribute('aria-label')),
+      summary: window.__c.el.shadowRoot.querySelector('#summary').textContent,
+    }))
+
+  test('draws no loss corner by default: the token is transparent, and a gain has none either', async ({ page }) => {
+    await open(page, 'size=M')
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ts-loss-mark').trim())).toBe('transparent')
+    const marks = await corner(page)
+    expect(marks.loss.bg).toBe(TRANSPARENT)
+    expect(marks.gain.content === 'none' || marks.gain.content === 'normal').toBe(true)
+    // The pixels: hiding the pseudo-element changes nothing, because it paints nothing.
+    const shot = () => page.locator('ts-pnl-calendar .c.neg').first().screenshot()
+    const before = await shot()
+    await page.evaluate(() => {
+      const st = document.createElement('style')
+      st.textContent = '.c.neg::after { display: none !important; }'
+      window.__c.el.shadowRoot.append(st)
+    })
+    expect((await shot()).equals(before)).toBe(true)
+  })
+
+  test('draws the corner in the ink colour when a host sets --ts-loss-mark, with a box and pixels, and a gain with none', async ({ page }) => {
+    await open(page, 'size=M')
+    await page.evaluate(() => document.documentElement.style.setProperty('--ts-loss-mark', 'var(--ts-ink)'))
+    const marks = await corner(page)
     expect(marks.loss.content).not.toBe('none')
     expect(marks.loss.display).not.toBe('none')
-    expect(marks.loss.bg).toBe(marks.loss.ink)
+    expect(marks.loss.bg).toBe(marks.ink)
     // A mark that is not rendered has no width at all (NaN), and one that is has an area.
     expect(marks.loss.w).toBeGreaterThan(2)
     expect(marks.loss.h).toBeGreaterThan(2)
@@ -103,6 +131,47 @@ test.describe('the grid', () => {
     })
     expect((await shot('.c.neg')).equals(lossBefore)).toBe(false)
     expect((await shot('.c.pos')).equals(gainBefore)).toBe(true)
+  })
+
+  for (const theme of ['light', 'dark']) {
+    test(`the cvd palette turns the corner on in ${theme}, in the ink colour`, async ({ page }) => {
+      await open(page, `size=M&theme=${theme}`)
+      expect((await corner(page)).loss.bg).toBe(TRANSPARENT)
+      await page.evaluate(() => { document.documentElement.dataset.tsPalette = 'cvd' })
+      const marks = await corner(page)
+      expect(marks.loss.bg).toBe(marks.ink)
+      expect(marks.loss.bg).not.toBe(TRANSPARENT)
+      expect(marks.loss.w).toBeGreaterThan(2)
+      // red-up is a market convention, not a colour-vision aid: no corner.
+      await page.evaluate(() => { document.documentElement.dataset.tsPalette = 'red-up' })
+      expect((await corner(page)).loss.bg).toBe(TRANSPARENT)
+    })
+  }
+
+  // currentColor resolves at the cell, so a rule written once on :root draws the ink of whichever theme island the calendar is in.
+  for (const [root, island] of [['light', 'dark'], ['dark', 'light']]) {
+    test(`--ts-loss-mark: currentColor on a ${root} root draws the ink of a ${island} island inside it`, async ({ page }) => {
+      await open(page, `size=M&theme=${root}`)
+      const rootInk = (await corner(page)).ink
+      await page.evaluate((island) => {
+        document.documentElement.style.setProperty('--ts-loss-mark', 'currentColor')
+        document.getElementById('wrap').setAttribute('data-theme', island)
+      }, island)
+      const marks = await corner(page)
+      expect(marks.ink).not.toBe(rootInk)
+      expect(marks.loss.bg).toBe(marks.ink)
+      expect(marks.loss.w).toBeGreaterThan(2)
+    })
+  }
+
+  test('names every cell and the summary the same with the corner off, on by token and on by palette', async ({ page }) => {
+    await open(page, 'size=M&locale=en-GB')
+    const off = await names(page)
+    expect(off.cells.some((n) => /, −₹?[\d,.]+$/.test(n))).toBe(true)
+    await page.evaluate(() => document.documentElement.style.setProperty('--ts-loss-mark', 'var(--ts-ink)'))
+    expect(await names(page)).toEqual(off)
+    await page.evaluate(() => { document.documentElement.style.removeProperty('--ts-loss-mark'); document.documentElement.dataset.tsPalette = 'cvd' })
+    expect(await names(page)).toEqual(off)
   })
 
   test('mixes a stronger day from more of its colour, and draws an upcoming day as an outline', async ({ page }) => {
@@ -259,6 +328,28 @@ test.describe('forced colours', () => {
     expect(flat.flat[1]).toBe('solid')
     expect(flat.none[1]).toBe('dotted')
     expect(flat.flat).not.toEqual(flat.none)
+  })
+})
+
+test.describe('forced colours and the loss corner', () => {
+  test('keep the corner, in Highlight, though the token is transparent', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'forced-colors emulation is Chromium-only')
+    await page.emulateMedia({ forcedColors: 'active' })
+    await open(page, 'size=M')
+    const info = await page.evaluate(() => {
+      const root = window.__c.el.shadowRoot
+      const after = getComputedStyle(root.querySelector('.c.neg'), '::after')
+      const probe = document.createElement('div')
+      probe.style.color = 'Highlight'
+      document.body.append(probe)
+      const highlight = getComputedStyle(probe).color
+      probe.remove()
+      return { bg: after.backgroundColor, w: parseFloat(after.width), highlight, token: getComputedStyle(document.documentElement).getPropertyValue('--ts-loss-mark').trim() }
+    })
+    expect(info.token).toBe('transparent')
+    expect(info.bg).not.toBe('rgba(0, 0, 0, 0)')
+    expect(info.bg).toBe(info.highlight)
+    expect(info.w).toBeGreaterThan(2)
   })
 })
 

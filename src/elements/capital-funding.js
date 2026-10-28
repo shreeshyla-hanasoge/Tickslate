@@ -154,7 +154,7 @@ const TEMPLATES = {
   <span class="sm n ell st sec" data-k="status"></span>
 </div>`,
   list: `${head}
-<div class="scroll" data-k="scroll" role="group" tabindex="0">
+<div class="scroll lift" data-k="scroll" role="group" tabindex="0">
   <ul class="accts" data-k="list"></ul>
   <div class="none mut" data-k="none" hidden></div>
   <div class="sm mut note" data-k="note" hidden></div>
@@ -334,6 +334,7 @@ export class TsCapitalFunding extends TsWidget {
     setAttr(this.$('[data-k="scroll"]'), 'aria-label', vm.region)
     write('none', vm.noRows)
     hide('none', vm.rows.length > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.rows.length > 0)
     write('note', vm.note)
     hide('note', !vm.note)
     this._bind()

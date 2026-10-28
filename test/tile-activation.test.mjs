@@ -1,6 +1,6 @@
 import { test, describe, before, after, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { FakeElement, FakeDocument, tick } from './fake-dom.mjs'
+import { FakeElement, FakeDocument, FakeNode, tick } from './fake-dom.mjs'
 
 // Tile activation and point selection (RFC 0003 §7): href, activatable,
 // stretched-link pattern, focus ring, edit guard, and chart point select.
@@ -82,6 +82,125 @@ describe('shared CSS rules for tile activation', () => {
     const lifted = /::slotted\(:is\(([^{}]*)\)\),\s*::slotted\(\[slot="actions"\]\)\s*\{\s*position:\s*relative;\s*z-index:\s*2;\s*\}/.exec(css)
     assert.ok(lifted, 'controls and the actions slot are lifted')
     for (const sel of ['a', 'button', 'input', 'select', 'textarea', 'summary', '[tabindex]', '[role="button"]', '[role="link"]']) assert.ok(lifted[1].includes(sel), sel)
+  })
+})
+
+describe('the click target of an href or activatable tile (RFC 0005 §1)', () => {
+  // The contract of RFC 0005 §1.2: which surfaces each widget lifts above the stretched link. A surface is found in the
+  // static template by what marks it (its part, its role, or the .scroll class), so a new size that forgets the class fails.
+  const SURFACES = {
+    'today-pnl.js': { cls: 'TsTodayPnl', sizes: { S: [], Wide: [], M: ['part=chart'] } },
+    'equity-curve.js': { cls: 'TsEquityCurve', sizes: { Wide: ['part=chart'], M: ['part=chart'], XL: ['part=chart'] } },
+    'series-chart.js': { cls: 'TsChart', sizes: { Wide: ['part=chart'], M: ['part=chart'], L: ['part=chart'], XL: ['part=chart'] } },
+    'pnl-calendar.js': { cls: 'TsPnlCalendar', sizes: { Tall: ['role=grid'], M: ['role=grid'], Banner: ['role=grid'] } },
+    'mini-chart.js': { cls: 'TsMiniChart', sizes: { M: ['part=chart'], L: ['part=chart'], XL: ['part=chart', 'part=chart'] } },
+    'metric.js': { cls: 'TsMetric', sizes: { S: [], Wide: ['part=chart'], M: ['part=chart'] } },
+    'edge-stats.js': { cls: 'TsEdgeStats', sizes: { S: [], Wide: [], M: ['part=chart'] } },
+    'breakdown.js': { cls: 'TsBreakdown', sizes: { S: ['part=bar'], Wide: ['part=bar', 'scroll'], Tall: ['part=bar', 'scroll'], M: ['part=chart', 'scroll'] } },
+    'table.js': { cls: 'TsTable', sizes: { Tall: ['scroll'], M: ['scroll'], L: ['scroll'], XL: ['scroll'] } },
+    'watchlist.js': { cls: 'TsWatchlist', sizes: { S: ['scroll'], Tall: ['scroll'], M: ['scroll'] } },
+    'open-positions.js': { cls: 'TsOpenPositions', sizes: { Wide: ['scroll'], M: ['scroll'], L: ['scroll'] } },
+    'capital-funding.js': { cls: 'TsCapitalFunding', sizes: { S: [], Tall: ['scroll'], L: ['scroll'] } },
+    'status.js': { cls: 'TsStatus', sizes: { S: [], Tall: ['scroll'], M: ['scroll'] } },
+    'feed.js': { cls: 'TsFeed', sizes: { Tall: ['scroll'], M: ['scroll'], L: ['scroll'] } },
+    'session-clock.js': { cls: 'TsSessionClock', sizes: { S: [], Banner: [] } },
+    'progress.js': { cls: 'TsProgress', sizes: { S: [], Wide: [] } },
+  }
+  const mods = {}
+  before(async () => {
+    globalThis.HTMLElement = FakeElement
+    for (const file of Object.keys(SURFACES)) mods[file] = await import(`../src/elements/${file}`)
+    delete globalThis.HTMLElement
+  })
+
+  // Every opening tag in a template, with its class list and the marks the contract names.
+  const tags = (html) => [...html.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/g)].map(([, name, attrs]) => {
+    const get = (a) => (new RegExp(`\\s${a}="([^"]*)"`).exec(attrs) || [])[1]
+    const classes = (get('class') || '').split(/\s+/).filter(Boolean)
+    const marks = []
+    if ((get('part') || '').split(/\s+/).includes('chart')) marks.push('part=chart')
+    if ((get('part') || '').split(/\s+/).includes('bar')) marks.push('part=bar')
+    if ((get('part') || '').split(/\s+/).includes('instrument')) marks.push('part=instrument')
+    if (get('role') === 'grid') marks.push('role=grid')
+    if (classes.includes('scroll')) marks.push('scroll')
+    return { name, classes, marks }
+  })
+
+  test('one shared rule lifts .lift above the stretched link, and only on an href or activatable tile', () => {
+    const css = W.SHARED_CSS
+    assert.match(css, /:host\(\[activatable\]\) \.lift, :host\(\[href\]\) \.lift \{ position: relative; z-index: 2; \}/)
+    // Above the overlay (z-index 1), level with the tile's own buttons, so a later .btn still wins by order.
+    assert.match(css, /\[part~="link"\]::after \{[^}]*z-index: 1;/)
+    assert.match(css, /\.btn \{[^}]*z-index: 2;/)
+    // Nothing lifts .lift on a plain tile: every rule that names it is scoped to the two attributes.
+    for (const rule of css.match(/[^{}]*\.lift\b(?!s)[^{]*\{/g)) assert.match(rule, /^\s*(?:\/\*[\s\S]*?\*\/\s*)?:host\(\[activatable\]\) \.lift, :host\(\[href\]\) \.lift \{$/)
+    // An href or activatable tile is its own stacking context, so z-index 2 is ordered inside it and never against a page's
+    // sticky bar or popover; a plain tile is not isolated, so a host's fixed menu slotted into it stacks as it always did.
+    assert.match(css, /:host\(\[activatable\]\), :host\(\[href\]\) \{ isolation: isolate; \}/)
+    assert.match(css, /:host \{ display: block; \}/)
+    assert.equal(css.match(/isolation/g).length, 1)
+  })
+
+  test('on a touch screen the header floor applies only to a tile that lifts something', () => {
+    const css = W.SHARED_CSS
+    assert.match(css, /@media \(pointer: coarse\) \{ :host\(\[activatable\]\) \.lifts \.hd, :host\(\[href\]\) \.lifts \.hd \{ min-block-size: max\(18px, calc\(34px - var\(--ts-pad, 18px\)\)\); \} \}/)
+    assert.doesNotMatch(css, /:host\(\[activatable\]\) \.hd/, 'a tile with nothing lifted keeps the header it was laid out with')
+  })
+
+  test('the base marks the tile .lifts after a render that leaves a lifted surface, and clears it for the other views', async () => {
+    const el = new DummyTile()
+    el.setAttribute('label', 'Orders')
+    el.setAttribute('activatable', '')
+    el.connect()
+    el.data = {}
+    await tick()
+    // The stand-in finds a node for any selector, so a content render reads as one with a lifted surface.
+    assert.equal(el.shadowRoot.section.getAttribute('class'), 'tile lifts')
+    el.data = null
+    await tick()
+    assert.equal(el.shadowRoot.section.getAttribute('class'), 'tile')
+  })
+
+  test('_lift adds and removes the class, so an empty surface opens the tile like the rest of it', () => {
+    const el = new DummyTile()
+    const node = new FakeNode()
+    node.setAttribute('class', 'scroll lift')
+    el._lift(node, false)
+    assert.equal(node.getAttribute('class'), 'scroll')
+    el._lift(node, true)
+    assert.equal(node.getAttribute('class'), 'scroll lift')
+    el._lift(null, true)
+  })
+
+  for (const [file, { cls, sizes }] of Object.entries(SURFACES)) {
+    test(`${file}: the surfaces of RFC 0005 §1.2 carry lift at every size, and nothing else does`, () => {
+      const Cls = mods[file][cls]
+      for (const [size, want] of Object.entries(sizes)) {
+        const all = tags(Cls.template(size))
+        const marked = all.filter((t) => t.marks.length)
+        // Progress keeps its track (part=bar) under the overlay on purpose: it is the headline drawn as a shape.
+        const surfaces = file === 'progress.js' ? [] : marked
+        assert.deepEqual(surfaces.map((t) => t.marks.join(' ')).sort(), [...want].sort(), `${size}: the surfaces found`)
+        for (const t of surfaces) assert.ok(t.classes.includes('lift'), `${size}: <${t.name} class="${t.classes.join(' ')}"> (${t.marks}) is lifted`)
+        const lifted = all.filter((t) => t.classes.includes('lift'))
+        assert.equal(lifted.length, surfaces.length, `${size}: only the listed surfaces are lifted`)
+      }
+    })
+  }
+
+  test('a click on a lifted surface finds no link, so the delegated listener emits nothing', async () => {
+    const el = new DummyTile()
+    el.setAttribute('label', 'Orders')
+    el.setAttribute('item', 'orders')
+    el.setAttribute('activatable', '')
+    el.connect()
+    await tick()
+    const actions = []
+    el.addEventListener('ts-action', (e) => actions.push(e.detail))
+    // A cell inside a lifted grid: the click lands on it, not on the overlay, and closest() meets no [part~="link"] on the way up.
+    const cell = { closest: () => null, localName: 'span', getAttribute: (k) => (k === 'role' ? 'gridcell' : null) }
+    el.shadowRoot.section.dispatch('click', { target: cell })
+    assert.deepEqual(actions, [])
   })
 })
 

@@ -1,12 +1,12 @@
 import type { Calendar, Catalog, DayResult, Layout, LayoutItem, Numeric, SizeName, Time, WidgetCatalog } from '../core/index.js'
 import { TsWidget } from './widget.js'
-import type { ViewModelContext, TsOpenAction, TsChartSelectAction } from './widget.js'
+import type { ViewModelContext, TsOpenAction, TsExpandAction, TsChartSelectAction } from './widget.js'
 
 export { version } from '../core/index.js'
 // widget.d.ts is shipped beside this file (scripts/pack-lib.mjs), so this
 // import resolves both in the repo and in the published package.
 export { TsWidget } from './widget.js'
-export type { ViewModelContext, WidgetState, TsOpenAction, TsChartSelectAction } from './widget.js'
+export type { ViewModelContext, WidgetState, TsOpenAction, TsExpandAction, TsChartSelectAction } from './widget.js'
 // grid.d.ts is shipped beside this file too (scripts/pack-lib.mjs).
 export * from './grid.js'
 // controls.d.ts (the picker and the grid controls) ships beside this file too.
@@ -129,6 +129,8 @@ export interface DashboardOptions {
   timeZone?: string
   /** The grid's accessible name (`aria-label`). Say what the dashboard is. Default: the grid's own "Dashboard". */
   label?: string
+  /** A title per item id, written as the tile's `label` attribute whenever the dashboard creates that tile, so it wins over every `messages` source. Never saved in the layout; later changes to the object do nothing. A value that is not a non-empty string is ignored with a development warning. */
+  labels?: Record<string, string>
   /** What the picker offers and `ts-add-request` is answered for: a list of types, '*' or null. Default '*'. */
   addTypes?: readonly string[] | '*' | null
 }
@@ -152,7 +154,7 @@ export interface Dashboard {
 export declare function createDashboard(target: Element | string, options: DashboardOptions): Dashboard
 
 /** The `ts-action` detail every widget can send: the error view's Retry and tile activation (RFC 0003 §7, §22.2). */
-export type TsCommonAction = { action: 'retry' } | TsOpenAction
+export type TsCommonAction = { action: 'retry' } | TsOpenAction | TsExpandAction
 
 /**
  * What every widget inherits, for the manifest (scripts/gen-manifest.mjs): the attributes, parts and
@@ -170,8 +172,8 @@ export type TsCommonAction = { action: 'retry' } | TsOpenAction
  * @attr {'loading' | 'error'} state - Shows the skeleton or the error view, even over existing data.
  * @attr {string} data - JSON (starting with { or [) used as the data until the `data` property is set.
  * @attr {string} heading-level - The aria-level of the label heading, 1 to 6. Default 3.
- * @attr {string} href - Makes the label a link to this URL: http, https, mailto, tel or relative.
- * @attr {boolean} activatable - Makes the whole tile one button: the label is the button and its click area covers the tile, so a click on a chart or heatmap fires `ts-action` with action 'open' too. Route `open` somewhere other than the page the tile is on.
+ * @attr {string} href - Makes the label a link to this URL: http, https, mailto, tel or relative. The header, the headline figure and the empty space follow it; a click on data does not.
+ * @attr {boolean} activatable - Makes the label a button that opens the tile: a click on it, on the header, on the headline figure or on the empty space fires `ts-action` with action 'open'. A click on data (a chart, a calendar cell, a list) never does. Route `open` somewhere other than the page the tile is on.
  * @attr {string} stale-after - How old live data's `asOf` may get before the tile reads as stale: milliseconds (`90000`) or a duration (`'90s'`, `'2m'`, `'1h'`). Default 120000; falls back to the grid's.
  * @attr {'off'} flash - 'off' stops the brief tint on a headline figure that changed; the grid's `flash` applies too.
  * @attr {'on' | 'off'} scrub - 'off' turns off scrubbing on a chart: hover, touch drag and the keyboard slider. The widget's own, then the grid's, then on. Only the charts act on it.

@@ -37,11 +37,11 @@ Without a bundler, load it from jsDelivr. Pin an exact version so a release
 can never change your page.
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.3.1/elements.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/tickslate@0.4.0/elements.js"></script>
 ```
 
 To use a named export from a page script, import it from the same URL:
-`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.3.1/elements.js'`.
+`import { persistLayout } from 'https://cdn.jsdelivr.net/npm/tickslate@0.4.0/elements.js'`.
 
 Pay only for the widgets you use: each one has its own entry, which registers
 just that tag.
@@ -62,7 +62,7 @@ Or, with no build step at all, one script tag loads the core and every element
 and sets `window.Tickslate`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/tickslate@0.3.1/cdn/tickslate.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tickslate@0.4.0/cdn/tickslate.iife.js"></script>
 ```
 
 `cdn/tickslate.js` is the same code as a minified ES module. The `unpkg` and
@@ -110,7 +110,7 @@ stylesheet at all. Linking `tokens.css` is still the clearest way to see and
 override every variable, and it always beats the built-in defaults:
 
 ```html
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.3.1/tokens.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tickslate@0.4.0/tokens.css">
 ```
 
 ```js
@@ -172,6 +172,20 @@ and, in development builds, a console warning with the position. See
 ```html
 <ts-metric label="Signups" data='{"value": 1204, "previous": 1075}'></ts-metric>
 ```
+
+## Opening a tile
+
+| Attribute | What the tile does |
+|---|---|
+| `href="/orders"` | Its label is a link, and a click on the header, the headline figure or the empty space follows it |
+| `activatable` | Its label is a button, and a click on the header, the headline figure or the empty space fires `ts-action` with `{ action: 'open', id }` (`id` is the tile's `item`) |
+
+A click on data never opens a tile: a chart scrubs, a calendar cell takes
+focus, a list scrolls, a sort button sorts and a selectable row or point fires
+`select`. A list with nothing in it, a chart with nothing to draw, a progress
+track and a session clock's lanes open the tile like its empty space. The keyboard reaches the label as one Tab stop, and Enter opens it.
+Route `open` to a page other than the one the tile is on. See
+[docs/reference/events.md](docs/reference/events.md).
 
 ## Saving layouts
 
@@ -304,7 +318,7 @@ transformIgnorePatterns: ['/node_modules/(?!tickslate/)']
 npm install
 npm run dev        # playground at http://localhost:5173
 npm test           # node --test, no install needed
-npm run release    # test, build ESM, development tree, UMD and CDN bundle, assemble dist-lib/
+npm run release    # test, lint, build ESM, development tree, UMD and CDN bundle, assemble dist-lib/
 ```
 
 Publishing is done from the assembled folder: `npm publish ./dist-lib`.

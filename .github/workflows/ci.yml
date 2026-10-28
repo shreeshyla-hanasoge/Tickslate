@@ -58,7 +58,7 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      # The same chain the maintainer runs before publishing (test, build:lib,
+      # The same chain the maintainer runs before publishing (test, lint, build:lib,
       # build:dev, build:umd, build:cdn, pack:lib, verify:package, size), so CI can't pass a
       # package that a local release would refuse.
       - run: npm run release

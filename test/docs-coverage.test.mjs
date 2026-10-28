@@ -334,10 +334,10 @@ describe('the trading dashboard example and guide', () => {
   // emittedActions() only sees this.emit('literal'); most actions go through
   // ACTION_* constants, so the page test reads both. The list is also kept by hand:
   // a new action fails the first test until it is added here and handled in the page.
-  const ACTIONS = ['add-instrument', 'exit-all', 'exit-position', 'open', 'range', 'rebalance', 'retry', 'select', 'sort', 'timeframe']
+  const ACTIONS = ['add-instrument', 'exit-all', 'exit-position', 'expand', 'instrument', 'open', 'range', 'rebalance', 'retry', 'select', 'sort', 'timeframe']
   // <ts-mini-chart> draws with the optional peer Emberwick and has its own entry, so the example (which imports the all-in
   // entry) has no such tile and nothing to handle (RFC 0004 §6.1).
-  const NOT_IN_THE_EXAMPLE = ['timeframe']
+  const NOT_IN_THE_EXAMPLE = ['expand', 'instrument', 'timeframe']
   const widgetActions = () => {
     const names = new Set(emittedActions())
     for (const file of elementFiles()) {

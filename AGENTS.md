@@ -77,7 +77,7 @@ runtime dependencies. Version 0.1.0 is on npm. 0.2.0 is prepared on
 ```bash
 npm ci                # once
 npm test              # unit tests (node --test), must pass
-npm run release       # tests, all builds, package checks and size budgets, must exit 0
+npm run release       # tests, lint, all builds, package checks and size budgets, must exit 0
 npm run test:browser  # Playwright on 5 projects (Chromium, WebKit, Firefox, iPhone, Pixel)
 npm run dev           # playground at http://localhost:5173, gallery at /widgets.html
 ```
