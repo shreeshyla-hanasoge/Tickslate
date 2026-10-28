@@ -2,7 +2,7 @@
  * Tickslate core — framework-free, zero runtime dependencies, no DOM side
  * effects on import. The API is specified in docs/rfc/0001-api.md.
  */
-export const version = '0.3.1'
+export const version = '0.4.0'
 
 export {
   SIZES,

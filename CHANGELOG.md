@@ -6,6 +6,28 @@ All notable changes to Tickslate are recorded here. The format follows
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-28
+
+A feature release: tiles open only from their label, header and empty space (see Breaking), `<ts-mini-chart>` can ask to switch its instrument, any widget can ask to be expanded, `createDashboard` takes per-tile labels, and the loss-day corner mark on `<ts-pnl-calendar>` is opt-in. Read the Breaking entry before upgrading.
+
+### Breaking
+
+- **A click on data no longer opens an `href` or `activatable` tile.** The label, the header, the headline figure and the empty space still open it, but a click on a chart scrubs, on a `<ts-pnl-calendar>` cell focuses the cell, on a scrolling list scrolls it, on a sort button sorts and on a selectable row or chart point fires `select`, and none of them fires `open` or follows the `href`. Lists inside such a tile now scroll under the mouse wheel. An `href` or `activatable` tile is now its own stacking context (`isolation: isolate`), so nothing in it, its data, buttons and sticky table header included, paints over a host page's sticky bar or popover, and content slotted into it can no longer stack above other tiles; a plain tile is unchanged. A list with nothing in it and a chart with nothing to draw still open the tile. The keyboard is unchanged: the label is one Tab stop and Enter opens it. Do this instead: to open the tile from a click anywhere, listen for `click` on the tile and skip the clicks the tile already handles (its label, which fires `open` or follows the `href` itself, and its own buttons and links): `tile.addEventListener('click', (e) => { if (!e.composedPath().some((n) => n.matches?.('[part~="link"], button, a'))) openTile(tile) })`. A menu of your own inside such a tile should be a `popover` or a `<dialog>`, which sit in the top layer, rather than a `position: fixed` element. In a widget of your own, put `class="lift"` on each data surface, while it holds data, so it behaves the same way.
+
+### Added
+
+- `createDashboard` takes `labels`, an object from item id to title, written as each tile's `label` attribute when the dashboard creates it, so two metrics can have different titles. It wins over `messages` on that tile and is never saved in the layout.
+- `<ts-mini-chart>` can ask to switch its instrument. Give each chart `instruments` (`{ id, label }`, at most 50) and the shown `instrumentId`, and list `'instrument'` in `actions`: a native select named "Instrument" replaces the name in the chart's row at M, L and XL, and choosing fires `ts-action { action: 'instrument', id, value }`. The widget never switches itself; `preventDefault()` puts the picker back.
+- Any widget can ask to be expanded. List `'expand'` in `actions` and every size but `S` gets an icon button named "Expand {label}" last in the header, firing `ts-action { action: 'expand', id }`. The host decides what expanding means, for example `requestFullscreen()`. Both actions do nothing while the grid is being edited.
+- Three messages: `action.expand`, `miniChart.instrument` and `miniChart.instrumentOf`.
+- `--ts-loss-mark`: the colour of the corner on a loss day in `<ts-pnl-calendar>`, `transparent` by default. For example `ts-pnl-calendar { --ts-loss-mark: currentColor; }` draws it in the widget's ink in any theme.
+
+### Changed
+
+- `<ts-pnl-calendar>`: the corner mark on a loss day is now off by default. Turn it on with the new `--ts-loss-mark` token, for example `--ts-loss-mark: currentColor`; the `cvd` colour-vision palette turns it on for you, and forced colours always show it. Every day's name and the summary still carry the signed figure.
+- On a touch screen the header row of an `href` or `activatable` tile that has a chart or a list in it is 4px taller in compact density, so the strip that opens the tile stays 44px tall. A tile with nothing lifted keeps its header, and the height is decided by the view, so it does not change when a list empties or refills.
+- `<ts-breakdown>`'s donut at M is never taller than its row, so at compact density it no longer runs past the tile's bottom edge.
+
 ## 0.3.1 — 2026-10-27
 
 A patch for the label styling and name of `activatable` tiles, plus test hygiene.
