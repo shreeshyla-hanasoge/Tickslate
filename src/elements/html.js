@@ -102,12 +102,6 @@ export function setHTML(host, markup, count = 1) {
   host.replaceChildren(out)
 }
 
-/** Adds `fn` as a `type` listener on each node under `host` that matches `selector`. The stand-in nodes have none to find. */
-export function listenAll(host, selector, type, fn) {
-  if (!live()) return
-  for (const n of host.querySelectorAll(selector)) n.addEventListener(type, fn)
-}
-
 function markupOf(s) {
   let attrs = ''
   for (const k in s.attrs) attrs += ` ${k}="${escapeHtml(s.attrs[k])}"`
@@ -139,28 +133,6 @@ export function setNodes(host, specs) {
   const out = document.createDocumentFragment()
   for (const s of specs) out.appendChild(buildNode(s))
   host.replaceChildren(out)
-}
-
-/**
- * Replaces `host`'s children with one element described as in `setNodes`, and moves the nodes of `from` (the host
- * itself, or an element inside it) into that element. The words are not rebuilt from text, so a label that holds
- * two forms, one hidden by CSS, keeps both. With nothing to move it holds `fallback`.
- */
-export function wrapNodes(host, spec, from, fallback) {
-  if (!live()) {
-    setNodes(host, [{ ...spec, text: from.textContent || fallback }])
-    return
-  }
-  const kids = [...from.childNodes]
-  setNodes(host, [{ ...spec, text: kids.length ? '' : fallback }])
-  host.firstChild.append(...kids)
-}
-
-/** Puts the nodes of `link`, an element inside `host`, in place of everything in `host`; with none, `fallback` as text. */
-export function unwrapNodes(host, link, fallback) {
-  if (!live()) setText(host, link.textContent || fallback)
-  else if (link.childNodes.length) host.replaceChildren(...link.childNodes)
-  else host.textContent = fallback
 }
 
 /** Replaces `host`'s children with plain text. */

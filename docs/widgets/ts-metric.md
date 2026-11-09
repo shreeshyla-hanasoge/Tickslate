@@ -137,8 +137,6 @@ button fires:
 
 See [Events](../reference/events.md).
 
-`open` fires too when the tile is `activatable`. The header, the figures and the empty space open it, and an `href` tile follows its link from the same places; the sparkline at Wide and M does nothing when clicked, and the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
-
 ## Parts
 
 | Part | Element |

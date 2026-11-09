@@ -142,8 +142,6 @@ The base members every widget has are listed in
 
 Nothing fires while the grid is in edit mode. See [Events](../reference/events.md).
 
-`open` fires too when the tile is `activatable`. The header, the figures and the empty space open it, and an `href` tile follows its link from the same places; the scrolling list of allocations and its rows keep their own clicks (the list scrolls and a row does nothing), as do the tile's own buttons and the `actions` slot. Route `open` to a page other than the one the tile is already on.
-
 ## Parts
 
 | Part | Element |

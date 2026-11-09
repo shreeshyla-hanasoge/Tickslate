@@ -24,7 +24,6 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-muted: #6A655B;
     --ts-profit: #0E7A4E;
     --ts-loss: #C0362C;
-    --ts-loss-mark: transparent;
     --ts-warn: #A85A06;
     --ts-accent: #2C52C4;
     --ts-axis: #948C7C;
@@ -173,7 +172,6 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-series-3: #0C7A6C;
     --ts-series-4: #0E6D8F;
     --ts-focus: var(--ts-accent);
-    --ts-loss-mark: var(--ts-ink);
   }
   @media (prefers-color-scheme: dark) {
     :where([data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] [data-theme="auto"]:not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]), [data-ts-palette="cvd"][data-theme="auto"]:not([data-theme="light"]), [data-ts-palette="cvd"] [data-theme="auto"]:not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
@@ -185,7 +183,6 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
       --ts-series-3: #15D2B9;
       --ts-series-4: #18D3F0;
       --ts-focus: var(--ts-accent);
-      --ts-loss-mark: var(--ts-ink);
     }
   }
   :where(:is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]):not([data-theme="light"] *), [data-theme="light"] :is([data-theme="dark"], .dark):not([data-theme="light"]) [data-ts-palette="cvd"]:not([data-theme="light"]), [data-ts-palette="cvd"]:is([data-theme="dark"], .dark):not([data-theme="light"]), [data-ts-palette="cvd"] :is([data-theme="dark"], .dark):not([data-theme="light"]):not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="cvd"] [data-ts-palette="red-up"] *)) {
@@ -197,7 +194,6 @@ export const TOKENS_CSS = `@layer tickslate.defaults {
     --ts-series-3: #15D2B9;
     --ts-series-4: #18D3F0;
     --ts-focus: var(--ts-accent);
-    --ts-loss-mark: var(--ts-ink);
   }
   :where([data-ts-palette="red-up"], [data-ts-palette="red-up"] [data-theme="light"]:not([data-ts-palette]):not([data-ts-theme]):not([data-ts-palette="red-up"] [data-ts-palette="cvd"] *)) {
     --ts-profit: #C0362C;
