@@ -371,7 +371,7 @@ export function createFormatter(options = {}) {
   const fit = (value, maxChars, o = {}) => {
     const { style = 'money', ...rest } = o
     const f = style === 'percent' ? percent : style === 'number' ? number : money
-    const visibleLength = (text) => [...text.replace(/[‎‏؜⁦-⁩]/g, '')].length
+    const visibleLength = (text) => [...text.replace(/[\u200e\u200f\u061c\u2066-\u2069]/g, '')].length
     let best = f(value, rest)
     if (visibleLength(best) <= maxChars) return best
     if (f !== money) {

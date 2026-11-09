@@ -84,7 +84,7 @@ const head = (k, hidden) => (hidden ? `<th scope="col"><span class="visually-hid
 
 // The header row is visible at M and takes no room at Tall, where the columns are obvious: it is still there for a screen reader.
 const table = (cols) => `${HEAD}
-<div class="scroll" data-k="scroll" role="group" tabindex="0">
+<div class="scroll lift" data-k="scroll" role="group" tabindex="0">
 <table part="table" data-k="table" class="c${cols}">
 <caption class="visually-hidden" data-k="caption"></caption>
 <thead><tr>${head('h0', cols === 2)}${head('h1', cols === 2)}${cols === 3 ? head('h2', false) : ''}</tr></thead>
@@ -206,6 +206,7 @@ export class TsStatus extends TsWidget {
     write('post', vm.synced.post)
     write('none', vm.noRows)
     hide('none', vm.total > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.total > 0)
 
     if (variant === 'S') {
       write('sum', vm.total ? vm.summary : '')

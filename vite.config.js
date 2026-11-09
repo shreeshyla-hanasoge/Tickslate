@@ -1,11 +1,21 @@
 import { defineConfig } from 'vite'
-import { siteConfig } from './vite.site.config.js'
+import { fileURLToPath } from 'node:url'
+import { elementEntries } from './scripts/entries.mjs'
 
-/**
- * The public site for LambdaDeploy (https://tickslate.ldio.app): the same site
- * as vite.site.config.js, served from the domain root and built into dist/,
- * which is where the LambdaDeploy build server looks. scripts/pack-site.mjs
- * copies this file into the upload folder as its vite.config.js, so a plain
- * `vite build` there builds it. See docs/site.md.
- */
-export default defineConfig(({ command, isPreview }) => siteConfig({ base: '/', outDir: 'dist', serve: command === 'serve' && !isPreview }))
+const src = (path) => fileURLToPath(new URL(path, import.meta.url))
+
+// Dev server only. The examples import the package names the README shows;
+// these aliases answer them from the source so a page runs before anything is
+// published. The build configs (vite.lib/umd/dev.config.js) are separate files
+// and never read this one. The longer name goes first so 'tickslate/elements'
+// isn't caught by the bare 'tickslate' match. `tickslate/elements/<name>` is
+// answered by that widget's define module, the list scripts/entries.mjs reads.
+export default defineConfig({
+  resolve: {
+    alias: [
+      ...elementEntries().map((e) => ({ find: new RegExp(`^tickslate/elements/${e.name}$`), replacement: e.input })),
+      { find: /^tickslate\/elements$/, replacement: src('./src/elements/index.js') },
+      { find: /^tickslate$/, replacement: src('./src/core/index.js') },
+    ],
+  },
+})

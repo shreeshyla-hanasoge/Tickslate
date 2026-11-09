@@ -127,6 +127,8 @@ The range buttons are a display control, so `XL` always shows them; the event
 only lets your app know, for instance to save the choice. See
 [Events](../reference/events.md).
 
+`open` fires too when the tile is `activatable`. The header, the figures and the empty space open it, and an `href` tile follows its link from the same places; the chart scrubs and a click on it does nothing, and the tile's own buttons and the `actions` slot keep their clicks. Route `open` to a page other than the one the tile is already on.
+
 ## Parts
 
 | Part | Element |

@@ -26,7 +26,7 @@ any other, with sizes, drag, resize and remove for free.
 
     // Static markup per size, built once; no data in it. Tokens only, through the shared classes.
     static template(variant) {
-      return `<div class="hd"><span class="lb ell" data-k="label"></span></div>
+      return `<div class="hd" part="header"><span class="lb ell" part="label" role="heading" aria-level="3" data-k="label"></span></div>
         <span class="${variant === 'S' ? 'big' : 'xbig'}" data-k="value"></span>
         <span class="sm mut" data-k="note"></span>`
     }
@@ -139,8 +139,10 @@ small uppercase label), `.big`, `.xbig` and `.md` (figure sizes that shrink with
 the tile), `.n` (tabular figure), `.sm`, `.xs`, `.mut`, `.pos`, `.neg`, `.warn`,
 `.acc` (colours), `.f1` (flex fill), `.row`, `.rowb` and `.col` (layout), `.g2`
 to `.g4` (columns), `.sep` (a hairline), `.ell` (ellipsis), `.btn`, `.dot.live`
-(the pulsing dot) and the profit and loss line classes `.lp`, `.ln`, `.ap`,
-`.an` and `.lz`.
+(the pulsing dot), the profit and loss line classes `.lp`, `.ln`, `.ap`,
+`.an` and `.lz`, and `.lift`, which keeps a data surface (a chart, a scrolling
+list) above an `href` or `activatable` tile's link so a click on it never opens
+the tile.
 
 ## Catalog and registration
 

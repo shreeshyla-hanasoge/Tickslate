@@ -125,7 +125,7 @@ const HEAD = header({ dot: true, meta: true }).replace(/<\/div>$/, `${ADD}</div>
 
 const template = (trend) => `
 ${HEAD}
-<div class="scroll" data-k="scroll" role="group" tabindex="0">
+<div class="scroll lift" data-k="scroll" role="group" tabindex="0">
 <table part="table" data-k="table">
 <caption class="visually-hidden" data-k="caption"></caption>
 <thead><tr>${heads(trend)}</tr></thead>
@@ -258,6 +258,7 @@ export class TsWatchlist extends TsWidget {
     setAttr(this.$('[data-k="scroll"]'), 'aria-label', this.t('watchlist.region', { label: vm.label }))
     write('none', vm.noRows)
     hide('none', vm.rows.length > 0)
+    this._lift(this.$('[data-k="scroll"]'), vm.rows.length > 0)
     const add = this.$('[data-k="add"]')
     const canAdd = this.actionEnabled(ACTION_ADD)
     add.toggleAttribute('hidden', !canAdd)

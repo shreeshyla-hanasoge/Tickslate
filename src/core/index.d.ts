@@ -717,6 +717,9 @@ export interface Messages {
   'feed.aria.one': string
   'feed.aria.other': string
   'feed.ariaEmpty': string
+  'action.expand': string
+  'miniChart.instrument': string
+  'miniChart.instrumentOf': string
 }
 
 export type MessageKey = keyof Messages

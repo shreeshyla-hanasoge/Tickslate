@@ -319,3 +319,4 @@ export function siteConfig({ base = process.env.SITE_BASE || '/Tickslate/', outD
 }
 
 export default defineConfig(({ command, isPreview }) => siteConfig({ serve: command === 'serve' && !isPreview }))
+

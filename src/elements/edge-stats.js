@@ -162,7 +162,7 @@ const head = header({ dot: true, meta: true })
 const cell = (i) => `<div class="col cell" data-k="c${i}"><span class="lb ell" data-k="l${i}"></span>${figure('n md', `v${i}`)}${figure('n sm sub', `s${i}`)}</div>`
 const NONE = '<div class="none mut" data-k="none" hidden></div>'
 const note = (cls) => `<span class="sm mut ell${cls}" data-k="note"></span>`
-const DIST = `<div class="dist" data-k="dist" hidden><span class="lb" data-k="distLb"></span><div class="bars" part="chart" role="img" data-k="bars"></div></div>`
+const DIST = `<div class="dist" data-k="dist" hidden><span class="lb" data-k="distLb"></span><div class="bars lift" part="chart" role="img" data-k="bars"></div></div>`
 
 // S has no room for the trade count and scope under its stat (they are in the tile's name), and a narrow Wide drops them too.
 const TEMPLATES = {
@@ -235,6 +235,8 @@ const setAttr = (el, name, value) => {
 }
 
 export class TsEdgeStats extends TsWidget {
+  // Its lifted surfaces sit below the stats, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'edgeStats'
   static emptyText = EN['widget.edgeStats.empty']
   static dataShape = Object.freeze({

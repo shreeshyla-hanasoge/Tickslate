@@ -296,7 +296,7 @@ ${figure('big nv', 'net', 'value')}
   M: `
 ${header({ dot: true, meta: true, extra: '<span class="sm mut" data-k="counts"></span>' })}
 <div class="rowb base">${figure('xbig nv', 'net', 'value')}<span class="sm mut" data-k="summary"></span></div>
-<div class="chart sc" part="chart" data-k="plot">
+<div class="chart sc lift" part="chart" data-k="plot">
   <svg viewBox="0 0 ${CHART_BOX.width} ${CHART_BOX.height}" preserveAspectRatio="none" role="img" data-k="svg">
     <defs>
       <clipPath id="up"><rect x="0" y="0" width="${CHART_BOX.width}" data-k="clip-up"></rect></clipPath>
@@ -338,6 +338,8 @@ const SKELETONS = {
 }
 
 export class TsTodayPnl extends TsWidget {
+  // Its lifted surfaces sit below the net figure, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'todayPnl'
   static emptyText = EN['widget.todayPnl.empty']
   // The headline figures are required: a tile without them has nothing to say,
@@ -497,6 +499,7 @@ export class TsTodayPnl extends TsWidget {
     const nodata = this.$('[data-k="nodata"]')
     nodata.textContent = c.message
     nodata.toggleAttribute('hidden', !c.empty)
+    this._lift(this.$('[data-k="plot"]'), !c.empty)
 
     const set = (k, attrs) => {
       const el = this.$(`[data-k="${k}"]`)

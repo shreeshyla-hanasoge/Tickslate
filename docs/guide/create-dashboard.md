@@ -39,6 +39,7 @@ old one first. Without a DOM (server rendering) it throws
 | `persist` | The grid's `persist` key. See [saving layouts](saving-layouts.md). Off by default. |
 | `locale`, `currency`, `timeZone` | Set on the grid as `locale`, `currency` and `time-zone`; every tile inherits them. |
 | `label` | The grid's accessible name. Say what the dashboard is ("Service overview"); the default is the grid's own "Dashboard". |
+| `labels` | A title per item id, `{ revenue: 'Revenue', costs: 'Costs' }`, written as the `label` attribute of that id's tile each time the dashboard creates it: at the start, for an add request, for a layout `persist` restores. See [Headings and names](#headings-and-names). |
 | `addTypes` | What the picker offers and `ts-add-request` is answered for: a list of types, `'*'` or `null`. Default `'*'`. |
 
 `layout` is required: without it the grid is empty, with one development
@@ -56,7 +57,22 @@ dashboard.grid.setAttribute('heading-level', '2')
 ```
 
 Each tile is named after its catalog entry ("Metric", "Chart"), so two metrics
-share a name. A host can name a tile by setting the `label` attribute on it:
+share a name. Pass `labels`, an object from item id to title, to name them:
+
+```js
+createDashboard('#app', { layout, data, labels: { revenue: 'Revenue', costs: 'Costs' } })
+```
+
+`labels` is written as the tile's `label` attribute, so it wins over the
+widget's `messages`, the grid's, `configure()` and the built-in English, on that
+tile only. A host that translates passes translated titles. It is host data, not
+part of the layout: nothing is saved with it, and it is read once, so changing
+the object later does nothing. Own keys only (`constructor` is an id like any
+other). A value that is not a non-empty string (an empty or blank one included) is
+ignored with one development warning, and the tile keeps its catalog name. A `Map` or an array passed as `labels` is ignored with one warning; it must be a plain object. An
+id no profile holds is kept for a later add request, and warns unless `persist`
+is set, as `data` does. Each of these warnings fires once per id per page. `set()` and `update()` change data, never titles; to
+retitle a tile later, set `label` on it:
 `dashboard.grid.querySelector('[item="revenue"]').setAttribute('label', 'Revenue')`.
 
 ## Tiles

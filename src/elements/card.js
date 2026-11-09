@@ -70,9 +70,9 @@ export function cardModel(data, variant, ctx) {
  * is the decimal mark; every other separator groups.
  */
 export function figureOf(text) {
-  const m = /[+\-−]?\s*\d[\d.,\s  ']*/.exec(text)
+  const m = /[+\-\u2212]?\s*\d[\d.,\s\u00a0\u202f']*/.exec(text)
   if (!m) return NaN
-  const neg = /^[\-−]/.test(m[0]) || /^[^\d]*\(/.test(text)
+  const neg = /^[\-\u2212]/.test(m[0]) || /^[^\d]*\(/.test(text)
   let s = m[0].replace(/[^\d.,]/g, '')
   const last = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','))
   if (last >= 0 && (s.length - last - 1 <= 2 || (s[last] === '.' && !/[.,]/.test(s.slice(0, last))))) s = `${s.slice(0, last).replace(/[.,]/g, '')}.${s.slice(last + 1)}`
@@ -238,7 +238,9 @@ slot[name="footer"]::slotted(*) {
     this.flash('value', figureOf(vm.valueText))
 
     const body = this.$('[data-k="body"]')
-    body.setAttribute('class', vm.scrollable ? 'body scroll' : 'body')
+    body.setAttribute('class', vm.scrollable ? 'body scroll lift' : 'body')
+    // Its template lifts nothing, so the base's per-template mark misses a scrolling body: the attribute, not the data, decides it.
+    this._markLifts(vm.scrollable)
     // A scrolling region the keyboard can't reach is unusable without a mouse.
     if (vm.scrollable) {
       body.setAttribute('tabindex', '0')

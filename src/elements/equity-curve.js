@@ -260,7 +260,7 @@ const k = (name) => `[data-k="${name}"]`
 function chartMarkup(v) {
   const [w, h] = DIMS[v]
   const xl = v === 'XL'
-  return `<div class="plot sc" part="chart" data-k="plot">
+  return `<div class="plot sc lift" part="chart" data-k="plot">
 <svg data-k="svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="">
 <defs><clipPath id="cu"><rect data-k="clipUp" x="0" y="0" width="${w}" height="0"></rect></clipPath><clipPath id="cd"><rect data-k="clipDn" x="0" y="0" width="${w}" height="0"></rect></clipPath></defs>
 ${xl ? '<path class="dd" data-k="band" d=""></path>' : ''}
@@ -291,6 +291,8 @@ const SKELETONS = {
 }
 
 export class TsEquityCurve extends TsWidget {
+  // Its lifted surfaces sit below the net figure, so the open strip above them is taller than 44px without the touch header floor.
+  static _liftsUnderHeader = false
   static catalogKey = 'equityCurve'
   static emptyText = EN['widget.equityCurve.empty']
   static dataShape = {
@@ -482,6 +484,7 @@ ${chartMarkup('M')}
     attr('svg', 'aria-label', vm.chartLabel)
     this.$(k('svg')).toggleAttribute('hidden', vm.empty)
     this.$(k('empty')).toggleAttribute('hidden', !vm.empty)
+    this._lift(this.$(k('plot')), !vm.empty)
     attr('zero', 'y1', c.zeroY)
     attr('zero', 'y2', c.zeroY)
     // The profit colour is clipped to above zero and the loss colour below it.
